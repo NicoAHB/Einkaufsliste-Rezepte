@@ -1,10 +1,11 @@
-import { active, clone, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, clone, emptyData, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
-import { isJpeg, localPhotoUrl, photoPath, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
+import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
+import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -27,7 +28,13 @@ const connected = () => Boolean(config.owner && config.repo && config.token);
 const namespace = (value = config) => value.owner && value.repo ?
   `einkauf-data-v1:${JSON.stringify([value.owner.toLowerCase(), value.repo.toLowerCase(), value.branch, value.path])}` : 'einkauf-demo-v1';
 // Wenn sich weder Zeitstempel noch Zahl der angewendeten Änderungen ändern, hat sich auch nichts Sichtbares geändert.
-const signature = () => `${state.updatedAt}|${state.sync.applied.length}`;
+const signature = () => `${state.updatedAt}|${state.sync.applied.length}|${state.items.length}`;
+// Was die App über Artikel weiß: vorhandene Artikel plus das Namensgedächtnis aus dem Aufräumen (siehe compact.js).
+let historyMemo = { for: null, rows: [] };
+function itemHistory() {
+  if (historyMemo.for !== state) historyMemo = { for: state, rows: [...state.items, ...(state.names || []).map(entry => ({ name: entry.name, category: entry.category, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))] };
+  return historyMemo.rows;
+}
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Ausschließlich Textknoten für Nutzereingaben: Rezeptnamen können kein HTML ausführen.
@@ -108,6 +115,7 @@ function tab(name) {
     else node.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
+  if (name === 'settings') renderStorage();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
 function storeOptions(select, preferred = select.value, allowNone = false) {
@@ -171,7 +179,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -250,7 +258,7 @@ function renderItems() {
   const grouped = config.groupItems !== false;
   const addOpen = (items, nested) => {
     if (!grouped) { items.sort(byName).forEach(item => list.append(itemRow(item))); return; }
-    for (const group of groupByCategory(items, state.items)) {
+    for (const group of groupByCategory(items, itemHistory())) {
       const head = groupHead(group.label, group.items.length); if (nested) head.classList.add('sub');
       list.append(head); group.items.forEach(item => list.append(itemRow(item)));
     }
@@ -272,7 +280,7 @@ function renderItems() {
 }
 function renderItemSuggestions() {
   const form = $('#item-form'), box = $('#item-suggestions');
-  const names = suggestItemNames(state.items, form.elements.name.value);
+  const names = suggestItemNames(itemHistory(), form.elements.name.value);
   box.replaceChildren(); box.hidden = !names.length;
   if (!names.length) return;
   box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
@@ -322,7 +330,7 @@ function fillCategorySelects() {
 }
 // „Automatisch (Obst & Gemüse)“: zeigt, was die App für diesen Namen vorschlagen würde.
 function categoryHint(select, name) {
-  const guess = String(name).trim() ? suggestCategory(name, state.items) : null;
+  const guess = String(name).trim() ? suggestCategory(name, itemHistory()) : null;
   select.options[0].textContent = guess ? `Automatisch (${categoryLabel(guess)})` : 'Automatisch';
 }
 function rememberPriceInForm() {
@@ -597,13 +605,15 @@ function openTransfer(id, servings) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
-  storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren();
+  storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren(); form.elements.rememberPantry.checked = false;
+  const keys = pantryKeys(state.pantry);
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
-    const label = element('label', undefined, 'transfer-row'), check = element('input');
-    // Salz, Pfeffer und Co. („nach Bedarf“) hat man meist da: nicht vorausgewählt.
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT; check.value = row.id;
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), stocked = inPantry(keys, row.name);
+    // Salz, Pfeffer und Co. („nach Bedarf“) und der Vorrat: hat man meist da, nicht vorausgewählt.
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked; check.value = row.id;
     // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
-    label._ingredient = clone(row); label.append(check, element('span')); $('#transfer-ingredients').append(label);
+    label._ingredient = clone(row); label.append(check, element('span')); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    $('#transfer-ingredients').append(label);
   }
   updateTransfer(); $('#transfer-dialog').showModal();
 }
@@ -779,20 +789,22 @@ function weekRows() {
 }
 function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
-  const rows = weekRows();
+  const rows = weekRows(), keys = pantryKeys(state.pantry);
   if (!rows.length) box.append(element('p', 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
   for (const row of rows) {
     const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(row));
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT;
+    const stocked = inPantry(keys, row.name);
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked;
     label._row = row;
     if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
-    label.append(check, text); box.append(label);
+    label.append(check, text); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    box.append(label);
   }
 }
 function openWeekShopping() {
   const form = $('#week-form'); storeOptions(form.elements.storeId, defaultStore(), true);
   $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
-  renderWeekRows(); $('#week-dialog').showModal();
+  form.elements.rememberPantry.checked = false; renderWeekRows(); $('#week-dialog').showModal();
 }
 
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
@@ -912,13 +924,14 @@ function decodeFile(file) {
   try { return validate(JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(file.content.replace(/\s/g, '')), char => char.charCodeAt(0))))); }
   catch (error) { throw new Error(`Datendatei nicht lesbar: ${error.message}`); }
 }
+// Ohne Einrückung: Das spart rund die Hälfte der Dateigröße. GitHub und ältere App-Versionen lesen beides.
 function encodeFile(data) {
-  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2) + '\n');
-  if (bytes.length > 900000) throw new Error('Die Daten sind größer als 900 KB. Bitte Backup erstellen. Für größere Datenbestände ist eine Erweiterung erforderlich. Nichts wurde verworfen.');
+  const bytes = new TextEncoder().encode(JSON.stringify(data) + '\n');
+  if (bytes.length > LIMIT_BYTES) throw new Error('Die Daten sind größer als 900 KB, auch nach dem Aufräumen. Bitte ein Backup erstellen und Rezeptfotos, Verlauf und Wochenplan prüfen. Nichts wurde verworfen.');
   let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
-let retryAt = 0;
+let retryAt = 0, compactRequested = false;
 async function sync(manual = false) {
   if (!connected()) { restingStatus(); return; }
   if (busy || (!manual && Date.now() < retryAt)) return;
@@ -931,11 +944,16 @@ async function sync(manual = false) {
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
       if (!file) { retryAt = 0; message(); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
-      const batch = pending.slice(), merged = merge(remote, batch);
+      const batch = pending.slice();
+      let merged = merge(remote, batch), tidy = null;
+      // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB oder auf Wunsch. Es darf den Abgleich nie verhindern.
+      if (compactRequested || due(merged)) {
+        try { tidy = compact(merged); if (tidy.changed) merged = tidy.data; } catch { tidy = null; }
+      }
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
       // nicht erneut geschrieben zu werden.
       let written = false;
-      if (batch.some(op => !remote.sync.applied.includes(op.id))) {
+      if (batch.some(op => !remote.sync.applied.includes(op.id)) || tidy?.changed) {
         try {
           await api('PUT', { message: 'Einkauf & Rezepte: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
@@ -945,6 +963,7 @@ async function sync(manual = false) {
       const sent = new Set(batch.map(op => op.id)), wasReady = ready, before = signature();
       saveLocal(merged, pending.filter(op => !sent.has(op.id)));
       remoteEtag = written ? '' : file.etag;
+      if (compactRequested) { compactRequested = false; noteCompaction(tidy); }
       ready = true; retryAt = 0; message();
       // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
       if (!wasReady || signature() !== before) render();
@@ -952,6 +971,7 @@ async function sync(manual = false) {
       return;
     }
   } catch (error) {
+    compactRequested = false;
     retryAt = error.retryAt || Date.now() + ([401, 404].includes(error.status) ? 60000 : 15000);
     status(pending.length ? 'Fehler · lokal gesichert' : 'Abgleich nicht möglich', 'error'); message(error.message);
   } finally {
@@ -1004,6 +1024,74 @@ async function backup() {
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* ---------- Vorrat ---------- */
+function renderPantry() {
+  const list = $('#pantry-list'); list.replaceChildren();
+  const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  if (!rows.length) list.append(element('li', 'Noch nichts im Vorrat.', 'empty'));
+  for (const row of rows) {
+    const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id], `„${row.name}“ aus dem Vorrat entfernt`)));
+    list.append(entry);
+  }
+}
+$('#pantry-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, name = form.elements.name.value.trim().replace(/\s+/g, ' ');
+  if (!name) throw new Error('Bitte eine Zutat eingeben.');
+  if (pantryAdditions([name], pantryKeys(state.pantry)).length) commit([nextOp('pantry', uid(), { name })]);
+  form.reset(); form.elements.name.focus();
+}); });
+
+/* ---------- Datenumfang ---------- */
+const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
+const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry;
+function noteCompaction(result) {
+  $('#storage-note').textContent = !result?.changed ? 'Es gab nichts aufzuräumen.' :
+    `Aufgeräumt: ${entries(result.removed)} Einträge entfernt, ${kb(result.before - result.after)} gespart.`;
+}
+function renderStorage() {
+  if ($('#settings').hidden) return;
+  const bytes = sizeOf(state), percent = Math.min(100, Math.round(bytes * 100 / LIMIT_BYTES));
+  let result = null; try { result = compact(state); } catch { /* Anzeige ist optional */ }
+  $('#storage-bar').value = percent;
+  $('#storage-text').textContent = `${kb(bytes)} von ${kb(LIMIT_BYTES)} belegt (${percent} %)`;
+  $('#storage-hint').textContent = result?.changed ? `Aufräumbar: ${entries(result.removed)} Einträge, etwa ${kb(result.before - result.after)}.` : 'Nichts zum Aufräumen.';
+  $('#clean-photos').hidden = !connected();
+}
+function compactNow() {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  if (connected()) { compactRequested = true; $('#storage-note').textContent = 'Räume auf …'; return sync(true); }
+  const result = compact(state);
+  if (result.changed) saveLocal(result.data, []);
+  noteCompaction(result); render();
+}
+// Fotodateien im Daten-Repository, auf die kein Rezept mehr verweist (ersetzte, entfernte, mit dem Rezept gelöschte Fotos).
+async function cleanPhotos() {
+  if (!connected()) return;
+  if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
+  await sync(true);
+  if (pending.length) throw new Error('Es warten noch Änderungen. Bitte zuerst abgleichen (grüner Punkt oben).');
+  const note = $('#storage-note'); note.textContent = 'Prüfe Fotos …';
+  const response = await timed(`${photosApi()}?ref=${encodeURIComponent(config.branch)}`, { headers: githubHeaders({ Accept: 'application/vnd.github+json' }) });
+  if (response.status === 404) { note.textContent = 'Es gibt keine Fotos im Daten-Repository.'; return; }
+  if (!response.ok) throw new Error(`GitHub meldet Fehler ${response.status}. Bitte später erneut versuchen.`);
+  const used = usedPhotos(), files = (await response.json()).filter(file => file.type === 'file' && /^[A-Za-z0-9-]{8,64}\.jpg$/.test(file.name));
+  const orphans = files.filter(file => !used.has(file.name.slice(0, -4)));
+  if (!orphans.length) { note.textContent = 'Alle Fotos werden noch verwendet.'; return; }
+  const size = orphans.reduce((sum, file) => sum + (file.size || 0), 0);
+  if (!confirm(`${orphans.length} nicht mehr verwendete Fotos (${kb(size)}) endgültig löschen?\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`)) { note.textContent = ''; return; }
+  let deleted = 0;
+  for (const file of orphans) {
+    const result = await timed(`${photosApi()}/${encodeURIComponent(file.name)}`, { method: 'DELETE', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ message: 'Einkauf & Rezepte: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
+    if (!result.ok) { note.textContent = `${deleted} Fotos gelöscht, dann Fehler ${result.status}.`; return; }
+    deleted++;
+  }
+  note.textContent = `${deleted} Fotos gelöscht, ${kb(size)} frei.`;
+}
+// Fotos, auf die irgendein Rezept (auch ein gerade gelöschtes) oder die Upload-Warteschlange verweist.
+const usedPhotos = () => new Set([...state.recipes.map(row => row.photoId), ...queued(queueKey())].filter(Boolean));
+const photosApi = () => `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${photosDir(config.path).split('/').map(encodeURIComponent).join('/')}`;
+
 /* ---------- Ereignisse ---------- */
 fillCategorySelects();
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
@@ -1038,17 +1126,38 @@ document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
+// Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js), Rückgängig macht alles zusammen rückgängig.
+// `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
+function addRows(rows, storeId, unchecked = [], remember = false) {
+  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+  const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
+  if (!result.ops.length && !stocked.length) throw new Error('Alles davon steht schon auf der Liste.');
+  const pantryOps = stocked.map(name => ({ id: uid(), name })).map(entry => ({ entry, op: nextOp('pantry', entry.id, { name: entry.name }) }));
+  const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
+    stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
+  const gone = new Date().toISOString();
+  commit([...result.ops, ...pantryOps.map(row => row.op)], { label: `Übernommen: ${parts.join(', ')}`,
+    patches: [...result.undo, ...pantryOps.map(row => ({ collection: 'pantry', id: row.entry.id, patch: { deletedAt: gone } }))] });
+}
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
-  const category = form.elements.category.value || suggestCategory(name, state.items);
+  const category = form.elements.category.value || suggestCategory(name, itemHistory());
   const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
-  const id = uid(), ops = [nextOp('items', id, item)];
-  if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
-  // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
-  const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
-  commit(ops, elsewhere || null);
+  // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
+  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
+  if (same) {
+    commit([nextOp('items', same.id, { quantity: same.after.quantity, unit: same.after.unit })],
+      { label: `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`, patches: [{ collection: 'items', id: same.id, patch: { quantity: same.before.quantity, unit: same.before.unit } }] });
+  } else {
+    const id = uid(), ops = [nextOp('items', id, item)];
+    if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
+    // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
+    const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
+    commit(ops, elsewhere || null);
+  }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
   form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
@@ -1098,9 +1207,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const storeId = currentStore(form.elements.storeId.value);
-  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const rows = selected.map(row => row.unit === NO_AMOUNT ? { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity, unit: row.unit });
-  commit(newItems(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, state.items));
+  addRows(selected.map(row => listRow(row)), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name), form.elements.rememberPantry.checked);
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
@@ -1121,8 +1228,8 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
-  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices, state.items));
+  addRows(selected.map(row => listRow(row, factor)), currentStore(form.elements.storeId.value),
+    [...$('#transfer-ingredients').children].filter(label => !label.querySelector('input').checked).map(label => label._ingredient.name), form.elements.rememberPantry.checked);
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
@@ -1157,6 +1264,8 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#export').addEventListener('click', () => guard(backup));
+$('#compact-now').addEventListener('click', () => guard(compactNow));
+$('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
 $('#welcome-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
@@ -1178,6 +1287,7 @@ async function start() {
     config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); fillSettings();
     const incoming = incomingLink();
     await loadWorkspace();
+    prunePhotos(usedPhotos()).catch(() => {});
     if (!config.actor) { deferredImport = incoming; $('#welcome').showModal(); }
     else if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);

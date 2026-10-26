@@ -1342,6 +1342,53 @@ dialog::backdrop {
   -webkit-appearance:auto;
   appearance:auto
 }
+.transfer-row .pantry-badge {
+  margin-left:auto;
+  flex:none;
+  padding:2px 10px;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:var(--accent);
+  font-size:.8rem;
+  font-weight:600
+}
+.inline-form {
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+  margin-bottom:12px
+}
+.inline-form label {
+  flex:1;
+  min-width:0;
+  margin:0
+}
+.inline-form button {
+  flex:none
+}
+.pantry-list {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none
+}
+.pantry-list li {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-height:40px;
+  padding:0 4px 0 14px;
+  border:1px solid var(--line-strong);
+  border-radius:999px;
+  background:var(--card)
+}
+.pantry-list .icon-button {
+  width:32px;
+  min-height:32px;
+  height:32px
+}
 .store-row {
   display:block;
   margin:10px 0;
