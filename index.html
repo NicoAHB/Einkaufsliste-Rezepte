@@ -150,7 +150,7 @@
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 1.6 · Datenumfang im Griff, Artikel zusammenzählen, Vorrat · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 1.7 · ohne Rückgängig-Leiste · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>
@@ -161,7 +161,7 @@
     <button type="button" data-tab="plan"><span class="tab-icon"><svg class="icon"><use href="#i-calendar"/></svg></span><span class="tab-label">Plan</span></button>
     <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
   </nav>
-  <aside id="undo-bar" class="undo-bar" hidden><span id="undo-label"></span><button id="undo" type="button" class="text-button">Rückgängig</button></aside>
+  <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span></aside>
 
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>
   <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button>Geschäft hinzufügen</button></form></dialog>

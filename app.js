@@ -10,7 +10,7 @@ import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
-let busy = false, ready = false, view = 'all', lastTime = 0, undoAction = null;
+let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null;
@@ -96,14 +96,19 @@ function nextOp(collection, id, patch) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   return operation(collection, id, patch, config.actor || 'Unbekannt', new Date(lastTime).toISOString());
 }
-function commit(ops, undo = null) {
+// Kurzer Hinweis ohne Knopf; verschwindet von selbst.
+function showNotice(text) {
+  $('#notice-text').textContent = text; $('#notice').hidden = false;
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; }, 4000);
+}
+function commit(ops, notice = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (!ops.length) return;
   const nextPending = [...pending, ...ops];
   const nextState = merge(base, nextPending);
   // Eine einzige atomare localStorage-Schreiboperation sichert Daten und Warteschlange.
   saveLocal(connected() ? base : nextState, connected() ? nextPending : []);
-  if (undo) { undoAction = undo; $('#undo-label').textContent = undo.label; $('#undo-bar').hidden = false; }
+  if (notice) showNotice(notice);
   message(); render(); restingStatus();
   if (connected()) void sync();
 }
@@ -242,7 +247,7 @@ function itemRow(item, withStore = false) {
   }
   const actions = element('div', undefined, 'item-actions');
   actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
-    iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id], 'Artikel gelöscht')));
+    iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id])));
   row.append(check, copy, actions);
   return row;
 }
@@ -402,11 +407,10 @@ function editItem(id) {
   form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
   showComparison(item); message(); $('#item-dialog').showModal();
 }
-function removeRows(collection, ids, label) {
+function removeRows(collection, ids) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
   const at = new Date().toISOString();
-  commit(rows.map(row => nextOp(collection, row.id, { deletedAt: at })),
-    { label, patches: rows.map(row => ({ collection, id: row.id, patch: { deletedAt: null } })) });
+  commit(rows.map(row => nextOp(collection, row.id, { deletedAt: at })));
 }
 function renderStores() {
   const editor = $('#store-editor'); editor.replaceChildren();
@@ -428,7 +432,7 @@ function renderStores() {
     const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
       if (!confirm(`„${store.name}“ löschen? Die Artikel werden ausgeblendet. Du kannst das Löschen rückgängig machen.`)) return;
-      removeRows('stores', [store.id], 'Geschäft gelöscht'); renderStores();
+      removeRows('stores', [store.id]); renderStores();
     }, 'danger');
     remove.setAttribute('aria-label', `${store.name} löschen`); row.append(form, remove); editor.append(row);
   }
@@ -508,7 +512,7 @@ function recipeCard(recipe, ingredients) {
   more.append(button('Heute gekocht', () => commit([nextOp('recipes', recipe.id, { lastCookedAt: isoDate() })]), 'secondary small'),
     button('Bearbeiten', () => editRecipe(recipe.id), 'secondary small'),
     button('Löschen', () => {
-      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id], 'Rezept gelöscht');
+      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id]);
     }, 'danger small'));
   details.append(more);
   card.append(details);
@@ -720,7 +724,7 @@ function mealRow(meal, recipes) {
   const copy = element('div', undefined, 'meal-copy');
   copy.append(recipe ? button(name, () => showRecipe(recipe.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
   row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
-    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id], 'Gericht entfernt')));
+    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
   return row;
 }
 // „Gekocht“ merkt sich auch am Rezept, wann es zuletzt auf dem Tisch stand.
@@ -980,7 +984,7 @@ async function sync(manual = false) {
   }
 }
 async function loadWorkspace() {
-  ready = false; pending = []; base = emptyData(); state = base; undoAction = null; $('#undo-bar').hidden = true;
+  ready = false; pending = []; base = emptyData(); state = base; $('#notice').hidden = true;
   remoteEtag = '';
   const cache = localStorage.getItem(namespace());
   if (cache) {
@@ -1030,7 +1034,7 @@ function renderPantry() {
   const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
   if (!rows.length) list.append(element('li', 'Noch nichts im Vorrat.', 'empty'));
   for (const row of rows) {
-    const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id], `„${row.name}“ aus dem Vorrat entfernt`)));
+    const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id])));
     list.append(entry);
   }
 }
@@ -1126,19 +1130,17 @@ document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
-// Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js), Rückgängig macht alles zusammen rückgängig.
+// Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
 function addRows(rows, storeId, unchecked = [], remember = false) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length) throw new Error('Alles davon steht schon auf der Liste.');
-  const pantryOps = stocked.map(name => ({ id: uid(), name })).map(entry => ({ entry, op: nextOp('pantry', entry.id, { name: entry.name }) }));
+  const pantryOps = stocked.map(name => nextOp('pantry', uid(), { name }));
   const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
-  const gone = new Date().toISOString();
-  commit([...result.ops, ...pantryOps.map(row => row.op)], { label: `Übernommen: ${parts.join(', ')}`,
-    patches: [...result.undo, ...pantryOps.map(row => ({ collection: 'pantry', id: row.entry.id, patch: { deletedAt: gone } }))] });
+  commit([...result.ops, ...pantryOps], `Übernommen: ${parts.join(', ')}`);
 }
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
@@ -1149,14 +1151,12 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
   const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
   if (same) {
-    commit([nextOp('items', same.id, { quantity: same.after.quantity, unit: same.after.unit })],
-      { label: `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`, patches: [{ collection: 'items', id: same.id, patch: { quantity: same.before.quantity, unit: same.before.unit } }] });
+    commit([nextOp('items', same.id, { quantity: same.after.quantity, unit: same.after.unit })], `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
     if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
     // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
-    const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
-    commit(ops, elsewhere || null);
+    commit(ops, inView(item) ? '' : `„${name}“ steht bei „${storeName(item.storeId)}“`);
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
@@ -1174,18 +1174,13 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   if (edited.storeId && effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
   commit(ops); $('#item-dialog').close();
 }); });
-$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems().filter(row => inView(row) && row.checked).map(row => row.id), 'Erledigte Artikel entfernt')));
+$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems().filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#manage-stores').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (active(state.stores).some(store => store.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))) throw new Error('Dieses Geschäft gibt es bereits.');
   commit([nextOp('stores', uid(), { name, offersUrl: offerUrl(event.currentTarget.elements.offersUrl.value) })]); event.currentTarget.reset(); renderStores();
 }); });
-$('#undo').addEventListener('click', () => guard(() => {
-  if (!undoAction) return;
-  commit(undoAction.patches.map(row => nextOp(row.collection, row.id, row.patch)));
-  undoAction = null; $('#undo-bar').hidden = true;
-}));
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
 $('#import-recipe').addEventListener('click', () => guard(() => openImport()));

@@ -29,12 +29,10 @@ test('Gleicher Name im selben Geschäft: Menge wird erhöht statt eines zweiten 
   const items = [row('a', 'Zwiebeln', 2, 'Stück')];
   const result = addToList([{ name: ' zwiebeln', quantity: 3, unit: 'Stück' }], 'store-edeka', 'Nico', AT, [], items);
   assert.equal(result.added, 0);
-  assert.deepEqual(result.counted, [{ id: 'a', name: 'Zwiebeln', before: { quantity: 2, unit: 'Stück' }, after: { quantity: 5, unit: 'Stück' } }]);
+  assert.deepEqual(result.counted, [{ id: 'a', name: 'Zwiebeln', after: { quantity: 5, unit: 'Stück' } }]);
   assert.equal(result.ops.length, 1);
   const out = merge(open(items), result.ops).items.find(item => item.id === 'a');
   assert.equal(out.quantity, 5);
-  const back = merge(open(items), [...result.ops, ...result.undo.map(entry => ({ ...entry, id: 'u', entityId: entry.id, actor: 'Nico', at: '2026-10-27T10:00:05.000Z' }))]);
-  assert.equal(back.items.find(item => item.id === 'a').quantity, 2, 'Rückgängig stellt die Menge wieder her');
 });
 
 test('Anderes Geschäft, erledigt oder gelöscht: kein Zusammenzählen', () => {
@@ -68,16 +66,14 @@ test('Zutat „nach Bedarf“: nicht erneut aufschreiben, wenn schon vorhanden',
   assert.deepEqual(real.fresh.map(entry => [entry.quantity, entry.unit]), [[500, 'g']]);
 });
 
-test('addToList: neue Artikel mit Rückgängig-Anweisung, vorhandene erhöht, alles gültig', () => {
+test('addToList: neue Artikel, vorhandene erhöht, alles gültig', () => {
   const items = [row('a', 'Nudeln', 500, 'g')];
   const result = addToList([{ name: 'Nudeln', quantity: 250, unit: 'g' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }], 'store-edeka', 'Nico', AT, [], items);
   assert.equal(result.added, 1);
   assert.equal(result.counted.length, 1);
-  assert.equal(result.undo.length, 2);
   const out = merge(open(items), result.ops);
   assert.equal(active(out.items).find(item => item.id === 'a').quantity, 750);
   assert.ok(active(out.items).some(item => item.name === 'Äpfel' && item.quantity === 6));
-  assert.deepEqual(result.undo.map(entry => Object.keys(entry.patch)[0]).sort(), ['deletedAt', 'quantity']);
 });
 
 const stock = (...names) => pantryKeys(names.map(name => ({ name, deletedAt: null })));
