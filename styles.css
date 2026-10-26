@@ -2184,3 +2184,43 @@ body.in-store main {
 .store-head .brand-lidl {
   box-shadow:inset 0 -3px 0 #e60a14,0 0 0 1px rgba(255,255,255,.55)
 }
+
+/* Rezepte des Tages */
+.daily-open {
+  width:100%;
+  margin:0 0 12px
+}
+.daily-card h3 {
+  margin:0 0 4px;
+  font-size:1.2rem;
+  line-height:1.3
+}
+.daily-facts {
+  margin:0 0 8px;
+  color:var(--muted)
+}
+.daily-ingredients {
+  margin:0 0 10px;
+  padding-left:20px
+}
+.daily-ingredients .more {
+  list-style:none;
+  margin-left:-20px;
+  color:var(--muted)
+}
+.daily-steps {
+  margin:0 0 10px;
+  color:var(--muted);
+  white-space:pre-line
+}
+.daily-link {
+  display:inline-block;
+  margin:0 0 6px
+}
+.daily-actions {
+  display:flex;
+  gap:8px
+}
+.daily-actions button {
+  flex:1
+}

@@ -3,6 +3,7 @@ import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, 
 import { splitSteps } from './cook.js';
 import { shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
+import { DAILY_MAX, extractRecipeLinks, planDay, recipeKey } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
@@ -137,6 +138,7 @@ function tab(name) {
   });
   window.scrollTo(0, 0);
   if (name === 'settings') renderStorage();
+  if (name === 'recipes') prefetchDaily();
   syncShopAwake(); syncChrome();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
@@ -204,6 +206,7 @@ function render() {
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
+  renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -1014,6 +1017,143 @@ async function runImport() {
   } finally { importAbort = null; runButton.disabled = false; importStatus(''); }
 }
 
+/* ---------- Rezepte des Tages ---------- */
+// Eine Seite mit Rezeptvorschlägen (Link in den Einstellungen) wird einmal am Tag geladen; die ersten zehn noch nicht entschiedenen Rezepte
+// kommen einzeln zum Durchklicken. Gemerkt wird nur auf diesem Gerät: heutige Auswahl, Stand und alles, was schon entschieden wurde.
+const dailyStore = () => `einkauf-daily:${namespace()}`;
+let daily = null, dailyTicket = 0, dailyTried = '';
+const dailyDrafts = new Map();
+const dailySource = () => webUrl(config.dailySource);
+function loadDaily() {
+  if (daily) return daily;
+  try { const saved = JSON.parse(localStorage.getItem(dailyStore())); if (saved && typeof saved === 'object' && Array.isArray(saved.queue)) daily = saved; } catch { /* neu anlegen */ }
+  daily ||= { day: '', source: '', queue: [], index: 0, outcome: {}, decided: [] };
+  daily.decided ||= []; daily.outcome ||= {}; daily.index ||= 0;
+  return daily;
+}
+function saveDaily() { try { localStorage.setItem(dailyStore(), JSON.stringify({ ...daily, decided: daily.decided.slice(-600) })); } catch { /* nur ein Merkzettel */ } }
+const knownRecipeKeys = () => new Set(active(state.recipes).map(row => row.sourceUrl).filter(Boolean).map(recipeKey));
+// Wie viele sind heute noch offen? null = heute noch nicht geladen.
+const dailyLeft = () => { const d = loadDaily(); return d.day === localDay() && d.source === dailySource() ? Math.max(0, d.queue.length - d.index) : null; };
+function renderDailyButton() {
+  const left = dailySource() ? dailyLeft() : null;
+  $('#daily-label').textContent = !dailySource() ? 'Rezepte des Tages einrichten' : left === null ? 'Rezepte des Tages' : left === 0 ? 'Rezepte des Tages: alles gesehen' : `Rezepte des Tages · ${left} offen`;
+}
+async function loadDailyList(signal) {
+  const source = dailySource(), old = loadDaily();
+  if (old.day === localDay() && old.source === source) return old;
+  const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) }, signal);
+  const links = extractRecipeLinks(html, source);
+  daily = { day: localDay(), source, queue: planDay(links, new Set(old.decided), knownRecipeKeys(), DAILY_MAX), index: 0, outcome: {}, decided: old.decided, found: links.length };
+  saveDaily();
+  return daily;
+}
+// Pro Tag einmal still vorladen, sobald man den Rezepte-Bereich öffnet, damit die Zahl der offenen Rezepte schon dasteht.
+function prefetchDaily() {
+  if (!ready || !dailySource() || dailyLeft() !== null || dailyTried === localDay()) return;
+  dailyTried = localDay();
+  loadDailyList().then(renderDailyButton).catch(() => { /* erst beim Öffnen melden */ });
+}
+async function dailyDraft(item) {
+  if (!dailyDrafts.has(item.key)) {
+    const { html } = await fetchRecipePage(item.url, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) });
+    dailyDrafts.set(item.key, recipeFromHtml(html, item.url));
+  }
+  return dailyDrafts.get(item.key);
+}
+function dailyButtons({ add = false, skip = false, retry = false } = {}) {
+  $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
+  $('#daily-add').disabled = $('#daily-skip').disabled = false;
+}
+function fillDailyCard(draft, item) {
+  const card = $('#daily-card'); card.replaceChildren();
+  card.append(element('h3', draft.name || item.title));
+  const time = /Gesamtzeit:\s*([^\n]+)/.exec(draft.instructions || '')?.[1];
+  const facts = [time, draft.servings ? `${format(draft.servings)} Portionen` : '', draft.ingredients.length ? `${draft.ingredients.length} Zutaten` : ''].filter(Boolean);
+  if (facts.length) card.append(element('p', facts.join(' · '), 'daily-facts'));
+  if (draft.via === 'text') card.append(element('p', 'Keine strukturierten Rezeptdaten: Zutaten und Schritte sind geschätzt.', 'warn'));
+  if (draft.ingredients.length) {
+    const list = element('ul', undefined, 'daily-ingredients');
+    for (const row of draft.ingredients.slice(0, 8)) list.append(element('li', ingredientLabel(row)));
+    if (draft.ingredients.length > 8) list.append(element('li', `… und ${draft.ingredients.length - 8} weitere`, 'more'));
+    card.append(list);
+  } else card.append(element('p', 'Es wurden keine Zutaten erkannt. Dieses Rezept lässt sich über „Import“ von Hand übernehmen.', 'warn'));
+  const steps = (draft.instructions || '').replace(/Gesamtzeit:[^\n]*\n*/, '').replace(/\n{2,}/g, '\n').trim();
+  if (steps) card.append(element('p', steps.length > 260 ? `${steps.slice(0, 260).trim()} …` : steps, 'daily-steps'));
+  const link = element('a', `Auf ${hostLabel(item.url)} ansehen`, 'daily-link'); link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+  card.append(link);
+}
+async function showDaily() {
+  const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress'), note = $('#daily-note');
+  note.textContent = ''; dailyButtons();
+  $('#daily-add').disabled = $('#daily-skip').disabled = true;
+  try {
+    card.replaceChildren(element('p', 'Rezepte werden geladen …', 'hint')); progress.textContent = '';
+    const d = await loadDailyList();
+    if (ticket !== dailyTicket) return;
+    // Was inzwischen schon in den eigenen Rezepten steht (z. B. per Import), wird nicht noch einmal vorgeschlagen.
+    const known = knownRecipeKeys();
+    while (d.index < d.queue.length && known.has(d.queue[d.index].key)) { d.outcome[d.queue[d.index].key] = 'known'; d.index += 1; }
+    saveDaily(); renderDailyButton();
+    if (!d.queue.length) {
+      card.replaceChildren(element('p', d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
+      dailyButtons(); return;
+    }
+    if (d.index >= d.queue.length) {
+      const added = Object.values(d.outcome).filter(value => value === 'added').length;
+      progress.textContent = '';
+      card.replaceChildren(element('h3', 'Für heute geschafft'), element('p', `${added} von ${d.queue.length} Rezepten hinzugefügt, ${d.queue.length - added} übersprungen oder schon vorhanden. Morgen gibt es neue Vorschläge.`));
+      dailyButtons(); return;
+    }
+    const item = d.queue[d.index];
+    progress.textContent = `Rezept ${d.index + 1} von ${d.queue.length}`;
+    card.replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
+    const draft = await dailyDraft(item);
+    if (ticket !== dailyTicket) return;
+    fillDailyCard(draft, item);
+    dailyButtons({ add: true, skip: true });
+    $('#daily-add').disabled = !draft.ingredients.length;
+    const next = d.queue[d.index + 1];
+    if (next) dailyDraft(next).catch(() => { /* beim Anzeigen erneut versuchen */ });
+  } catch (error) {
+    if (ticket !== dailyTicket || error?.name === 'AbortError') return;
+    note.textContent = error.message;
+    const d = loadDaily(), item = d.queue[d.index];
+    if (item && d.day === localDay()) { card.replaceChildren(element('h3', item.title)); dailyButtons({ skip: true, retry: true }); }
+    else { card.replaceChildren(); dailyButtons({ retry: true }); }
+  }
+}
+function decideDaily(outcome) {
+  const d = loadDaily(), item = d.queue[d.index];
+  if (!item) return;
+  d.outcome[item.key] = outcome;
+  if (!d.decided.includes(item.key)) d.decided.push(item.key);
+  d.index += 1; saveDaily(); renderDailyButton();
+  return showDaily();
+}
+function addDailyRecipe() {
+  const d = loadDaily(), item = d.queue[d.index], draft = item && dailyDrafts.get(item.key);
+  if (!draft?.ingredients.length) return;
+  const id = uid(), name = (draft.name || item.title).trim().slice(0, 120);
+  const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags: draft.tags || [], sourceUrl: draft.sourceUrl || item.url };
+  const ops = [nextOp('recipes', id, patch), ...draft.ingredients.map(row => nextOp('ingredients', uid(), { recipeId: id, name: row.name.slice(0, 120), quantity: row.quantity, unit: String(row.unit).slice(0, 30) }))];
+  commit(ops, `„${name}“ zu deinen Rezepten hinzugefügt`);
+}
+$('#daily-open').addEventListener('click', () => guard(() => {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  if (!dailySource()) {
+    tab('settings'); $('#import-details').open = true;
+    $('#import-settings-form').elements.dailySource.focus();
+    showNotice('Trage hier den Link zur Seite mit den Rezepten des Tages ein.');
+    return;
+  }
+  $('#daily-dialog').showModal(); showDaily();
+}));
+$('#daily-add').addEventListener('click', () => guard(() => { addDailyRecipe(); return decideDaily('added'); }));
+$('#daily-skip').addEventListener('click', () => guard(() => decideDaily('skipped')));
+$('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
+$('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; });
+
 /* ---------- GitHub ---------- */
 // GitHub Contents API: erst aktuellen Stand lesen, nur eigene Operationen anwenden,
 // dann mit genau dessen SHA schreiben. 409/422 führen zu erneutem Lesen und Mischen.
@@ -1137,7 +1277,7 @@ function fillSettings() {
     $('#settings-form').elements[key].value = config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '');
   }
   const importForm = $('#import-settings-form');
-  importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
+  importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
   $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
@@ -1157,7 +1297,7 @@ function updateSaveButtons() {
   const form = $('#settings-form'), imports = $('#import-settings-form');
   const changed = CONNECTION_FIELDS.some(key => form.elements[key].value.trim() !== (config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '')));
   saveButtonState(form, !connected() || changed || connectFailed, config.savedAt, connected() ? 'Speichern' : 'Speichern & verbinden');
-  const importChanged = imports.elements.importProxy.value.trim() !== (config.importProxy || '') || imports.elements.publicProxy.checked !== Boolean(config.publicProxy);
+  const importChanged = imports.elements.importProxy.value.trim() !== (config.importProxy || '') || imports.elements.dailySource.value.trim() !== (config.dailySource || '') || imports.elements.publicProxy.checked !== Boolean(config.publicProxy);
   saveButtonState(imports, importChanged, config.importSavedAt, 'Import-Einstellungen speichern');
   if (!importChanged && !config.importSavedAt && !config.importProxy && !config.publicProxy) imports.querySelector('button[type=submit]').textContent = 'Import-Einstellungen speichern';
 }
@@ -1787,7 +1927,10 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
 $('#import-settings-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, text = form.elements.importProxy.value.trim(), proxy = workerHost(text);
   if (text && !proxy) throw new Error('Bitte die Adresse deines Cloudflare-Workers eingeben. Sie beginnt mit https:// und endet auf .workers.dev.');
-  saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked, importSavedAt: new Date().toISOString() });
+  const dailyText = form.elements.dailySource.value.trim(), dailyLink = webUrl(dailyText);
+  if (dailyText && !dailyLink) throw new Error('Bitte bei „Rezepte des Tages“ einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
+  saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked, dailySource: dailyLink, importSavedAt: new Date().toISOString() });
+  form.elements.dailySource.value = dailyLink; renderDailyButton();
   form.elements.importProxy.value = proxy; updateSaveButtons(); message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
 }); });
 $('#test-proxy').addEventListener('click', () => guard(async () => {

@@ -1328,6 +1328,142 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // Nachgebaute Tagesrezepte-Seite und Rezeptseiten hinter einem „Hilfsdienst“ (kein echtes Chefkoch: Es geht um den Ablauf in der App)
+  const PROXY = 'https://rezepte.beispiel.workers.dev';
+  const dailyLinks = count => Array.from({ length: count }, (_, index) => `/rezepte/${2000000 + index}/Tagesrezept-Nummer-${index + 1}.html`);
+  const dailySite = (count = 12, behavior = {}) => async route => {
+    const url = new URL(route.request().url()), target = new URL(url.searchParams.get('url'));
+    const cors = { 'access-control-allow-origin': '*', 'content-type': 'text/html; charset=utf-8' };
+    if (behavior.fail) return route.fulfill({ status: 502, headers: cors, body: 'kaputt' });
+    behavior.requests = (behavior.requests || 0) + 1;
+    if (target.pathname.startsWith('/rezepte/tagesrezepte')) {
+      return route.fulfill({ status: 200, headers: cors, body: `<!doctype html><html><head><title>Tagesrezepte</title></head><body>${'x'.repeat(250)}<nav><a href="/rezepte/">Rezepte</a></nav>${dailyLinks(count).map(link => `<a href="${link}?x=1">Rezept</a>`).join('')}</body></html>` });
+    }
+    const number = Number(/Nummer-(\d+)/.exec(target.pathname)?.[1] || 0);
+    const recipe = { '@context': 'https://schema.org', '@type': 'Recipe', name: `Tagesrezept ${number}`, recipeYield: '4 Portionen', totalTime: 'PT30M',
+      recipeIngredient: ['200 g Mehl', '2 Eier', '1 Prise Salz'], recipeInstructions: 'Alles verrühren.\nAusbacken.' };
+    return route.fulfill({ status: 200, headers: cors, body: `<!doctype html><html><head><title>Tagesrezept ${number}</title><script type="application/ld+json">${JSON.stringify(recipe)}</script></head><body>${'x'.repeat(250)}</body></html>` });
+  };
+  const dailyConfig = { importProxy: PROXY, dailySource: 'https://www.chefkoch.de/rezepte/tagesrezepte/' };
+
+  test('Rezepte des Tages: bis zu zehn einzeln durchklicken, 0 bis alle hinzufügen, entschiedene kommen nicht wieder', async () => {
+    const behavior = {};
+    const { ctx, page, problems } = await context({ config: dailyConfig });
+    await ctx.route(`${PROXY}/**`, dailySite(12, behavior));
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /10 offen/.test(document.querySelector('#daily-label').textContent));   // die Liste wurde still vorgeladen
+    const recipeCount = () => page.locator('#recipe-list .recipe-card').count();
+    const before = await recipeCount();
+    await page.click('#daily-open'); await sheetOpen(page);
+    assert.match(await page.textContent('#daily-progress'), /Rezept 1 von 10/);
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 1")');
+    assert.match(await page.textContent('#daily-card'), /30 Min.*4 Portionen.*3 Zutaten/);
+    assert.match(await page.textContent('#daily-card'), /200 g Mehl/);
+    assert.equal(await page.getAttribute('#daily-card a.daily-link', 'href'), 'https://www.chefkoch.de/rezepte/2000000/Tagesrezept-Nummer-1.html');
+    // 1 hinzufügen, 2 überspringen, 3 hinzufügen, den Rest überspringen
+    const decide = async (number, button) => {
+      await page.waitForSelector(`#daily-card h3:has-text("Tagesrezept ${number}")`);
+      await page.click(button);
+    };
+    await decide(1, '#daily-add');
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
+    assert.match(await page.textContent('#daily-progress'), /Rezept 2 von 10/);
+    await decide(2, '#daily-skip');
+    await decide(3, '#daily-add');
+    for (let number = 4; number <= 10; number++) await decide(number, '#daily-skip');
+    await page.waitForSelector('#daily-card h3:has-text("Für heute geschafft")');
+    assert.match(await page.textContent('#daily-card'), /2 von 10 Rezepten hinzugefügt, 8 übersprungen/);
+    assert.equal(await page.locator('#daily-add').isHidden(), true);
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await recipeCount(), before + 2, 'zwei neue Rezepte in der Sammlung');
+    assert.equal(await page.locator('#recipe-list', { hasText: 'Tagesrezept 3' }).count(), 1);
+    assert.match(await page.textContent('#daily-label'), /alles gesehen/);
+    // Gespeichert mit Quelle und Zutaten
+    await page.locator('#recipe-list .recipe-card', { hasText: 'Tagesrezept 3' }).click();
+    await page.waitForSelector('#recipe-list .recipe-card[open], #recipe-list details[open]').catch(() => {});
+    const card = page.locator('#recipe-list .recipe-card', { hasText: 'Tagesrezept 3' });
+    assert.match(await card.textContent(), /200 g Mehl/);
+    assert.match(await card.textContent(), /Eier/);
+    // Am nächsten Tag: nur die zwei Rezepte, die gestern nicht dabei waren (die entschiedenen zehn und vorhandenen bleiben weg)
+    await page.evaluate(() => { const key = 'einkauf-daily:einkauf-demo-v1'; const data = JSON.parse(localStorage.getItem(key)); data.day = '2020-01-01'; localStorage.setItem(key, JSON.stringify(data)); });
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /2 offen/.test(document.querySelector('#daily-label').textContent));
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 11")');
+    assert.match(await page.textContent('#daily-progress'), /Rezept 1 von 2/);
+    await page.click('#daily-skip'); await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 12")');
+    await page.click('#daily-skip'); await page.waitForSelector('#daily-card h3:has-text("Für heute geschafft")');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Rezepte des Tages: ohne Link führt der Knopf zur Einstellung; Fehler lassen sich wiederholen; Link prüfen und speichern', async () => {
+    const behavior = { fail: true };
+    const { ctx, page, problems } = await context({ config: { importProxy: PROXY } });
+    await ctx.route(`${PROXY}/**`, dailySite(3, behavior));
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    assert.match(await page.textContent('#daily-label'), /einrichten/);
+    await page.click('#daily-open');
+    assert.equal(await page.locator('#settings').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement?.name), 'dailySource', 'das Feld ist bereit');
+    // Ungültiger Link wird abgelehnt, gültiger gespeichert
+    await page.fill('#import-settings-form input[name=dailySource]', 'ftp://beispiel.de/rezepte');
+    await page.click('#import-settings-form button[type=submit]');
+    await page.waitForSelector('#message:not([hidden])');
+    assert.match(await page.textContent('#message'), /vollständigen Link/);
+    await page.fill('#import-settings-form input[name=dailySource]', 'https://www.chefkoch.de/rezepte/tagesrezepte/');
+    await page.click('#import-settings-form button[type=submit]');
+    await page.waitForFunction(() => /^Gespeichert am/.test(document.querySelector('#import-settings-form button[type=submit]').textContent.trim()));
+    // Der Hilfsdienst fällt aus: Meldung, dann „Erneut versuchen“
+    await page.click('[data-tab=recipes]'); await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForFunction(() => document.querySelector('#daily-note').textContent.length > 0);
+    assert.equal(await page.locator('#daily-retry').isVisible(), true);
+    assert.equal(await page.locator('#daily-add').isHidden(), true);
+    behavior.fail = false;
+    await page.click('#daily-retry');
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 1")');
+    assert.equal(await page.locator('#daily-note').textContent(), '');
+    // „Später“: Schließen merkt den Stand
+    await page.click('#daily-add');
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.match(await page.textContent('#daily-label'), /2 offen/);
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Rezepte des Tages: schon vorhandene Rezepte (gleiche Quelle) und Seiten ohne Rezept-Links', async () => {
+    const behavior = {};
+    const { ctx, page, problems } = await context({ config: dailyConfig });
+    await ctx.route(`${PROXY}/**`, dailySite(3, behavior));
+    await open(page);
+    // Ein Rezept mit derselben Quelle wie Tagesrezept 1 anlegen (über das Formular)
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
+    await page.fill('#recipe-form input[name=name]', 'Mein Tagesrezept'); await page.fill('#recipe-form input[name=sourceUrl]', 'https://www.chefkoch.de/rezepte/2000000/Ganz-anderer-Name.html');
+    await page.locator('#ingredient-editor [data-field=name]').first().fill('Mehl'); await page.locator('#ingredient-editor [data-field=quantity]').first().fill('1');
+    await page.click('#recipe-form button[type=submit]'); await page.waitForSelector('#recipe-dialog', { state: 'hidden' });
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
+    assert.match(await page.textContent('#daily-progress'), /Rezept 2 von 3/, 'das vorhandene Rezept (Nummer 1) wird übersprungen, nicht noch einmal vorgeschlagen');
+    await page.keyboard.press('Escape');
+    // Seite ohne Rezepte
+    await page.evaluate(() => localStorage.removeItem('einkauf-daily:einkauf-demo-v1'));
+    await ctx.unroute(`${PROXY}/**`);
+    await ctx.route(`${PROXY}/**`, route => route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/html' }, body: `<html><body>${'Hallo '.repeat(80)}<a href="/magazin/">Magazin</a></body></html>` }));
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]'); await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForFunction(() => /keine Rezept-Links gefunden/.test(document.querySelector('#daily-card').textContent));
+    assert.equal(await page.locator('#daily-add').isHidden(), true);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
   test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
