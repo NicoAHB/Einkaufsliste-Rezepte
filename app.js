@@ -1,4 +1,4 @@
-import { active, clone, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, clone, emptyData, foldIntoList, listRow, merge, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
@@ -1105,17 +1105,32 @@ document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
+// Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js), Rückgängig macht alles zusammen rückgängig.
+function addRows(rows, storeId) {
+  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+  if (!result.ops.length) throw new Error('Alles davon steht schon auf der Liste.');
+  const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`].filter(Boolean);
+  commit(result.ops, { label: `Übernommen: ${parts.join(', ')}`, patches: result.undo });
+}
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
   const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
-  const id = uid(), ops = [nextOp('items', id, item)];
-  if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
-  // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
-  const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
-  commit(ops, elsewhere || null);
+  // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
+  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
+  if (same) {
+    commit([nextOp('items', same.id, { quantity: same.after.quantity, unit: same.after.unit })],
+      { label: `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`, patches: [{ collection: 'items', id: same.id, patch: { quantity: same.before.quantity, unit: same.before.unit } }] });
+  } else {
+    const id = uid(), ops = [nextOp('items', id, item)];
+    if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
+    // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
+    const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
+    commit(ops, elsewhere || null);
+  }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
   form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
@@ -1165,9 +1180,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const storeId = currentStore(form.elements.storeId.value);
-  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const rows = selected.map(row => row.unit === NO_AMOUNT ? { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity, unit: row.unit });
-  commit(newItems(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory()));
+  addRows(selected.map(row => listRow(row)), storeId);
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
@@ -1188,8 +1201,7 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
-  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices, itemHistory()));
+  addRows(selected.map(row => listRow(row, factor)), currentStore(form.elements.storeId.value));
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {

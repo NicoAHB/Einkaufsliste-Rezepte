@@ -444,7 +444,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#edit-item-form button[type=submit]');
     await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.ok((await heads()).includes('Getränke'));
-    // ... und die App lernt es für denselben Namen.
+    // ... und die App lernt es für denselben Namen (andere Einheit, sonst würde die Menge des vorhandenen Artikels erhöht).
+    await page.fill('#item-form input[name=unit]', 'Flasche');
     await add('Xyzzy');
     assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').textContent(), '2');
     assert.ok(!(await heads()).includes('Sonstiges'));
@@ -454,6 +455,48 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Abschalten.
     await page.click('[data-tab=settings]'); await page.uncheck('#group-items'); await page.click('[data-tab=shopping]');
     assert.equal(await page.locator('#items .group-head').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Gleiche Artikel werden zusammengezählt; Rückgängig; Rezept-Zutaten zählen zur Liste dazu', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    const add = async (name, quantity, unit) => {
+      await page.fill('#item-form input[name=name]', name); await page.fill('#item-form input[name=quantity]', quantity); await page.fill('#item-form input[name=unit]', unit);
+      await page.click('#item-form button[type=submit]');
+    };
+    const rows = name => page.locator('#items .item', { hasText: name });
+    await add('Bananen', '2', 'Stück'); await add('bananen', '3', 'Stk.');
+    assert.equal(await rows('Bananen').count(), 1);
+    assert.match(await rows('Bananen').textContent(), /5 Stück/);
+    assert.match(await page.textContent('#undo-label'), /„Bananen“: jetzt 5 Stück/);
+    await page.click('#undo');
+    assert.match(await rows('Bananen').textContent(), /2 Stück/);
+    // Andere Einheit: eigener Eintrag.
+    await add('Bananen', '1', 'kg');
+    assert.equal(await rows('Bananen').count(), 2);
+    // Gramm und Kilogramm werden verrechnet (Beispieldaten: Tomaten 500 g bei Edeka).
+    await add('Tomaten', '0,7', 'kg');
+    assert.match(await rows('Tomaten').first().textContent(), /1,2 kg/);
+    // Rezept auf die Liste: Nudeln 500 g + 200 g, Tomaten 1,2 kg + 400 g
+    await page.click('[data-tab=recipes]');
+    const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
+    await card.locator('summary').click();
+    await card.getByRole('button', { name: 'Auf die Liste' }).click();
+    await sheetOpen(page);
+    await page.selectOption('#transfer-form select[name=storeId]', 'store-edeka');
+    await page.click('#transfer-form button:not([data-close])');
+    await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#undo-label'), /dazugezählt/);
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    assert.equal(await rows('Nudeln').count(), 1);
+    assert.match(await rows('Nudeln').textContent(), /700 g/);
+    assert.match(await rows('Tomaten').first().textContent(), /1,6 kg/);
+    await page.click('#undo');
+    assert.match(await rows('Nudeln').textContent(), /500 g/);
+    assert.match(await rows('Tomaten').first().textContent(), /1,2 kg/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

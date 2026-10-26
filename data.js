@@ -1,5 +1,5 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
-import { offerUrl, productKey, rememberedPrice, validQuote } from './prices.js';
+import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory } from './categories.js';
 // `prices`, `meals` und `pantry` sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
@@ -170,8 +170,55 @@ export function newItems(rows, storeId, actor, at, history = [], items = []) {
 }
 
 // Zutaten „nach Bedarf“ (Salz, Pfeffer) haben keine Menge, die sich umrechnen ließe: Sie landen als 1 Stück auf der Liste.
+export const listRow = (row, factor = 1) => row.unit === NO_AMOUNT ?
+  { name: row.name, quantity: 1, unit: 'Stück', noAmount: true } : { name: row.name, quantity: row.quantity * factor, unit: row.unit };
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, history = [], items = []) {
-  return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => row.unit === NO_AMOUNT ?
-    { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity * factor, unit: row.unit }),
-  storeId, actor, at, history, items);
+  return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, history, items);
+}
+
+/* Gleiche Artikel zusammenzählen. Eine Menge wird zu einem offenen Artikel mit demselben Namen im selben Geschäft addiert
+   (oder zu „ohne Geschäft“), wenn die Einheiten zusammenpassen. Nichts wird geraten: 500 g und 2 Stück bleiben getrennt, ebenso
+   „1 Bund“ und „2 EL“. Eine Zutat „nach Bedarf“ wird nicht noch einmal aufgeschrieben, wenn der Artikel schon auf der Liste steht. */
+const round3 = number => Math.round(number * 1000) / 1000;
+export function combineQuantity(left, right) {
+  const a = unitSpec(left.unit), b = unitSpec(right.unit);
+  if (a.group !== b.group) return null;
+  let result;
+  if (a.group === 'weight' || a.group === 'volume') {
+    const total = left.quantity * a.factor + right.quantity * b.factor, big = total >= 1000;
+    result = { quantity: round3(big ? total / 1000 : total), unit: a.group === 'weight' ? (big ? 'kg' : 'g') : (big ? 'l' : 'ml') };
+  } else result = { quantity: round3(left.quantity + right.quantity), unit: left.unit };
+  return Number.isFinite(result.quantity) && result.quantity > 0 && result.quantity <= 1e6 ? result : null;
+}
+// rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
+// vorher, nachher) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
+export function foldIntoList(rows, storeId, items = []) {
+  const pool = active(items).filter(item => !item.checked && (item.storeId || '') === (storeId || ''))
+    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, before: { quantity: item.quantity, unit: item.unit }, quantity: item.quantity, unit: item.unit }));
+  const fresh = [], counted = new Map();
+  let skipped = 0;
+  for (const row of rows) {
+    const key = productKey(row.name);
+    const match = [...pool, ...fresh.map(entry => entry.pool)].find(entry => entry.key === key && (row.noAmount || entry.placeholder || combineQuantity(entry, row)));
+    if (!match) {
+      const entry = { ...row }; entry.pool = { key, name: row.name, quantity: row.quantity, unit: row.unit, placeholder: Boolean(row.noAmount), row: entry };
+      fresh.push(entry); continue;
+    }
+    if (row.noAmount) { if (match.id) skipped++; continue; }
+    if (match.placeholder) { match.quantity = row.quantity; match.unit = row.unit; match.placeholder = false; if (match.row) { match.row.quantity = row.quantity; match.row.unit = row.unit; delete match.row.noAmount; } continue; }
+    const sum = combineQuantity(match, row);
+    match.quantity = sum.quantity; match.unit = sum.unit;
+    if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; } else counted.set(match.id, match);
+  }
+  return { fresh: fresh.map(({ pool: _pool, noAmount: _noAmount, ...row }) => row), skipped,
+    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, before: entry.before, after: { quantity: entry.quantity, unit: entry.unit } })) };
+}
+// Fertige Änderungen für eine Liste von Zeilen, dazu die Rückgängig-Anweisungen (neue Artikel löschen, Mengen zurücksetzen).
+export function addToList(rows, storeId, actor, at, history = [], items = []) {
+  const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
+  const created = newItems(fresh, storeId, actor, at, history, items);
+  const ops = [...created, ...counted.map(entry => operation('items', entry.id, { quantity: entry.after.quantity, unit: entry.after.unit }, actor, at))];
+  const undo = [...created.map(op => ({ collection: 'items', id: op.entityId, patch: { deletedAt: at } })),
+    ...counted.map(entry => ({ collection: 'items', id: entry.id, patch: { quantity: entry.before.quantity, unit: entry.before.unit } }))];
+  return { ops, undo, added: created.length, counted, skipped };
 }
