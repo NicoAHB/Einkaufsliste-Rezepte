@@ -419,6 +419,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Kategorien: nach Gängen gruppiert, Schätzung sichtbar, ändern und lernen, abschaltbar', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
+    await page.getByRole('tab', { name: /^Edeka/ }).click();   // Einzelansicht: neue Artikel landen bei Edeka
     const heads = () => page.locator('#items .group-head span:first-child').allTextContents();
     const add = async name => { await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
     await page.fill('#item-form input[name=name]', 'Butter');
@@ -498,7 +499,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#week-form button[type=submit]');
     await page.waitForSelector('#shopping:not([hidden])');
     assert.match(await page.textContent('#items'), /Tomaten/);
-    assert.equal(await page.locator('#store-chips [aria-selected=true]').textContent().then(text => text.replace(/\d+$/, '')), 'Lidl');
+    assert.equal(await page.locator('#store-chips [aria-selected=true]').textContent().then(text => text.replace(/\d+$/, '')), 'Alle', 'Nach dem Übernehmen zeigt die Gesamtliste alles');
+    assert.match(await page.locator('#items .store-head', { hasText: 'Lidl' }).locator('xpath=following-sibling::li[1]').textContent(), /\w/);
     // abhaken setzt das Kochdatum des Rezepts
     await page.click('[data-tab=plan]');
     await today.locator('.meal', { hasText: 'Tomaten-Pasta' }).locator('.check').click();
@@ -586,6 +588,105 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(remote.photos.size, 1);
     assert.deepEqual(a.problems.filter(text => !/Failed to load resource/.test(text)), []);
     await a.ctx.close();
+  });
+
+  test('Startseite zeigt die Gesamtliste aller Geschäfte; Geschäft beim Hinzufügen wählbar, auch „Kein Geschäft“', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const chips = () => page.locator('#store-chips [role=tab]').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.getAttribute('aria-selected')]));
+    const heads = () => page.locator('#items .store-head span:nth-child(2)').allTextContents();
+    // Start: „Alle“, alle Geschäfte mit ihren Artikeln (Beispieldaten: Edeka, Lidl, Rewe)
+    assert.deepEqual((await chips())[0], ['Alle', 'true']);
+    assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
+    assert.match(await page.textContent('#shopping-total'), /Alle Geschäfte/);
+    assert.equal(await page.locator('#offers-link').isHidden(), true, 'Angebote gibt es je Geschäft, nicht in der Gesamtliste');
+    // Das Formular bietet „Kein Geschäft“ und alle Geschäfte an, Standard in „Alle“: kein Geschäft.
+    assert.deepEqual(await page.locator('#item-form select[name=storeId] option').allTextContents(), ['Kein Geschäft', 'Edeka', 'Lidl', 'Rewe']);
+    assert.equal(await page.inputValue('#item-form select[name=storeId]'), '');
+    const add = async (name, store) => { if (store !== undefined) await page.selectOption('#item-form select[name=storeId]', { label: store }); await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
+    // Ohne Geschäft: steht übersichtlich ganz oben, eigener Filter erscheint
+    await add('Klopapier');
+    assert.deepEqual(await heads(), ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
+    assert.match(await page.locator('#items .store-head').first().textContent(), /Ohne Geschäft\s*1/);
+    assert.deepEqual((await chips()).map(row => row[0]), ['Alle', 'Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
+    // Mit Geschäft: Auswahl bleibt für den nächsten Artikel stehen
+    await add('Gurke', 'Lidl'); await add('Möhren');
+    assert.equal(await page.inputValue('#item-form select[name=storeId]'), await page.locator('#item-form select[name=storeId] option', { hasText: 'Lidl' }).getAttribute('value'));
+    const lidl = page.locator('#items .store-head', { hasText: 'Lidl' });
+    assert.match(await lidl.textContent(), /Lidl\s*3/, 'Milch aus den Beispieldaten plus Gurke und Möhren');
+    // Einzelansichten filtern; Geschäft anklicken wählt es auch für neue Artikel vor
+    await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
+    assert.equal(await page.locator('#items .item').count(), 1);
+    assert.equal(await page.inputValue('#item-form select[name=storeId]'), '');
+    assert.equal(await page.locator('#items .store-head').count(), 0, 'Einzelansicht braucht keine Geschäftsüberschrift');
+    await page.getByRole('tab', { name: /^Rewe/ }).click();
+    assert.equal(await page.locator('#items .item').count(), 1);
+    assert.equal(await page.locator('#item-form select[name=storeId] option:checked').textContent(), 'Rewe');
+    assert.match(await page.textContent('#shopping-total'), /Rewe · offen/);
+    // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
+    await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
+    await page.locator('.item', { hasText: 'Klopapier' }).getByRole('button', { name: /bearbeiten/ }).click();
+    assert.equal(await page.inputValue('#edit-item-form select[name=storeId]'), '');
+    await page.selectOption('#edit-item-form select[name=storeId]', { label: 'Rewe' });
+    await page.click('#edit-item-form button[type=submit]');
+    await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item').count(), 0);
+    assert.equal(await page.locator('#store-chips [role=tab]', { hasText: 'Ohne Geschäft' }).count(), 1, 'Der gewählte Filter bleibt auch ohne Treffer sichtbar');
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
+    assert.match(await page.locator('#items .store-head', { hasText: 'Rewe' }).textContent(), /Rewe\s*2/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Gesamtliste: Summe über alle Geschäfte, Erledigtes mit Geschäft, „Erledigte entfernen“ gilt für die Ansicht', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const total = async () => (await page.textContent('#shopping-total')).match(/[\d.,]+ €/)?.[0];
+    const alle = await total();
+    await page.getByRole('tab', { name: /^Edeka/ }).click(); const edeka = await total();
+    await page.getByRole('tab', { name: /^Lidl/ }).click(); const lidl = await total();
+    await page.getByRole('tab', { name: /^Rewe/ }).click(); const rewe = await total();
+    const cents = text => text ? Number(text.replace(/[^\d,]/g, '').replace(',', '.')) : 0;
+    assert.ok(Math.abs(cents(alle) - (cents(edeka) + cents(lidl) + cents(rewe))) < 0.011, `${alle} ≠ ${edeka} + ${lidl} + ${rewe}`);
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    await page.locator('.item', { hasText: 'Milch' }).locator('.check').click();
+    await page.locator('.item', { hasText: 'Äpfel' }).locator('.check').click();
+    const done = page.locator('#items .group-head', { hasText: 'Erledigt' });
+    assert.equal(await done.count(), 1);
+    assert.match(await page.locator('.item.checked', { hasText: 'Milch' }).textContent(), /· Lidl/, 'Erledigte zeigen ihr Geschäft');
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    await page.click('#clear-checked');
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    assert.equal(await page.locator('.item.checked').count(), 1, 'Nur die erledigten Artikel der gewählten Ansicht werden entfernt');
+    await page.click('#clear-checked');
+    assert.equal(await page.locator('.item.checked').count(), 0);
+    await page.click('#undo');
+    assert.equal(await page.locator('.item.checked').count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezept auf die Liste ohne Geschäft; gelöschtes Geschäft verbirgt seine Artikel, nicht die ohne Geschäft', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Auf die Liste' }).click();
+    await sheetOpen(page);
+    assert.equal(await page.inputValue('#transfer-form select[name=storeId]'), '', 'In „Alle“ ist „Kein Geschäft“ vorgewählt');
+    await page.click('#transfer-form button:not([data-close])');
+    await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
+    assert.match(await page.locator('#items .store-head').first().textContent(), /Ohne Geschäft/);
+    assert.ok(await page.locator('#items .item', { hasText: 'Nudeln' }).count() >= 1);
+    // Geschäft löschen: seine Artikel verschwinden aus allen Ansichten, die ohne Geschäft bleiben
+    await page.click('#manage-stores'); await sheetOpen(page);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: 'Rewe löschen' }).click();
+    await page.click('#stores-dialog [data-close]');
+    assert.equal(await page.locator('#items .item', { hasText: 'Äpfel' }).count(), 0);
+    assert.ok(await page.locator('#items .item', { hasText: 'Tomaten' }).count() >= 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
   });
 
   test('Neuer Name und Backup', async () => {

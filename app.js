@@ -9,10 +9,9 @@ import { isJpeg, localPhotoUrl, photoPath, queued, queuePhoto, readPhoto, resize
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
-let busy = false, ready = false, selectedStore = '', lastTime = 0, undoAction = null;
+let busy = false, ready = false, view = 'all', lastTime = 0, undoAction = null;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
-let priceFormStore = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null;
 let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
 let pendingPhoto = null, photoRemoved = false, previewUrl = '';
@@ -110,42 +109,69 @@ function tab(name) {
   });
   window.scrollTo(0, 0);
 }
-function storeOptions(select, preferred = selectedStore) {
+// Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
+function storeOptions(select, preferred = select.value, allowNone = false) {
   select.replaceChildren();
-  for (const store of active(state.stores)) {
-    const option = element('option', store.name); option.value = store.id; select.append(option);
-  }
-  if ([...select.options].some(option => option.value === preferred)) select.value = preferred;
+  if (allowNone) select.add(new Option('Kein Geschäft', ''));
+  for (const store of active(state.stores)) select.add(new Option(store.name, store.id));
+  select.value = [...select.options].some(option => option.value === preferred) ? preferred : allowNone ? '' : select.options[0]?.value ?? '';
 }
 function currentStore(id) {
+  if (!id) return '';
   if (!active(state.stores).some(store => store.id === id)) throw new Error('Dieses Geschäft wurde inzwischen gelöscht. Bitte ein anderes auswählen.');
   return id;
+}
+/* Ansicht der Einkaufsliste: 'all' (alle Geschäfte, Startseite), 'none' (Artikel ohne Geschäft) oder die ID eines Geschäfts.
+   Artikel eines gelöschten Geschäfts bleiben überall verborgen; Artikel ohne Geschäft (storeId '') gehören zu keinem Geschäft. */
+const visibleItems = () => {
+  const live = new Set(active(state.stores).map(store => store.id));
+  return active(state.items).filter(item => !item.storeId || live.has(item.storeId));
+};
+const inView = item => view === 'all' || (view === 'none' ? !item.storeId : item.storeId === view);
+const viewStore = () => active(state.stores).find(store => store.id === view);
+const storeName = id => active(state.stores).find(store => store.id === id)?.name || 'Ohne Geschäft';
+// Welches Geschäft ein neuer Artikel bekommt: das der gewählten Ansicht, sonst keines.
+const defaultStore = () => viewStore()?.id || '';
+function showView(next) {
+  view = next;
+  const form = $('#item-form');
+  // Wer ein Geschäft ansieht, legt neue Artikel meist dort an. In „Alle“ bleibt die letzte Auswahl stehen.
+  if (viewStore()) form.elements.storeId.value = view; else if (view === 'none') form.elements.storeId.value = '';
+  storeChanged(); renderStoreChips(); renderItems();
+}
+function storeChanged() {
+  const form = $('#item-form');
+  form.elements.onSale.checked = false; delete form.dataset.manualPrice; rememberPriceInForm();
 }
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
 function render() {
   $('#identity').textContent = config.actor || '';
   $('#demo-banner').hidden = connected();
-  const stores = active(state.stores);
-  if (!stores.some(store => store.id === selectedStore)) selectedStore = stores[0]?.id || '';
+  if (view !== 'all' && view !== 'none' && !viewStore()) view = 'all';
+  const form = $('#item-form'), formStore = form.elements.storeId.value;
+  storeOptions(form.elements.storeId, formStore, true);
+  if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan();
-  $('#item-form').querySelector('button[type=submit]').disabled = !ready || !selectedStore;
+  form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
 }
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
-  for (const store of active(state.stores)) {
-    const open = active(state.items).filter(item => item.storeId === store.id && !item.checked).length;
-    const chip = element('button', store.name, 'chip'); chip.type = 'button';
-    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === selectedStore));
-    if (open) chip.append(element('span', String(open), 'count'));
-    chip.addEventListener('click', () => {
-      selectedStore = store.id; renderStoreChips(); renderItems();
-    });
+  const items = visibleItems(), open = id => items.filter(item => !item.checked && (id === 'all' || (id === 'none' ? !item.storeId : item.storeId === id))).length;
+  const add = (id, label, count) => {
+    const chip = element('button', label, 'chip'); chip.type = 'button';
+    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(id === view));
+    if (count) chip.append(element('span', String(count), 'count'));
+    chip.addEventListener('click', () => showView(id));
     box.append(chip);
-  }
+  };
+  add('all', 'Alle', open('all'));
+  // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
+  if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
+  for (const store of active(state.stores)) add(store.id, store.name, open(store.id));
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
@@ -156,7 +182,12 @@ function groupHead(label, count) {
   row.append(element('span', label), element('span', String(count), 'count'));
   return row;
 }
-function itemRow(item) {
+function storeHead(label, count, none) {
+  const row = element('li', undefined, `store-head${none ? ' none' : ''}`);
+  row.append(icon('store'), element('span', label), element('span', String(count), 'count'));
+  return row;
+}
+function itemRow(item, withStore = false) {
   const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
@@ -167,7 +198,7 @@ function itemRow(item) {
   check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   check.setAttribute('aria-pressed', String(Boolean(item.checked)));
   const copy = element('div', undefined, 'item-copy');
-  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
+  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}${withStore ? ` · ${storeName(item.storeId)}` : ''}`));
   if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
   if (item.onSale && item.salePrice) {
     copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
@@ -189,27 +220,34 @@ function itemRow(item) {
   return row;
 }
 function renderItems() {
-  if (priceFormStore !== selectedStore) {
-    priceFormStore = selectedStore;
-    $('#item-form').elements.onSale.checked = false;
-    delete $('#item-form').dataset.manualPrice; rememberPriceInForm();
-  }
   renderShoppingInfo();
   const list = $('#items'); list.replaceChildren();
-  const rows = active(state.items).filter(item => item.storeId === selectedStore);
+  const rows = visibleItems().filter(inView);
   const open = rows.filter(item => !item.checked), done = rows.filter(item => item.checked).sort(byName);
   $('#item-count').textContent = `${open.length} offen · ${done.length} erledigt`;
   $('#clear-checked').disabled = !done.length;
-  if (!rows.length) list.append(element('li', 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
+  if (!rows.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
   // Nach Gängen im Laden geordnet (abschaltbar in den Einstellungen); Erledigtes steht immer unten.
   const grouped = config.groupItems !== false;
-  if (grouped) for (const group of groupByCategory(open, state.items)) {
-    list.append(groupHead(group.label, group.items.length));
-    group.items.forEach(item => list.append(itemRow(item)));
-  } else open.sort(byName).forEach(item => list.append(itemRow(item)));
+  const addOpen = (items, nested) => {
+    if (!grouped) { items.sort(byName).forEach(item => list.append(itemRow(item))); return; }
+    for (const group of groupByCategory(items, state.items)) {
+      const head = groupHead(group.label, group.items.length); if (nested) head.classList.add('sub');
+      list.append(head); group.items.forEach(item => list.append(itemRow(item)));
+    }
+  };
+  if (view === 'all') {
+    // Gesamtliste: erst, was noch keinem Geschäft zugeordnet ist, dann ein Abschnitt je Geschäft.
+    const sections = [{ id: '', label: 'Ohne Geschäft' }, ...active(state.stores).map(store => ({ id: store.id, label: store.name }))];
+    for (const section of sections) {
+      const items = open.filter(item => (item.storeId || '') === section.id);
+      if (!items.length) continue;
+      list.append(storeHead(section.label, items.length, !section.id)); addOpen(items, true);
+    }
+  } else addOpen(open, false);
   if (done.length) {
-    if (grouped) list.append(groupHead('Erledigt', done.length));
-    done.forEach(item => list.append(itemRow(item)));
+    if (grouped || view === 'all') list.append(groupHead('Erledigt', done.length));
+    done.forEach(item => list.append(itemRow(item, view === 'all')));
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
 }
@@ -227,13 +265,13 @@ function renderItemSuggestions() {
   box.append(choices);
 }
 function renderShoppingInfo() {
-  const store = active(state.stores).find(row => row.id === selectedStore), url = storeOfferUrl(store);
+  const store = viewStore(), url = storeOfferUrl(store);
   $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
   if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
   else $('#offers-link').removeAttribute('href');
-  const total = shoppingTotal(state.items.filter(row => row.storeId === selectedStore), state.prices);
+  const total = shoppingTotal(visibleItems().filter(inView), state.prices);
   const box = $('#shopping-total'); box.replaceChildren();
-  box.append(element('p', store ? `${store.name} · offen` : 'Offen', 'eyebrow'));
+  box.append(element('p', store ? `${store.name} · offen` : view === 'none' ? 'Ohne Geschäft · offen' : 'Alle Geschäfte · offen', 'eyebrow'));
   box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
   box.append(element('p', total.missing ? `${total.missing} Artikel ohne Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel eingerechnet.' : 'Erledigte zählen nicht mit.', 'hint'));
 }
@@ -273,11 +311,12 @@ function rememberPriceInForm() {
   categoryHint(form.elements.category, form.elements.name.value);
   if (form.dataset.manualPrice === 'yes') return;
   const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
-  const quote = rememberedPrice(state.prices, selectedStore, name, unit);
+  const store = form.elements.storeId.value, quote = store ? rememberedPrice(state.prices, store, name, unit) : null;
   setQuoteFields(form, quote, unit);
   setSaleFields(form);
   form.querySelector('[data-price-hint]').textContent = quote ? `Für dieses Geschäft gemerkt: ${quoteLabel(quote)}. Du kannst den Vorschlag ändern oder leeren.` :
-    'Beispiel: 1,99 € für 500 g. Ein gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.';
+    store ? 'Beispiel: 1,99 € für 500 g. Ein gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.' :
+    'Beispiel: 1,99 € für 500 g. Gemerkte Preise gibt es erst, wenn ein Geschäft gewählt ist.';
 }
 function readQuote(form, prefix = 'price') {
   const value = form.elements[`${prefix}Euros`].value.trim();
@@ -329,6 +368,7 @@ function editItem(id) {
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
+  storeOptions(form.elements.storeId, item.storeId || '', true);
   setQuoteFields(form, itemQuote(item, state.prices), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice);
@@ -538,7 +578,7 @@ function openTransfer(id, servings) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
-  storeOptions(form.elements.storeId); $('#transfer-ingredients').replaceChildren();
+  storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren();
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
     const label = element('label', undefined, 'transfer-row'), check = element('input');
     // Salz, Pfeffer und Co. („nach Bedarf“) hat man meist da: nicht vorausgewählt.
@@ -731,7 +771,7 @@ function renderWeekRows() {
   }
 }
 function openWeekShopping() {
-  const form = $('#week-form'); storeOptions(form.elements.storeId);
+  const form = $('#week-form'); storeOptions(form.elements.storeId, defaultStore(), true);
   $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
   renderWeekRows(); $('#week-dialog').showModal();
 }
@@ -902,7 +942,7 @@ async function sync(manual = false) {
 }
 async function loadWorkspace() {
   ready = false; pending = []; base = emptyData(); state = base; undoAction = null; $('#undo-bar').hidden = true;
-  priceFormStore = null; remoteEtag = '';
+  remoteEtag = '';
   const cache = localStorage.getItem(namespace());
   if (cache) {
     let saved;
@@ -953,6 +993,7 @@ $('#refresh').addEventListener('click', () => guard(() => sync(true)));
 $('#demo-setup').addEventListener('click', () => tab('settings'));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
+$('#item-form').elements.storeId.addEventListener('change', storeChanged);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
@@ -983,26 +1024,28 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const category = form.elements.category.value || suggestCategory(name, state.items);
-  const item = { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
+  const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   const ops = [nextOp('items', uid(), item)];
-  if (effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
+  if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
   commit(ops);
-  form.reset(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
+  // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
+  const kept = form.elements.storeId.value;
+  form.reset(); form.elements.storeId.value = kept; delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
 }); });
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
-    category: form.elements.category.value || null, ...readPricing(form) };
+    category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value), ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
   const edited = { ...item, ...delta };
-  if (effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
+  if (edited.storeId && effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
   commit(ops); $('#item-dialog').close();
 }); });
-$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', active(state.items).filter(row => row.storeId === selectedStore && row.checked).map(row => row.id), 'Erledigte Artikel entfernt')));
+$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems().filter(row => inView(row) && row.checked).map(row => row.id), 'Erledigte Artikel entfernt')));
 $('#manage-stores').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
@@ -1038,7 +1081,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   const rows = selected.map(row => row.unit === NO_AMOUNT ? { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity, unit: row.unit });
   commit(newItems(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, state.items));
-  selectedStore = storeId; $('#week-dialog').close(); render(); tab('shopping');
+  view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
   const file = event.target.files[0]; event.target.value = '';
@@ -1060,7 +1103,7 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices, state.items));
-  selectedStore = form.elements.storeId.value; $('#transfer-dialog').close(); render(); tab('shopping');
+  view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
