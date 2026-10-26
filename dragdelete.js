@@ -25,9 +25,14 @@ export function shift(dx, left, width, keep = 40) {
  * @param selector  Zeilen, die gezogen werden dürfen
  */
 export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
-  let hold = null, drag = null, swallow = false;
+  let hold = null, drag = null, swallow = false, armed = false;
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cancelHold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } };
+  const cancelHold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } if (!drag) disarm(); };
+  // Solange eine Zeile gezogen wird, darf die Seite nicht mitscrollen. iOS und Chrome entscheiden das beim Auflegen des Fingers: Der Blocker steht deshalb
+  // schon ab dem Drücken bereit und wird nach dem Loslassen wieder entfernt (ein dauerhafter Blocker bremst jedes Scrollen).
+  const block = event => { if (drag) event.preventDefault(); };
+  const arm = () => { if (!armed) { document.addEventListener('touchmove', block, { passive: false }); armed = true; } };
+  function disarm() { if (armed) { document.removeEventListener('touchmove', block); armed = false; } }
 
   function lift(row, point) {
     const box = row.getBoundingClientRect();
@@ -62,7 +67,6 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
       ghost.classList.add('back'); ghost.style.transform = 'translateX(0)';
       setTimeout(done, 190);
     }
-    setTimeout(() => { swallow = false; }, 400);
   }
 
   list.addEventListener('pointerdown', event => {
@@ -70,18 +74,18 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
     const row = event.target.closest?.(selector);
     if (!row) return;
     const point = { x: event.clientX, y: event.clientY };
-    cancelHold();
+    cancelHold(); swallow = false; arm();
     hold = { x: point.x, y: point.y, id: event.pointerId, timer: setTimeout(() => { hold = null; lift(row, point); }, HOLD_MS) };
   });
   document.addEventListener('pointermove', event => {
     if (drag) { if (event.isPrimary) { event.preventDefault(); follow(event.clientX); } return; }
     if (hold && event.pointerId === hold.id && moved(event.clientX - hold.x, event.clientY - hold.y)) cancelHold();
   });
-  document.addEventListener('pointerup', event => { cancelHold(); if (drag && event.isPrimary) finish(true); });
-  document.addEventListener('pointercancel', event => { cancelHold(); if (drag && event.isPrimary) finish(false); });
+  // Das „click“ nach dem Loslassen kommt unmittelbar danach: Erst kurz später gilt wieder ein Tipp.
+  const release = () => { disarm(); if (swallow) setTimeout(() => { if (!drag) swallow = false; }, 400); };
+  document.addEventListener('pointerup', event => { cancelHold(); if (drag && event.isPrimary) finish(true); release(); });
+  document.addEventListener('pointercancel', event => { cancelHold(); if (drag && event.isPrimary) finish(false); release(); });
   document.addEventListener('keydown', event => { if (drag && event.key === 'Escape') finish(false); });
-  // Solange eine Zeile gezogen wird, darf die Seite nicht mitscrollen (iOS entscheidet das beim ersten Verschieben des Fingers).
-  document.addEventListener('touchmove', event => { if (drag) event.preventDefault(); }, { passive: false });
   // Lange Zeit auf einer Zeile ist kein Tipp: Das „click“ nach dem Loslassen soll weder bearbeiten noch abhaken.
   list.addEventListener('click', event => { if (swallow) { event.preventDefault(); event.stopPropagation(); } }, true);
   // Kein Kontextmenü / keine Textauswahl beim langen Drücken.

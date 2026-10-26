@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { shopCount, shopView } from '../shop.js';
+import { shopCount, shopView, takesAnywhere } from '../shop.js';
 
 const item = (id, storeId, checked = false) => ({ id, storeId, checked, name: id });
 const items = [item('milch', 'edeka'), item('brot', ''), item('kaese', 'lidl'), item('nudeln', 'edeka', true), item('eier', '', true)];
@@ -31,5 +31,29 @@ test('Bei Edeka abgehakt, bei Lidl nicht mehr aufgelistet; unter Erledigt nur do
 test('Zahlen für die Geschäftsleiste und leere Fälle', () => {
   assert.equal(shopCount(items, 'edeka'), 2);
   assert.equal(shopCount(items, 'rewe'), 1, 'nur „überall möglich“');
-  assert.deepEqual(shopView([], 'edeka'), { open: [], anywhere: [], done: [], elsewhere: 0 });
+  assert.deepEqual(shopView([], 'edeka'), { open: [], anywhere: [], done: [], elsewhere: 0, hidden: 0 });
+});
+
+test('Geschäfte ohne „Überall möglich“ (Drogerien): Artikel ohne Geschäft stehen dort nicht, werden aber gezählt', () => {
+  const items = [{ id: 'a', storeId: '', checked: false }, { id: 'b', storeId: 'ross', checked: false }, { id: 'c', storeId: 'edeka', checked: false },
+    { id: 'd', storeId: '', checked: true }];
+  const ids = rows => rows.map(row => row.id);
+  const normal = shopView(items, 'ross');
+  assert.deepEqual(ids(normal.anywhere), ['a']);
+  const strict = shopView(items, 'ross', new Map([['d', 'ross']]), false);
+  assert.deepEqual(ids(strict.open), ['b']);
+  assert.deepEqual(ids(strict.anywhere), []);
+  assert.deepEqual(ids(strict.done), [], 'auch Erledigtes ohne Geschäft wird dort nicht gezeigt');
+  assert.equal(strict.hidden, 1, 'für den Hinweis');
+  assert.equal(strict.elsewhere, 1);
+  assert.equal(shopCount(items, 'ross'), 2);
+  assert.equal(shopCount(items, 'ross', false), 1, 'der Zähler am Reiter stimmt mit der Liste überein');
+});
+
+test('Drogerien nehmen Artikel ohne Geschäft standardmäßig nicht, Supermärkte schon; eine ausdrückliche Einstellung gewinnt', () => {
+  for (const name of ['Rossmann', 'Roßmann', 'ROSSMANN', 'dm', 'dm-drogerie markt', 'Müller', 'Douglas']) assert.equal(takesAnywhere({ name }), false, name);
+  for (const name of ['Edeka', 'Lidl', 'Rewe', 'Aldi', 'Dmitri Markt', 'Rossmannshof Bäckerei']) assert.equal(takesAnywhere({ name }), true, name);
+  assert.equal(takesAnywhere({ name: 'Rossmann', anywhere: true }), true);
+  assert.equal(takesAnywhere({ name: 'Edeka', anywhere: false }), false);
+  assert.equal(takesAnywhere(undefined), true);
 });

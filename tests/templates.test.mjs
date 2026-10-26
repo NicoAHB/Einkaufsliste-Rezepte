@@ -42,3 +42,12 @@ describe('Einkaufsvorlagen', () => {
     assert.equal(none.data.templates, undefined, 'ohne Vorlagen entsteht keine leere Liste');
   });
 });
+
+describe('Geschäfte: Einstellung für Artikel ohne Geschäft', () => {
+  const store = patch => operation('stores', 's1', { name: 'Rossmann', ...patch }, 'Nico', '2026-03-01T10:00:00.000Z');
+  test('anywhere darf fehlen, null oder ein Wahrheitswert sein, sonst wird die Änderung abgelehnt', () => {
+    for (const ok of [undefined, null, true, false]) assert.doesNotThrow(() => merge(emptyData(), [store(ok === undefined ? {} : { anywhere: ok })]), String(ok));
+    const good = merge(emptyData(), [store({})]);
+    assert.throws(() => merge(good, [operation('stores', 's1', { anywhere: 'false' }, 'Nico', '2026-03-02T00:00:00.000Z')]), /Ungültige Einstellung/);
+  });
+});

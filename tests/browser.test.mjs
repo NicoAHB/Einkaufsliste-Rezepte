@@ -69,9 +69,8 @@ const pickStore = async (page, name) => { await expandForm(page); await page.loc
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, tokenExpires: '' };
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag, github-authentication-token-expiration' };
-  const expiry = () => behavior.tokenExpires ? { 'github-authentication-token-expiration': behavior.tokenExpires } : {};
+  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, unauthorized: false };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag' };
   return {
     stats, photos, behavior, get content() { return content; },
     async handler(route) {
@@ -98,10 +97,11 @@ function github(initial) {
         stats.photoPuts++; photos.set(path, Buffer.from(JSON.parse(request.postData()).content, 'base64'));
         return route.fulfill({ status: 201, headers: { ...cors, 'content-type': 'application/json' }, body: '{}' });
       }
+      if (behavior.unauthorized && !path.startsWith('photos')) return route.fulfill({ status: 401, headers: cors, body: '{}' });
       if (request.method() === 'GET') {
         stats.gets++;
-        if (request.headers()['if-none-match'] === etag) { stats.notModified++; return route.fulfill({ status: 304, headers: { ...cors, ...expiry(), etag } }); }
-        return route.fulfill({ status: 200, headers: { ...cors, ...expiry(), etag, 'content-type': 'application/json' },
+        if (request.headers()['if-none-match'] === etag) { stats.notModified++; return route.fulfill({ status: 304, headers: { ...cors, etag } }); }
+        return route.fulfill({ status: 200, headers: { ...cors, etag, 'content-type': 'application/json' },
           body: JSON.stringify({ encoding: 'base64', sha, content: Buffer.from(JSON.stringify(content)).toString('base64') }) });
       }
       const body = JSON.parse(request.postData());
@@ -1027,7 +1027,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(saved.items.length, 4, 'liegt auf GitHub, die Partnerin sieht sie auch');
     assert.ok(saved.items.some(entry => entry.name === 'Tomaten' && entry.storeId === 'store-edeka'), 'mit Geschäft');
     // Zweimal speichern ersetzt die Vorlage, statt eine zweite anzulegen
-    await page.click('#template-form button[type=submit]', { trial: true }).catch(() => {});
     await page.fill('#template-form input[name=name]', 'wocheneinkauf'); await page.click('#template-form button[type=submit]');
     assert.equal(await page.locator('#template-list li').count(), 1);
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
@@ -1063,27 +1062,138 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Token mit Ablaufdatum: Warnung in der Statuszeile ab sieben Tagen vorher, sonst nichts', async () => {
+  test('Token mit Ablaufdatum (von Hand eingetragen): Warnung in der Statuszeile ab sieben Tagen vorher, abgelaufen klar benannt', async () => {
+    const day = offset => { const date = new Date(Date.now() + offset * 86400000); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
     const remote = github(structuredClone(demo));
-    const stamp = days => new Date(Date.now() + days * 86400000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-    remote.behavior.tokenExpires = stamp(60);
-    const { ctx, page, problems } = await context({ config: connectedConfig });
+    const { ctx, page, problems } = await context({ config: { ...connectedConfig, tokenExpires: day(60) } });
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     assert.equal(await page.textContent('#status'), 'Mit GitHub abgeglichen', 'in 60 Tagen: keine Warnung');
-    remote.behavior.tokenExpires = stamp(3);
-    await pollNow(page);
-    await page.waitForFunction(() => /Token läuft in [23] Tagen ab/.test(document.querySelector('#status').textContent));
-    assert.equal(await page.getAttribute('#status', 'data-state'), 'pending');
-    await page.click('[data-tab=settings]');
-    assert.match(await page.textContent('#connection-state'), /Token läuft in [23] Tagen ab/);
-    // Neuer Token ohne Ablaufdatum: Warnung verschwindet
-    remote.behavior.tokenExpires = '';
-    await page.click('#connection-details > summary');
+    const setDate = async value => {
+      await openSettings(page);
+      await page.fill('#settings-form input[name=tokenExpires]', value); await page.click('#settings-form button[type=submit]');
+    };
+    for (const [offset, text, state] of [[3, /^Token läuft in 3 Tagen ab · neuen anlegen$/, 'pending'], [1, /^Token läuft morgen ab/, 'pending'], [0, /^Token läuft heute ab/, 'pending'], [-5, /^Token abgelaufen · neuen anlegen$/, 'error']]) {
+      await setDate(day(offset));
+      await page.waitForFunction(pattern => new RegExp(pattern).test(document.querySelector('#status').textContent), text.source);
+      assert.equal(await page.getAttribute('#status', 'data-state'), state, `${offset} Tage`);
+    }
+    // Ein Tipp auf die Warnung führt zur Eingabe des neuen Tokens (statt nur abzugleichen)
+    await page.click('[data-tab=shopping]'); await page.click('#syncline');
+    assert.equal(await page.locator('#settings').isVisible(), true);
+    assert.equal(await page.locator('#connection-details').evaluate(node => node.open), true);
+    assert.match(await page.textContent('#connection-state'), /Token abgelaufen/);
+    // Neuer Token ohne neues Datum: das alte Datum gilt nicht mehr, die Warnung verschwindet
     await page.fill('#settings-form input[name=token]', 'neuer-token'); await page.click('#settings-form button[type=submit]');
     await page.waitForFunction(() => document.querySelector('#status').textContent === 'Mit GitHub abgeglichen');
-    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).tokenExpires, undefined);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).tokenExpires, '');
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Speichern-Knopf der Verbindung: grau mit „Gespeichert am …“, bei Änderung aktiv, nach einem Fehler wieder aktiv', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    const button = page.locator('#settings-form button[type=submit]');
+    assert.equal(await button.isDisabled(), true, 'nichts geändert: grau');
+    assert.equal((await button.textContent()).trim(), 'Gespeichert', 'schon vor Version 2.7 verbunden: ohne Datum');
+    await page.fill('#settings-form input[name=branch]', 'anderer-branch');
+    assert.equal(await button.isDisabled(), false);
+    assert.equal((await button.textContent()).trim(), 'Speichern');
+    await page.fill('#settings-form input[name=branch]', 'main');
+    assert.equal(await button.isDisabled(), true, 'zurückgestellt: wieder grau');
+    // Speichern: danach grau mit Datum und Uhrzeit
+    await page.fill('#settings-form input[name=actor]', 'Nico B');
+    assert.equal((await button.textContent()).trim(), 'Speichern');
+    await button.click();
+    await page.waitForFunction(() => /^Gespeichert am \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/.test(document.querySelector('#settings-form button[type=submit]').textContent.trim()));
+    assert.equal(await button.isDisabled(), true);
+    // Noch einmal ändern: wieder aktiv; ein falscher Token scheitert, der Knopf bleibt dann für einen neuen Versuch aktiv
+    await page.fill('#settings-form input[name=token]', 'falsch');
+    remote.behavior.unauthorized = true;
+    await button.click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'error');
+    assert.equal(await button.isDisabled(), false, 'Verbinden gescheitert: erneut möglich');
+    assert.equal((await button.textContent()).trim(), 'Speichern');
+    remote.behavior.unauthorized = false;
+    await button.click();
+    await page.waitForFunction(() => /^Gespeichert am/.test(document.querySelector('#settings-form button[type=submit]').textContent.trim()));
+    assert.equal(await button.isDisabled(), true);
+    // Rezept-Import-Einstellungen: dasselbe Verhalten
+    const importButton = page.locator('#import-settings-form button[type=submit]');
+    assert.equal(await importButton.isDisabled(), true);
+    await page.fill('#import-settings-form input[name=importProxy]', 'https://rezepte.beispiel.workers.dev');
+    assert.equal(await importButton.isDisabled(), false);
+    await importButton.click();
+    await page.waitForFunction(() => /^Gespeichert am/.test(document.querySelector('#import-settings-form button[type=submit]').textContent.trim()));
+    assert.equal(await importButton.isDisabled(), true);
+    await page.check('#import-settings-form input[name=publicProxy]');
+    assert.equal((await importButton.textContent()).trim(), 'Import-Einstellungen speichern');
+    assert.equal(await importButton.isDisabled(), false);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Ohne Verbindung: „Speichern & verbinden“ ist aktiv; „Token entfernen“ behält Name, Darstellung und Geräteeinstellungen', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: { ...connectedConfig, palette: 'rose', storeStyle: 'logo', shopMode: false, groupItems: false, shopAwake: true } });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#disconnect');
+    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
+    const kept = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')));
+    assert.deepEqual([kept.actor, kept.palette, kept.storeStyle, kept.groupItems, kept.shopAwake], ['Nico', 'rose', 'logo', false, true], 'nur die Verbindungsdaten sind weg');
+    for (const key of ['owner', 'repo', 'token', 'savedAt', 'tokenExpires']) assert.equal(kept[key], undefined, key);
+    const button = page.locator('#settings-form button[type=submit]');
+    assert.equal(await button.isDisabled(), false);
+    assert.equal((await button.textContent()).trim(), 'Speichern & verbinden');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Geschäfte speichern schreibt den Standardlink und die Voreinstellung nicht fest', async () => {
+    const remote = github(withRossmann());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.click('#manage-stores'); await sheetOpen(page);
+    const row = page.locator('#store-editor .store-row').nth(3);   // Roßmann
+    await row.locator('input[name=name]').fill('Rossmann Drogerie'); await row.getByRole('button', { name: /speichern/ }).click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    const saved = remote.content.stores.find(entry => entry.id === 'store-ross');
+    assert.equal(saved.name, 'Rossmann Drogerie');
+    assert.equal(saved.offersUrl, '', 'Standardlink nicht festgeschrieben');
+    assert.equal(saved.anywhere, null, 'Voreinstellung (Drogerie) nicht festgeschrieben');
+    assert.equal(await page.locator('#store-editor .store-row').nth(3).locator('input[name=offersUrl]').inputValue(), 'https://www.rossmann.de/de/angebote');
+    // Abweichung wird gespeichert
+    await row.locator('input[name=anywhere]').check(); await row.getByRole('button', { name: /speichern/ }).click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.stores.find(entry => entry.id === 'store-ross').anywhere, true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ziehen: Escape und spätes Loslassen öffnet nichts (Klick wird erst nach dem Loslassen wieder zugelassen)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const row = page.locator('#items .item', { hasText: 'Nudeln' });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const box = await row.locator('.item-copy').boundingBox(), at = { x: box.x + 40, y: box.y + box.height / 2 };
+    await page.mouse.move(at.x, at.y); await page.mouse.down();
+    await page.waitForSelector('.drag-ghost');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    await page.waitForTimeout(700);   // länger als die frühere feste Frist
+    await page.mouse.up();
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'das späte Loslassen öffnet die Bearbeitung nicht');
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page);   // danach geht ein Tipp wieder
+    assert.deepEqual(problems, []);
     await ctx.close();
   });
 
@@ -1104,7 +1214,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     assert.match(await page.evaluate(() => navigator.userAgent), /Android/);
     assert.equal(await horizontalOverflow(page), 0);
-    assert.ok((await page.locator('#items .item').first().boundingBox()).y < 420, 'erste Zeile früh im Bild');
+    assert.ok((await page.locator('#items .item').first().boundingBox()).y < 460, 'erste Zeile früh im Bild');
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; });   // scrollbar machen, damit ein Mitscrollen auffiele
     const row = page.locator('#items .item', { hasText: 'Milch' });
     await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
     // Langes Drücken löst auf Android ein „contextmenu“ aus: Es wird unterdrückt
@@ -1118,12 +1229,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await touch('touchStart', box.x + 40, y); await touch('touchMove', box.x + 40, y + 30); await page.waitForTimeout(600);
     assert.equal(await page.locator('.drag-ghost').count(), 0);
     await touch('touchEnd');
-    // Halten, ziehen, loslassen im roten Mülleimer
+    // Halten, ziehen, loslassen im roten Mülleimer (das Wischen davor hat die Seite scrollen lassen: ab hier darf sie sich nicht mehr bewegen)
+    const before = await page.evaluate(() => scrollY);
     await touch('touchStart', box.x + 40, y);
     await page.waitForSelector('.drag-ghost');
-    for (let step = 1; step <= 8; step++) await touch('touchMove', box.x + 40 + (width - 30 - box.x - 40) * step / 8, y);
+    for (let step = 1; step <= 8; step++) await touch('touchMove', box.x + 40 + (width - 30 - box.x - 40) * step / 8, y + step * 5);
     await page.waitForSelector('#trash-zone.hot');
-    assert.equal(await page.evaluate(() => scrollY) >= 0, true);
+    assert.equal(await page.evaluate(() => scrollY), before, 'die Seite hat beim Ziehen nicht mitgescrollt');
     await touch('touchEnd');
     await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Milch'));
     assert.equal(await page.locator('dialog[open]').count(), 0, 'danach öffnet sich nichts');
@@ -1132,6 +1244,87 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok((await page.locator('#shop-chips .chip').first().boundingBox()).y < 24);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // Beispieldaten plus ein Rossmann (wie über das Formular angelegt: Angebotslink leer), ein Artikel dort und ein Artikel ohne Geschäft
+  const withRossmann = () => {
+    const data = structuredClone(demo), at = '2026-10-25T00:00:00.000Z';
+    data.stores.push({ id: 'store-ross', name: 'Roßmann', offersUrl: '', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.items.push({ id: 'item-shampoo', storeId: 'store-ross', name: 'Shampoo', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, onSale: false },
+      { id: 'item-brot', storeId: '', name: 'Brot', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, onSale: false });
+    return data;
+  };
+
+  test('Rossmann: Artikel ohne Geschäft stehen dort im Laden nicht (einstellbar), Angebotsseite ist hinterlegt', async () => {
+    const remote = github(withRossmann());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    // Planen: Angebotsseite von Rossmann
+    await page.getByRole('tab', { name: /^Roßmann/ }).click();
+    assert.equal(await page.getAttribute('#offers-link', 'href'), 'https://www.rossmann.de/de/angebote');
+    // Im Laden: bei Edeka steht Brot unter „Überall möglich“, bei Rossmann nicht
+    await page.click('#mode-shop');
+    const names = async () => (await page.locator('#shop-list .shop-name').allTextContents()).sort();
+    const chip = name => page.locator('#shop-chips .chip', { hasText: name });
+    await chip('Edeka').click();
+    assert.ok((await names()).includes('Brot'));
+    await chip('Roßmann').click();
+    assert.deepEqual(await names(), ['Shampoo']);
+    assert.match(await page.textContent('#shop-list'), /1 Artikel ohne Geschäft stehen hier nicht/);
+    assert.match(await chip('Roßmann').textContent(), /Roßmann\s*1$/, 'der Zähler am Reiter zählt Brot nicht mit');
+    assert.match(await chip('Edeka').textContent(), /Edeka\s*3$/);
+    // Einstellbar: im Dialog „Geschäfte“ lässt sich das pro Geschäft umstellen
+    await page.click('#shop-back'); await page.click('#manage-stores'); await sheetOpen(page);
+    const row = name => page.locator('#store-editor .store-row').nth({ Edeka: 0, 'Roßmann': 3 }[name]);
+    assert.equal(await row('Roßmann').locator('input[name=anywhere]').isChecked(), false, 'Drogerie: standardmäßig aus');
+    assert.equal(await row('Edeka').locator('input[name=anywhere]').isChecked(), true);
+    assert.match(await row('Roßmann').locator('input[name=offersUrl]').inputValue(), /rossmann\.de\/de\/angebote/, 'der Standardlink steht im Feld');
+    await row('Roßmann').locator('input[name=anywhere]').check(); await row('Roßmann').getByRole('button', { name: /speichern/ }).click();
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await page.click('#mode-shop'); await chip('Roßmann').click();
+    assert.deepEqual(await names(), ['Brot', 'Shampoo'], 'nach der Umstellung stehen Artikel ohne Geschäft auch dort');
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.stores.find(row => row.id === 'store-ross').anywhere, true, 'die Einstellung liegt in der gemeinsamen Datei');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Geschäfte als Text oder Logo: Auswahl in den Einstellungen, bleibt nach dem Neuladen', async () => {
+    const data = withRossmann(), at = '2026-10-25T00:00:00.000Z';
+    data.stores.push({ id: 'store-metzger', name: 'Metzger Müller', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    const remote = github(data);
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    assert.equal(await page.locator('.brand').count(), 0, 'Standard: Text');
+    await openSettings(page);
+    assert.equal(await page.inputValue('#store-style'), 'text');
+    await page.selectOption('#store-style', 'logo');
+    await page.click('[data-tab=shopping]');
+    const brand = cls => page.locator(`#store-chips .chip .${cls}`);
+    assert.equal(await brand('brand-edeka').count(), 1);
+    assert.equal(await brand('brand-lidl').count(), 1);
+    assert.equal(await brand('brand-rewe').count(), 1);
+    assert.equal(await brand('brand-rossmann').count(), 1, 'Roßmann und Rossmann werden erkannt');
+    assert.equal(await page.locator('#store-chips .chip .brand').count(), 4, 'Metzger Müller ist unbekannt und bleibt Text');
+    assert.match(await page.locator('#store-chips .chip', { hasText: 'Metzger' }).textContent(), /Metzger Müller/);
+    assert.ok(await page.locator('#items .store-head .brand').count() >= 1, 'auch die Überschriften in der Liste');
+    assert.ok(await page.getByRole('tab', { name: /^Edeka/ }).count() === 1, 'der Name bleibt für Screenreader und Suche erhalten');
+    await expandForm(page);
+    assert.ok(await page.locator('#store-pick .chip .brand-lidl').count() === 1, 'auch die Schnellwahl beim Hinzufügen');
+    await page.click('#mode-shop');
+    assert.equal(await page.locator('#shop-chips .chip .brand-edeka').count(), 1, 'und im Laden');
+    assert.equal(await horizontalOverflow(page), 0);
+    // bleibt nach dem Neuladen, und zurück auf Text
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.locator('#shop-chips .chip .brand-edeka').count(), 1);
+    await page.click('#shop-back'); await openSettings(page);
+    await page.selectOption('#store-style', 'text');
+    await page.click('[data-tab=shopping]');
+    assert.equal(await page.locator('.brand').count(), 0);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
   });
 

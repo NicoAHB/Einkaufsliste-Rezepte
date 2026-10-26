@@ -331,25 +331,21 @@ a.button {
   gap:8px;
   padding:6px 16px 0
 }
-/* Statuszeile oben: eine Zeile, zugleich Knopf (verbunden: abgleichen, sonst: Einstellungen) */
+/* Statuszeile oben: eine Zeile, zugleich antippbar (verbunden: abgleichen, sonst: Einstellungen) */
 .syncline {
   display:flex;
   align-items:center;
   flex:1;
   min-width:0;
-  min-height:40px;
-  padding:0;
-  justify-content:flex-start;
+  min-height:44px;
+  margin:0;
   gap:0 6px;
-  border:0;
-  border-radius:10px;
-  background:transparent;
   color:var(--muted);
   font-size:.82rem;
   font-weight:500;
   line-height:1.3;
-  text-align:left;
-  white-space:nowrap
+  white-space:nowrap;
+  cursor:pointer
 }
 .syncline #status {
   min-width:0;
@@ -360,9 +356,7 @@ a.button {
   flex:none
 }
 .topbar .icon-button {
-  flex:none;
-  width:40px;
-  min-height:40px
+  flex:none
 }
 #status::before {
   content:"";
@@ -443,7 +437,7 @@ main {
   margin:6px 0 4px
 }
 .list-head .text-button {
-  min-height:36px;
+  min-height:40px;
   padding:0 4px;
   font-size:.86rem;
   white-space:nowrap
@@ -588,7 +582,7 @@ details[open]>summary::after {
   margin:0
 }
 .shop-tools .small {
-  min-height:40px;
+  min-height:44px;
   padding:0 12px
 }
 .total-card {
@@ -1605,7 +1599,7 @@ dialog.cook {
   flex:1;
   min-width:0;
   margin:0 0 0 -16px;
-  padding:2px 4px 6px 16px;
+  padding:2px 22px 6px 16px;
   -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent);
   mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)
 }
@@ -2123,7 +2117,7 @@ body.in-store main {
 /* Vorlagen */
 .template-open {
   justify-self:start;
-  min-height:36px
+  min-height:40px
 }
 .template-list {
   display:grid;
@@ -2160,4 +2154,33 @@ body.in-store main {
   flex:none;
   width:40px;
   min-height:40px
+}
+
+/* Geschäfte als „Logo“: Schriftzug in den Farben der Kette (keine Original-Logos) */
+.brand {
+  display:inline-block;
+  padding:1px 8px;
+  border-radius:6px;
+  font-weight:800;
+  letter-spacing:.04em;
+  line-height:1.3;
+  text-transform:uppercase;
+  color:#fff;
+  background:#555
+}
+.brand-edeka { background:#005ca9; color:#ffe500 }
+.brand-lidl { background:#0050aa; color:#fff000; box-shadow:inset 0 -3px 0 #e60a14 }
+.brand-rewe { background:#cc071e; color:#fff }
+.brand-rossmann { background:#c3002f; color:#fff }
+.brand-aldi { background:#00549f; color:#fff }
+.brand-kaufland { background:#e10915; color:#fff }
+.brand-penny { background:#cd1719; color:#fff }
+.chip .brand {
+  padding:2px 9px
+}
+.store-head .brand {
+  box-shadow:0 0 0 1px rgba(255,255,255,.55)
+}
+.store-head .brand-lidl {
+  box-shadow:inset 0 -3px 0 #e60a14,0 0 0 1px rgba(255,255,255,.55)
 }

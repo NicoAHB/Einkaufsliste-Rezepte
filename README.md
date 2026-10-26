@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.5
+# Einkauf & Rezepte – Version 2.7
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,11 +16,26 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
 
+## Neu in Version 2.7: Speichern-Knöpfe und Fehlerbehebungen nach gründlicher Prüfung
+
+- **Speichern-Knopf der Einstellungen.** „Speichern & verbinden“ (Gemeinsame Liste) und „Import-Einstellungen speichern“ sind **grau** und zeigen **„Gespeichert am 26.10.2026, 21:21“**, solange nichts geändert ist. Sobald du ein Feld änderst, ist der Knopf wieder aktiv und heißt **„Speichern“** (ohne Verbindung „Speichern & verbinden“). Scheitert das Verbinden (z. B. falscher Token), bleibt der Knopf aktiv für einen neuen Versuch. „Gespeichert am …“ erscheint erst, wenn die Verbindung klappt. „Token entfernen“ ist kürzer benannt; es entfernt nur die Verbindungsdaten, Name, Farbe und andere Geräteeinstellungen bleiben.
+- **Ketten an einer Stelle** (`brand.js`): Erkennung am Namen, Angebotsseite, Drogerie-Verhalten und Logo kommen aus einer Tabelle. „Rossmann Drogerie“ und „ROẞMANN“ werden erkannt, „Müller Bäckerei“ ist **keine** Drogerie mehr. Das Geschäfte-Formular schreibt den Standardlink und die Voreinstellung nicht mehr fest, wenn man nur umbenennt; die Einstellung `anywhere` wird geprüft (Wahrheitswert oder leer).
+- **Ziehen zum Löschen:** Nach Escape oder spätem Loslassen öffnet sich nichts mehr (der Klick wird bis kurz nach dem Loslassen unterdrückt). Der Scroll-Blocker steht nur noch zwischen Drücken und Loslassen bereit, nicht mehr dauerhaft.
+- **Statuszeile oben** ist wieder Text statt Knopf (Bildschirmleser lesen sie als Status vor); antippen geht weiter.
+- **Aufräumen** zählt auch Namenszuordnungen und Vorlagen. Das Offline-Paket enthält jetzt auch das Maskable-Symbol; ein Test prüft, dass jede Datei, die die App braucht, im Paket steckt, jede `id` eindeutig ist und die README alle Skriptdateien nennt.
+- Symbole und Zeilen oben wieder mindestens 44 px hoch (Statuszeile, Abgleichen-Knopf, „Angebote“/„Kassenbon“), die Reiterleiste im Laden blendet den letzten Reiter nicht mehr aus.
+
+## Neu in Version 2.6: Rossmann, Geschäfte als Logo
+
+- **Artikel ohne Geschäft stehen bei Drogerien nicht.** Im Modus „Im Laden“ erscheinen Artikel ohne Geschäft sonst unter „Überall möglich“. Bei **Rossmann** (auch „Roßmann“), **dm**, **Müller**, **Douglas** und **Budni** stehen sie standardmäßig **nicht** dort, und auch der Zähler am Reiter zählt sie nicht. Unten steht ein Hinweis („1 Artikel ohne Geschäft stehen hier nicht“). Pro Geschäft einstellbar: **Geschäfte** (Symbol neben „Planen | Im Laden“) → beim Geschäft **„Im Laden“ auch Artikel ohne Geschäft anzeigen**. Die Einstellung liegt in der gemeinsamen Datei (Feld `anywhere` am Geschäft), beide sehen dasselbe.
+- **Angebotsseite für Rossmann:** `https://www.rossmann.de/de/angebote` ist als Standardlink hinterlegt (wie bei Edeka, Lidl und Rewe). Ein **leeres Feld im Dialog „Geschäfte“ heißt jetzt „Standardlink der Kette“**, sonst keiner; so bekommt auch ein früher ohne Link angelegtes Rossmann den Link. Ein eigener Link gewinnt immer.
+- **Geschäfte als Text oder Logo:** Einstellungen → Darstellung & Sicherung → **Geschäfte anzeigen als**. „Logo“ zeigt Edeka, Lidl, Rewe, Rossmann, Aldi, Kaufland und Penny als **Schriftzug in den Farben der Kette** (Reiter, Schnellwahl beim Hinzufügen, Überschriften in der Liste, Im Laden). Es sind **keine Original-Logos** (Markenzeichen, Bilddateien), nur Name und Farben. Unbekannte Geschäfte bleiben Text. Die Wahl gilt pro Gerät.
+
 ## Neu in Version 2.5: Vorlagen, kürzere Preiszeilen, Token-Warnung
 
 - **Vorlagen.** Eine Vorlage ist eine gespeicherte Liste, z. B. „Wocheneinkauf“. In der Einkaufsliste ins Namensfeld tippen: Unter der Schnellwahl erscheint **Vorlagen**. Im Dialog steht oben, was schon gespeichert ist (**Auf die Liste** trägt alle Artikel ein, schon offene werden zusammengezählt, jeder Artikel bleibt bei seinem Geschäft; Mülleimer löscht die Vorlage). Unten speichert **Als Vorlage speichern** die **offenen** Artikel der gerade gewählten Ansicht (Alle Geschäfte oder ein Geschäft) mit Menge und Geschäft. Gleicher Name (Groß-/Kleinschreibung egal) ersetzt die Vorlage. Höchstens 80 Artikel je Vorlage. Vorlagen liegen in der gemeinsamen Datei (`templates`), beide sehen sie.
 - **Kürzere Preiszeile.** Unter einem Artikel steht statt des langen Satzes nur noch **„Am günstigsten: Lidl 3,98 €/kg · 25.10.26“** (bei einem einzigen Geschäft „Preis: …“), mit „(alt)“, wenn die Notiz über zwei Monate alt ist. Die ausführliche Fassung („zuletzt eingetragen am …“ je Geschäft) steht im Preisvergleich im Bearbeiten-Dialog.
-- **Token-Warnung.** Hat der Token ein Ablaufdatum, meldet GitHub es mit jeder Antwort. Sieben Tage vorher steht oben in der Statuszeile **„Token läuft in 3 Tagen ab · neuen anlegen“** (orange), in den Einstellungen unter „Gemeinsame Liste“ ab 14 Tagen vorher ebenfalls. Bei einem Token ohne Ablauf erscheint nichts. Ist er abgelaufen, bleibt es bei der bisherigen Meldung (Änderungen bleiben lokal gesichert). Ein neuer Token löscht die Warnung. Ob GitHub den Ablaufhinweis im Browser freigibt, haben wir nur mit einer Simulation geprüft: Bleibt die Warnung bei einem Token mit Ablaufdatum aus, ist das der Grund und nichts geht verloren.
+- **Token-Warnung.** Seit Version 2.7 trägst du das **Ablaufdatum** des Tokens unter „Gemeinsame Liste“ von Hand ein („Token gültig bis“, optional; bei „No expiration“ leer lassen). Sieben Tage vorher steht oben in der Statuszeile **„Token läuft in 3 Tagen ab · neuen anlegen“** (orange), danach **„Token abgelaufen · neuen anlegen“** (rot); ein Tipp darauf öffnet die Eingabe. Die Version 2.5 wollte das Datum aus einem Antwortkopf von GitHub lesen; GitHub gibt ihn dem Browser aber nicht heraus, deshalb die Handeingabe. Ein neuer Token ohne neues Datum löscht das alte Datum.
 - **Einstellungen merken die offenen Bereiche** (pro Gerät). „Gemeinsame Liste“ steht offen, solange nicht verbunden ist; das wird nicht gemerkt.
 - **Android.** Ziehen zum Löschen, Layout, Im Laden und die Unterdrückung des Kontextmenüs beim langen Drücken sind mit einem emulierten Pixel 7 (Chrome) geprüft, **nicht** auf einem echten Android-Gerät.
 
@@ -299,7 +314,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -426,6 +441,16 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.7:
+
+- [ ] Einstellungen → Gemeinsame Liste: Der Knopf ist grau mit „Gespeichert am …“. Ein Feld ändern: Der Knopf heißt „Speichern“. Mit falschem Token speichern: Fehler, Knopf bleibt aktiv.
+- [ ] Token-Datum auf übermorgen stellen: oben steht „Token läuft in 2 Tagen ab · neuen anlegen“.
+
+Weitere Testpunkte für Version 2.6:
+
+- [ ] Im Laden bei Rossmann: Ein Artikel ohne Geschäft steht dort nicht, bei Edeka schon. Unter „Geschäfte“ lässt es sich pro Geschäft umstellen. Planen → Rossmann: „Angebote“ öffnet die Rossmann-Angebotsseite.
+- [ ] Einstellungen → „Geschäfte anzeigen als“ → Logo: Reiter und Überschriften zeigen die Schriftzüge in Kettenfarben; zurück auf Text.
 
 Weitere Testpunkte für Version 2.5:
 

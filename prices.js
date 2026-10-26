@@ -1,5 +1,6 @@
 /* Reine Preislogik: Euro werden als ganze Cent gespeichert. Es werden keine
    Händlerdaten abgerufen; alle Preise stammen aus euren eigenen Eingaben. */
+import { chainOf } from './brand.js';
 export const productKey = name => String(name).normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' ');
 
 export function unitSpec(unit) {
@@ -156,13 +157,11 @@ export function offerUrl(value) {
   return url.href;
 }
 
+// Standardlink einer bekannten Kette oder ''.
+export const defaultOfferUrl = store => chainOf(store?.name)?.offers || '';
 export function storeOfferUrl(store) {
   if (!store) return '';
-  if (store.offersUrl !== undefined) return offerUrl(store.offersUrl);
-  const defaults = {
-    edeka: 'https://www.edeka.de/angebote/',
-    lidl: 'https://www.lidl.de/c/online-prospekte/s10005610',
-    rewe: 'https://www.rewe.de/angebote/nationale-angebote/'
-  };
-  return defaults[productKey(store.name)] || '';
+  // Ein leeres Feld heißt „Standardlink der Kette“ (falls bekannt), sonst keiner. So bekommt auch ein früher ohne Link angelegtes Geschäft den Standard.
+  if (store.offersUrl) return offerUrl(store.offersUrl);
+  return defaultOfferUrl(store);
 }
