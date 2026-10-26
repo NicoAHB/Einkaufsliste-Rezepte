@@ -2220,10 +2220,22 @@ body.in-store main {
 }
 .daily-actions {
   display:flex;
+  flex-wrap:wrap;
   gap:8px
 }
 .daily-actions button {
-  flex:1
+  flex:1 1 9rem;
+  min-width:0
+}
+/* Der Dialog lässt sich nur auf und ab bewegen, nie zur Seite: Lange Wörter brechen um, nichts darf breiter sein als der Dialog. */
+#daily-dialog {
+  overflow-x:hidden;
+  touch-action:pan-y pinch-zoom
+}
+.daily-card,.daily-card * {
+  min-width:0;
+  max-width:100%;
+  overflow-wrap:anywhere
 }
 
 /* Sicherheitsnetz gegen seitliches Verschieben: Eingabefelder (iOS gibt Datumsfeldern eine eigene Mindestbreite) und Bereiche dürfen nie breiter sein als ihr Platz. */

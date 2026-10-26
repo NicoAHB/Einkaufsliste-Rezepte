@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { planGenerated } from '../recipe-maker.js';
 
 let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
@@ -1400,7 +1401,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Rezepte des Tages ohne Hilfsdienst: drei eingebaute Rezepte pro Tag, hinzufügen/überspringen, am nächsten Tag neue, Neustart der Runde', async () => {
+  test('Rezepte des Tages ohne Hilfsdienst: drei eingebaute Rezepte pro Tag, hinzufügen/überspringen, am nächsten Tag neue', async () => {
     const { ctx, page, problems } = await context();   // kein Hilfsdienst, kein Link
     const external = [];
     page.on('request', request => { if (!request.url().startsWith(base)) external.push(request.url()); });
@@ -1443,23 +1444,132 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#daily-open'); await sheetOpen(page);
     await page.waitForSelector('#daily-card .daily-ingredients');
     assert.ok(!first.includes(await title()), 'ein neues Rezept');
-    // Alles entschieden: „Von vorn beginnen“
-    await page.evaluate(async () => {
-      const key = 'einkauf-daily:einkauf-demo-v1', data = JSON.parse(localStorage.getItem(key)), all = await (await fetch('./rezepte-des-tages.json')).json();
-      data.decided = all.map(entry => `eigene:${entry.n.toLowerCase()}`); data.day = '2020-01-01'; localStorage.setItem(key, JSON.stringify(data));
-    });
-    await page.keyboard.press('Escape'); await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
-    await page.click('[data-tab=recipes]'); await page.click('#daily-open'); await sheetOpen(page);
-    await page.waitForSelector('#daily-reset:not([hidden])');
-    assert.match(await page.textContent('#daily-card'), /alle \d+ Rezepte der Sammlung gesehen/);
-    await page.click('#daily-reset');
-    await page.waitForSelector('#daily-card .daily-ingredients');
-    assert.match(await page.textContent('#daily-progress'), /Rezept 1 von \d/);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(external, [], 'es wurde keine fremde Adresse abgerufen (kein Hilfsdienst, kein Netz nötig)');
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
   });
+
+  // Ein anderer Tag: Date läuft um `Tage` vor (die Zahl steht im localStorage und überlebt das Neuladen).
+  const withDayOffset = ctx => ctx.addInitScript(() => {
+    const Original = Date, offset = () => Number(localStorage.getItem('test-day-offset') || 0) * 86400000;
+    window.Date = class extends Original { constructor(...args) { if (args.length) super(...args); else super(Original.now() + offset()); } static now() { return Original.now() + offset(); } };
+  });
+  const dayString = offset => { const date = new Date(Date.now() + offset * 86400000); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+  // Alle Rezepte der Sammlung sind entschieden. Mit `day` = heute und leerer Liste: der Stand von vor den neuen Rezepten („alles gesehen“).
+  const finishCollection = (page, day = '') => page.evaluate(async today => {
+    const all = await (await fetch('./rezepte-des-tages.json')).json();
+    localStorage.setItem('einkauf-daily:einkauf-demo-v1', JSON.stringify({ day: today, source: 'eingebaut', queue: [], index: 0, outcome: {}, builtin: true, decided: all.map(entry => `eigene:${entry.n.toLowerCase()}`) }));
+    return all.length;
+  }, day);
+
+  test('Rezepte des Tages: ist die Sammlung durch, kommen automatisch neue Rezepte, und gespeichert wird nur, was hinzugefügt wird', async () => {
+    const { ctx, page, problems } = await context();
+    await withDayOffset(ctx);
+    const external = [];
+    page.on('request', request => { if (!request.url().startsWith(base)) external.push(request.url()); });
+    await open(page);
+    const total = await finishCollection(page, dayString(0));   // heute schon als „alles gesehen“ gespeichert: wird neu geplant
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent), null, { timeout: 8000 });
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    const title = async () => (await page.textContent('#daily-card h3')).trim();
+    const advance = async button => { const old = await title(); await page.click(button); await page.waitForFunction(text => document.querySelector('#daily-card h3')?.textContent.trim() !== text, old); };
+    assert.equal(await page.locator('#daily-reset').count(), 0, 'kein „Von vorn beginnen“ mehr');
+    assert.match(await page.textContent('#daily-card'), /Neu zusammengestellt\. Gespeichert wird nur, was du hinzufügst\./);
+    assert.match(await page.textContent('#daily-card'), /Min\..*Portionen.*Zutaten/s);
+    const shown = [await title()];
+    await advance('#daily-add'); shown.push(await title());
+    await advance('#daily-skip'); shown.push(await title());
+    await advance('#daily-skip');
+    await page.waitForSelector('#daily-card h3:has-text("Für heute geschafft")');
+    assert.match(await page.textContent('#daily-card'), /1 von 3 Rezepten hinzugefügt, 2 übersprungen/);
+    assert.equal(new Set(shown).size, 3);
+    const expected = planGenerated(dayString(0)).map(pick => pick.title);
+    assert.deepEqual(shown, expected, 'dieselben drei wie auf jedem anderen Gerät (feste Reihenfolge, nur der Tag zählt)');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await page.locator('#recipe-list .recipe-card', { hasText: shown[0] }).count(), 1, 'das hinzugefügte Rezept ist gespeichert');
+    for (const name of shown.slice(1)) assert.equal(await page.locator('#recipe-list .recipe-card', { hasText: name }).count(), 0, `${name} wurde übersprungen und steht nirgends`);
+    const card = page.locator('#recipe-list .recipe-card', { hasText: shown[0] });
+    assert.match(await card.textContent(), /Zutaten/); assert.match(await card.textContent(), /Zubereitung/);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-daily:einkauf-demo-v1')));
+    assert.equal(saved.decided.length, total, 'gemerkt wird nur die eingebaute Sammlung, nichts von den neu zusammengestellten');
+    assert.ok(!JSON.stringify(saved.decided).toLowerCase().includes(shown[1].toLowerCase()));
+    // Am nächsten Tag drei andere, wieder neue Rezepte
+    await page.evaluate(() => localStorage.setItem('test-day-offset', '1'));
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent), null, { timeout: 8000 });
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    const tomorrow = [await title()];
+    await advance('#daily-skip'); tomorrow.push(await title());
+    await advance('#daily-skip'); tomorrow.push(await title());
+    assert.deepEqual(tomorrow, planGenerated(dayString(1)).map(pick => pick.title));
+    assert.ok(tomorrow.every(name => !shown.includes(name)), 'nichts vom Vortag');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(external, [], 'kein Netz nötig');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Rezepte des Tages: bleiben noch Rezepte der Sammlung übrig, füllen neue die freien Plätze des Tages', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.evaluate(async () => {
+      const all = await (await fetch('./rezepte-des-tages.json')).json();   // alle bis auf ein Rezept entschieden
+      localStorage.setItem('einkauf-daily:einkauf-demo-v1', JSON.stringify({ day: '', source: 'eingebaut', queue: [], index: 0, outcome: {}, decided: all.slice(1).map(entry => `eigene:${entry.n.toLowerCase()}`) }));
+      localStorage.setItem('test-rest', all[0].n);
+    });
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]'); await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent), null, { timeout: 8000 });
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    const rest = await page.evaluate(() => localStorage.getItem('test-rest'));
+    assert.equal((await page.textContent('#daily-card h3')).trim(), rest, 'zuerst das letzte Rezept der Sammlung');
+    assert.match(await page.textContent('#daily-card'), /Aus der eingebauten Sammlung/);
+    await page.click('#daily-skip');
+    await page.waitForFunction(() => /Neu zusammengestellt/.test(document.querySelector('#daily-card').textContent));
+    assert.match(await page.textContent('#daily-progress'), /Rezept 2 von 3/);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  for (const width of [280, 314, 390]) {
+    test(`Rezepte des Tages: der Dialog lässt sich nicht zur Seite schieben (${width} px, auch mit großer Schrift)`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 700 } } });
+      await open(page);
+      await page.click('[data-tab=recipes]');
+      await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent), null, { timeout: 8000 });
+      const measure = () => page.evaluate(() => {
+        const dialog = document.querySelector('#daily-dialog'), limit = document.documentElement.clientWidth, wide = [];
+        for (const node of dialog.querySelectorAll('*')) { const box = node.getBoundingClientRect(); if (box.width && (box.right > limit + 0.5 || box.left < -0.5)) wide.push(`${node.tagName.toLowerCase()}#${node.id} ${Math.round(box.left)}…${Math.round(box.right)}`); }
+        return { overflow: dialog.scrollWidth - dialog.clientWidth, wide, page: document.documentElement.scrollWidth - limit, scrollLeft: dialog.scrollLeft };
+      });
+      await page.click('#daily-open'); await sheetOpen(page);
+      await page.waitForSelector('#daily-card .daily-ingredients');
+      for (const scale of ['100%', '150%', '200%']) {
+        await page.evaluate(size => { document.documentElement.style.fontSize = size; }, scale);
+        for (let step = 0; step < 3; step++) {
+          const result = await measure();
+          assert.deepEqual(result, { overflow: 0, wide: [], page: 0, scrollLeft: 0 }, `Schrift ${scale}, Rezept ${step + 1}`);
+          // Ein Wischversuch zur Seite bewegt nichts
+          await page.evaluate(() => { document.querySelector('#daily-dialog').scrollLeft = 80; });
+          assert.equal((await measure()).scrollLeft, 0, 'seitlich nicht scrollbar');
+          if (step < 2) { const old = (await page.textContent('#daily-card h3')).trim(); await page.click('#daily-skip'); await page.waitForFunction(text => document.querySelector('#daily-card h3')?.textContent.trim() !== text, old); }
+        }
+        await page.evaluate(() => localStorage.removeItem('einkauf-daily:einkauf-demo-v1'));
+        await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+        await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+        await page.click('[data-tab=recipes]'); await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent), null, { timeout: 8000 });
+        await page.click('#daily-open'); await sheetOpen(page); await page.waitForSelector('#daily-card .daily-ingredients');
+      }
+      assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+      await ctx.close();
+    });
+  }
 
   test('Rezepte des Tages mit eigener Seite: Fehler lassen sich wiederholen, Link prüfen und speichern, Stand wird gemerkt', async () => {
     const behavior = { fail: true };

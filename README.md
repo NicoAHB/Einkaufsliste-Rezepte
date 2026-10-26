@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.10
+# Einkauf & Rezepte – Version 2.11
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,14 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.11: Rezepte des Tages lassen sich nicht mehr zur Seite schieben, neue Rezepte nach der Sammlung
+
+- **Das Fenster „Rezepte des Tages“ ließ sich nach links und rechts verschieben.** Ursache: Die Knöpfe unten („Überspringen“, „Hinzufügen“) durften nicht schmaler werden als ihre Schrift. Auf schmalen Handys oder bei vergrößerter Schrift (iOS „Textgröße“, Android „Schriftgröße“) wurden sie breiter als das Fenster und schoben es zur Seite. Jetzt brechen die Knöpfe in eine zweite Zeile um, lange Wörter in der Karte brechen um, und das Fenster lässt sich nur noch auf und ab bewegen (`overflow-x: hidden` plus `touch-action: pan-y`). Die Prüfung läuft über 280, 314 und 390 px Breite und Schriftgrößen von 100, 150 und 200 %; ohne die Korrektur schlägt sie fehl.
+- **Nach den 69 Rezepten der Sammlung kommen automatisch neue Rezepte.** Der Knopf „Von vorn beginnen“ entfällt. Die neuen Rezepte stellt die App selbst zusammen (`recipe-maker.js`, wird erst dann geladen): 19 Rezeptarten (Nudel-, Reis- und Gnocchi-Pfanne, Kokos-Curry, Wraps, Couscous-Bowl, Ofenblech, Kartoffelauflauf, Frittata, Flammkuchen, Tortilla-Pizza, Cremesuppen, Eintopf, Risotto, Crumble, Pfannkuchen, Milchreis, Quarkspeise, Overnight Oats) mit je passendem Gemüse bzw. Obst und passender Beilage bzw. Belag. Daraus ergeben sich **über 2.700 verschiedene Rezepte** (bei drei pro Tag rund zweieinhalb Jahre), jeweils mit Zutaten und Mengen für vier Portionen, nummerierten Schritten und Zeitangabe. Welche Bausteine zusammenpassen, ist im Code festgelegt (zum Beispiel kein Fisch im Gratin, kein Thunfisch im Curry, Käse erst zum Schluss).
+- **Gespeichert wird nur, was du hinzufügst.** Die neuen Rezepte werden nirgends abgelegt: Sie entstehen aus der Tageszahl (Tag × 3 + Platz) in fester Reihenfolge. Übersprungene Vorschläge tauchen weder in den Daten noch im Merkzettel des Geräts auf; das Gerät merkt sich nur noch, welche Rezepte der **eingebauten Sammlung** schon dran waren. Wer ein Rezept hinzufügt, hat es bei seinen Rezepten und bekommt es nicht noch einmal vorgeschlagen. Beide Handys sehen am selben Tag dieselben drei Rezepte.
+- Bleiben von der Sammlung nur noch ein oder zwei Rezepte, füllen neue die freien Plätze des Tages. Auf der Karte steht bei neuen Rezepten „Neu zusammengestellt. Gespeichert wird nur, was du hinzufügst.“
+- **Ehrlich dazu:** Die Rezepte sind nach festen Regeln zusammengesetzt, nicht frei geschrieben. Sie sind alltagstauglich und in sich stimmig (Tests prüfen Zutaten, Sätze, Kategorien und Zeiten aller 2.700 Rezepte), aber nicht jede Kombination ist ein Geheimtipp. Was nicht gefällt, wird mit **Überspringen** übergangen; mit der Zeit lassen sich Bausteine und Rezeptarten in `recipe-maker.js` ergänzen.
 
 ## Neu in Version 2.10: Anleitung in der App
 
@@ -340,7 +348,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -467,6 +475,12 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.11:
+
+- [ ] Rezepte → „Rezepte des Tages“ öffnen: Das Fenster lässt sich nicht nach links oder rechts schieben, auch nicht bei großer Schrift (Einstellungen des Handys) und auch nicht, wenn man mit dem Finger seitlich wischt.
+- [ ] Alle 69 Rezepte der Sammlung durchgehen (oder zum Prüfen die Daten dieses Geräts löschen und dreiundzwanzig Tage lang je drei entscheiden): Danach erscheinen weiter drei Vorschläge pro Tag mit dem Hinweis „Neu zusammengestellt“, ohne Knopf „Von vorn beginnen“.
+- [ ] Ein neu zusammengestelltes Rezept **hinzufügen**: Es steht mit Zutaten und Zubereitung bei den Rezepten. Ein **übersprungenes** steht nirgends und kommt nicht wieder.
 
 Weitere Testpunkte für Version 2.9:
 
