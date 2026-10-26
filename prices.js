@@ -105,12 +105,17 @@ export function itemQuote(item, history = []) {
   return item.price === undefined ? rememberedPrice(history, item.storeId, item.name, item.unit) : item.price;
 }
 
-export function effectiveQuote(item, history = []) {
-  return item.onSale && validQuote(item.salePrice) ? item.salePrice : itemQuote(item, history);
+/* Gültigkeit von Angeboten (Version 1.8): `saleUntil` ist ein optionaler letzter Gültigkeitstag (JJJJ-MM-TT). Ein abgelaufenes Angebot
+   zählt nicht mehr als aktueller Angebotspreis; Summe und Vergleich rechnen mit dem normalen Preis. Ohne Datum gilt ein Angebot, bis es
+   ausgeschaltet wird (wie bisher). */
+export const localDay = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+export const saleExpired = (row, today = localDay()) => Boolean(row.onSale && typeof row.saleUntil === 'string' && row.saleUntil && row.saleUntil < today);
+export function effectiveQuote(item, history = [], today = localDay()) {
+  return item.onSale && validQuote(item.salePrice) && !saleExpired(item, today) ? item.salePrice : itemQuote(item, history);
 }
 
-export function itemCost(item, history = []) {
-  const rate = unitRate(effectiveQuote(item, history), item.unit);
+export function itemCost(item, history = [], today = localDay()) {
+  const rate = unitRate(effectiveQuote(item, history, today), item.unit);
   if (rate === null) return null;
   const cents = Math.round(item.quantity * rate);
   return Number.isSafeInteger(cents) && cents >= 0 ? cents : null;
@@ -127,12 +132,18 @@ export function shoppingTotal(items, history = []) {
   return { cents, missing, count: open.length, priced: open.length - missing };
 }
 
-export function comparePrices(item, stores, history = []) {
+// Vergleich je Geschäft mit dem zuletzt notierten Preis. Eine notierte Aktion, die inzwischen abgelaufen ist, zählt mit ihrem Normalpreis
+// (`expired: true`), sonst gar nicht. `at` ist der Tag der Notiz; `old` markiert Notizen, die älter als 60 Tage sind.
+export function comparePrices(item, stores, history = [], today = localDay()) {
   const unit = unitSpec(item.unit);
   if (!unit.comparable) return [];
   return latestPrices(history, item.name, item.unit).flatMap(row => {
     const store = stores.find(store => store.id === row.storeId && !store.deletedAt);
-    return store ? [{ ...row, storeName: store.name, rate: unitRate(row.quote, unit.label), unit: unit.label }] : [];
+    if (!store) return [];
+    const expired = saleExpired(row, today), quote = expired ? (validQuote(row.regularQuote) ? row.regularQuote : null) : row.quote;
+    if (!quote || unitRate(quote, unit.label) === null) return [];
+    const age = Math.floor((Date.parse(`${today}T12:00:00`) - Date.parse(row.createdAt)) / 86400000);
+    return [{ ...row, quote, storeName: store.name, rate: unitRate(quote, unit.label), unit: unit.label, expired, at: row.createdAt, old: age > TREND.days }];
   }).sort((a, b) => a.rate - b.rate || a.storeName.localeCompare(b.storeName, 'de'));
 }
 

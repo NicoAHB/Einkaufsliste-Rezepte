@@ -35,7 +35,7 @@ function remember(names, rows, max) {
     const key = productKey(row.name), at = row.updatedAt || row.createdAt;
     const entry = known.get(key) || { name: row.name.trim().replace(/\s+/g, ' '), count: 0, at };
     entry.count += Number(row.weight) || 1;
-    if (at >= entry.at) { entry.at = at; if (isCategory(row.category)) entry.category = row.category; }
+    if (at >= entry.at) { entry.at = at; if (isCategory(row.category)) entry.category = row.category; if (typeof row.unit === 'string' && row.unit) entry.unit = row.unit; }
     else if (!entry.category && isCategory(row.category)) entry.category = row.category;
     known.set(key, entry);
   }

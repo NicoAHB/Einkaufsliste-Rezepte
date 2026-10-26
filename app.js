@@ -1,5 +1,8 @@
-import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, suggestItemNames, uid, validDay, validate } from './data.js';
-import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
+import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
+import { splitSteps } from './cook.js';
+import { currentIds, newFromOthers } from './news.js';
+import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
@@ -32,7 +35,12 @@ const signature = () => `${state.updatedAt}|${state.sync.applied.length}|${state
 // Was die App über Artikel weiß: vorhandene Artikel plus das Namensgedächtnis aus dem Aufräumen (siehe compact.js).
 let historyMemo = { for: null, rows: [] };
 function itemHistory() {
-  if (historyMemo.for !== state) historyMemo = { for: state, rows: [...state.items, ...(state.names || []).map(entry => ({ name: entry.name, category: entry.category, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))] };
+  if (historyMemo.for !== state) {
+    // Bestätigte Zuordnungen („Zwiebel“ → „Zwiebeln“) führen die Schreibweisen zusammen, auch rückwirkend.
+    const rename = new Map(active(state.aliases || []).map(alias => [alias.from, alias.name]));
+    const named = row => { const to = rename.get(aliasKey(row.name)); return to ? { ...row, name: to } : row; };
+    historyMemo = { for: state, rows: [...state.items, ...(state.names || []).map(entry => ({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))].map(named) };
+  }
   return historyMemo.rows;
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -209,6 +217,37 @@ function renderStoreChips() {
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
 }
 const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+/* „Neu von …“: Artikel, die andere angelegt (oder in der Menge erhöht) haben, stehen oben, bis man sie übernimmt. Welche man schon gesehen hat,
+   merkt sich nur dieses Gerät. Beim ersten Start (und auf einem neuen Gerät nach dem ersten Abgleich) gilt alles Vorhandene als gesehen. */
+let seen = null;
+const seenKey = () => `einkauf-seen:${namespace()}`;
+function saveSeen() {
+  const keep = currentIds(state.items);
+  seen = new Set([...seen].filter(id => keep.has(id)));
+  try { localStorage.setItem(seenKey(), JSON.stringify({ ids: [...seen] })); } catch { /* nur ein Hinweis, nichts geht verloren */ }
+}
+function ensureSeen() {
+  if (seen || !ready) return;
+  try { const saved = JSON.parse(localStorage.getItem(seenKey())); if (Array.isArray(saved?.ids)) seen = new Set(saved.ids); } catch { /* neu anlegen */ }
+  if (!seen) { seen = currentIds(state.items); saveSeen(); }
+}
+function acknowledge(ids) {
+  ensureSeen(); ids.forEach(id => seen.add(id));
+  const keep = currentIds(state.items);
+  try { localStorage.setItem(seenKey(), JSON.stringify({ ids: [...seen].filter(id => keep.has(id)) })); } catch { /* s. o. */ }
+  renderItems();
+}
+function newsRow(entry) {
+  const item = entry.item, row = element('li', undefined, 'item news');
+  const copy = element('div', undefined, 'item-copy');
+  const notes = entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`);
+  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit}${view === 'all' ? ` · ${storeName(item.storeId)}` : ''} · ${notes.join(', ')}`));
+  const actions = element('div', undefined, 'item-actions');
+  actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'),
+    iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)), iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id])));
+  row.append(copy, actions);
+  return row;
+}
 function groupHead(label, count) {
   const row = element('li', undefined, 'group-head');
   row.append(element('span', label), element('span', String(count), 'count'));
@@ -231,19 +270,22 @@ function itemRow(item, withStore = false) {
   check.setAttribute('aria-pressed', String(Boolean(item.checked)));
   const copy = element('div', undefined, 'item-copy');
   copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}${withStore ? ` · ${storeName(item.storeId)}` : ''}`));
-  if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
+  const expired = saleExpired(item);
+  if (item.onSale) copy.append(element('span', expired ? `Angebot abgelaufen (${dayLabel(item.saleUntil)})` : item.saleUntil ? `Im Angebot bis ${dayLabel(item.saleUntil)}` : 'Im Angebot', `sale-badge${expired ? ' expired' : ''}`));
   if (item.onSale && item.salePrice) {
-    copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
+    copy.append(element('small', expired ? `Angebot war ${quoteLabel(item.salePrice)}. Es gilt der normale Preis.` : `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
     const normal = itemQuote(item, state.prices);
     if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
   }
   const cost = itemCost(item, state.prices);
   if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
+  const trend = activeTrend(item, state.prices);
+  if (trend) copy.append(element('small', trendLabel(trend), `trend ${trend.direction}`));
   const quotes = comparePrices(item, state.stores, state.prices);
   if (quotes.length) {
     const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
     const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
-    copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
+    copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit} · eingetragen am ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
   }
   const actions = element('div', undefined, 'item-actions');
   actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
@@ -255,10 +297,19 @@ function renderItems() {
   renderShoppingInfo();
   const list = $('#items'); list.replaceChildren();
   const rows = visibleItems().filter(inView);
-  const open = rows.filter(item => !item.checked), done = rows.filter(item => item.checked).sort(byName);
-  $('#item-count').textContent = `${open.length} offen · ${done.length} erledigt`;
+  ensureSeen();
+  const news = seen ? newFromOthers(rows, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
+  const open = rows.filter(item => !item.checked && !newIds.has(item.id)), done = rows.filter(item => item.checked).sort(byName);
+  $('#item-count').textContent = `${open.length + news.length} offen · ${done.length} erledigt`;
   $('#clear-checked').disabled = !done.length;
-  if (!rows.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
+  if (!rows.length && !news.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
+  if (news.length) {
+    const names = [...new Set(news.flatMap(entry => entry.by))].join(' und ');
+    const head = element('li', undefined, 'news-head');
+    head.append(element('span', `Neu von ${names}`), element('span', String(news.length), 'count'),
+      button('Alle übernehmen', () => acknowledge(news.flatMap(entry => entry.entries.map(e => e.id))), 'text-button'));
+    list.append(head); news.forEach(entry => list.append(newsRow(entry)));
+  }
   // Nach Gängen im Laden geordnet (abschaltbar in den Einstellungen); Erledigtes steht immer unten.
   const grouped = config.groupItems !== false;
   const addOpen = (items, nested) => {
@@ -282,19 +333,50 @@ function renderItems() {
     done.forEach(item => list.append(itemRow(item, view === 'all')));
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
+  renderQuickPick();
 }
 function renderItemSuggestions() {
-  const form = $('#item-form'), box = $('#item-suggestions');
-  const names = suggestItemNames(itemHistory(), form.elements.name.value);
-  box.replaceChildren(); box.hidden = !names.length;
-  if (!names.length) return;
-  box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
-  const choices = element('div', undefined, 'suggestion-choices');
-  for (const name of names) choices.append(button(name, () => {
-    form.elements.name.value = name; box.hidden = true;
-    rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
-  }));
-  box.append(choices);
+  const form = $('#item-form'), box = $('#item-suggestions'), typed = form.elements.name.value.trim();
+  const history = itemHistory();
+  // Andere Schreibweise eines bekannten Namens („Zwiebel“ statt „Zwiebeln“): nur vorschlagen, erst die Bestätigung wird gemerkt.
+  const confirmed = active(state.aliases || []).some(alias => alias.from === aliasKey(typed));
+  const variants = typed && !confirmed ? spellingVariants(typed, [...new Set(history.map(row => row.name))]).slice(0, 3) : [];
+  const names = suggestItemNames(history, typed).filter(name => !variants.includes(name));
+  box.replaceChildren(); box.hidden = !names.length && !variants.length;
+  if (box.hidden) return;
+  if (variants.length) {
+    box.append(element('span', 'Meinst du dasselbe wie …?', 'hint'));
+    const same = element('div', undefined, 'suggestion-choices');
+    for (const name of variants) same.append(button(name, () => {
+      commit([nextOp('aliases', uid(), { from: aliasKey(typed), name })], `„${typed}“ heißt jetzt immer „${name}“`);
+      form.elements.name.value = name; box.hidden = true;
+      rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
+    }));
+    box.append(same);
+  }
+  if (names.length) {
+    box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
+    const choices = element('div', undefined, 'suggestion-choices');
+    for (const name of names) choices.append(button(name, () => {
+      form.elements.name.value = name; box.hidden = true;
+      rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
+    }));
+    box.append(choices);
+  }
+}
+// Schnellwahl: häufig gekaufte Artikel, die gerade nicht auf der Liste stehen. Ein Tipp legt einen Artikel (Menge 1) im gewählten Geschäft an.
+function renderQuickPick() {
+  const box = $('#quick-pick'), form = $('#item-form');
+  const picks = form.elements.name.value.trim() ? [] : frequentItems(itemHistory(), state.items, 6);
+  box.hidden = !picks.length; box.replaceChildren();
+  for (const pick of picks) {
+    const chip = element('button', pick.name, 'chip'); chip.type = 'button';
+    chip.addEventListener('click', () => {
+      form.elements.name.value = pick.name; form.elements.quantity.value = '1'; form.elements.unit.value = pick.unit || 'Stück';
+      form.requestSubmit();
+    });
+    box.append(chip);
+  }
 }
 function renderShoppingInfo() {
   const store = viewStore(), url = storeOfferUrl(store);
@@ -307,14 +389,23 @@ function renderShoppingInfo() {
   box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
   box.append(element('p', total.missing ? `${total.missing} Artikel ohne Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel eingerechnet.' : 'Erledigte zählen nicht mit.', 'hint'));
 }
+const perLabel = quote => quote.quantity === 1 ? `je ${quote.unit}` : `je ${format(quote.quantity)} ${quote.unit}`;
+// „▲ Teurer: 1,29 € → 1,39 € je Stück (+8 %)“: Pfeil und Wort, nicht nur die Farbe.
+function trendLabel(trend) {
+  const percent = `${trend.percent > 0 ? '+' : '−'}${format(Math.round(Math.abs(trend.percent)))} %`;
+  return `${trend.direction === 'up' ? '▲ Teurer' : '▼ Günstiger'}: ${euros(trend.before)} → ${euros(trend.now.cents)} ${perLabel(trend.now)} (${percent}) seit ${shortDate(trend.since)}`;
+}
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
 function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
   form.elements[`${prefix}Euros`].value = quote ? (quote.cents / 100).toFixed(2).replace('.', ',') : '';
   form.elements[`${prefix}Quantity`].value = quote ? String(quote.quantity).replace('.', ',') : '1';
   form.elements[`${prefix}Unit`].value = quote?.unit || fallbackUnit;
 }
-function setSaleFields(form, quote = null) {
+// Ein Tag (JJJJ-MM-TT) als kurzes Datum, unabhängig von der Zeitzone.
+const dayLabel = day => shortDate(`${day}T12:00:00`);
+function setSaleFields(form, quote = null, until = '') {
   form._savedSaleQuote = quote ? clone(quote) : null;
+  form.elements.saleUntil.value = until || '';
   setQuoteFields(form, quote, form.elements.priceUnit.value, 'sale');
   if (!quote) form.elements.saleQuantity.value = form.elements.priceQuantity.value;
   toggleSaleFields(form);
@@ -366,13 +457,16 @@ function readPricing(form) {
   if (onSale && price && salePrice && unitRate(salePrice, price.unit) * price.quantity >= price.cents - 0.0000001) {
     throw new Error('Der Angebotspreis muss für die gleiche Menge günstiger als der normale Preis sein. Bitte Preise und Bezugsmengen prüfen.');
   }
-  return { price, salePrice, onSale };
+  return { price, salePrice, onSale, saleUntil: form.elements.saleUntil.value || null };
 }
 function priceOperation(item) {
   // Jeder notierte Preis ist ein eigener Datensatz: gleichzeitige Einträge
   // verschiedener Geräte bleiben erhalten, der neueste passende wird verwendet.
-  return nextOp('prices', uid(), { storeId: item.storeId, name: item.name,
-    quote: clone(effectiveQuote(item, state.prices)), regularQuote: clone(itemQuote(item, state.prices) || null), onSale: Boolean(item.onSale) });
+  const sale = Boolean(item.onSale) && !saleExpired(item);
+  const row = { storeId: item.storeId, name: item.name,
+    quote: clone(effectiveQuote(item, state.prices)), regularQuote: clone(itemQuote(item, state.prices) || null), onSale: sale, ...(sale && item.saleUntil ? { saleUntil: item.saleUntil } : {}) };
+  const trend = trendFor(state.prices, row);
+  return nextOp('prices', uid(), trend ? { ...row, trend } : row);
 }
 function showComparison(item) {
   const box = $('#price-comparison'); box.replaceChildren();
@@ -385,8 +479,9 @@ function showComparison(item) {
   const list = element('ul', undefined, 'comparison-list');
   for (const row of rows) {
     const line = element('li');
+    const sale = row.expired ? ` · Angebot abgelaufen${row.saleUntil ? ` (${dayLabel(row.saleUntil)})` : ''}, es gilt der Normalpreis` : row.onSale ? (row.saleUntil ? ` · Angebot bis ${dayLabel(row.saleUntil)}` : ' · damals im Angebot') : '';
     line.append(element('strong', `${row.storeName}: ${euros(row.rate)}/${row.unit}`),
-      element('small', `${quoteLabel(row.quote)} · ${shortDate(row.createdAt)}${row.onSale ? ' · damals im Angebot' : ''}`));
+      element('small', `${quoteLabel(row.quote)} · zuletzt eingetragen am ${shortDate(row.at)}${row.old ? ' (über zwei Monate her)' : ''}${sale}`, row.old || row.expired ? 'stale' : undefined));
     list.append(line);
   }
   const storeCount = active(state.stores).length;
@@ -395,7 +490,7 @@ function showComparison(item) {
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale),
+  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
@@ -403,7 +498,7 @@ function editItem(id) {
   storeOptions(form.elements.storeId, item.storeId || '', true);
   setQuoteFields(form, itemQuote(item, state.prices), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
-  setSaleFields(form, item.salePrice);
+  setSaleFields(form, item.salePrice, item.saleUntil);
   form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
   showComparison(item); message(); $('#item-dialog').showModal();
 }
@@ -518,6 +613,7 @@ function recipeCard(recipe, ingredients) {
   card.append(details);
   const actions = element('div', undefined, 'actions');
   actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), 'primary-action'),
+    button('Kochen', () => openCook(recipe.id, positive(servingInput.value)), 'secondary'),
     iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })));
   card.append(actions);
   return card;
@@ -987,7 +1083,7 @@ async function sync(manual = false) {
   }
 }
 async function loadWorkspace() {
-  ready = false; pending = []; base = emptyData(); state = base; $('#notice').hidden = true;
+  ready = false; seen = null; pending = []; base = emptyData(); state = base; $('#notice').hidden = true;
   remoteEtag = '';
   const cache = localStorage.getItem(namespace());
   if (cache) {
@@ -1029,6 +1125,180 @@ async function backup() {
   const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
   const link = element('a'); link.href = url; link.download = name;
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------- Kochmodus ---------- */
+// Haken in Zutaten und Schritten gelten nur für dieses Öffnen der App; sie werden nicht gespeichert und nicht abgeglichen.
+const cooked = new Map();
+let wakeLock = null, wakeWanted = false;
+async function keepAwake(on) {
+  wakeWanted = on;
+  const hint = $('#cook-awake-hint');
+  if (!on) { try { await wakeLock?.release(); } catch { /* schon freigegeben */ } wakeLock = null; hint.textContent = ''; return; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    hint.textContent = 'Der Bildschirm bleibt an, solange diese Ansicht offen ist.';
+  } catch {
+    wakeLock = null; $('#cook-awake').checked = false; wakeWanted = false;
+    hint.textContent = 'Das lässt sich auf diesem Gerät gerade nicht einschalten. Du kannst unter Einstellungen → Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
+  }
+}
+function openCook(id, servings) {
+  const recipe = active(state.recipes).find(row => row.id === id);
+  if (!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
+  const factor = servings / recipe.servings, saved = cooked.get(id) || { ingredients: new Set(), steps: new Set() };
+  cooked.set(id, saved);
+  $('#cook-title').textContent = recipe.name; $('#cook-portions').textContent = `Für ${format(servings)} Portionen. Antippen hakt ab.`;
+  const list = $('#cook-ingredients'); list.replaceChildren();
+  for (const row of active(state.ingredients).filter(entry => entry.recipeId === id)) {
+    const item = element('li'), label = element('label'), check = element('input'); check.type = 'checkbox'; check.checked = saved.ingredients.has(row.id);
+    check.addEventListener('change', () => { if (check.checked) saved.ingredients.add(row.id); else saved.ingredients.delete(row.id); });
+    label.append(check, element('span', ingredientLabel(row, factor))); item.append(label); list.append(item);
+  }
+  if (!list.children.length) list.append(element('li', 'Keine Zutaten eingetragen.', 'hint'));
+  const steps = $('#cook-steps'); steps.replaceChildren();
+  splitSteps(recipe.instructions).forEach((text, index) => {
+    const step = element('button'), item = element('li'); step.type = 'button'; step.append(element('span', text));
+    const mark = () => step.setAttribute('aria-pressed', String(saved.steps.has(index)));
+    step.addEventListener('click', () => { if (saved.steps.has(index)) saved.steps.delete(index); else saved.steps.add(index); mark(); });
+    mark(); item.append(step); steps.append(item);
+  });
+  if (!steps.children.length) steps.append(element('li', 'Keine Zubereitung eingetragen.', 'hint'));
+  const supported = 'wakeLock' in navigator;
+  $('#cook-awake-label').hidden = !supported; $('#cook-awake').checked = supported && config.cookAwake === true; $('#cook-awake-hint').textContent = '';
+  $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate() })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
+  $('#cook-dialog').showModal();
+  if (supported && config.cookAwake === true) void keepAwake(true);
+}
+
+/* ---------- Kassenbon ---------- */
+let receiptLines = [], receiptParsed = null;
+// Namen, die die App schon kennt: Artikel, Namensgedächtnis, notierte Preise und bestätigte Zuordnungen.
+function knownNames() {
+  const names = new Map();
+  for (const row of [...itemHistory(), ...state.prices, ...active(state.aliases || []).map(alias => ({ name: alias.name }))]) {
+    if (typeof row.name === 'string' && row.name.trim() && !names.has(productKey(row.name))) names.set(productKey(row.name), row.name.trim());
+  }
+  return [...names.values()];
+}
+function openReceipt() {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  if (!active(state.stores).length) throw new Error('Bitte zuerst ein Geschäft anlegen.');
+  const form = $('#receipt-form'); form.reset();
+  $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message();
+  $('#receipt-dialog').showModal(); form.elements.text.focus();
+}
+const receiptCents = text => parseCents(String(text).replace(/\s*(?:€|EUR)\s*$/i, ''));
+function receiptQuote(line) {
+  const euros = line.inputs.price.value.trim(), quantity = line.inputs.quantity.value.trim(), unit = line.inputs.unit.value.trim();
+  if (!euros || !quantity || !unit) throw new Error(`Bitte Preis, Menge und Einheit für „${line.inputs.name.value.trim() || line.item.name}“ ausfüllen.`);
+  return { cents: receiptCents(euros), quantity: positive(quantity), unit };
+}
+// Vorschau je Zeile: gemerkt/Vorschlag, schon eingetragen, Aktion, Entwicklung gegenüber dem letzten Preis.
+function refreshReceiptLine(line) {
+  const note = line.note; note.className = 'receipt-note hint'; note.textContent = '';
+  const parts = [];
+  if (line.how) parts.push(line.how === 'gemerkt' ? 'Zuordnung gemerkt' : 'Vorschlag, bitte prüfen');
+  try {
+    const form = $('#receipt-form'), storeId = form.elements.storeId.value, name = line.inputs.name.value.trim();
+    const quote = receiptQuote(line);
+    if (line.item.onSale) parts.push(`Aktion: bezahlt ${euros(line.item.quote.cents)} ${perLabel(line.item.quote)}`);
+    if (name) {
+      const at = receiptTime(form), fresh = { storeId, name, quote: line.item.onSale ? line.item.quote : quote, regularQuote: quote, onSale: line.item.onSale };
+      const trend = trendFor(state.prices, fresh, at);
+      const before = trend && activeTrend({ storeId, name, unit: quote.unit }, [{ ...fresh, id: 'vorschau', createdAt: at, trend }], new Date(at));
+      if (before) { note.classList.add('trend', before.direction); parts.unshift(trendLabel(before)); }
+      else if (!state.prices.some(row => !row.deletedAt && row.storeId === storeId && productKey(row.name) === productKey(name))) parts.push('neu in der Preisliste');
+    }
+  } catch (error) { parts.push(error.message); }
+  note.textContent = parts.join(' · ');
+}
+function receiptTime(form) {
+  const day = form.elements.date.value;
+  if (!day) return new Date().toISOString();
+  if (!validDay(day)) throw new Error('Bitte ein gültiges Datum angeben.');
+  const stamp = new Date(`${day}T12:00:00`);
+  if (stamp.getTime() > Date.now() + 86400000) throw new Error('Das Datum liegt in der Zukunft.');
+  return stamp.toISOString();
+}
+function parseReceiptText() {
+  const form = $('#receipt-form'), parsed = parseReceipt(form.elements.text.value);
+  if (!parsed.items.length) throw new Error('Auf dem Text wurden keine Artikelzeilen erkannt. Bitte den ganzen Text des Kassenbons einfügen (Artikel mit Preis, je Zeile).');
+  receiptParsed = parsed;
+  storeOptions(form.elements.storeId, storeForChain(parsed.chain, state.stores) || viewStore()?.id || '', false);
+  form.elements.date.value = parsed.date || isoDate();
+  const list = $('#receipt-lines'); list.replaceChildren(); receiptLines = [];
+  const names = $('#receipt-names'); names.replaceChildren(); const known = knownNames();
+  for (const name of known.slice(0, 400)) names.append(new Option(name));
+  const aliases = active(state.aliases || []);
+  for (const item of parsed.items) {
+    const guess = suggestName(item, aliases, known);
+    const box = element('div', undefined, 'receipt-line'), use = element('label', undefined, 'receipt-use'), check = element('input');
+    check.type = 'checkbox'; check.checked = true; use.append(check, element('span', item.text));
+    const label = (text, input) => { const node = element('label', text); node.append(input); return node; };
+    const input = (name, value, extra = {}) => { const node = element('input'); node.name = name; node.value = value; Object.assign(node, extra); return node; };
+    const inputs = { name: input('name', guess.name, { maxLength: 120, autocomplete: 'off' }), price: input('price', (((item.regularQuote || item.quote).cents) / 100).toFixed(2).replace('.', ','), { inputMode: 'decimal', maxLength: 10 }),
+      quantity: input('quantity', plain((item.regularQuote || item.quote).quantity), { inputMode: 'decimal', maxLength: 16 }), unit: input('unit', (item.regularQuote || item.quote).unit, { maxLength: 30 }) };
+    inputs.name.setAttribute('list', 'receipt-names'); inputs.unit.setAttribute('list', 'units');
+    const grid = element('div', undefined, 'price-grid unit-grid'); grid.append(label('Preis (€)', inputs.price), label('Menge', inputs.quantity), label('Einheit', inputs.unit));
+    const note = element('p', undefined, 'receipt-note hint');
+    box.append(use, label('Name in der App', inputs.name), grid, note);
+    const line = { item, inputs, check, box, note, how: guess.how, key: guess.key, suggested: guess.name };
+    for (const node of Object.values(inputs)) node.addEventListener('input', () => { line.how = ''; refreshReceiptLine(line); });
+    check.addEventListener('change', () => box.classList.toggle('off', !check.checked));
+    // Schon eingetragen (gleicher Tag, gleiche Zeile): nicht noch einmal vorschlagen.
+    const done = state.prices.some(row => !row.deletedAt && row.storeId === form.elements.storeId.value && productKey(row.name) === productKey(guess.name) &&
+      row.createdAt.slice(0, 10) === form.elements.date.value && (row.regularQuote || row.quote)?.cents === (item.regularQuote || item.quote).cents);
+    if (done) { check.checked = false; box.classList.add('off'); line.how = ''; }
+    receiptLines.push(line); list.append(box); refreshReceiptLine(line);
+    if (done) line.note.textContent = `Schon eingetragen · ${line.note.textContent}`;
+  }
+  $('#receipt-check').textContent = parsed.total === null ? `${parsed.items.length} Zeilen erkannt. Eine Summe wurde im Text nicht gefunden.` :
+    parsed.sum === parsed.total ? `${parsed.items.length} Zeilen erkannt. Die Summe stimmt mit dem Bon überein (${euros(parsed.total)}).` :
+      `Achtung: Die erkannten Zeilen ergeben ${euros(parsed.sum)}, der Bon nennt ${euros(parsed.total)}. Möglicherweise fehlen Zeilen.`;
+  const skipped = $('#receipt-skipped'); skipped.hidden = !parsed.skipped.length;
+  skipped.querySelector('summary').textContent = `Nicht als Artikel erkannt (${parsed.skipped.length})`;
+  skipped.querySelector('ul').replaceChildren(...parsed.skipped.map(entry => element('li', `${entry.text} · ${entry.why}`)));
+  $('#receipt-input').hidden = true; $('#receipt-review').hidden = false;
+  form.elements.storeId.onchange = form.elements.date.onchange = () => receiptLines.forEach(refreshReceiptLine);
+}
+function saveReceipt() {
+  const form = $('#receipt-form'), storeId = currentStore(form.elements.storeId.value);
+  if (!storeId) throw new Error('Bitte ein Geschäft wählen.');
+  const base = Date.parse(receiptTime(form)), chosen = new Map();
+  receiptLines.forEach((line, index) => {
+    if (!line.check.checked) return;
+    const name = line.inputs.name.value.trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('Bitte für jede ausgewählte Zeile einen Namen angeben.');
+    const quote = receiptQuote(line), sale = line.item.onSale;
+    // Bei einer Aktion bleibt das Verhältnis von bezahltem Preis zu Normalpreis erhalten, auch wenn Menge oder Einheit korrigiert wurden.
+    const paid = sale ? { ...quote, cents: Math.round(quote.cents * line.item.quote.cents / line.item.regularQuote.cents) } : quote;
+    const entry = { line, name, storeId, quote: paid, regularQuote: quote, onSale: sale, at: new Date(base + index).toISOString() };
+    chosen.set(`${productKey(name)}|${unitSpec(quote.unit).group}`, entry);   // gleicher Artikel zweimal auf dem Bon: die letzte Zeile gilt
+  });
+  const entries = [...chosen.values()].sort((a, b) => a.at.localeCompare(b.at));
+  if (!entries.length) throw new Error('Bitte mindestens eine Zeile auswählen.');
+  const ops = [], fresh = [], aliases = active(state.aliases || []), actor = config.actor || 'Unbekannt';
+  let up = 0, down = 0;
+  for (const entry of entries) {
+    const row = { storeId, name: entry.name, quote: clone(entry.quote), regularQuote: clone(entry.regularQuote), onSale: entry.onSale };
+    const trend = trendFor([...state.prices, ...fresh], row, entry.at);
+    if (trend) row.trend = trend;
+    const op = operation('prices', uid(), row, actor, entry.at);
+    ops.push(op); fresh.push({ ...row, id: op.id, createdAt: entry.at });
+    const shown = trend && activeTrend({ storeId, name: entry.name, unit: entry.quote.unit }, [fresh.at(-1)], new Date(entry.at));
+    if (shown?.direction === 'up' && trend.at === entry.at) up++; else if (shown?.direction === 'down' && trend.at === entry.at) down++;
+    // Zuordnung merken, wenn der Name von dem abweicht, was die App aus dem Bon gemacht hätte
+    if (entry.line.key && productKey(entry.name) !== productKey(entry.line.item.name)) {
+      const known = aliases.find(alias => alias.from === entry.line.key);
+      if (!known) ops.push(operation('aliases', uid(), { from: entry.line.key, name: entry.name }, actor, entry.at));
+      else if (known.name !== entry.name) ops.push(operation('aliases', known.id, { name: entry.name }, actor, entry.at));
+    }
+  }
+  const parts = [`${entries.length} Preise gemerkt`, up && `${up} teurer`, down && `${down} günstiger`].filter(Boolean);
+  commit(ops, parts.join(' · '));
+  $('#receipt-dialog').close();
 }
 
 /* ---------- Vorrat ---------- */
@@ -1108,6 +1378,7 @@ $('#demo-setup').addEventListener('click', () => tab('settings'));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
+$('#item-form').elements.name.addEventListener('input', renderQuickPick);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('#item-suggestions').hidden = true;
@@ -1146,24 +1417,27 @@ function addRows(rows, storeId, unchecked = [], remember = false) {
   commit([...result.ops, ...pantryOps], `Übernommen: ${parts.join(', ')}`);
 }
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
-  if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
+  const form = event.currentTarget, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
+  if (!typed || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
+  const known = active(state.aliases || []).find(alias => alias.from === aliasKey(typed)), name = known?.name || typed;
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
   const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
+  if (!item.saleUntil) delete item.saleUntil;
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
   const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
+  const renamed = known && productKey(known.name) !== productKey(typed) ? `„${typed}“ → „${known.name}“` : '';
   if (same) {
-    commit([nextOp('items', same.id, { add: same.add })], `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
+    commit([nextOp('items', same.id, { add: same.add })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
     if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
     // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
-    commit(ops, inView(item) ? '' : `„${name}“ steht bei „${storeName(item.storeId)}“`);
+    commit(ops, inView(item) ? renamed : `${renamed ? `${renamed}; ` : ''}„${name}“ steht bei „${storeName(item.storeId)}“`);
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
+  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick(); form.elements.name.focus();
 }); });
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
@@ -1262,6 +1536,14 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#export').addEventListener('click', () => guard(backup));
+$('#open-receipt').addEventListener('click', () => guard(openReceipt));
+$('#cook-awake').addEventListener('change', event => guard(async () => { saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake(event.target.checked); }));
+$('#cook-dialog').addEventListener('close', () => { void keepAwake(false); });
+// iOS gibt die Sperre frei, sobald die App in den Hintergrund geht; beim Zurückkehren wird sie neu angefordert.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && wakeWanted && !wakeLock && $('#cook-dialog').open) void keepAwake(true); });
+$('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
+$('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
+$('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });
 $('#compact-now').addEventListener('click', () => guard(compactNow));
 $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());

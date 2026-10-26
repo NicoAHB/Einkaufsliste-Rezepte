@@ -46,6 +46,7 @@ export function validateRow(key, row) {
   if (key === 'items' && row.price !== undefined && row.price !== null && !validQuote(row.price)) throw new Error('Ungültiger Artikelpreis.');
   if (key === 'items' && row.salePrice !== undefined && row.salePrice !== null && !validQuote(row.salePrice)) throw new Error('Ungültiger Angebotspreis.');
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
+  if ((key === 'items' || key === 'prices') && row.saleUntil !== undefined && row.saleUntil !== null && row.saleUntil !== '' && !validDay(row.saleUntil)) throw new Error('Ungültiges Ende des Angebots.');
   if (key === 'items' && row.category !== undefined && row.category !== null && typeof row.category !== 'string') throw new Error('Ungültige Kategorie.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
   if (key === 'items' && row._adds !== undefined && (!Array.isArray(row._adds) || !row._base || row._adds.some(entry => !entry || typeof entry.id !== 'string' ||
@@ -122,6 +123,8 @@ export function foldAdds(base, adds, floor) {
   }
   return current;
 }
+// Zuwächse, die zur aktuellen Menge beitragen (jünger als das letzte ausdrückliche Setzen).
+export const liveAdds = row => (row._adds || []).filter(entry => keyOf(entry) > floorKey(row));
 // Aufräumen: ältere Zuwächse in den Ausgangswert übernehmen. Gibt die Zahl der übernommenen Zuwächse zurück.
 export function foldOldAdds(row, cutoff) {
   if (!row._adds) return 0;
@@ -206,6 +209,46 @@ export function suggestItemNames(items, query, limit = 6) {
   return [...names.values()].sort((a, b) => Number(b.key.startsWith(search)) - Number(a.key.startsWith(search)) ||
     b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de'))
     .slice(0, limit).map(row => row.name);
+}
+
+/* Schreibweisen: „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“, „Apfel“ und „Äpfel“ meinen denselben Artikel. Die App rät nie still: Sie
+   schlägt die bekannte Schreibweise nur vor. Erst wenn die Person sie bestätigt, wird die Zuordnung gemerkt (Sammlung `aliases`) und danach
+   automatisch angewendet. */
+const PLURAL = ['en', 'er', 'n', 'e'];
+export function spellingStem(name) {
+  return productKey(name).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => {
+    for (const ending of PLURAL) if (word.length - ending.length >= 2 && word.endsWith(ending)) return word.slice(0, -ending.length);
+    return word;
+  }).join(' ');
+}
+// Bekannte Namen, die wie `typed` geschrieben werden könnten, aber anders lauten (nie der genau gleiche Name).
+export function spellingVariants(typed, known) {
+  const stem = spellingStem(typed);
+  if (stem.length < 2) return [];
+  const seen = new Set([productKey(typed)]), found = [];
+  for (const name of known) {
+    const key = productKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (spellingStem(name) === stem) found.push(name);
+  }
+  return found;
+}
+// Häufig gekaufte Artikel für die Schnellwahl: mindestens `minCount`-mal vorgekommen und gerade nicht offen auf der Liste.
+export function frequentItems(history, items, limit = 6, minCount = 2) {
+  const open = new Set(active(items).filter(row => !row.checked).map(row => productKey(row.name)));
+  const map = new Map();
+  for (const row of history) {
+    if (typeof row.name !== 'string') continue;
+    const key = productKey(row.name);
+    if (!key) continue;
+    const at = row.updatedAt || row.createdAt || '', entry = map.get(key) || { name: row.name.trim(), unit: '', count: 0, at: '' };
+    entry.count += (Number(row.weight) || 1) + (row._adds?.length || 0);
+    if (at >= entry.at) { entry.at = at; entry.name = row.name.trim(); if (typeof row.unit === 'string' && row.unit) entry.unit = row.unit; }
+    map.set(key, entry);
+  }
+  return [...map.entries()].filter(([key, entry]) => entry.count >= minCount && !open.has(key)).map(([, entry]) => entry)
+    .sort((a, b) => b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de')).slice(0, limit);
 }
 
 // Neue Listenartikel aus fertig umgerechneten Zeilen {name, quantity, unit}. Gemerkter Preis und Kategorie
