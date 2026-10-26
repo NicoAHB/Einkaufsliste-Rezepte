@@ -1,18 +1,32 @@
-# Einkauf & Rezepte – erste Version
+# Einkauf & Rezepte – Version 1.1
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, drei Bereiche und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
 - Einkaufsliste je Geschäft: Edeka, Lidl, Rewe; weitere Geschäfte anlegen, umbenennen und löschen.
-- Artikel mit Menge, Einheit und dem Namen der Person hinzufügen; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
+- Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
+- Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
 - Die letzte Lösch- oder Abhakaktion rückgängig machen, solange die Seite geöffnet bleibt.
 - Rezepte mit einzelnen Zutaten, Zubereitung, Portionen und Tags anlegen, bearbeiten, löschen; nach Rezept/Zutat suchen und nach Tag filtern.
 - Portionen umrechnen. Beim Übernehmen Zutaten einzeln abwählen, Geschäft auswählen und nur die gewählten Zutaten hinzufügen.
 - Beispielmodus ohne GitHub, drei Beispielrezepte und eine über drei Geschäfte verteilte Beispielliste.
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
-**Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung, Einheitenumrechnung, Fotos mit Verkleinerung, Angebotslinks, Preise, Angebotsmarkierungen, Preisvergleich und Summen. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
+**Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung und Fotos mit Verkleinerung. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
+
+## Neu in Version 1.1: Angebote und Preise
+
+- **Angebote öffnen:** In der Einkaufsliste das Geschäft auswählen und „Angebote ansehen“ antippen. Für die drei ursprünglichen Geschäfte sind Händlerlinks hinterlegt. Die Händlerseite kann zunächst nach deinem Markt oder deiner Postleitzahl fragen. Unter **Geschäfte** kannst du jeden Link ändern oder durch ein leeres Feld entfernen. Es gibt keine automatische Angebotsabfrage.
+- **Preis hinzufügen:** Beim Hinzufügen „Preis & Angebot (optional)“ öffnen. Beispiel: Artikel `Tomaten`, Menge `2`, Einheit `kg`; letzter Preis `1,99`, für Menge `500`, Preiseinheit `g`. Die geschätzten Kosten dafür sind **7,96 €**. Preise enthalten höchstens zwei Nachkommastellen und können auch `0` sein.
+- **Später bearbeiten:** Neben einem Artikel das Stiftsymbol antippen. Name, Menge, Einheit, Preis und „Im Angebot“ lassen sich dort ändern. Der Preis wird für dieses Geschäft gemerkt. Ein leerer Preis entfernt ihn von diesem Artikel; die früheren Preisnotizen bleiben für spätere Einkäufe erhalten.
+- **Gemerkte Preise:** Beim Eingeben eines bekannten Artikelnamens und einer passenden Einheit wird der letzte Preis dieses Geschäfts vorgeschlagen. Beim Wechsel des Geschäfts wird der Vorschlag ersetzt. Vorschläge kannst du ändern oder leeren. Auch aus Rezepten übernommene Zutaten bekommen einen vorhandenen passenden Preis des gewählten Geschäfts.
+- **Vergleich:** Die App vergleicht den zuletzt notierten passenden Preis je Geschäft, umgerechnet auf kg, l oder Stück. Sie zeigt zusätzlich im Artikeldialog Datum und ursprüngliche Bezugsmenge. Das sind eure Eingaben, keine aktuellen Händlerpreise. Gleiche Schreibweise, Marke und Qualität bitte selbst berücksichtigen; unterschiedliche Namen bleiben vorsichtig getrennt. Alte günstige Preise werden nicht als aktueller Tiefstpreis dargestellt, wenn für dasselbe Geschäft bereits ein neuerer passender Preis notiert wurde.
+- **Packungen:** Zwei Packungen können unterschiedlich groß sein. Daher gibt es bei unbekannten Packungsgrößen keinen Vergleich zwischen Geschäften. Ein Preis je Packung kann trotzdem die Kosten eines in Packungen geführten Artikels schätzen. Für einen Größenvergleich beide Artikel in g/kg oder ml/l führen.
+- **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. „Im Angebot“ ist eine Markierung und zieht keinen zusätzlichen Rabatt vom eingegebenen Preis ab.
+- **Beispielmodus:** Die neuen Beispielpreise sind frei erfunden. Sie werden nur bei einem frischen Beispielmodus geladen. Bereits vorhandene Browserdaten und eure private Datendatei werden niemals durch neue Beispiele ersetzt.
+
+**Bestehende App aktualisieren:** Die neuen App-Dateien einschließlich `prices.js` und `sw.js` im öffentlichen App-Repository ersetzen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
 
 ## 2. Zuerst verstehen: zwei Repositories
 
@@ -34,7 +48,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `data.js`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `beispieldaten.json`, `.nojekyll` und `README.md` gemeinsam hochladen. Sie müssen **direkt im Hauptordner** liegen, nicht in einem zusätzlichen Unterordner. Die Tests sind für die App nicht erforderlich.
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `data.js`, `prices.js`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `beispieldaten.json`, `.nojekyll` und `README.md` gemeinsam hochladen. Sie müssen **direkt im Hauptordner** liegen, nicht in einem zusätzlichen Unterordner. Die Tests sind für die App nicht erforderlich.
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -119,10 +133,13 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | Bereich | Inhalt |
 | --- | --- |
 | `stores` | `id`, `name`, Zeitstempel und Löschmarkierung |
-| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy` |
+| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `onSale` |
 | `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions` |
 | `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit` |
+| `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, `onSale` und denselben Zeitstempeln |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung |
+
+Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden.
 
 Jeder Datensatz hat `createdAt`, `updatedAt`, `deletedAt` und `_clock`. `deletedAt: null` bedeutet nicht gelöscht. `_clock` speichert je geändertem Feld dessen Zeitstempel und Operations-ID. Eine Operation enthält `id`, `collection`, `entityId`, `patch`, `actor` und `at`.
 
@@ -130,7 +147,7 @@ Die App liest die aktuelle Datei samt GitHub-SHA, wendet nur ihre eigenen ausste
 
 Unterschiedliche Datensätze und Felder bleiben erhalten. Ändern beide dasselbe Feld, gewinnt der jüngere Zeitstempel; bei Gleichstand die Operations-ID. Dies ist kein gemeinsamer Texteditor: zwei gleichzeitige Änderungen derselben Zubereitung lassen sich nicht sinnvoll automatisch addieren. Gerätezeit automatisch einstellen. Löschen bleibt durch eine Markierung erhalten und wird durch normales Bearbeiten nicht aufgehoben. Gelöschte Rezepte verbergen ihre Zutaten; gelöschte Geschäfte verbergen ihre Artikel. Die letzte Löschaktion kann beides wieder sichtbar machen.
 
-Diese erste Version ist für einen kleinen gemeinsamen Haushalt gedacht: **maximal 900 KB JSON**, noch keine Fotos. Löschmarkierungen und bestätigte Operations-IDs werden bewusst nicht automatisch gekürzt. Bei sehr langer Nutzung ist eine abgestimmte Kompaktierung oder Aufteilung erforderlich. Ein einseitiges Aufräumen könnte alte Offline-Änderungen doppelt anwenden; deshalb wird das hier nicht stillschweigend getan. Durch fortlaufendes Speichern entstehen Commits im privaten Repo. Daten aus alten Git-Ständen verschwinden nicht durch Löschen in der App.
+Diese Version ist für einen kleinen gemeinsamen Haushalt gedacht: **maximal 900 KB JSON**, noch keine Fotos. Preisnotizen sind im Backup enthalten und vergrößern die Datei ebenfalls. Löschmarkierungen und bestätigte Operations-IDs werden bewusst nicht automatisch gekürzt. Bei sehr langer Nutzung ist eine abgestimmte Kompaktierung oder Aufteilung erforderlich. Ein einseitiges Aufräumen könnte alte Offline-Änderungen doppelt anwenden; deshalb wird das hier nicht stillschweigend getan. Durch fortlaufendes Speichern entstehen Commits im privaten Repo. Daten aus alten Git-Ständen verschwinden nicht durch Löschen in der App.
 
 ## 10. Backup und Wiederherstellung
 
@@ -161,9 +178,22 @@ Keine Laufzeitabhängigkeiten, kein Build-Schritt. Eine lokale HTTP-Vorschau ist
 Die reinen Datenprüfungen laufen mit einer aktuellen Node-Version (getestet mit Node 24):
 
 ```sh
-node --test tests/data.test.mjs
+node --test tests/data.test.mjs tests/prices.test.mjs
 ```
 
 Sie prüfen Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Rückgängig, Portionsübernahme, Versionsschutz und deutsche Mengeneingaben. Browserprüfungen mit simulierten GitHub-Antworten ersetzen keinen echten Abgleich mit euren Tokens; den abschließenden Zwei-Geräte-Test führt ihr nach der Einrichtung anhand der Checkliste aus.
 
 Wenn Python-Playwright und Chromium bereits für die Entwicklung verfügbar sind, kann bei laufender lokaler Vorschau außerdem `python3 tests/browser_smoke.py` ausgeführt werden. Diese Prüfung testet die Bedienung in mobiler Chromium-Ansicht, Offline-Start, zwei simulierte Geräte, SHA-Konflikte, Änderungen während eines laufenden Schreibvorgangs, verlorene Bestätigungen und GitHub-Fehlermeldungen. Der Pfad zu Chromium steht im Testskript. Auf einem echten iPhone und gegen ein echtes privates Daten-Repository ist anschließend noch die obige Checkliste auszuführen. Die App selbst benötigt diese Testwerkzeuge nicht.
+
+Zusätzlich prüft `python3 tests/prices_browser.py` die Preisoberfläche auf 390 und 320 Pixel breiten Ansichten, gemerkte Geschäftspreise, leere und kostenlose Preise, Validierung im Dialog, Angebotslinks, Offline-Preise und ein echtes Upgrade vom ursprünglichen Offline-Paket bei erhaltenen lokalen Artikeln und Namen.
+
+Weitere Testpunkte für Version 1.1:
+
+- [ ] Edeka wählen, Angebotsseite öffnen und eigenen Link unter „Geschäfte“ speichern.
+- [ ] Artikel mit 2 kg und einem Preis von 1,99 € je 500 g anlegen: geschätzt 7,96 €.
+- [ ] Beim selben Artikel einen passenden anderen Geschäftspreis notieren; Vergleich je kg und Datum kontrollieren.
+- [ ] Artikel abhaken: geschätzte Summe sinkt; Rückgängig stellt sie wieder her.
+- [ ] Preis leeren: fehlender Preis wird angezeigt, nicht als kostenlos gerechnet. Preis 0: wird ausdrücklich als kostenlos mitgerechnet.
+- [ ] App erneut öffnen, denselben Namen im selben Geschäft eingeben und gemerkten Preis prüfen; Geschäft wechseln und anderen Vorschlag prüfen.
+- [ ] Gleicher Name mit „Packung“: kein Vergleich mit unbekannter Packungsgröße; g und l werden nicht ineinander umgerechnet.
+- [ ] Vorhandene Artikel und Einstellungen nach dem Update prüfen; die private Datendatei dafür nicht ersetzen.

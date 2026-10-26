@@ -22,17 +22,24 @@
   </header>
   <div class="syncbar"><span id="status" role="status" aria-live="polite">Wird geladen …</span><span id="identity"></span></div>
   <div id="message" class="notice" role="alert" hidden></div>
-  <div id="demo-banner" class="notice">Beispielmodus · Deine Änderungen bleiben auf diesem Gerät. Verbinde GitHub unter „Einstellungen“, um gemeinsam einzukaufen.</div>
+  <div id="demo-banner" class="notice">Beispielmodus · Beispieldaten und Preise sind erfunden. Deine Änderungen bleiben auf diesem Gerät. Verbinde GitHub unter „Einstellungen“, um gemeinsam einzukaufen.</div>
   <main>
     <section id="shopping" aria-labelledby="shopping-title">
       <div class="section-head"><div><p class="eyebrow">ALLES DABEI</p><h2 id="shopping-title">Deine Einkaufsliste</h2></div><button id="manage-stores" class="secondary">Geschäfte</button></div>
       <label for="store-select">Geschäft</label><select id="store-select"></select>
+      <div class="shop-tools"><a id="offers-link" class="button secondary" target="_blank" rel="noopener noreferrer">Angebote ansehen ↗</a><button id="set-offers" class="secondary" hidden>Angebotslink einrichten</button></div>
       <form id="item-form" class="card add-form">
         <label class="wide">Was brauchst du?<input name="name" placeholder="z. B. Zwiebeln" maxlength="120" required autocomplete="off"></label>
         <label>Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label>Einheit<input name="unit" value="Stück" list="units" maxlength="30" required></label>
+        <details class="wide price-fields"><summary>Preis & Angebot (optional)</summary>
+          <div class="price-grid"><label>Zuletzt gezahlter Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
+          <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
+          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Ein bereits gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.</p>
+        </details>
         <button class="wide" type="submit">＋ Zur Liste hinzufügen</button>
       </form>
+      <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
       <div class="section-head"><p id="item-count"></p><button id="clear-checked" class="text-button">Erledigte entfernen</button></div>
       <ul id="items" class="item-list"></ul>
     </section>
@@ -60,14 +67,20 @@
         <button id="export" class="secondary">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 1 · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 1.1 · Preise & Angebote · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>
   <nav class="tabs" aria-label="Hauptbereiche"><button data-tab="shopping" aria-current="page">☑<span>Einkaufsliste</span></button><button data-tab="recipes">▤<span>Rezepte</span></button><button data-tab="settings">⚙<span>Einstellungen</span></button></nav>
   <aside id="undo-bar" class="undo-bar" hidden><span id="undo-label"></span><button id="undo" class="secondary">Rückgängig</button></aside>
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">WILLKOMMEN</p><h2>Wer kauft heute ein?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später ändern.</p><label>Dein Name<select name="actor"><option>Nico</option><option>Partnerin</option></select></label><button>Los geht’s</button></form></dialog>
-  <dialog id="stores-dialog"><div class="section-head"><h2>Geschäfte</h2><button data-close="stores-dialog" class="secondary" aria-label="Schließen">✕</button></div><p class="hint">Beim Löschen bleiben Artikel intern erhalten. Das letzte Geschäft kann nicht gelöscht werden.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><button>Geschäft hinzufügen</button></form></dialog>
+  <dialog id="stores-dialog"><div class="section-head"><h2>Geschäfte & Angebote</h2><button data-close="stores-dialog" class="secondary" aria-label="Schließen">✕</button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" placeholder="https://…" maxlength="2000"></label><button>Geschäft hinzufügen</button></form></dialog>
+  <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="section-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="secondary" aria-label="Schließen">✕</button></div>
+    <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
+    <h3>Letzter Preis</h3><p class="hint">Der eingegebene Preis wird für dieses Geschäft gemerkt. Leeres Preisfeld entfernt den Preis von diesem Artikel.</p>
+    <div class="price-grid"><label>Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
+    <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label><p class="hint" data-price-hint></p><div id="price-comparison"></div><button type="submit">Artikel speichern</button>
+  </form></dialog>
   <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="section-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="secondary" aria-label="Schließen">✕</button></div>
     <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
     <label>Portionen<input name="servings" inputmode="decimal" value="2" required></label>

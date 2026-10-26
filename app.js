@@ -1,12 +1,17 @@
 import { active, clone, emptyData, ingredientItems, merge, operation, positive, uid, validate } from './data.js';
+import { comparePrices, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 let busy = false, ready = false, selectedStore = '', lastTime = 0, undoAction = null;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
+let itemBaseline = null;
+let priceFormStore = null;
 const portions = new Map();
 const format = number => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(number);
+const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+const shortDate = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' }).format(new Date(at));
 const connected = () => Boolean(config.owner && config.repo && config.token);
 const namespace = (value = config) => value.owner && value.repo ?
   `einkauf-data-v1:${JSON.stringify([value.owner.toLowerCase(), value.repo.toLowerCase(), value.branch, value.path])}` : 'einkauf-demo-v1';
@@ -24,7 +29,18 @@ function button(text, action, className = 'secondary') {
   node.addEventListener('click', () => guard(action));
   return node;
 }
-function message(text = '') { $('#message').textContent = text; $('#message').hidden = !text; }
+function message(text = '') {
+  document.querySelectorAll('[data-dialog-error]').forEach(node => { node.hidden = true; });
+  const dialog = document.querySelector('dialog[open]');
+  $('#message').textContent = text; $('#message').hidden = !text || Boolean(dialog);
+  if (text && dialog) {
+    let alert = dialog.querySelector('[data-dialog-error]');
+    if (!alert) {
+      alert = element('p', '', 'dialog-error'); alert.dataset.dialogError = ''; alert.setAttribute('role', 'alert'); dialog.prepend(alert);
+    }
+    alert.textContent = text; alert.hidden = false; alert.scrollIntoView({ block: 'nearest' });
+  }
+}
 function guard(action) {
   try { const result = action(); if (result?.catch) result.catch(error => message(error.message)); }
   catch (error) { message(error.message); }
@@ -90,6 +106,11 @@ function render() {
   $('#manage-stores').disabled = !ready;
 }
 function renderItems() {
+  if (priceFormStore !== selectedStore) {
+    priceFormStore = selectedStore;
+    delete $('#item-form').dataset.manualPrice; rememberPriceInForm();
+  }
+  renderShoppingInfo();
   const list = $('#items'); list.replaceChildren();
   const items = active(state.items).filter(item => item.storeId === selectedStore)
     .sort((a, b) => Number(Boolean(a.checked)) - Number(Boolean(b.checked)) || a.name.localeCompare(b.name, 'de'));
@@ -109,9 +130,90 @@ function renderItems() {
     check.setAttribute('aria-pressed', String(Boolean(item.checked)));
     const copy = element('div', undefined, 'item-copy');
     copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
+    if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
+    const cost = itemCost(item, state.prices);
+    if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
+    const quotes = comparePrices(item, state.stores, state.prices);
+    if (quotes.length) {
+      const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
+      const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
+      copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
+    }
+    const edit = button('✎', () => editItem(item.id), 'icon-button');
+    edit.setAttribute('aria-label', `${item.name} bearbeiten`);
     const remove = button('✕', () => removeRows('items', [item.id], 'Artikel gelöscht'), 'icon-button');
-    remove.setAttribute('aria-label', `${item.name} löschen`); row.append(check, copy, remove); list.append(row);
+    const actions = element('div', undefined, 'item-actions'); actions.append(edit, remove);
+    remove.setAttribute('aria-label', `${item.name} löschen`); row.append(check, copy, actions); list.append(row);
   }
+}
+function renderShoppingInfo() {
+  const store = active(state.stores).find(row => row.id === selectedStore), url = storeOfferUrl(store);
+  $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
+  if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
+  else $('#offers-link').removeAttribute('href');
+  const total = shoppingTotal(state.items.filter(row => row.storeId === selectedStore), state.prices);
+  const box = $('#shopping-total'); box.replaceChildren();
+  box.append(element('p', store ? `${store.name} · noch einzukaufen` : 'Noch einzukaufen', 'eyebrow'));
+  box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
+  box.append(element('p', total.missing ? `${total.missing} Artikel ohne passenden Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel berücksichtigt. Preise können sich ändern.' : 'Erledigte Artikel werden nicht mitgerechnet.', 'hint'));
+}
+function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
+function setQuoteFields(form, quote, fallbackUnit) {
+  form.elements.priceEuros.value = quote ? (quote.cents / 100).toFixed(2).replace('.', ',') : '';
+  form.elements.priceQuantity.value = quote ? String(quote.quantity).replace('.', ',') : '1';
+  form.elements.priceUnit.value = quote?.unit || fallbackUnit;
+}
+function rememberPriceInForm() {
+  const form = $('#item-form');
+  if (form.dataset.manualPrice === 'yes') return;
+  const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
+  const quote = rememberedPrice(state.prices, selectedStore, name, unit);
+  setQuoteFields(form, quote, unit);
+  form.querySelector('[data-price-hint]').textContent = quote ? `Für dieses Geschäft gemerkt: ${quoteLabel(quote)}. Du kannst den Vorschlag ändern oder leeren.` :
+    'Beispiel: 1,99 € für 500 g. Ein gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.';
+}
+function readQuote(form) {
+  const value = form.elements.priceEuros.value.trim();
+  if (!value) return null;
+  const quote = { cents: parseCents(value), quantity: positive(form.elements.priceQuantity.value), unit: form.elements.priceUnit.value.trim() };
+  if (!quote.unit) throw new Error('Bitte die Einheit des Preises eingeben.');
+  if (unitRate(quote, form.elements.unit.value.trim()) === null) throw new Error('Artikeleinheit und Preiseinheit passen nicht zusammen. Verwende zum Beispiel kg und g oder l und ml. Bei Packungen muss der Preis ebenfalls je Packung angegeben sein.');
+  return quote;
+}
+function priceOperation(item) {
+  // Jeder notierte Preis ist ein eigener Datensatz: gleichzeitige Einträge
+  // verschiedener Geräte bleiben erhalten, der neueste passende wird verwendet.
+  return nextOp('prices', uid(), { storeId: item.storeId, name: item.name,
+    quote: clone(item.price), onSale: Boolean(item.onSale) });
+}
+function showComparison(item) {
+  const box = $('#price-comparison'); box.replaceChildren();
+  const rows = comparePrices(item, state.stores, state.prices);
+  if (!unitSpec(item.unit).comparable) {
+    box.append(element('p', 'Für einen fairen Geschäftsvergleich bitte g/kg, ml/l oder Stück verwenden. Bei Packungen ist die Größe unbekannt.', 'hint')); return;
+  }
+  if (!rows.length) { box.append(element('p', 'Noch keine vergleichbaren Preise für diesen Artikelnamen notiert.', 'hint')); return; }
+  box.append(element('h3', 'Zuletzt notierte Preise'));
+  const list = element('ul', undefined, 'comparison-list');
+  for (const row of rows) {
+    const line = element('li');
+    line.append(element('strong', `${row.storeName}: ${euros(row.rate)}/${row.unit}`),
+      element('small', `${quoteLabel(row.quote)} · ${shortDate(row.createdAt)}${row.onSale ? ' · damals im Angebot' : ''}`));
+    list.append(line);
+  }
+  const storeCount = active(state.stores).length;
+  box.append(list, element('p', `Für ${rows.length} von ${storeCount} Geschäften liegt ein passender Preis vor. Vergleich nur bei gleichem Artikelnamen und passender Einheit. Keine aktuellen Händlerpreise; Marke und Qualität bitte selbst berücksichtigen.`, 'hint'));
+}
+function editItem(id) {
+  const item = active(state.items).find(row => row.id === id);
+  if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
+  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), onSale: Boolean(item.onSale) });
+  const form = $('#edit-item-form'); form.reset();
+  for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
+  setQuoteFields(form, itemQuote(item, state.prices), item.unit);
+  form.elements.onSale.checked = Boolean(item.onSale);
+  form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
+  showComparison(item); message(); $('#item-dialog').showModal();
 }
 function removeRows(collection, ids, label) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
@@ -125,11 +227,16 @@ function renderStores() {
     const row = element('div', undefined, 'store-row');
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
+    input.name = 'name';
+    const linkLabel = element('label', 'Angebotslink (optional)'), link = element('input');
+    link.name = 'offersUrl'; link.type = 'url'; link.value = storeOfferUrl(store); link.maxLength = 2000; link.placeholder = 'https://…';
+    linkLabel.append(link);
     const save = element('button', '✓', 'secondary'); save.setAttribute('aria-label', `${store.name} umbenennen`);
-    form.append(input, save);
+    const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
+    form.append(nameLabel, linkLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
-      currentStore(store.id); commit([nextOp('stores', store.id, { name })]); renderStores();
+      currentStore(store.id); commit([nextOp('stores', store.id, { name, offersUrl: offerUrl(link.value) })]); renderStores();
     }); });
     const remove = button('✕', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
@@ -259,14 +366,18 @@ function apiPath() {
 }
 async function api(method, body) {
   let response;
+  // AbortController funktioniert auch auf älteren iPhones, die die neuere
+  // Hilfsmethode AbortSignal.timeout noch nicht anbieten.
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20000);
   try {
     response = await fetch(`${apiPath()}${method === 'GET' ? `?ref=${encodeURIComponent(config.branch)}` : ''}`, {
-      method, cache: 'no-store', signal: AbortSignal.timeout(20000),
+      method, cache: 'no-store', signal: controller.signal,
       headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${config.token}`,
         'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {})
     });
   } catch { throw new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'); }
+  finally { clearTimeout(timeout); }
   if (!response.ok) {
     const error = new Error(response.status === 401 ?
       'Der GitHub-Token ist ungültig oder abgelaufen. Auf GitHub unter Settings → Developer settings → Personal access tokens → Fine-grained tokens einen neuen Token für das Daten-Repository erstellen (Contents: Read and write). Auf diesem Gerät unter Einstellungen ersetzen.' :
@@ -325,6 +436,7 @@ async function sync(manual = false) {
 }
 async function loadWorkspace() {
   ready = false; pending = []; base = emptyData(); state = base; undoAction = null; $('#undo-bar').hidden = true;
+  priceFormStore = null;
   const cache = localStorage.getItem(namespace());
   if (cache) {
     let saved;
@@ -353,20 +465,40 @@ function sameTarget(left, right) { return namespace(left) === namespace(right); 
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
-$('#store-select').addEventListener('change', () => { selectedStore = $('#store-select').value; renderItems(); });
+$('#store-select').addEventListener('change', () => {
+  selectedStore = $('#store-select').value;
+  renderItems();
+});
+for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
+for (const key of ['priceEuros', 'priceQuantity', 'priceUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
+$('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
-  commit([nextOp('items', uid(), { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
-    unit, checked: false, createdBy: config.actor || 'Nico' })]);
-  form.reset(); form.elements.name.focus();
+  const item = { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
+    unit, checked: false, createdBy: config.actor || 'Nico', price: readQuote(form), onSale: form.elements.onSale.checked };
+  const ops = [nextOp('items', uid(), item)];
+  if (item.price && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
+  commit(ops);
+  form.reset(); delete form.dataset.manualPrice; rememberPriceInForm(); form.elements.name.focus();
+}); });
+$('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
+  if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
+  const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
+    price: readQuote(form), onSale: form.elements.onSale.checked };
+  if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
+  const delta = changed(patch, itemBaseline);
+  const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
+  if (patch.price && ['price', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation({ ...item, ...patch }));
+  commit(ops); $('#item-dialog').close();
 }); });
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', active(state.items).filter(row => row.storeId === selectedStore && row.checked).map(row => row.id), 'Erledigte Artikel entfernt')));
 $('#manage-stores').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (active(state.stores).some(store => store.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))) throw new Error('Dieses Geschäft gibt es bereits.');
-  commit([nextOp('stores', uid(), { name })]); event.currentTarget.reset(); renderStores();
+  commit([nextOp('stores', uid(), { name, offersUrl: offerUrl(event.currentTarget.elements.offersUrl.value) })]); event.currentTarget.reset(); renderStores();
 }); });
 $('#undo').addEventListener('click', () => guard(() => {
   if (!undoAction) return;
@@ -386,7 +518,7 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString()));
+  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices));
   selectedStore = form.elements.storeId.value; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
@@ -426,7 +558,7 @@ async function start() {
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void sync(); });
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
   } catch (error) { message(error.message); status('Fehler · Einrichtung prüfen'); }
 }
 if (navigator.locks) {

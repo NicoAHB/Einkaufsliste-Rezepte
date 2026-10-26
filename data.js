@@ -1,12 +1,13 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
-export const collections = ['stores', 'items', 'recipes', 'ingredients'];
+import { offerUrl, rememberedPrice, validQuote } from './prices.js';
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], sync: { applied: [] } };
 }
 
 export function validate(data) {
@@ -15,6 +16,8 @@ export function validate(data) {
     throw new Error('Die Synchronisierungsdaten fehlen oder sind beschädigt. Bitte ein Backup prüfen.');
   }
   for (const key of collections) {
+    // Optionale Erweiterung von v1: ältere Dateien besitzen noch keine Preisliste.
+    if (key === 'prices' && data.prices === undefined) continue;
     if (!Array.isArray(data[key])) throw new Error(`Ungültige Datendatei: ${key} fehlt.`);
     const ids = new Set();
     for (const row of data[key]) {
@@ -26,6 +29,10 @@ export function validate(data) {
       }
       ids.add(row.id);
       if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
+      if (key === 'stores' && row.offersUrl !== undefined) {
+        if (typeof row.offersUrl !== 'string') throw new Error('Ungültiger Angebotslink.');
+        offerUrl(row.offersUrl);
+      }
       if (key === 'items' || key === 'ingredients') {
         if (typeof row.name !== 'string' || typeof row.unit !== 'string' ||
             !Number.isFinite(row.quantity) || row.quantity <= 0 ||
@@ -34,6 +41,9 @@ export function validate(data) {
       if (key === 'items' && (typeof row.checked !== 'boolean' || typeof row.createdBy !== 'string')) {
         throw new Error('Artikel ohne gültigen Status oder Namen der Person.');
       }
+      if (key === 'items' && row.price !== undefined && row.price !== null && !validQuote(row.price)) throw new Error('Ungültiger Artikelpreis.');
+      if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
+      if (key === 'prices' && (typeof row.name !== 'string' || typeof row.storeId !== 'string' || !validQuote(row.quote))) throw new Error('Ungültiger gemerkter Preis.');
       if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
           row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
           row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
@@ -51,6 +61,7 @@ export function operation(collection, entityId, patch, actor, at = new Date().to
 
 export function merge(data, operations) {
   const next = clone(validate(data));
+  next.prices ||= [];
   const applied = new Set(next.sync.applied);
   for (const op of operations) {
     if (applied.has(op.id)) continue;
@@ -84,8 +95,9 @@ export function positive(value) {
   return number;
 }
 
-export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at) {
+export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, history = []) {
   return active(ingredients).filter(row => row.recipeId === recipeId).map(row =>
     operation('items', uid(), { storeId, name: row.name, quantity: row.quantity * factor,
-      unit: row.unit, checked: false, createdBy: actor }, actor, at));
+      unit: row.unit, checked: false, createdBy: actor,
+      price: rememberedPrice(history, storeId, row.name, row.unit), onSale: false }, actor, at));
 }

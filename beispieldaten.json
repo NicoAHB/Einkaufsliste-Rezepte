@@ -39,7 +39,8 @@
       "createdAt": "2026-10-25T00:00:00.000Z",
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
-      "_clock": {}
+      "_clock": {},
+      "onSale": false
     },
     {
       "id": "item-nudeln",
@@ -52,7 +53,8 @@
       "createdAt": "2026-10-25T00:00:00.000Z",
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
-      "_clock": {}
+      "_clock": {},
+      "onSale": true
     },
     {
       "id": "item-milch",
@@ -65,7 +67,8 @@
       "createdAt": "2026-10-25T00:00:00.000Z",
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
-      "_clock": {}
+      "_clock": {},
+      "onSale": false
     },
     {
       "id": "item-aepfel",
@@ -78,7 +81,8 @@
       "createdAt": "2026-10-25T00:00:00.000Z",
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
-      "_clock": {}
+      "_clock": {},
+      "onSale": false
     }
   ],
   "recipes": [
@@ -283,5 +287,127 @@
   ],
   "sync": {
     "applied": []
-  }
+  },
+  "prices": [
+    {
+      "id": "price-demo-tomaten-edeka",
+      "storeId": "store-edeka",
+      "name": "Tomaten",
+      "quote": {
+        "cents": 249,
+        "quantity": 500,
+        "unit": "g"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-tomaten-lidl",
+      "storeId": "store-lidl",
+      "name": "Tomaten",
+      "quote": {
+        "cents": 199,
+        "quantity": 500,
+        "unit": "g"
+      },
+      "onSale": true,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-tomaten-rewe",
+      "storeId": "store-rewe",
+      "name": "Tomaten",
+      "quote": {
+        "cents": 599,
+        "quantity": 1,
+        "unit": "kg"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-nudeln-edeka",
+      "storeId": "store-edeka",
+      "name": "Nudeln",
+      "quote": {
+        "cents": 129,
+        "quantity": 500,
+        "unit": "g"
+      },
+      "onSale": true,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-milch-lidl",
+      "storeId": "store-lidl",
+      "name": "Milch",
+      "quote": {
+        "cents": 99,
+        "quantity": 1,
+        "unit": "l"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-milch-edeka",
+      "storeId": "store-edeka",
+      "name": "Milch",
+      "quote": {
+        "cents": 119,
+        "quantity": 1,
+        "unit": "l"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-milch-rewe",
+      "storeId": "store-rewe",
+      "name": "Milch",
+      "quote": {
+        "cents": 129,
+        "quantity": 1,
+        "unit": "l"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "price-demo-aepfel-rewe",
+      "storeId": "store-rewe",
+      "name": "Äpfel",
+      "quote": {
+        "cents": 199,
+        "quantity": 4,
+        "unit": "Stück"
+      },
+      "onSale": false,
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    }
+  ]
 }
