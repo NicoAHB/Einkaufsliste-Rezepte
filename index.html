@@ -49,31 +49,25 @@
   </svg>
 
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-cart"/></svg></span>
-      <div class="brand-copy">
-        <h1>Einkauf & Rezepte</h1>
-        <p class="syncline"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></p>
-      </div>
-    </div>
+    <h1 class="visually-hidden">Einkauf & Rezepte</h1>
+    <button id="syncline" class="syncline" type="button" title="Jetzt abgleichen (ohne Verbindung: Einstellungen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></button>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
   <div id="message" class="notice error" role="alert" hidden></div>
   <div id="update-banner" class="notice" hidden><span>Eine neue Version der App ist bereit.</span><button id="reload" class="text-button" type="button">Neu laden</button></div>
-  <div id="demo-banner" class="notice"><span><strong>Beispielmodus</strong> · erfundene Daten</span><button id="demo-setup" class="text-button" type="button">Verbinden</button></div>
 
   <main>
     <section id="shopping" aria-labelledby="shopping-title">
       <h2 id="shopping-title" class="visually-hidden">Einkaufsliste</h2>
       <div id="mode-row" class="mode-row">
         <div id="mode-switch" class="segmented two" role="tablist" aria-label="Ansicht"><button id="mode-plan" type="button" role="tab" aria-selected="true">Planen</button><button id="mode-shop" type="button" role="tab" aria-selected="false">Im Laden</button></div>
-        <button id="manage-stores" class="chip-button" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte</button>
+        <button id="manage-stores" class="icon-button round" type="button" aria-label="Geschäfte verwalten" title="Geschäfte verwalten"><svg class="icon"><use href="#i-store"/></svg></button>
       </div>
       <div id="plan-view">
       <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <div class="summary">
         <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
-        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer">Angebote<svg class="icon"><use href="#i-external"/></svg></a><button id="set-offers" class="secondary small" type="button" hidden>Angebote einrichten</button><button id="open-receipt" class="secondary small" type="button"><svg class="icon"><use href="#i-text"/></svg>Kassenbon</button></div>
+        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer"><span class="label">Angebote</span><svg class="icon"><use href="#i-external"/></svg></a><button id="set-offers" class="secondary small" type="button" hidden>Angebote einrichten</button><button id="open-receipt" class="secondary small" type="button" aria-label="Kassenbon einfügen"><svg class="icon"><use href="#i-text"/></svg><span class="label">Kassenbon</span></button></div>
       </div>
       <form id="item-form" class="card add-form">
         <label class="wide"><span class="visually-hidden">Was brauchst du?</span><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"></label>
@@ -96,7 +90,7 @@
       <ul id="items" class="item-list"></ul>
       </div>
       <div id="shop-view" hidden>
-        <div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div>
+        <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div><button id="shop-back" class="chip-button" type="button" aria-label="Zurück zu Planen">Planen</button></div>
         <p id="shop-status" class="shop-status" aria-live="polite"></p>
         <ul id="shop-list" class="item-list shop-list"></ul>
         <label id="shop-awake-label" class="checkbox-label" hidden><input id="shop-awake" type="checkbox"> Bildschirm anlassen</label>
@@ -177,7 +171,7 @@
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.2 · Farbwahl · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 2.3 · Schlanker Kopf · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>

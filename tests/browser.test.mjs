@@ -58,7 +58,7 @@ async function context(options = {}) {
   page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });
   return { ctx, page, problems };
 }
-const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]'); await page.waitForFunction(() => document.querySelector('#items')); };
+const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
 const horizontalOverflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const sheetOpen = page => page.waitForSelector('dialog[open]');
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
@@ -463,7 +463,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.getAttribute('#theme-color', 'content'), '#2e0f1a', 'Statusleiste: dunkles Rosé');
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'rose');
     // Nach dem Neuladen steht die Farbe schon vor dem Start der App (theme.js im Kopf der Seite)
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
     await page.click('[data-tab=settings]');
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
@@ -473,7 +473,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
     // Eine unbekannte gemerkte Farbe fällt auf Blau zurück
     await page.evaluate(() => localStorage.setItem('einkauf-settings-v1', JSON.stringify({ actor: 'Nico', palette: 'gelb' })));
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
@@ -518,7 +518,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow' } });
     await open(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)), 'Service Worker muss die Seite übernommen haben');
     const png = await page.evaluate(() => {
       const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 400;
@@ -536,7 +536,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#recipe-dialog [data-close]');
     // Ohne Netz neu laden und noch einmal erkennen.
     await ctx.setOffline(true);
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.textContent('#status'), 'Nur auf diesem Gerät');
     await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=image]');
     await page.setInputFiles('#import-form input[type=file]', file);
@@ -968,7 +968,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#receipt-parse');
     assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe', 'das Geschäft, in dem man zuletzt war');
     await page.keyboard.press('Escape');
-    await page.click('#mode-plan');
+    await page.click('#shop-back');
     assert.equal(await page.locator('#plan-view').isVisible(), true);
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
@@ -976,6 +976,71 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+
+  test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    assert.equal(await page.locator('#demo-banner').count(), 0, 'das Banner ist weg');
+    assert.ok(!(await page.textContent('body')).includes('erfundene Daten'));
+    const top = await page.locator('.topbar').boundingBox();
+    assert.ok(top.height <= 56, `Kopfzeile ist ${top.height} px hoch`);
+    assert.ok((await page.locator('.topbar h1').boundingBox()).width <= 1, 'Überschrift nur für Screenreader');
+    assert.match(await page.textContent('#syncline'), /Nur auf diesem Gerät.*Nico/);
+    // Ohne Verbindung führt ein Tipp auf die Statuszeile in die Einstellungen
+    await page.click('#syncline');
+    assert.equal(await page.locator('#settings').isVisible(), true);
+    assert.equal(await page.locator('#connection-details').evaluate(node => node.open), true, 'Verbinden steht offen da');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Kopfbereich: Statuszeile gleicht bei Verbindung ab', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    const gets = remote.stats.gets;
+    await page.click('#syncline');
+    await page.waitForFunction(count => count > 0, remote.stats.gets - gets);
+    assert.equal(await page.locator('#settings').isHidden(), true, 'bleibt auf der Liste');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const width of [280, 320, 390]) {
+    test(`Platz oben (${width} px): Summe und Knöpfe überlappen nicht, Artikel beginnen früh, Im Laden: Geschäfte ganz oben`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 664 } } });
+      await open(page);
+      const box = async selector => page.locator(selector).first().boundingBox();
+      const total = await box('#shopping-total'), tools = await box('.shop-tools');
+      assert.ok(total.x + total.width <= tools.x + 1, 'Summentext reicht nicht unter die Knöpfe');
+      const modes = await box('#mode-switch'), stores = await box('#manage-stores');
+      assert.ok(modes.x + modes.width <= stores.x + 1 && modes.height <= 52, 'Planen/Im Laden bleibt einzeilig');
+      assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
+      assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
+      assert.equal(await horizontalOverflow(page), 0);
+      // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
+      await page.click('#mode-shop');
+      assert.equal(await page.locator('.topbar').isHidden(), true);
+      assert.equal(await page.locator('#mode-row').isHidden(), true);
+      const chips = await box('#shop-chips .chip');
+      assert.ok(chips.y < 24, `Geschäfte beginnen bei ${chips.y} px`);
+      await page.locator('#shop-chips .chip').first().click();
+      assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
+      assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
+      assert.equal(await horizontalOverflow(page), 0);
+      // Der Weg zurück steht neben den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da
+      await page.click('[data-tab=recipes]');
+      assert.equal(await page.locator('.topbar').isVisible(), true);
+      await page.click('[data-tab=shopping]');
+      assert.equal(await page.locator('.topbar').isHidden(), true, 'zurück im Laden-Modus');
+      await page.click('#shop-back');
+      assert.equal(await page.locator('.topbar').isVisible(), true);
+      assert.equal(await page.locator('#plan-view').isVisible(), true);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
 
   test('Im Laden: Modus bleibt nach dem Neuladen, Neues von anderen steht schmal oben, kein seitlicher Überlauf bei 320 px', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
@@ -987,7 +1052,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       localStorage.setItem('einkauf-seen:einkauf-demo-v1', JSON.stringify({ ids: data.base.items.filter(item => item.id !== 'butter').map(item => item.id) }));
     });
     await page.click('#mode-shop');
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.locator('#shop-view').isVisible(), true, 'der Modus bleibt auf diesem Gerät gespeichert');
     await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
     assert.match(await page.textContent('#shop-list .shop-item.news'), /Butter[\s\S]*neu von Anna/);
@@ -996,7 +1061,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#shop-list .shop-item.news').getByRole('button', { name: 'Übernehmen' }).click();
     assert.equal(await page.locator('#shop-list .shop-item.news').count(), 0);
     assert.equal(await page.locator('#shop-list .shop-item:not(.news) .shop-name', { hasText: 'Butter' }).count(), 1);
-    await page.click('#mode-plan');
+    await page.click('#shop-back');
     assert.equal(await page.locator('#shop-view').isHidden(), true);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -1242,7 +1307,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Start: „Alle“, alle Geschäfte mit ihren Artikeln (Beispieldaten: Edeka, Lidl, Rewe)
     assert.deepEqual((await chips())[0], ['Alle', 'true']);
     assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
-    assert.match(await page.textContent('#shopping-total'), /Alle Geschäfte/);
+    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d/, 'Summe der Gesamtliste, ohne Geschäftsname');
     assert.equal(await page.locator('#offers-link').isHidden(), true, 'Angebote gibt es je Geschäft, nicht in der Gesamtliste');
     // Das Formular bietet „Kein Geschäft“ und alle Geschäfte als Schnellwahl an; Standard in „Alle“: kein Geschäft (nichts ist vorausgewählt).
     const pick = () => page.locator('#store-pick button').evaluateAll(nodes => nodes.map(node => [node.textContent, node.getAttribute('aria-pressed')]));
@@ -1273,7 +1338,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
     assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
     await pickStore(page, 'Rewe');
-    assert.match(await page.textContent('#shopping-total'), /Rewe · offen/);
+    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d|Noch keine Preise|Alles erledigt/);
     // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
     await page.locator('.item', { hasText: 'Klopapier' }).getByRole('button', { name: /bearbeiten/ }).click();
