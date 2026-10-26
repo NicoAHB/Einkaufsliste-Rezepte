@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-25T00:00:00.000Z",
+  "stores": [
+    {
+      "id": "store-edeka",
+      "name": "Edeka",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "store-lidl",
+      "name": "Lidl",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "store-rewe",
+      "name": "Rewe",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    }
+  ],
+  "items": [
+    {
+      "id": "item-tomaten",
+      "storeId": "store-edeka",
+      "name": "Tomaten",
+      "quantity": 500,
+      "unit": "g",
+      "checked": false,
+      "createdBy": "Nico",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "item-nudeln",
+      "storeId": "store-edeka",
+      "name": "Nudeln",
+      "quantity": 500,
+      "unit": "g",
+      "checked": false,
+      "createdBy": "Nico",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "item-milch",
+      "storeId": "store-lidl",
+      "name": "Milch",
+      "quantity": 1,
+      "unit": "l",
+      "checked": false,
+      "createdBy": "Nico",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "item-aepfel",
+      "storeId": "store-rewe",
+      "name": "Äpfel",
+      "quantity": 4,
+      "unit": "Stück",
+      "checked": false,
+      "createdBy": "Nico",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    }
+  ],
+  "recipes": [
+    {
+      "id": "recipe-pasta",
+      "name": "Tomaten-Pasta",
+      "servings": 2,
+      "tags": [
+        "schnell",
+        "vegetarisch"
+      ],
+      "instructions": "Nudeln in Salzwasser kochen. Zwiebel würfeln und in Olivenöl anbraten. Tomaten dazugeben, 10 Minuten köcheln lassen und würzen. Mit den Nudeln vermischen.",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "recipe-curry",
+      "name": "Kichererbsen-Curry",
+      "servings": 2,
+      "tags": [
+        "vegan",
+        "einfach"
+      ],
+      "instructions": "Reis kochen. Paprika würfeln und kurz anbraten. Abgetropfte Kichererbsen, Kokosmilch und Currypulver zugeben. 15 Minuten köcheln lassen und mit dem Reis servieren.",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "recipe-pfannkuchen",
+      "name": "Apfel-Pfannkuchen",
+      "servings": 2,
+      "tags": [
+        "vegetarisch",
+        "süß"
+      ],
+      "instructions": "Mehl, Milch und Eier zu einem Teig verrühren. Apfel in dünne Scheiben schneiden. Etwas Butter in einer Pfanne erhitzen. Teig und Apfelscheiben hineingeben, von beiden Seiten goldbraun backen.",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    }
+  ],
+  "ingredients": [
+    {
+      "id": "ingredient-pasta-1",
+      "recipeId": "recipe-pasta",
+      "name": "Nudeln",
+      "quantity": 200,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pasta-2",
+      "recipeId": "recipe-pasta",
+      "name": "Tomaten",
+      "quantity": 400,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pasta-3",
+      "recipeId": "recipe-pasta",
+      "name": "Zwiebel",
+      "quantity": 1,
+      "unit": "Stück",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pasta-4",
+      "recipeId": "recipe-pasta",
+      "name": "Olivenöl",
+      "quantity": 1,
+      "unit": "EL",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-curry-1",
+      "recipeId": "recipe-curry",
+      "name": "Reis",
+      "quantity": 150,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-curry-2",
+      "recipeId": "recipe-curry",
+      "name": "Kichererbsen, abgetropft",
+      "quantity": 240,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-curry-3",
+      "recipeId": "recipe-curry",
+      "name": "Kokosmilch",
+      "quantity": 400,
+      "unit": "ml",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-curry-4",
+      "recipeId": "recipe-curry",
+      "name": "Paprika",
+      "quantity": 1,
+      "unit": "Stück",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-curry-5",
+      "recipeId": "recipe-curry",
+      "name": "Currypulver",
+      "quantity": 2,
+      "unit": "TL",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pfannkuchen-1",
+      "recipeId": "recipe-pfannkuchen",
+      "name": "Mehl",
+      "quantity": 150,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pfannkuchen-2",
+      "recipeId": "recipe-pfannkuchen",
+      "name": "Milch",
+      "quantity": 250,
+      "unit": "ml",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pfannkuchen-3",
+      "recipeId": "recipe-pfannkuchen",
+      "name": "Eier",
+      "quantity": 2,
+      "unit": "Stück",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pfannkuchen-4",
+      "recipeId": "recipe-pfannkuchen",
+      "name": "Apfel",
+      "quantity": 1,
+      "unit": "Stück",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    },
+    {
+      "id": "ingredient-pfannkuchen-5",
+      "recipeId": "recipe-pfannkuchen",
+      "name": "Butter",
+      "quantity": 20,
+      "unit": "g",
+      "createdAt": "2026-10-25T00:00:00.000Z",
+      "updatedAt": "2026-10-25T00:00:00.000Z",
+      "deletedAt": null,
+      "_clock": {}
+    }
+  ],
+  "sync": {
+    "applied": []
+  }
+}
