@@ -1401,6 +1401,17 @@ function syncKeyboard() {
 viewport?.addEventListener('resize', syncKeyboard);
 document.addEventListener('focusin', () => setTimeout(syncKeyboard, 350));
 document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
+// Ein Tipp auf leere Fläche (nicht auf Eingaben, Knöpfe, Links oder Beschriftungen) nimmt dem Feld den Fokus, damit sich die Tastatur schließt:
+// iOS tut das von selbst nicht. Ein Wischen (Scrollen) zählt nicht, nur ein Tipp mit höchstens 10 px Bewegung.
+const INTERACTIVE = 'input,textarea,select,button,a,label,summary,[role=button],[role=tab],[contenteditable=true]';
+let tapStart = null;
+document.addEventListener('pointerdown', event => { tapStart = event.isPrimary ? { x: event.clientX, y: event.clientY, target: event.target } : null; }, true);
+document.addEventListener('pointerup', event => {
+  const start = tapStart; tapStart = null;
+  if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return;
+  const field = document.activeElement;
+  if (typing(field) && !start.target.closest?.(INTERACTIVE)) field.blur();
+}, true);
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });

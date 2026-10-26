@@ -145,6 +145,47 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
+  test('Tastatur: Ein Tipp auf leere Fläche nimmt dem Eingabefeld den Fokus, Tipps auf Eingaben und Knöpfe nicht', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const focused = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName || '');
+    const tapOnEmpty = async selector => { const box = await page.locator(selector).boundingBox(); await page.touchscreen.tap(box.x + 3, box.y + 3); };
+    // Einkaufsliste: Name eingeben, dann auf die Überschrift tippen
+    await page.focus('#item-form input[name=name]');
+    assert.equal(await focused(), 'name');
+    await tapOnEmpty('#shopping-title');
+    assert.notEqual(await focused(), 'name', 'Fokus weg, Tastatur schließt sich');
+    // In ein anderes Feld tippen behält den Fokus; auf einen Knopf tippen auch (die Schnellwahl der Geschäfte)
+    await page.focus('#item-form input[name=name]');
+    await page.locator('#item-form input[name=quantity]').tap();
+    assert.equal(await focused(), 'quantity');
+    await page.locator('#store-pick button').first().tap();
+    assert.equal(await page.locator('#store-pick button[aria-pressed=true]').count(), 1, 'der Knopf wurde ausgelöst');
+    // Wischen (Scrollen) ist kein Tipp
+    await page.focus('#item-form input[name=name]');
+    await page.evaluate(() => {
+      const fire = (type, y) => document.body.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, pointerType: 'touch', clientX: 200, clientY: y }));
+      fire('pointerdown', 400); fire('pointerup', 300);   // 100 px Bewegung = Wischen
+    });
+    assert.equal(await focused(), 'name');
+    await page.evaluate(() => {
+      const fire = (type, y) => document.body.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, pointerType: 'touch', clientX: 200, clientY: y }));
+      fire('pointerdown', 400); fire('pointerup', 402);   // 2 px = Tipp auf leere Fläche
+    });
+    assert.notEqual(await focused(), 'name');
+    await page.focus('#item-form input[name=name]');
+    // Neue Zutaten im Rezept: Zutat hinzufügen, Name tippen, auf die Überschrift des Dialogs tippen
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
+    await page.click('#add-ingredient');
+    await page.locator('#ingredient-editor input').first().focus();
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), 'INPUT');
+    const heading = await page.locator('#recipe-dialog h2').boundingBox();
+    await page.touchscreen.tap(heading.x + 3, heading.y + 3);
+    assert.equal(await page.evaluate(() => typeof document.activeElement?.name === 'string' && document.activeElement.matches('input,textarea,select')), false);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Tastatur offen: Leiste weicht aus und kommt danach zurück', async () => {
     const { ctx, page } = await context();
     await ctx.addInitScript(() => {

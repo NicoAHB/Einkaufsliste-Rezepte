@@ -56,6 +56,10 @@ Stand auf der Liste „1 Milch“ und beide legen unabhängig je „+1“ darauf
 
 Auf jeder Rezeptkarte öffnet **Kochen** eine Vollbildansicht: die Zutaten (für die gewählte Portionszahl) als große, einzeln abhakbare Zeilen und die Zubereitung in **großen, nummerierten Schritten**, die man beim Kochen antippt, um sie abzuhaken. Steht die Zubereitung in einem Absatz, teilt die App sie an den Satzenden. Haken gelten nur für diese Sitzung und werden nicht abgeglichen. **„Bildschirm anlassen“** (erscheint nur, wo das Gerät es anbietet: Safari ab iOS 16.4; als Homescreen-App hängt es von der iOS-Version ab, das konnte ich nicht prüfen) hält das Display wach; die Wahl wird auf diesem Gerät gemerkt, und beim Verlassen der App oder Schließen der Ansicht wird die Sperre freigegeben. Klappt es nicht, zeigt die App den Hinweis, in den iPhone-Einstellungen die automatische Sperre zu verlängern. **„Fertig · Heute gekocht“** trägt das Rezept als heute gekocht ein.
 
+### Tastatur schließt sich beim Tippen auf leere Fläche
+
+Ein Tipp auf leere Fläche (nicht auf ein Eingabefeld, einen Knopf, einen Link oder eine Beschriftung) nimmt dem Eingabefeld den Fokus, die Tastatur klappt weg. Das gilt in der Einkaufsliste und in allen Dialogen, auch beim Eintragen neuer Zutaten im Rezept. Wischen und Scrollen zählen nicht (höchstens 10 px Bewegung). Nach dem Hinzufügen eines Artikels bleibt der Cursor im Namensfeld, damit man mehrere Artikel nacheinander eintragen kann; ein Tipp daneben schließt die Tastatur.
+
 ### Neu von der Partnerin
 
 Was eine **andere Person** auf die Liste gesetzt hat, steht jetzt **farbig (gelb) oben** unter „Neu von Anna“, bis ihr es mit **Übernehmen** bestätigt; dann reiht es sich in die Liste ein. **Alle übernehmen** bestätigt alles auf einmal. Das gilt auch, wenn die andere Person die **Menge** eines vorhandenen Artikels erhöht hat („+100 g von Anna“), denn durch das Zusammenzählen würde es sonst unbemerkt in einem vorhandenen Eintrag verschwinden. Eigene Artikel, erledigte und gelöschte erscheinen dort nie. Welche Einträge ihr schon gesehen habt, merkt sich nur dieses Gerät (nicht in GitHub); beim ersten Start mit Version 1.8 und auf einem neuen Gerät gilt alles Vorhandene als gesehen, damit nicht die ganze Liste als neu erscheint.
@@ -355,6 +359,7 @@ Weitere Testpunkte für Version 1.8 (auf beiden Geräten aktualisieren):
 - [ ] **Preisänderung:** Einen Bon einfügen, bei dem ein bekanntes Produkt teurer oder günstiger geworden ist: roter oder grüner Hinweis in der Vorschau und danach am Artikel auf der Liste. Ein Aktionsartikel (mit Rabattzeile) löst keinen Hinweis aus.
 - [ ] **Angebot mit Datum:** An einem Artikel „Im Angebot“ mit „gültig bis“ gestern speichern: „Angebot abgelaufen“, die Schätzung nimmt den normalen Preis. Preisvergleich im Stift-Dialog: „zuletzt eingetragen am …“.
 - [ ] **Schreibweise:** „Zwiebel“ tippen: Vorschlag „Zwiebeln“ antippen, später wieder „Zwiebel“ tippen und hinzufügen: es erscheint „Zwiebeln“.
+- [ ] **Tastatur:** In „Was brauchst du?“ tippen, dann auf freie Fläche neben der Liste tippen: die Tastatur klappt weg. Dasselbe beim Eintragen einer neuen Zutat im Rezept.
 - [ ] **Kochmodus:** Ein Rezept mit „Kochen“ öffnen, Schritte und Zutaten abhaken; „Bildschirm anlassen“ (falls angeboten) einschalten und prüfen, dass der Bildschirm nicht dunkel wird; „Fertig · Heute gekocht“.
 
 Weitere Testpunkte für Version 1.6 (auf beiden Geräten aktualisieren):
