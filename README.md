@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 1.9
+# Einkauf & Rezepte – Version 2.0
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,25 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.0: aufgeräumt und per Siri hinzufügen
+
+Keine neuen Datenfelder, nur Bedienung. Beide Geräte können unabhängig voneinander aktualisieren.
+
+- **Eingabeformular klappt zu.** Im Ruhezustand sieht man nur das Namensfeld mit „+“ (Menge 1 Stück). Sobald man hineintippt, erscheinen Geschäft, Menge, Einheit, die Schnellwahl und „Kategorie, Preis & Angebot“. Es bleibt offen, solange der Cursor im Formular steht oder im Namensfeld Text steht; ein Tipp auf freie Fläche (ohne Text) klappt es wieder zu. Das gewählte Geschäft steht als Hinweis im Namensfeld („Was brauchst du? → Lidl“). Die erste Artikelzeile steht dadurch deutlich höher, auf dem iPhone ohne Scrollen im Bild.
+- **Titel und Umschalter in einer Zeile:** „Planen | Im Laden“ und „Geschäfte“ stehen nebeneinander, die Überschrift „Einkaufsliste“ ist nur noch für Screenreader da. Die Summenkarte nennt nur noch etwas, wenn Preise fehlen.
+- **Zeile antippen = bearbeiten.** Die Artikelzeilen haben nur noch den Haken links; ein Tipp auf den Namen öffnet „Artikel & Preis“. Der Stift und der Mülleimer in der Zeile entfallen. **Löschen** steht ganz unten im Dialog („Artikel löschen“). Das ist ruhiger und schützt vor Fehltipps, denn es gibt seit Version 1.7 kein Rückgängig. In „Neu von …“ steht nur noch „Übernehmen“; zum Bearbeiten oder Löschen die Zeile antippen.
+- **Einstellungen:** Sobald GitHub verbunden ist, steht **Gemeinsame Liste** (Name, Repository, Token) **ganz unten und eingeklappt** („✓ haushalt/daten · Nico“). Oben stehen Vorrat und Darstellung, danach Datenumfang und die Link-Einstellungen. Solange nichts verbunden ist, steht die Verbindung wie bisher oben und offen.
+- **Artikel per Siri oder Kurzbefehl hinzufügen:** Die App versteht Links der Form `https://nicoahb.github.io/Einkaufsliste-Rezepte/?add=Milch, Eier und 500 g Butter`. Mehrere Artikel trennt man mit Komma, „und“, Semikolon oder Zeilenumbruch; Mengen und Einheiten werden erkannt („2 Eier“, „500 g Butter“, „1,5 l Hafermilch“), ohne Menge gilt 1 Stück. Optional wählt `&store=Lidl` das Geschäft (Teil des Namens genügt). Gleiche Artikel zählen zu vorhandenen dazu, gemerkte Schreibweisen werden angewendet. Die Adresse wird danach bereinigt, ein Neuladen fügt nichts doppelt hinzu. Ein kurzer Hinweis nennt, was hinzugefügt wurde.
+
+  Einmalig einen Kurzbefehl anlegen (nicht getestet, da hier kein iPhone zur Verfügung stand):
+  1. App **Kurzbefehle** → **+** → Name „Einkaufsliste“.
+  2. Aktion **Text diktieren** (Sprache Deutsch) hinzufügen.
+  3. Aktion **URL-codieren**, Eingabe: *Diktierter Text*.
+  4. Aktion **Text**: `https://nicoahb.github.io/Einkaufsliste-Rezepte/?add=` und dahinter die Variable *URL-codierter Text*. Für einen festen Laden `&store=Lidl` anhängen.
+  5. Aktion **URLs öffnen**, Eingabe: das Ergebnis der Text-Aktion.
+
+  Dann: „Hey Siri, Einkaufsliste“ und den Artikel sagen. **Wichtig:** Der Link öffnet sich in Safari. Auf dem iPhone speichern Safari und die Homescreen-App getrennt. Wer die App nur über das Homescreen-Symbol nutzt, muss in Safari einmal Name und Token eintragen (Einstellungen), sonst landen die Artikel nur lokal in Safari und die App zeigt den Hinweis „nur auf diesem Gerät: hier ist GitHub nicht verbunden“. Am einfachsten ist es, die App dann auch in Safari zu nutzen.
 
 ## Neu in Version 1.9: Modus „Im Laden“
 
@@ -365,6 +384,13 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
 
+Weitere Testpunkte für Version 2.0:
+
+- [ ] Einkauf → Planen: Es steht nur das Namensfeld mit „+“. Hineintippen klappt Geschäft, Menge und Einheit auf; ein Tipp daneben klappt wieder zu. Die erste Artikelzeile ist ohne Scrollen sichtbar.
+- [ ] Einen Artikel antippen: „Artikel & Preis“ öffnet sich; unten „Artikel löschen“ entfernt ihn.
+- [ ] Einstellungen: Nach dem Verbinden steht „Gemeinsame Liste“ unten und eingeklappt; Vorrat und Darstellung stehen oben.
+- [ ] Optional: Siri-Kurzbefehl „Einkaufsliste“ (siehe oben): „Hey Siri, Einkaufsliste“, „Milch und Eier“. Danach sind beide in der App (in Safari und, falls dort verbunden, auch in GitHub).
+
 Weitere Testpunkte für Version 1.9:
 
 - [ ] Einkauf → **Im Laden**: Edeka antippen, Artikel abhaken, zu Lidl wechseln. Ein Artikel ohne Geschäft, den ihr bei Edeka abgehakt habt, steht bei Lidl nicht mehr.
@@ -430,7 +456,7 @@ npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright
 ```
 
 - `tests/compact.test.mjs`: Aufräumen (Fristen für gelöschte und erledigte Artikel, Folgen für Zutaten/Preise/Artikel entfernter Rezepte und Geschäfte, Zeitstempel und Sammelmarke, verwaiste Änderungen eines alten Geräts, Namensgedächtnis, Simulation von einem Jahr Nutzung mit rund 20 Artikeln pro Woche). `tests/list.test.mjs`: Zusammenzählen gleicher Artikel (Einheiten, Geschäfte, „nach Bedarf“) und Vorrat.
-- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Namensvorschläge. `tests/trend.test.mjs`: sichere Preisänderungen, Aktionen, Umrechnung, 60-Tage-Frist, Zuordnungen, Aufräumen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“. `tests/shop.test.mjs`: Modus „Im Laden“ (Geschäft wählen, Artikel ohne Geschäft, erst Edeka dann Lidl).
+- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Namensvorschläge. `tests/trend.test.mjs`: sichere Preisänderungen, Aktionen, Umrechnung, 60-Tage-Frist, Zuordnungen, Aufräumen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“. `tests/browser.test.mjs` prüft zusätzlich das zugeklappte Formular, das Antippen von Zeilen, die Einstellungen und den `?add=`-Link. `tests/shop.test.mjs`: Modus „Im Laden“ (Geschäft wählen, Artikel ohne Geschäft, erst Edeka dann Lidl).
 - `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
 - `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
 - `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).
