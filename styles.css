@@ -499,7 +499,7 @@ main {
   grid-column:3;
   grid-row:1
 }
-.add-form.compact>.store-pick,.add-form.compact>.quick-pick,.add-form.compact>.qty,.add-form.compact>.unit,.add-form.compact>.item-suggestions,.add-form.compact>.price-fields {
+.add-form.compact>.template-open,.add-form.compact>.store-pick,.add-form.compact>.quick-pick,.add-form.compact>.qty,.add-form.compact>.unit,.add-form.compact>.item-suggestions,.add-form.compact>.price-fields {
   display:none
 }
 .wide {
@@ -2119,3 +2119,45 @@ body.in-store main {
 .palette [data-palette=flieder] { --sh:268 }
 .palette [data-palette=rose] { --sh:340 }
 .palette [data-palette=pfirsich] { --sh:18 }
+
+/* Vorlagen */
+.template-open {
+  justify-self:start;
+  min-height:36px
+}
+.template-list {
+  display:grid;
+  gap:8px;
+  margin:0 0 14px;
+  padding:0;
+  list-style:none
+}
+.template-list li {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:52px;
+  padding:6px 6px 6px 14px;
+  border:1px solid var(--line-strong);
+  border-radius:14px
+}
+.template-list li.empty {
+  min-height:0;
+  padding:0;
+  border:0;
+  color:var(--muted)
+}
+.template-list li>span {
+  flex:1;
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.template-list li small {
+  display:block;
+  color:var(--muted)
+}
+.template-list .icon-button {
+  flex:none;
+  width:40px;
+  min-height:40px
+}

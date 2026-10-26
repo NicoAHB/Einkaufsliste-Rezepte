@@ -2,16 +2,16 @@
 import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory } from './categories.js';
-// `prices`, `meals`, `pantry` und `aliases` sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases'];
+// `prices`, `meals`, `pantry`, `aliases` und `templates` (Einkaufsvorlagen) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -67,6 +67,10 @@ export function validateRow(key, row) {
       (row.recipeId !== undefined && typeof row.recipeId !== 'string') || (row.title !== undefined && typeof row.title !== 'string') ||
       !(row.recipeId || row.title) || (row.done !== undefined && typeof row.done !== 'boolean'))) throw new Error('Ungültiger Eintrag im Wochenplan.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
+  // Einkaufsvorlage (Version 2.5): Name und bis zu 80 Artikel { name, quantity, unit, storeId? }.
+  if (key === 'templates' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 60 || !Array.isArray(row.items) || row.items.length > 80 ||
+      row.items.some(entry => !entry || typeof entry.name !== 'string' || !entry.name.trim() || !Number.isFinite(entry.quantity) || entry.quantity <= 0 ||
+        typeof entry.unit !== 'string' || (entry.storeId !== undefined && typeof entry.storeId !== 'string')))) throw new Error('Ungültige Einkaufsvorlage.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
 }
 
@@ -138,7 +142,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   const next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= [];
   const applied = new Set(next.sync.applied), created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
