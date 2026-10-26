@@ -2,6 +2,7 @@ import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, freq
 import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { shopCount, shopView } from './shop.js';
+import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
@@ -94,7 +95,7 @@ function saveLocal(nextBase, nextPending) {
   storageWrite(namespace(), { base: nextBase, pending: nextPending });
   base = nextBase; pending = nextPending; state = merge(base, pending);
 }
-function status(text, mode = 'local') { $('#status').textContent = text; $('#status').dataset.state = mode; }
+function status(text, mode = 'local') { $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode; }
 function restingStatus() {
   if (!connected()) status('Nur auf diesem Gerät', 'local');
   else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
@@ -130,7 +131,7 @@ function tab(name) {
   });
   window.scrollTo(0, 0);
   if (name === 'settings') renderStorage();
-  syncShopAwake();
+  syncShopAwake(); syncChrome();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
 function storeOptions(select, preferred = select.value, allowNone = false) {
@@ -190,7 +191,6 @@ function storeChanged() {
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
 function render() {
   $('#identity').textContent = config.actor || '';
-  $('#demo-banner').hidden = connected();
   if (view !== 'all' && view !== 'none' && !viewStore()) view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
@@ -241,7 +241,7 @@ function acknowledge(ids) {
   renderItems(); if (shopOn()) renderShop();
 }
 function newsRow(entry) {
-  const item = entry.item, row = element('li', undefined, 'item news');
+  const item = entry.item, row = element('li', undefined, 'item news'); row.dataset.id = item.id;
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
   copy.setAttribute('aria-label', `${item.name}: bearbeiten`); copy.addEventListener('click', () => guard(() => editItem(item.id)));
   const notes = entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`);
@@ -262,7 +262,7 @@ function storeHead(label, count, none) {
   return row;
 }
 function itemRow(item, withStore = false) {
-  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
+  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`); row.dataset.id = item.id;
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
@@ -395,10 +395,13 @@ function renderShoppingInfo() {
   else $('#offers-link').removeAttribute('href');
   const total = shoppingTotal(visibleItems().filter(inView), state.prices);
   const box = $('#shopping-total'); box.replaceChildren();
-  box.append(element('p', store ? `${store.name} · offen` : view === 'none' ? 'Ohne Geschäft · offen' : 'Alle Geschäfte · offen', 'eyebrow'));
-  box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
-  // Nur ein Hinweis, wenn etwas fehlt: „Alle eingerechnet“ braucht keine eigene Zeile.
-  if (total.missing) box.append(element('p', `${total.missing} Artikel ohne Preis, nicht eingerechnet`, 'hint'));
+  // Eine Zeile, die Geschäftsauswahl darüber sagt schon, wofür die Summe gilt.
+  if (!total.count) box.append(element('strong', 'Alles erledigt'));
+  else if (!total.priced) box.append(element('small', 'Noch keine Preise notiert'));
+  else {
+    box.append(element('strong', `Geschätzt ${euros(total.cents)}`));
+    if (total.missing) box.append(element('small', `${total.missing} ohne Preis, nicht eingerechnet`));
+  }
 }
 const perLabel = quote => quote.quantity === 1 ? `je ${quote.unit}` : `je ${format(quote.quantity)} ${quote.unit}`;
 // „▲ Teurer: 1,29 € → 1,39 € je Stück (+8 %)“: Pfeil und Wort, nicht nur die Farbe.
@@ -1121,12 +1124,16 @@ function fillSettings() {
   $('#connection-details').open = !connected();
   $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}` : 'nicht verbunden';
 }
+const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
 function applyTheme() {
-  if (!config.theme || config.theme === 'system') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = config.theme;
-  // Die Farbe der Statusleiste folgt dem gewählten Design, nicht nur dem Gerät.
-  const dark = config.theme === 'dark' || (config.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  $('#theme-color').content = dark ? '#0f1914' : '#f4f6f2';
+  const root = document.documentElement, palette = PALETTES.includes(config.palette) ? config.palette : 'blau';
+  if (!config.theme || config.theme === 'system') delete root.dataset.theme;
+  else root.dataset.theme = config.theme;
+  root.dataset.palette = palette;
+  document.querySelectorAll('#palette button').forEach(node => node.setAttribute('aria-checked', String(node.dataset.palette === palette)));
+  // Die Farbe der Statusleiste folgt der gewählten Hintergrundfarbe, nicht nur dem Gerät.
+  const [red, green, blue] = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+  $('#theme-color').content = `#${[red, green, blue].map(value => Math.round(value).toString(16).padStart(2, '0')).join('')}`;
 }
 function sameTarget(left, right) { return namespace(left) === namespace(right); }
 async function backup() {
@@ -1150,11 +1157,13 @@ const shopOn = () => config.shopMode === true;
 function setShopMode(on) { saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
 function applyMode() {
   const on = shopOn();
-  $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#manage-stores').hidden = on;   // im Laden: oben gleich der Umschalter und die Geschäfte
+  $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
   $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
   if (on) renderShop();
-  syncShopAwake();
+  syncShopAwake(); syncChrome();
 }
+// Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
+function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); }
 function syncShopAwake() {
   const supported = 'wakeLock' in navigator;
   $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && config.shopAwake === true && !awake.shop.failed;
@@ -1491,7 +1500,8 @@ fillCategorySelects();
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
-$('#demo-setup').addEventListener('click', () => tab('settings'));
+// Die Statuszeile oben ist zugleich ein Knopf: verbunden gleicht sie ab, sonst führt sie in die Einstellungen zum Verbinden.
+$('#syncline').addEventListener('click', () => guard(() => connected() ? sync(true) : tab('settings')));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
@@ -1572,6 +1582,12 @@ $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.id.value;
   if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
   removeRows('items', [id]); $('#item-dialog').close();
+}));
+// Zeile lange halten und nach rechts in den roten Mülleimer schieben löscht den Artikel (nur in der Planungsansicht, nicht „Im Laden“).
+dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
+  const item = state.items.find(row => row.id === id && !row.deletedAt);
+  if (!item) return;
+  removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
 }));
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
@@ -1664,11 +1680,15 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  saveConfig({ actor: config.actor, theme: config.theme, importProxy: config.importProxy, publicProxy: config.publicProxy });
+  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
+$('#palette').addEventListener('click', event => guard(() => {
+  const choice = event.target.closest('button[data-palette]')?.dataset.palette;
+  if (choice) { saveConfig({ ...config, palette: choice }); applyTheme(); }
+}));
 $('#export').addEventListener('click', () => guard(backup));
 $('#open-receipt').addEventListener('click', () => guard(() => openReceipt()));
 $('#cook-awake').addEventListener('change', event => guard(async () => { awake.cook.failed = false; saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake('cook', event.target.checked); }));
@@ -1680,6 +1700,7 @@ document.addEventListener('visibilitychange', () => {
   syncShopAwake();
 });
 $('#mode-plan').addEventListener('click', () => guard(() => setShopMode(false)));
+$('#shop-back').addEventListener('click', () => guard(() => setShopMode(false)));
 $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
 $('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopAwake: event.target.checked }); syncShopAwake(); }));
 $('#shop-finish').addEventListener('click', () => guard(openFinish));

@@ -58,7 +58,7 @@ async function context(options = {}) {
   page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });
   return { ctx, page, problems };
 }
-const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]'); await page.waitForFunction(() => document.querySelector('#items')); };
+const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
 const horizontalOverflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const sheetOpen = page => page.waitForSelector('dialog[open]');
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
@@ -426,22 +426,99 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Dunkelmodus: Farben und Statusleistenfarbe folgen der Einstellung', async () => {
+  test('Dunkelmodus: Farben und Statusleistenfarbe folgen der Einstellung (Standard ist Blau)', async () => {
     const { ctx, page } = await context({ context: { colorScheme: 'light' } });
     await open(page);
-    assert.equal(await page.getAttribute('#theme-color', 'content'), '#f4f6f2');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#ecf0f9', 'hell: Pastellblau');
     await page.click('[data-tab=settings]');
     await page.selectOption('#theme', 'dark');
-    assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f1914');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 25, 20)');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f182e', 'dunkel: Dunkelblau, nicht mehr Dunkelgrün');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 24, 46)');
     await ctx.close();
   });
+
+  // Farbwahl: sechs Farben, hell als Pastell und dunkel als tiefer Ton; gemerkt pro Gerät, schon vor dem ersten Anzeigen angewendet
+  const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
+  const colorOf = (page, token) => page.evaluate(name => {
+    const probe = document.createElement('i'); probe.style.color = `var(${name})`; document.body.append(probe);
+    const color = getComputedStyle(probe).color.match(/[\d.]+/g).slice(0, 3).map(Number); probe.remove(); return color;
+  }, token);
+  const luminance = rgb => { const [r, g, b] = rgb.map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const contrast = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + .05) / (lo + .05); };
+
+  test('Farbwahl: Auswahl in den Einstellungen wirkt sofort, bleibt nach dem Neuladen und färbt die Statusleiste', async () => {
+    const { ctx, page, problems } = await context({ context: { colorScheme: 'dark' } });
+    await open(page);
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#palette button').count(), 6);
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'blau');
+    const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await page.locator('#palette button[data-palette=rose]').scrollIntoViewIfNeeded();
+    await page.click('#palette button[data-palette=rose]');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
+    const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.notEqual(after, before, 'der Hintergrund hat die Farbe gewechselt');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#2e0f1a', 'Statusleiste: dunkles Rosé');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'rose');
+    // Nach dem Neuladen steht die Farbe schon vor dem Start der App (theme.js im Kopf der Seite)
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
+    // Hell wird es ein Pastellton; Darstellung und Farbe sind unabhängig
+    await page.selectOption('#theme', 'light');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#f9ecf0');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    // Eine unbekannte gemerkte Farbe fällt auf Blau zurück
+    await page.evaluate(() => localStorage.setItem('einkauf-settings-v1', JSON.stringify({ actor: 'Nico', palette: 'gelb' })));
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Farbwahl: Beim Trennen der Verbindung bleibt die Farbe', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: { ...connectedConfig, palette: 'flieder' }, context: { colorScheme: 'light' } });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
+    await page.click('[data-tab=settings]');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#connection-details summary').click();
+    await page.click('#disconnect');
+    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'flieder');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  for (const scheme of ['light', 'dark']) {
+    test(`Farbwahl: Alle Farben bleiben gut lesbar (${scheme}, Kontrast mindestens 4,5 : 1)`, async () => {
+      const { ctx, page } = await context({ context: { colorScheme: scheme } });
+      await open(page);
+      for (const palette of PALETTES) {
+        await page.evaluate(name => { document.documentElement.dataset.palette = name; }, palette);
+        const c = {}; for (const token of ['--bg', '--card', '--text', '--muted', '--accent', '--accent-soft', '--on-accent', '--danger']) c[token] = await colorOf(page, token);
+        for (const [a, b] of [['--text', '--bg'], ['--text', '--card'], ['--muted', '--bg'], ['--muted', '--card'], ['--accent', '--bg'], ['--accent', '--card'],
+          ['--on-accent', '--accent'], ['--accent', '--accent-soft'], ['--text', '--accent-soft'], ['--danger', '--card']]) {
+          assert.ok(contrast(c[a], c[b]) >= 4.5, `${scheme}/${palette}: ${a} auf ${b} nur ${contrast(c[a], c[b]).toFixed(2)} : 1`);
+        }
+      }
+      await ctx.close();
+    });
+  }
 
   test('Offline: App und Texterkennung starten ohne Netz, Update-Hinweis erscheint', async () => {
     const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow' } });
     await open(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)), 'Service Worker muss die Seite übernommen haben');
     const png = await page.evaluate(() => {
       const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 400;
@@ -459,7 +536,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#recipe-dialog [data-close]');
     // Ohne Netz neu laden und noch einmal erkennen.
     await ctx.setOffline(true);
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.textContent('#status'), 'Nur auf diesem Gerät');
     await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=image]');
     await page.setInputFiles('#import-form input[type=file]', file);
@@ -891,7 +968,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#receipt-parse');
     assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe', 'das Geschäft, in dem man zuletzt war');
     await page.keyboard.press('Escape');
-    await page.click('#mode-plan');
+    await page.click('#shop-back');
     assert.equal(await page.locator('#plan-view').isVisible(), true);
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
@@ -899,6 +976,88 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+
+  test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    assert.equal(await page.locator('#demo-banner').count(), 0, 'das Banner ist weg');
+    assert.ok(!(await page.textContent('body')).includes('erfundene Daten'));
+    const top = await page.locator('.topbar').boundingBox();
+    assert.ok(top.height <= 56, `Kopfzeile ist ${top.height} px hoch`);
+    assert.ok((await page.locator('.topbar h1').boundingBox()).width <= 1, 'Überschrift nur für Screenreader');
+    assert.match(await page.textContent('#syncline'), /Nur auf diesem Gerät.*Nico/);
+    // Ohne Verbindung führt ein Tipp auf die Statuszeile in die Einstellungen
+    await page.click('#syncline');
+    assert.equal(await page.locator('#settings').isVisible(), true);
+    assert.equal(await page.locator('#connection-details').evaluate(node => node.open), true, 'Verbinden steht offen da');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Kopfbereich: Statuszeile gleicht bei Verbindung ab', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    const gets = remote.stats.gets;
+    await page.click('#syncline');
+    await page.waitForFunction(count => count > 0, remote.stats.gets - gets);
+    assert.equal(await page.locator('#settings').isHidden(), true, 'bleibt auf der Liste');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const width of [280, 314, 360, 390, 430]) {
+    test(`Platz oben (${width} px): Summe und Knöpfe überlappen nicht, Artikel beginnen früh, Im Laden: Geschäfte ganz oben`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 664 } } });
+      await open(page);
+      const box = async selector => page.locator(selector).first().boundingBox();
+      const total = await box('#shopping-total'), tools = await box('.shop-tools');
+      assert.ok(total.x + total.width <= tools.x + 1, 'Summentext reicht nicht unter die Knöpfe');
+      const modes = await box('#mode-switch'), stores = await box('#manage-stores');
+      assert.ok(modes.x + modes.width <= stores.x + 1 && modes.height <= 52, 'Planen/Im Laden bleibt einzeilig');
+      assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
+      assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
+      assert.equal(await horizontalOverflow(page), 0);
+      // In jedem Geschäft (mit und ohne Angebotslink): Summentext und beide Knöpfe liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
+      for (const name of ['Edeka', 'Lidl', 'Rewe']) {
+        await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
+        const layout = await page.evaluate(() => {
+          const rect = selector => { const node = document.querySelector(selector); return node && !node.hidden && node.getClientRects().length ? node.getBoundingClientRect() : null; };
+          const card = rect('.summary'), text = rect('#shopping-total'), buttons = ['#offers-link', '#set-offers', '#open-receipt'].map(rect).filter(Boolean);
+          const inner = document.querySelector('#shopping-total').querySelector('strong, small');
+          return { card, text, buttons, textFits: !inner || inner.scrollWidth <= document.querySelector('#shopping-total').clientWidth + 1 };
+        });
+        assert.ok(layout.buttons.length >= 2, `${name}: Knöpfe sichtbar`);
+        assert.ok(layout.textFits, `${name}: Summentext ragt über seinen Platz hinaus`);
+        const parts = [layout.text, ...layout.buttons].sort((a, b) => a.left - b.left);
+        for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5, `${name}: Summe und Knöpfe überlappen bei ${width} px`);
+        assert.ok(parts.every(part => part.left >= layout.card.left - 0.5 && part.right <= layout.card.right + 0.5 && part.top >= layout.card.top - 0.5 && part.bottom <= layout.card.bottom + 0.5), `${name}: etwas liegt außerhalb der Karte`);
+        assert.ok(layout.card.height <= 64, `${name}: Karte ist ${layout.card.height} px hoch`);
+      }
+      await page.getByRole('tab', { name: /^Alle/ }).click();
+      // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
+      await page.click('#mode-shop');
+      assert.equal(await page.locator('.topbar').isHidden(), true);
+      assert.equal(await page.locator('#mode-row').isHidden(), true);
+      const chips = await box('#shop-chips .chip');
+      assert.ok(chips.y < 24, `Geschäfte beginnen bei ${chips.y} px`);
+      await page.locator('#shop-chips .chip').first().click();
+      assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
+      assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
+      assert.equal(await horizontalOverflow(page), 0);
+      // Der Weg zurück steht neben den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da
+      await page.click('[data-tab=recipes]');
+      assert.equal(await page.locator('.topbar').isVisible(), true);
+      await page.click('[data-tab=shopping]');
+      assert.equal(await page.locator('.topbar').isHidden(), true, 'zurück im Laden-Modus');
+      await page.click('#shop-back');
+      assert.equal(await page.locator('.topbar').isVisible(), true);
+      assert.equal(await page.locator('#plan-view').isVisible(), true);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
 
   test('Im Laden: Modus bleibt nach dem Neuladen, Neues von anderen steht schmal oben, kein seitlicher Überlauf bei 320 px', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
@@ -910,7 +1069,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       localStorage.setItem('einkauf-seen:einkauf-demo-v1', JSON.stringify({ ids: data.base.items.filter(item => item.id !== 'butter').map(item => item.id) }));
     });
     await page.click('#mode-shop');
-    await page.reload(); await page.waitForSelector('#status[data-state]');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.locator('#shop-view').isVisible(), true, 'der Modus bleibt auf diesem Gerät gespeichert');
     await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
     assert.match(await page.textContent('#shop-list .shop-item.news'), /Butter[\s\S]*neu von Anna/);
@@ -919,7 +1078,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#shop-list .shop-item.news').getByRole('button', { name: 'Übernehmen' }).click();
     assert.equal(await page.locator('#shop-list .shop-item.news').count(), 0);
     assert.equal(await page.locator('#shop-list .shop-item:not(.news) .shop-name', { hasText: 'Butter' }).count(), 1);
-    await page.click('#mode-plan');
+    await page.click('#shop-back');
     assert.equal(await page.locator('#shop-view').isHidden(), true);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -1165,7 +1324,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Start: „Alle“, alle Geschäfte mit ihren Artikeln (Beispieldaten: Edeka, Lidl, Rewe)
     assert.deepEqual((await chips())[0], ['Alle', 'true']);
     assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
-    assert.match(await page.textContent('#shopping-total'), /Alle Geschäfte/);
+    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d/, 'Summe der Gesamtliste, ohne Geschäftsname');
     assert.equal(await page.locator('#offers-link').isHidden(), true, 'Angebote gibt es je Geschäft, nicht in der Gesamtliste');
     // Das Formular bietet „Kein Geschäft“ und alle Geschäfte als Schnellwahl an; Standard in „Alle“: kein Geschäft (nichts ist vorausgewählt).
     const pick = () => page.locator('#store-pick button').evaluateAll(nodes => nodes.map(node => [node.textContent, node.getAttribute('aria-pressed')]));
@@ -1196,7 +1355,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
     assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
     await pickStore(page, 'Rewe');
-    assert.match(await page.textContent('#shopping-total'), /Rewe · offen/);
+    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d|Noch keine Preise|Alles erledigt/);
     // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
     await page.locator('.item', { hasText: 'Klopapier' }).getByRole('button', { name: /bearbeiten/ }).click();
@@ -1297,6 +1456,117 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     return content;
   };
   const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+
+  // Hilfen für „lange halten und nach rechts in den Mülleimer ziehen“ (Maus: echte Zeigerereignisse wie auf dem Handy)
+  const center = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
+  const holdRow = async (page, name) => {
+    const row = page.locator('#items .item', { hasText: name });
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.locator('.item-copy').boundingBox(), at = { x: box.x + 40, y: box.y + box.height / 2 };
+    await page.mouse.move(at.x, at.y); await page.mouse.down();
+    return { row, at };
+  };
+
+  test('Artikel löschen: lange halten und nach rechts in den roten Mülleimer schieben', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const names = () => page.locator('#items .item strong').allTextContents();
+    assert.ok((await names()).includes('Nudeln'));
+    // Nach dem Loslassen außerhalb der Fläche bleibt der Artikel; es öffnet sich auch nichts
+    let { at } = await holdRow(page, 'Nudeln');
+    await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#trash-zone.show').count(), 1, 'rote Fläche erscheint');
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0);
+    await page.mouse.move(at.x + 60, at.y, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.ok((await names()).includes('Nudeln'), 'nicht in der Fläche losgelassen: nichts gelöscht');
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'das Loslassen nach langem Halten öffnet die Bearbeitung nicht');
+    assert.equal(await page.locator('#items .item.drag-origin').count(), 0);
+    // Weniger als die Haltezeit und Bewegung: Scrollen, es hebt nichts ab
+    ({ at } = await holdRow(page, 'Nudeln'));
+    await page.mouse.move(4, at.y + 40, { steps: 3 });   // weg von der Zeile: ein Wischen, kein Tipp
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0, 'wer sich zuerst bewegt, scrollt nur');
+    await page.mouse.up();
+    // Kurzer Tipp öffnet weiterhin die Bearbeitung
+    await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page); await page.keyboard.press('Escape');
+    await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // In die Fläche ziehen und loslassen löscht
+    ({ at } = await holdRow(page, 'Nudeln'));
+    await page.waitForSelector('.drag-ghost');
+    const width = await page.evaluate(() => innerWidth);
+    await page.mouse.move(at.x + 80, at.y, { steps: 4 });
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0, 'noch nicht an der Fläche');
+    await page.mouse.move(width - 40, at.y, { steps: 6 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Nudeln'));
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    assert.equal(await page.locator('#trash-zone.show').count(), 0, 'Fläche verschwindet wieder');
+    assert.equal(await page.textContent('#notice-text'), '„Nudeln“ gelöscht');
+    assert.ok((await names()).includes('Tomaten'), 'die anderen Artikel bleiben');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Artikel löschen per Ziehen: Escape bricht ab, abgehakte und neue Artikel lassen sich ebenfalls löschen, Im-Laden-Modus nicht', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const width = await page.evaluate(() => innerWidth);
+    const names = () => page.locator('#items .item strong').allTextContents();
+    // Escape während des Ziehens
+    let { at } = await holdRow(page, 'Milch');
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 5 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.ok((await names()).includes('Milch'), 'abgebrochen: nichts gelöscht');
+    // Abgehakter Artikel
+    await page.getByRole('button', { name: 'Äpfel: abhaken' }).click();
+    ({ at } = await holdRow(page, 'Äpfel'));
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Äpfel'));
+    // Im Laden gibt es das Ziehen nicht
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    const tap = page.locator('.shop-tap').first(), box = await tap.boundingBox();
+    await page.mouse.move(box.x + 40, box.y + 20); await page.mouse.down();
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    await page.mouse.up();
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Artikel löschen per Touch: Seite scrollt beim Ziehen nicht mit, Löschen wird nach GitHub geschrieben', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    // genug Zeilen, damit die Seite scrollbar ist
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; });
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const at = await center(page.locator('#items .item', { hasText: 'Tomaten' }).locator('.item-copy'));
+    const width = await page.evaluate(() => innerWidth);
+    await touch('touchStart', at.x, at.y);
+    await page.waitForSelector('.drag-ghost');
+    for (let step = 1; step <= 8; step++) await touch('touchMove', at.x + (width - 30 - at.x) * step / 8, at.y + step * 6);
+    await page.waitForSelector('#trash-zone.hot');
+    assert.equal(await page.evaluate(() => scrollY), 0, 'die Seite hat nicht mitgescrollt');
+    await touch('touchEnd');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Tomaten'));
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.ok(remote.content.items.find(row => row.name === 'Tomaten').deletedAt, 'Löschmarkierung liegt auf GitHub');
+    assert.ok(!remote.content.items.find(row => row.name === 'Nudeln').deletedAt);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 
   test('Datenumfang: Anzeige, Aufräumen auf Wunsch schreibt die kleinere Datei', async () => {
     const remote = github(bloated(40));

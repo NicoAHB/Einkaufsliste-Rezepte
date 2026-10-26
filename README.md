@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.0
+# Einkauf & Rezepte – Version 2.3
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,36 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.3: weniger Platz oben, Geschäfte zuerst im Laden
+
+Keine neuen Datenfelder, nur Bedienung. Alles, was oben Platz kostete, ist kleiner geworden; die ersten Artikel stehen auf dem iPhone ohne Scrollen im Bild (gemessen bei 390 px Breite: Planen 416 statt 582 px, Im Laden 133 statt 356 px).
+
+- **Kein Beispielmodus-Banner mehr.** Die Zeile „Beispielmodus · erfundene Daten · Verbinden“ ist weg. Die Statuszeile oben zeigt weiter „Nur auf diesem Gerät“, solange nichts verbunden ist; **ein Tipp darauf öffnet die Einstellungen** zum Verbinden. Ist verbunden, gleicht ein Tipp darauf ab (wie der Knopf rechts daneben).
+- **Schmale Kopfzeile:** Statuszeile und Abgleichen-Knopf stehen in einer Zeile. Das Symbol und der Titel „Einkauf & Rezepte“ entfallen (der Titel bleibt für Screenreader).
+- **Planen | Im Laden** bricht nicht mehr um; „Geschäfte“ ist ein Symbol-Knopf (Geschäft-Symbol, „Geschäfte verwalten“).
+- **Summe kompakt:** Eine Zeile „Geschätzt 6,76 €“ (darunter klein, was ohne Preis ist) statt der großen Karte. Die Knöpfe „Angebote“ (Preisschild-Symbol) und „Kassenbon“ (Blatt-Symbol) sind auf dem Handy reine Symbole, damit der Text nie überlappt oder verrutscht; erst ab etwa 480 px Breite steht die Beschriftung dabei. Ein Test prüft das für jedes Geschäft (mit und ohne Angebotslink) bei 280 bis 430 px. „Noch keine Preise notiert“ steht klein statt groß.
+- **Im Laden: Geschäfte ganz oben, darunter gleich die Artikel.** Kopfzeile und Umschalter sind in dieser Ansicht ausgeblendet. Ganz oben stehen die Geschäfte als große Reiter und rechts daneben **Planen** (der Weg zurück). Darunter steht die Zeile „Noch 3 offen · ca. 6,76 €“ mit dem Abgleichpunkt (grün: abgeglichen, orange: wartet, rot: Fehler), dann die Liste.
+- Eingabefeld, Zeile „n offen · n erledigt / Erledigte entfernen“ und Reiter sind enger gesetzt.
+
+## Neu in Version 2.2: Farbwahl, Standard ist dunkles Blau
+
+Das bisherige Dunkelgrün ist ersetzt: **Standard ist jetzt Blau** (im Dunkelmodus ein tiefes Marineblau, im Hellmodus ein zartes Pastellblau). Unter **Einstellungen → Darstellung & Sicherung → Farbe** stehen sechs Farben zur Wahl: **Blau, Grün, Türkis, Flieder, Rosé, Pfirsich**. Die Wahl wirkt sofort, bleibt auf diesem Gerät gespeichert (jedes Gerät kann seine eigene Farbe haben) und ändert die Hintergrundfarbe, die Karten, Linien, Knöpfe und die Farbe der Statusleiste.
+
+- **Hell = Pastell, Dunkel = tiefer Ton.** Die Farbe ist unabhängig von „Darstellung“ (Wie auf dem Gerät / Hell / Dunkel). Wer Grün mag, wählt es einfach wieder aus.
+- Alle Farben leiten sich in `styles.css` aus einem einzigen Farbton (`--h`) ab; eine weitere Farbe braucht nur eine Zeile dort, einen Knopf in `index.html` und den Namen in `theme.js` und `app.js` (`PALETTES`).
+- `theme.js` setzt Farbe und Hell/Dunkel vor dem ersten Anzeigen, damit beim Start nicht kurz die Standardfarbe aufblitzt.
+- Ein Test prüft für jede Farbe in Hell und Dunkel, dass Text, Zweittext, Akzent und Knopfbeschriftung mindestens 4,5 : 1 Kontrast haben. Rot für Warnungen und das Gelb von „Neu von …“ bleiben in jeder Farbe gleich.
+- Das App-Symbol (grüner Einkaufskorb) ist unverändert.
+
+## Neu in Version 2.1: Artikel in den Mülleimer ziehen
+
+Keine neuen Datenfelder, nur Bedienung. In der Einkaufsliste (Ansicht **Planen**) löscht man einen Artikel auch per Geste: **Zeile lange gedrückt halten** (knapp eine halbe Sekunde, bis sie „abhebt“), dann **nach rechts** schieben. Am rechten Rand erscheint ein **roter Mülleimer**; er färbt sich dunkler und wird größer, sobald der Finger darüber ist. **Loslassen löscht** den Artikel (kurzer Hinweis „„Milch“ gelöscht“, wie beim Löschen im Dialog ohne Rückgängig-Knopf). Anderswo loslassen bricht ab, die Zeile gleitet zurück; auch **Esc** bricht ab (Tastatur am Rechner).
+
+- Wer sich vor Ablauf der Haltezeit bewegt, **scrollt** nur; ein kurzer Tipp öffnet wie bisher die Bearbeitung. Nach langem Halten ohne Löschen öffnet sich nichts und nichts wird abgehakt.
+- Gilt für offene, abgehakte und „neu von …“-Zeilen. Im Modus **Im Laden** gibt es die Geste absichtlich nicht (dort wird nur abgehakt).
+- Der Browser darf die Seite während des Ziehens nicht mitscrollen, und der Text einer Zeile soll sich beim langen Drücken nicht markieren lassen. Beides ist abgefangen, wurde aber nur in Chromium mit simulierten Berührungen geprüft, nicht auf einem echten iPhone.
+- Die Logik steht in `dragdelete.js` (Offline-Paket v12, seit Version 2.2 v13).
 
 ## Neu in Version 2.0: aufgeräumt und per Siri hinzufügen
 
@@ -270,7 +300,7 @@ Du kannst Textdateien auch einzeln über **Add file → Create new file** anlege
 4. Branch **main**, Ordner **/ (root)** auswählen und **Save** drücken.
 5. Warten, bis unter **Actions** der Pages-Lauf erfolgreich ist; das kann einige Minuten dauern.
 6. Unter **Settings → Pages** den angezeigten Link öffnen. Für das persönliche Repo lautet er normalerweise `https://nicoahb.github.io/Einkaufsliste-Rezepte/`.
-7. Deinen Namen auswählen. Zunächst läuft die App im deutlich markierten **Beispielmodus**. Hier kannst du gefahrlos ausprobieren. Diese Änderungen werden beim Verbinden **nicht** automatisch ins private Repo kopiert.
+7. Deinen Namen auswählen. Zunächst läuft die App im **Beispielmodus** (oben steht dann „Nur auf diesem Gerät“; ein Tipp darauf öffnet die Einstellungen zum Verbinden). Hier kannst du gefahrlos ausprobieren. Diese Änderungen werden beim Verbinden **nicht** automatisch ins private Repo kopiert.
 
 Ein Doppelklick auf `index.html` ist kein Ersatz für Pages: JavaScript-Module und Offline-Funktionen brauchen einen Web-Ursprung. Nutze den Pages-Link. Wenn du später den Code änderst, wieder **Commit changes** drücken und den Pages-Lauf abwarten. Bei Änderungen an App-Dateien auch die Cache-Version in `sw.js` erhöhen.
 
@@ -314,7 +344,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 4. Daten-Repository: `einkauf-daten` (ohne URL).
 5. Branch: `main`; JSON-Datei: `daten.json`.
 6. Den eigenen Token in das Passwortfeld einfügen und **Speichern & verbinden** wählen.
-7. Warten, bis oben **Mit GitHub abgeglichen** (grüner Punkt) erscheint und der Beispielmodus-Hinweis verschwindet.
+7. Warten, bis oben **Mit GitHub abgeglichen** (grüner Punkt) erscheint statt „Nur auf diesem Gerät“.
 8. Auf dem zweiten Gerät dasselbe mit dem **eigenen** Token wiederholen. Beide Geräte müssen denselben Eigentümer, Repository-Namen, Branch und Dateinamen benutzen.
 9. Als Probe einen Artikel hinzufügen und auf dem zweiten Gerät **Aktualisieren** drücken. Nach spätestens dem nächsten erfolgreichen Abgleich sollte er erscheinen.
 
@@ -323,7 +353,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 ## 8. Speichern, offline arbeiten und Fehler verstehen
 
 - Jede Änderung wird **zuerst lokal gespeichert**. Im GitHub-Modus werden ausstehende Änderungen zusätzlich in einer dauerhaften Warteschlange gespeichert. Bei vollem oder gesperrtem Browserspeicher erscheint ein Fehler; die Änderung wird dann nicht als übernommen dargestellt.
-- Der Status steht oben unter dem Titel, mit farbigem Punkt: **Gleiche ab …** (blinkend): ein GitHub-Abgleich läuft. **Mit GitHub abgeglichen** (grün): keine ausstehenden lokalen Änderungen. **n Änderung(en) warten** (orange) oder **Fehler · lokal gesichert** (rot): GitHub hat die Änderung noch nicht bestätigt. **Nur auf diesem Gerät**: Beispielmodus.
+- Der Status steht oben in einer schmalen Zeile (ein Tipp darauf gleicht ab oder, ohne Verbindung, öffnet die Einstellungen), mit farbigem Punkt: **Gleiche ab …** (blinkend): ein GitHub-Abgleich läuft. **Mit GitHub abgeglichen** (grün): keine ausstehenden lokalen Änderungen. **n Änderung(en) warten** (orange) oder **Fehler · lokal gesichert** (rot): GitHub hat die Änderung noch nicht bestätigt. **Nur auf diesem Gerät**: Beispielmodus.
 - Ohne Empfang kannst du nach einem vorherigen erfolgreichen Laden weiterarbeiten. Lass die App bei wiederhergestelltem Empfang geöffnet oder öffne sie erneut. **iOS synchronisiert diese App nicht zuverlässig im Hintergrund.**
 - Die App lädt bei sichtbarer Seite alle acht Sekunden neu. Bei Fehlern wartet sie länger; GitHubs Wartezeit und API-Limits werden berücksichtigt. Manuelles Aktualisieren löst einen erneuten Versuch aus.
 - **Ungültiger/abgelaufener Token (401):** über die Anleitung in Abschnitt 6 einen neuen erstellen und auf dem Gerät unter Einstellungen ersetzen. Die Datenadresse dabei unverändert lassen; dann bleibt die Warteschlange erhalten. Nicht den Browser-Speicher löschen.
@@ -383,6 +413,22 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.3:
+
+- [ ] Einkauf → Planen: oben nur eine schmale Statuszeile, keine Banner; ohne Verbindung öffnet ein Tipp auf „Nur auf diesem Gerät“ die Einstellungen. „Im Laden“ und die Summe brechen nicht um, nichts überlappt (auch bei großer Schrift oder „Zoom“-Anzeige des iPhones).
+- [ ] Im Laden: ganz oben die Geschäfte und „Planen“, direkt darunter die Artikel; „Planen“ bringt die Planungsansicht zurück. In „Rezepte“ und „Plan“ ist die Kopfzeile wieder da.
+
+Weitere Testpunkte für Version 2.2:
+
+- [ ] Einstellungen → Farbe: Rosé antippen. Alles färbt sich sofort um, auch die Statusleiste oben (iPhone: Hell- und Dunkelmodus prüfen). App schließen und neu öffnen: Die Farbe ist von Anfang an da.
+- [ ] Dunkelmodus auf Blau: Text auf Karten, Knöpfen und in den Reitern ist gut lesbar; „Neu von …“ bleibt gelb, der Mülleimer beim Ziehen bleibt rot.
+
+Weitere Testpunkte für Version 2.1:
+
+- [ ] Einkauf → Planen: Einen Artikel lange gedrückt halten, bis er abhebt, nach rechts in den roten Mülleimer schieben und loslassen: Er ist weg, die anderen bleiben. Prüfen, dass die Seite dabei nicht mitscrollt und kein Text markiert wird (iPhone!).
+- [ ] Nur kurz tippen öffnet die Bearbeitung; auf der Liste nach oben und unten wischen scrollt, ohne dass etwas abhebt.
+- [ ] Zeile ziehen, aber außerhalb des Mülleimers loslassen: nichts ist gelöscht, die Bearbeitung öffnet sich nicht.
 
 Weitere Testpunkte für Version 2.0:
 
