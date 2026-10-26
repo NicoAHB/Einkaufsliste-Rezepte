@@ -600,10 +600,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
     assert.match(await page.textContent('#shopping-total'), /Alle Geschäfte/);
     assert.equal(await page.locator('#offers-link').isHidden(), true, 'Angebote gibt es je Geschäft, nicht in der Gesamtliste');
-    // Das Formular bietet „Kein Geschäft“ und alle Geschäfte an, Standard in „Alle“: kein Geschäft.
-    assert.deepEqual(await page.locator('#item-form select[name=storeId] option').allTextContents(), ['Kein Geschäft', 'Edeka', 'Lidl', 'Rewe']);
-    assert.equal(await page.inputValue('#item-form select[name=storeId]'), '');
-    const add = async (name, store) => { if (store !== undefined) await page.selectOption('#item-form select[name=storeId]', { label: store }); await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
+    // Das Formular bietet „Kein Geschäft“ und alle Geschäfte als Schnellwahl an; Standard in „Alle“: kein Geschäft (nichts ist vorausgewählt).
+    const pick = () => page.locator('#store-pick button').evaluateAll(nodes => nodes.map(node => [node.textContent, node.getAttribute('aria-pressed')]));
+    assert.deepEqual(await pick(), [['Kein Geschäft', 'true'], ['Edeka', 'false'], ['Lidl', 'false'], ['Rewe', 'false']]);
+    assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
+    const add = async (name, store) => { if (store !== undefined) await page.locator('#store-pick button', { hasText: store }).click(); await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
     // Ohne Geschäft: steht übersichtlich ganz oben, eigener Filter erscheint
     await add('Klopapier');
     assert.deepEqual(await heads(), ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
@@ -611,17 +612,23 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await chips()).map(row => row[0]), ['Alle', 'Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
     // Mit Geschäft: Auswahl bleibt für den nächsten Artikel stehen
     await add('Gurke', 'Lidl'); await add('Möhren');
-    assert.equal(await page.inputValue('#item-form select[name=storeId]'), await page.locator('#item-form select[name=storeId] option', { hasText: 'Lidl' }).getAttribute('value'));
+    assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Lidl']);
     const lidl = page.locator('#items .store-head', { hasText: 'Lidl' });
     assert.match(await lidl.textContent(), /Lidl\s*3/, 'Milch aus den Beispieldaten plus Gurke und Möhren');
     // Einzelansichten filtern; Geschäft anklicken wählt es auch für neue Artikel vor
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
     assert.equal(await page.locator('#items .item').count(), 1);
-    assert.equal(await page.inputValue('#item-form select[name=storeId]'), '');
+    assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
+    assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
     assert.equal(await page.locator('#items .store-head').count(), 0, 'Einzelansicht braucht keine Geschäftsüberschrift');
     await page.getByRole('tab', { name: /^Rewe/ }).click();
     assert.equal(await page.locator('#items .item').count(), 1);
-    assert.equal(await page.locator('#item-form select[name=storeId] option:checked').textContent(), 'Rewe');
+    assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Rewe']);
+    // Zweiter Tipp auf das gewählte Geschäft nimmt die Auswahl zurück: dann kommt der Artikel ohne Geschäft
+    await page.locator('#store-pick button', { hasText: 'Rewe' }).click();
+    assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
+    assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
+    await page.locator('#store-pick button', { hasText: 'Rewe' }).click();
     assert.match(await page.textContent('#shopping-total'), /Rewe · offen/);
     // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
@@ -635,6 +642,29 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('tab', { name: /^Alle/ }).click();
     assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
     assert.match(await page.locator('#items .store-head', { hasText: 'Rewe' }).textContent(), /Rewe\s*2/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Artikel, der in der gewählten Ansicht nicht erscheint: Hinweis mit Rückgängig', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.getByRole('tab', { name: /^Rewe/ }).click();
+    await page.locator('#store-pick button', { hasText: 'Lidl' }).click();
+    await page.fill('#item-form input[name=name]', 'Joghurt'); await page.click('#item-form button[type=submit]');
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0, 'In der Rewe-Ansicht steht der Lidl-Artikel nicht');
+    await page.waitForSelector('#undo-bar:not([hidden])');
+    assert.equal(await page.textContent('#undo-label'), '„Joghurt“ steht bei „Lidl“');
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1);
+    await page.click('#undo');
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0);
+    // Ein Artikel, der in der Ansicht erscheint, braucht keinen Hinweis.
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    await page.locator('#undo-bar').evaluate(node => { node.hidden = true; });
+    await page.fill('#item-form input[name=name]', 'Quark'); await page.click('#item-form button[type=submit]');
+    assert.equal(await page.locator('#undo-bar').isHidden(), true);
+    assert.equal(await page.locator('#items .item', { hasText: 'Quark' }).count(), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

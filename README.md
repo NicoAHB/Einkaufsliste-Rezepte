@@ -4,7 +4,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 ## 1. Was diese Version kann
 
-- Einkaufsliste für **alle Geschäfte zusammen** (Startseite) oder je Geschäft (Edeka, Lidl, Rewe; weitere anlegen, umbenennen, löschen). Ein Geschäft ist beim Hinzufügen wählbar, aber nicht nötig.
+- Einkaufsliste für **alle Geschäfte zusammen** (Startseite) oder je Geschäft (Edeka, Lidl, Rewe; weitere anlegen, umbenennen, löschen). Ein Geschäft ist beim Hinzufügen mit einem Tipp wählbar, aber nicht nötig.
 - Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
 - Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
 - Die letzte Löschaktion rückgängig machen, solange die Seite geöffnet bleibt. Häkchen werden durch erneutes Antippen geändert, ohne Rückgängig-Meldung.
@@ -20,7 +20,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 - **Startseite = Gesamtliste.** Die Einkaufsliste öffnet mit dem Filter **Alle**: Alles, was ihr für den nächsten Einkauf braucht, in einer Liste. Darin steht zuerst der Abschnitt **Ohne Geschäft**, danach ein Abschnitt je Geschäft; innerhalb der Abschnitte bleiben die Gänge (Kategorien) erhalten. Die Summe oben gilt für alle offenen Artikel zusammen.
 - **Filter bleiben.** Neben „Alle“ gibt es einen Filter je Geschäft und **Ohne Geschäft** (erscheint, sobald es solche Artikel gibt). Die Angebote-Schaltfläche steht nur in der Ansicht eines einzelnen Geschäfts.
-- **Geschäft beim Hinzufügen wählen.** Im Formular steht neben dem Plus-Knopf die Auswahl **Kein Geschäft** oder ein Geschäft. In der Gesamtliste ist „Kein Geschäft“ vorgewählt; wer einen Geschäfts-Filter antippt, bekommt dieses Geschäft vorgewählt. Die Auswahl bleibt nach dem Hinzufügen stehen, damit man mehrere Artikel für denselben Laden nacheinander eintragen kann.
+- **Geschäft beim Hinzufügen mit einem Tipp wählen.** Direkt unter dem Namensfeld stehen die Schnellwahl-Knöpfe **Kein Geschäft**, **Edeka**, **Lidl** … Ein Tipp wählt das Geschäft, ein zweiter Tipp auf dasselbe nimmt die Auswahl zurück. **Ohne Auswahl bekommt der Artikel kein Geschäft** (es ist nichts vorausgewählt). Wer in der Ansicht eines einzelnen Geschäfts hinzufügt, bekommt dieses Geschäft vorgewählt, sonst verschwände der neue Artikel aus der Liste. Die Auswahl bleibt nach dem Hinzufügen stehen, damit man mehrere Artikel nacheinander für denselben Laden eintragen kann. Erscheint ein neuer Artikel nicht in der gerade gewählten Ansicht, meldet die App kurz, wo er steht („‚Joghurt‘ steht bei ‚Lidl‘“), mit **Rückgängig**.
 - **Später zuordnen oder ändern:** im Stift-Dialog des Artikels (Feld „Geschäft“). So wandert ein Artikel aus „Ohne Geschäft“ in den Abschnitt des Ladens, in dem ihr ihn dann doch kauft.
 - **Rezepte und Wochenplan** übernehmen Zutaten jetzt wahlweise **ohne Geschäft**; danach zeigt die App die Gesamtliste.
 - **Erledigtes** steht in der Gesamtliste gesammelt unten und nennt sein Geschäft. „Erledigte entfernen“ gilt für die gerade gewählte Ansicht.
@@ -272,7 +272,7 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 Weitere Testpunkte für Version 1.5 (auf beiden Geräten):
 
 - [ ] App öffnen: Startseite zeigt **Alle** mit Abschnitten je Geschäft. Auf einem Gerät einen Artikel **ohne Geschäft** anlegen; auf dem zweiten Gerät (ebenfalls Version 1.5) erscheint er nach dem Abgleich unter „Ohne Geschäft“.
-- [ ] Einen Artikel mit Geschäft anlegen (Auswahl neben dem Plus-Knopf), danach Geschäfts-Filter antippen: nur dessen Artikel; neue Artikel sind dort vorgewählt.
+- [ ] Einen Artikel mit Geschäft anlegen (Schnellwahl unter dem Namensfeld), danach Geschäfts-Filter antippen: nur dessen Artikel; neue Artikel sind dort vorgewählt.
 - [ ] Artikel ohne Geschäft im Stift-Dialog einem Geschäft zuordnen: Er wechselt den Abschnitt.
 - [ ] Rezept „Auf die Liste“ ohne Geschäft übernehmen.
 

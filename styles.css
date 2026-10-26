@@ -454,12 +454,6 @@ main {
 .stack>button+label,.stack>button+.hint {
   margin-top:14px
 }
-.add-form .unit {
-  grid-column:2/-1
-}
-.add-form .store {
-  grid-column:1/3
-}
 .add-form {
   display:grid;
   grid-template-columns:minmax(0,5.5rem) minmax(0,1fr) 52px;
@@ -618,6 +612,14 @@ details[open]>summary::after {
 .chip[aria-selected=true] .count {
   background:rgba(255,255,255,.25);
   color:inherit
+}
+.store-pick {
+  margin-bottom:2px
+}
+.store-pick .chip {
+  min-height:40px;
+  padding:0 14px;
+  font-size:.92rem
 }
 .item-suggestions {
   margin:6px 0 2px

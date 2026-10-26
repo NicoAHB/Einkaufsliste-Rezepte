@@ -71,9 +71,10 @@
       </div>
       <form id="item-form" class="card add-form">
         <label class="wide"><span class="visually-hidden">Was brauchst du?</span><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"></label>
+        <input name="storeId" type="hidden" value="">
+        <div id="store-pick" class="chips store-pick wide" role="group" aria-label="Geschäft für den neuen Artikel"></div>
         <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
-        <label class="store"><span class="visually-hidden">Geschäft</span><select name="storeId"></select></label>
         <button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
         <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>

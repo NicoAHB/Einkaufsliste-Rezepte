@@ -135,9 +135,28 @@ const defaultStore = () => viewStore()?.id || '';
 function showView(next) {
   view = next;
   const form = $('#item-form');
-  // Wer ein Geschäft ansieht, legt neue Artikel meist dort an. In „Alle“ bleibt die letzte Auswahl stehen.
+  // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
+  // In „Alle“ bleibt die letzte Auswahl stehen; „Ohne Geschäft“ wählt keines.
   if (viewStore()) form.elements.storeId.value = view; else if (view === 'none') form.elements.storeId.value = '';
-  storeChanged(); renderStoreChips(); renderItems();
+  renderStorePick(); storeChanged(); renderStoreChips(); renderItems();
+}
+// Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
+// Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
+function renderStorePick() {
+  const form = $('#item-form'), box = $('#store-pick');
+  if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
+  const current = form.elements.storeId.value;
+  box.replaceChildren();
+  const add = (id, label) => {
+    const chip = element('button', label, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(id === current));
+    chip.addEventListener('click', () => {
+      form.elements.storeId.value = id && id === form.elements.storeId.value ? '' : id;
+      renderStorePick(); storeChanged();
+    });
+    box.append(chip);
+  };
+  add('', 'Kein Geschäft');
+  for (const store of active(state.stores)) add(store.id, store.name);
 }
 function storeChanged() {
   const form = $('#item-form');
@@ -150,7 +169,7 @@ function render() {
   $('#demo-banner').hidden = connected();
   if (view !== 'all' && view !== 'none' && !viewStore()) view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
-  storeOptions(form.elements.storeId, formStore, true);
+  renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan();
   form.querySelector('button[type=submit]').disabled = !ready;
@@ -993,7 +1012,6 @@ $('#refresh').addEventListener('click', () => guard(() => sync(true)));
 $('#demo-setup').addEventListener('click', () => tab('settings'));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
-$('#item-form').elements.storeId.addEventListener('change', storeChanged);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
@@ -1026,12 +1044,14 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const category = form.elements.category.value || suggestCategory(name, state.items);
   const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
-  const ops = [nextOp('items', uid(), item)];
+  const id = uid(), ops = [nextOp('items', id, item)];
   if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
-  commit(ops);
+  // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
+  const elsewhere = !inView(item) && { label: `„${name}“ steht bei „${storeName(item.storeId)}“`, patches: [{ collection: 'items', id, patch: { deletedAt: new Date().toISOString() } }] };
+  commit(ops, elsewhere || null);
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
+  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
 }); });
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
