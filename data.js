@@ -1,5 +1,5 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
-import { offerUrl, rememberedPrice, validQuote } from './prices.js';
+import { offerUrl, productKey, rememberedPrice, validQuote } from './prices.js';
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
@@ -42,8 +42,10 @@ export function validate(data) {
         throw new Error('Artikel ohne gültigen Status oder Namen der Person.');
       }
       if (key === 'items' && row.price !== undefined && row.price !== null && !validQuote(row.price)) throw new Error('Ungültiger Artikelpreis.');
+      if (key === 'items' && row.salePrice !== undefined && row.salePrice !== null && !validQuote(row.salePrice)) throw new Error('Ungültiger Angebotspreis.');
       if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
       if (key === 'prices' && (typeof row.name !== 'string' || typeof row.storeId !== 'string' || !validQuote(row.quote))) throw new Error('Ungültiger gemerkter Preis.');
+      if (key === 'prices' && row.regularQuote !== undefined && row.regularQuote !== null && !validQuote(row.regularQuote)) throw new Error('Ungültiger gemerkter Normalpreis.');
       if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
           row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
           row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
@@ -93,6 +95,25 @@ export function positive(value) {
   const number = Number(String(value).trim().replace(',', '.'));
   if (!Number.isFinite(number) || number <= 0) throw new Error('Bitte eine Menge größer als 0 eingeben, zum Beispiel 1 oder 0,5.');
   return number;
+}
+
+// Auch erledigte und gelöschte Artikel bleiben im gemeinsamen Datenbestand.
+// Daraus lernen die Vorschläge ohne zusätzliche Datenbank oder Onlinedienst.
+export function suggestItemNames(items, query, limit = 6) {
+  const search = productKey(query);
+  if (!search) return [];
+  const names = new Map();
+  for (const item of items) {
+    if (typeof item.name !== 'string') continue;
+    const name = item.name.trim().replace(/\s+/g, ' '), key = productKey(name);
+    if (!key || !key.includes(search)) continue;
+    const previous = names.get(key), at = item.updatedAt || item.createdAt || '';
+    names.set(key, { key, name: !previous || at > previous.at ? name : previous.name,
+      count: (previous?.count || 0) + 1, at: !previous || at > previous.at ? at : previous.at });
+  }
+  return [...names.values()].sort((a, b) => Number(b.key.startsWith(search)) - Number(a.key.startsWith(search)) ||
+    b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de'))
+    .slice(0, limit).map(row => row.name);
 }
 
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, history = []) {

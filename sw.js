@@ -1,5 +1,5 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v2';
+const CACHE = 'einkauf-shell-v3';
 const FILES = ['./', './index.html', './styles.css', './app.js', './data.js', './prices.js',
   './manifest.webmanifest', './icon.svg', './apple-touch-icon.png', './beispieldaten.json', './README.md'];
 self.addEventListener('install', event => {

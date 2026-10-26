@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 1.1
+# Einkauf & Rezepte – Version 1.2
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, drei Bereiche und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -7,7 +7,8 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - Einkaufsliste je Geschäft: Edeka, Lidl, Rewe; weitere Geschäfte anlegen, umbenennen und löschen.
 - Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
 - Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
-- Die letzte Lösch- oder Abhakaktion rückgängig machen, solange die Seite geöffnet bleibt.
+- Die letzte Löschaktion rückgängig machen, solange die Seite geöffnet bleibt. Häkchen werden durch erneutes Antippen geändert, ohne Rückgängig-Meldung.
+- Beim Tippen passende Artikelnamen aus eurem bisherigen Einkaufsverlauf übernehmen, auch nach dem Löschen und offline.
 - Rezepte mit einzelnen Zutaten, Zubereitung, Portionen und Tags anlegen, bearbeiten, löschen; nach Rezept/Zutat suchen und nach Tag filtern.
 - Portionen umrechnen. Beim Übernehmen Zutaten einzeln abwählen, Geschäft auswählen und nur die gewählten Zutaten hinzufügen.
 - Beispielmodus ohne GitHub, drei Beispielrezepte und eine über drei Geschäfte verteilte Beispielliste.
@@ -15,15 +16,24 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung und Fotos mit Verkleinerung. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
 
-## Neu in Version 1.1: Angebote und Preise
+## Neu in Version 1.2: Lernende Vorschläge und eigene Angebotspreise
+
+- **Artikelvorschläge:** „Kochschinken“ einmal eintragen. Beim nächsten Mal beispielsweise `kochs` eintippen und den Vorschlag antippen. Die App übernimmt den vollständigen Namen; danach kannst du Menge und Einheit ergänzen. Der Vorschlag fügt noch keinen Artikel zur Liste hinzu. Auch abgehakte und gelöschte Artikel werden als bekannte Namen berücksichtigt. Doppelte Namen mit anderer Großschreibung oder zusätzlichen Leerzeichen erscheinen nur einmal. Wortanfänge und häufig verwendete Namen stehen oben; höchstens sechs Vorschläge werden angezeigt.
+- **Gemeinsam lernen:** Die Namen stammen aus den vorhandenen Artikeldaten, einschließlich interner Löschmarkierungen. Deshalb sind keine zusätzliche Datei und kein externer Dienst nötig. Im verbundenen Modus bekommen beide Geräte die Vorschläge nach dem GitHub-Abgleich; im Beispielmodus bleiben sie auf dem jeweiligen Gerät. Bereits geladene Namen funktionieren auch offline.
+- **Abhaken ohne Meldung:** Ein Häkchen erneut antippen, um den Artikel wieder zu öffnen. Dabei erscheint kein Rückgängig-Balken. Für gelöschte Artikel, erledigte Artikel und gelöschte Rezepte/Geschäfte bleibt die Lösch-Rückgängig-Funktion erhalten.
+- **Getrennter Angebotspreis:** Im Artikel- oder Hinzufügen-Formular „Im Angebot“ aktivieren. Darunter erscheint ein eigenes Feld für den **Angebotspreis**, einschließlich Menge und Einheit. Standardmäßig wird die Bezugsmenge des normalen Preises vorgeschlagen. Beispiel: normal **2,49 € je Packung**, Angebot **1,79 € je Packung**, zwei Packungen: **3,58 €** in der Summe.
+- **Normalpreis bleibt erhalten:** Wird „Im Angebot“ ausgeschaltet, gilt wieder der normale Preis. Ein bereits gespeicherter Angebotspreis bleibt zum erneuten Aktivieren erhalten. Ohne eingetragenen Angebotspreis wird vorsichtig mit dem normalen Preis geschätzt. Ein Angebotspreis darf auch allein eingetragen werden, wenn der Normalpreis unbekannt ist; nach dem Ausschalten fehlt dann ein Preis, statt einen zu erfinden. Wenn beide Preise bekannt sind, prüft das Formular, ob das Angebot für dieselbe Menge günstiger ist.
+- **Preisgedächtnis:** Die Preisnotiz speichert den verwendeten Preis und den bekannten Normalpreis getrennt. Der Geschäftsvergleich berücksichtigt die zuletzt eingetragene Preisnotiz; neue Artikel erhalten den letzten bekannten Normalpreis als Vorschlag. Alte Angebote werden dadurch nicht automatisch auf neue Einkäufe angewendet. Alte Preise und Angebotsmarkierungen bleiben beim Update unverändert; einen separaten Angebotspreis kannst du nachtragen.
+
+## Seit Version 1.1: Angebote und Preise
 
 - **Angebote öffnen:** In der Einkaufsliste das Geschäft auswählen und „Angebote ansehen“ antippen. Für die drei ursprünglichen Geschäfte sind Händlerlinks hinterlegt. Die Händlerseite kann zunächst nach deinem Markt oder deiner Postleitzahl fragen. Unter **Geschäfte** kannst du jeden Link ändern oder durch ein leeres Feld entfernen. Es gibt keine automatische Angebotsabfrage.
-- **Preis hinzufügen:** Beim Hinzufügen „Preis & Angebot (optional)“ öffnen. Beispiel: Artikel `Tomaten`, Menge `2`, Einheit `kg`; letzter Preis `1,99`, für Menge `500`, Preiseinheit `g`. Die geschätzten Kosten dafür sind **7,96 €**. Preise enthalten höchstens zwei Nachkommastellen und können auch `0` sein.
-- **Später bearbeiten:** Neben einem Artikel das Stiftsymbol antippen. Name, Menge, Einheit, Preis und „Im Angebot“ lassen sich dort ändern. Der Preis wird für dieses Geschäft gemerkt. Ein leerer Preis entfernt ihn von diesem Artikel; die früheren Preisnotizen bleiben für spätere Einkäufe erhalten.
+- **Preis hinzufügen:** Beim Hinzufügen „Preis & Angebot (optional)“ öffnen. Beispiel: Artikel `Tomaten`, Menge `2`, Einheit `kg`; normaler Preis `1,99`, für Menge `500`, Preiseinheit `g`. Die geschätzten Kosten dafür sind **7,96 €**. Preise enthalten höchstens zwei Nachkommastellen und können auch `0` sein.
+- **Später bearbeiten:** Neben einem Artikel das Stiftsymbol antippen. Name, Menge, Einheit, Normalpreis, Angebotspreis und „Im Angebot“ lassen sich dort ändern. Der Preis wird für dieses Geschäft gemerkt. Ein leerer Preis entfernt ihn von diesem Artikel; die früheren Preisnotizen bleiben für spätere Einkäufe erhalten.
 - **Gemerkte Preise:** Beim Eingeben eines bekannten Artikelnamens und einer passenden Einheit wird der letzte Preis dieses Geschäfts vorgeschlagen. Beim Wechsel des Geschäfts wird der Vorschlag ersetzt. Vorschläge kannst du ändern oder leeren. Auch aus Rezepten übernommene Zutaten bekommen einen vorhandenen passenden Preis des gewählten Geschäfts.
 - **Vergleich:** Die App vergleicht den zuletzt notierten passenden Preis je Geschäft, umgerechnet auf kg, l oder Stück. Sie zeigt zusätzlich im Artikeldialog Datum und ursprüngliche Bezugsmenge. Das sind eure Eingaben, keine aktuellen Händlerpreise. Gleiche Schreibweise, Marke und Qualität bitte selbst berücksichtigen; unterschiedliche Namen bleiben vorsichtig getrennt. Alte günstige Preise werden nicht als aktueller Tiefstpreis dargestellt, wenn für dasselbe Geschäft bereits ein neuerer passender Preis notiert wurde.
 - **Packungen:** Zwei Packungen können unterschiedlich groß sein. Daher gibt es bei unbekannten Packungsgrößen keinen Vergleich zwischen Geschäften. Ein Preis je Packung kann trotzdem die Kosten eines in Packungen geführten Artikels schätzen. Für einen Größenvergleich beide Artikel in g/kg oder ml/l führen.
-- **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. „Im Angebot“ ist eine Markierung und zieht keinen zusätzlichen Rabatt vom eingegebenen Preis ab.
+- **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. Bei aktivem Angebot zählt der eingetragene Angebotspreis; ohne Angebotspreis der normale Preis. Es wird kein zusätzlicher pauschaler Rabatt abgezogen.
 - **Beispielmodus:** Die neuen Beispielpreise sind frei erfunden. Sie werden nur bei einem frischen Beispielmodus geladen. Bereits vorhandene Browserdaten und eure private Datendatei werden niemals durch neue Beispiele ersetzt.
 
 **Bestehende App aktualisieren:** Die neuen App-Dateien einschließlich `prices.js` und `sw.js` im öffentlichen App-Repository ersetzen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
@@ -121,7 +131,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 - **Kein Zugriff (403):** Mitgliedschaft, Write-Rolle, Contents-Berechtigung und Token-Freigabe prüfen. GitHub kann auch wegen eines API-Limits 403 melden. Dann abwarten. Beim Daten-Repo keine erzwungenen Pull Requests für App-Schreibzugriffe voraussetzen.
 - **Nicht gefunden (404):** Eigentümer, Repo, `main` und `daten.json` einschließlich Groß-/Kleinschreibung prüfen. GitHub versteckt private Repos auch bei fehlenden Token-Rechten hinter 404; es ist nicht automatisch eine fehlende Datei.
 - **Schreibkonflikt (409/422):** Die App lädt und mischt bis zu viermal erneut. Bleibt der Fehler, später aktualisieren und Branch-Regeln prüfen. Lokale Änderungen bleiben erhalten.
-- **Rückgängig:** stellt die letzte Lösch- oder Häkchenänderung wieder her. Ein späteres Rückgängig ist selbst eine neue gemeinsame Änderung und kann daher eine zwischenzeitliche Änderung am selben Feld ersetzen. Nach Neuladen ist der Rückgängig-Knopf weg; die Daten und Warteschlange bleiben.
+- **Rückgängig:** stellt die letzte Löschaktion wieder her. Häkchen werden ohne Meldung durch erneutes Antippen zurückgesetzt. Ein späteres Rückgängig ist selbst eine neue gemeinsame Änderung und kann daher eine zwischenzeitliche Änderung am selben Feld ersetzen. Nach Neuladen ist der Rückgängig-Knopf weg; die Daten und Warteschlange bleiben.
 - **Zweiter Tab:** pro Browser-Ursprung darf nur ein App-Tab aktiv sein, damit zwei Tabs nicht dieselbe lokale Warteschlange überschreiben. Den ersten Tab schließen und den zweiten neu laden. Zwei Geräte sind ausdrücklich unterstützt.
 
 Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browsers. Es werden keine externen Skripte, Analysewerkzeuge oder Schriften geladen. Trotzdem nur auf vertrauenswürdigen Geräten verwenden und Browserdaten nicht löschen, solange Änderungen ausstehen. Andere Seiten unter demselben Pages-Ursprung gehören ebenfalls zu dieser Vertrauensgrenze. **Token entfernen** entfernt die Zugangsdaten; lokale Daten und Warteschlangen bleiben für die spätere erneute Verbindung erhalten. Für vollständiges Entfernen erst synchronisieren und sichern, dann die Website-Daten in den Geräteeinstellungen löschen. Safari im privaten Modus ist für dauerhafte Daten ungeeignet.
@@ -133,13 +143,13 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | Bereich | Inhalt |
 | --- | --- |
 | `stores` | `id`, `name`, Zeitstempel und Löschmarkierung |
-| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `onSale` |
+| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `salePrice`, `onSale` |
 | `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions` |
 | `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit` |
-| `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, `onSale` und denselben Zeitstempeln |
+| `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung |
 
-Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden.
+Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden.
 
 Jeder Datensatz hat `createdAt`, `updatedAt`, `deletedAt` und `_clock`. `deletedAt: null` bedeutet nicht gelöscht. `_clock` speichert je geändertem Feld dessen Zeitstempel und Operations-ID. Eine Operation enthält `id`, `collection`, `entityId`, `patch`, `actor` und `at`.
 
@@ -161,7 +171,7 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Als Nico und Partnerin verbinden. Auf beiden Geräten muss der gemeinsame GitHub-Status erscheinen.
 - [ ] In Edeka einen Artikel mit `1,5 kg` hinzufügen; im zweiten Gerät aktualisieren und Namen/Menge/Person prüfen.
 - [ ] Beide Geräte fügen gleichzeitig unterschiedliche Artikel hinzu: nach Abgleich müssen beide Artikel vorhanden sein.
-- [ ] Auf einem Gerät Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Rückgängig testen.
+- [ ] Auf einem Gerät Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Erneut antippen öffnet den Artikel, ohne Rückgängig-Meldung.
 - [ ] Erledigte entfernen, danach Rückgängig; einen einzelnen Artikel löschen und wiederherstellen.
 - [ ] Geschäft hinzufügen, umbenennen und mit einem Artikel löschen; direkt Rückgängig testen.
 - [ ] Eigenes Rezept mit zwei Zutaten, Tags und Zubereitung anlegen; Suche, Tagfilter, Bearbeiten und Löschen/Rückgängig testen.
@@ -178,7 +188,7 @@ Keine Laufzeitabhängigkeiten, kein Build-Schritt. Eine lokale HTTP-Vorschau ist
 Die reinen Datenprüfungen laufen mit einer aktuellen Node-Version (getestet mit Node 24):
 
 ```sh
-node --test tests/data.test.mjs tests/prices.test.mjs
+node --test --test-isolation=none tests/data.test.mjs tests/prices.test.mjs
 ```
 
 Sie prüfen Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Rückgängig, Portionsübernahme, Versionsschutz und deutsche Mengeneingaben. Browserprüfungen mit simulierten GitHub-Antworten ersetzen keinen echten Abgleich mit euren Tokens; den abschließenden Zwei-Geräte-Test führt ihr nach der Einrichtung anhand der Checkliste aus.
@@ -197,3 +207,13 @@ Weitere Testpunkte für Version 1.1:
 - [ ] App erneut öffnen, denselben Namen im selben Geschäft eingeben und gemerkten Preis prüfen; Geschäft wechseln und anderen Vorschlag prüfen.
 - [ ] Gleicher Name mit „Packung“: kein Vergleich mit unbekannter Packungsgröße; g und l werden nicht ineinander umgerechnet.
 - [ ] Vorhandene Artikel und Einstellungen nach dem Update prüfen; die private Datendatei dafür nicht ersetzen.
+
+Weitere Testpunkte für Version 1.2:
+
+- [ ] Artikel abhaken und wieder öffnen: keine neue Rückgängig-Benachrichtigung. Löschen und Lösch-Rückgängig funktionieren weiter.
+- [ ] Normalpreis 2,49 €, Angebotspreis 1,79 €, jeweils je Packung, Menge 2: Summe 3,58 €. Angebot ausschalten: Summe 4,98 €, beide Preise bleiben gespeichert.
+- [ ] Unterschiedliche Bezugsmengen (z. B. normal je 500 g, Angebot je kg) und ein Angebot ohne bekannten Normalpreis prüfen.
+- [ ] Kochschinken eintragen und löschen, dann `kochs` eintippen: Vorschlag antippen und vollständigen Namen übernehmen. Nach Neuladen und offline wiederholen.
+- [ ] Auf dem zweiten verbundenen Gerät nach dem Abgleich einen Namen vorschlagen lassen, der auf dem ersten Gerät eingegeben wurde.
+
+`python3 tests/usability_browser.py` prüft diese Bedienabläufe einschließlich kleiner mobiler Ansichten. Die normalen Browserprüfungen testen zusätzlich, dass gleichzeitige Änderungen an Normal- und Angebotspreis zwischen zwei simulierten Geräten erhalten bleiben. Ein Test auf einem echten iPhone bleibt Teil der manuellen Checkliste.

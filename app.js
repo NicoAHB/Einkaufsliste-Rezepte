@@ -1,5 +1,5 @@
-import { active, clone, emptyData, ingredientItems, merge, operation, positive, uid, validate } from './data.js';
-import { comparePrices, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
+import { active, clone, emptyData, ingredientItems, merge, operation, positive, suggestItemNames, uid, validate } from './data.js';
+import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -101,13 +101,14 @@ function render() {
   storeOptions($('#store-select'));
   selectedStore = $('#store-select').value;
   renderItems(); renderRecipes();
-  $('#item-form').querySelector('button').disabled = !ready || !selectedStore;
+  $('#item-form').querySelector('button[type=submit]').disabled = !ready || !selectedStore;
   $('#add-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
 }
 function renderItems() {
   if (priceFormStore !== selectedStore) {
     priceFormStore = selectedStore;
+    $('#item-form').elements.onSale.checked = false;
     delete $('#item-form').dataset.manualPrice; rememberPriceInForm();
   }
   renderShoppingInfo();
@@ -123,14 +124,18 @@ function renderItems() {
     const check = button(item.checked ? '✓' : '', () => {
       const latest = state.items.find(entry => entry.id === item.id);
       if (!latest || latest.deletedAt) return;
-      commit([nextOp('items', item.id, { checked: !latest.checked })],
-        { label: 'Häkchen geändert', patches: [{ collection: 'items', id: item.id, patch: { checked: latest.checked } }] });
+      commit([nextOp('items', item.id, { checked: !latest.checked })]);
     }, 'check');
     check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
     check.setAttribute('aria-pressed', String(Boolean(item.checked)));
     const copy = element('div', undefined, 'item-copy');
     copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
     if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
+    if (item.onSale && item.salePrice) {
+      copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
+      const normal = itemQuote(item, state.prices);
+      if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
+    }
     const cost = itemCost(item, state.prices);
     if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
     const quotes = comparePrices(item, state.stores, state.prices);
@@ -145,6 +150,20 @@ function renderItems() {
     const actions = element('div', undefined, 'item-actions'); actions.append(edit, remove);
     remove.setAttribute('aria-label', `${item.name} löschen`); row.append(check, copy, actions); list.append(row);
   }
+  if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
+}
+function renderItemSuggestions() {
+  const form = $('#item-form'), box = $('#item-suggestions');
+  const names = suggestItemNames(state.items, form.elements.name.value);
+  box.replaceChildren(); box.hidden = !names.length;
+  if (!names.length) return;
+  box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
+  const choices = element('div', undefined, 'suggestion-choices');
+  for (const name of names) choices.append(button(name, () => {
+    form.elements.name.value = name; box.hidden = true;
+    rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
+  }));
+  box.append(choices);
 }
 function renderShoppingInfo() {
   const store = active(state.stores).find(row => row.id === selectedStore), url = storeOfferUrl(store);
@@ -158,10 +177,24 @@ function renderShoppingInfo() {
   box.append(element('p', total.missing ? `${total.missing} Artikel ohne passenden Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel berücksichtigt. Preise können sich ändern.' : 'Erledigte Artikel werden nicht mitgerechnet.', 'hint'));
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
-function setQuoteFields(form, quote, fallbackUnit) {
-  form.elements.priceEuros.value = quote ? (quote.cents / 100).toFixed(2).replace('.', ',') : '';
-  form.elements.priceQuantity.value = quote ? String(quote.quantity).replace('.', ',') : '1';
-  form.elements.priceUnit.value = quote?.unit || fallbackUnit;
+function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
+  form.elements[`${prefix}Euros`].value = quote ? (quote.cents / 100).toFixed(2).replace('.', ',') : '';
+  form.elements[`${prefix}Quantity`].value = quote ? String(quote.quantity).replace('.', ',') : '1';
+  form.elements[`${prefix}Unit`].value = quote?.unit || fallbackUnit;
+}
+function setSaleFields(form, quote = null) {
+  form._savedSaleQuote = quote ? clone(quote) : null;
+  setQuoteFields(form, quote, form.elements.priceUnit.value, 'sale');
+  if (!quote) form.elements.saleQuantity.value = form.elements.priceQuantity.value;
+  toggleSaleFields(form);
+}
+function toggleSaleFields(form) {
+  const section = form.querySelector('[data-sale-fields]');
+  section.hidden = !form.elements.onSale.checked;
+  if (!section.hidden && !form.elements.saleEuros.value.trim()) {
+    form.elements.saleQuantity.value = form.elements.priceQuantity.value;
+    form.elements.saleUnit.value = form.elements.priceUnit.value;
+  }
 }
 function rememberPriceInForm() {
   const form = $('#item-form');
@@ -169,22 +202,33 @@ function rememberPriceInForm() {
   const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   const quote = rememberedPrice(state.prices, selectedStore, name, unit);
   setQuoteFields(form, quote, unit);
+  setSaleFields(form);
   form.querySelector('[data-price-hint]').textContent = quote ? `Für dieses Geschäft gemerkt: ${quoteLabel(quote)}. Du kannst den Vorschlag ändern oder leeren.` :
     'Beispiel: 1,99 € für 500 g. Ein gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.';
 }
-function readQuote(form) {
-  const value = form.elements.priceEuros.value.trim();
+function readQuote(form, prefix = 'price') {
+  const value = form.elements[`${prefix}Euros`].value.trim();
   if (!value) return null;
-  const quote = { cents: parseCents(value), quantity: positive(form.elements.priceQuantity.value), unit: form.elements.priceUnit.value.trim() };
+  const quote = { cents: parseCents(value), quantity: positive(form.elements[`${prefix}Quantity`].value), unit: form.elements[`${prefix}Unit`].value.trim() };
   if (!quote.unit) throw new Error('Bitte die Einheit des Preises eingeben.');
   if (unitRate(quote, form.elements.unit.value.trim()) === null) throw new Error('Artikeleinheit und Preiseinheit passen nicht zusammen. Verwende zum Beispiel kg und g oder l und ml. Bei Packungen muss der Preis ebenfalls je Packung angegeben sein.');
   return quote;
+}
+function readPricing(form) {
+  const price = readQuote(form), onSale = form.elements.onSale.checked;
+  // Beim Ausschalten bleibt ein bereits gespeicherter Angebotspreis erhalten,
+  // beeinflusst die Summe aber nicht mehr. Neue inaktive Angebote werden nicht notiert.
+  const salePrice = onSale ? readQuote(form, 'sale') : form._savedSaleQuote || null;
+  if (onSale && price && salePrice && unitRate(salePrice, price.unit) * price.quantity >= price.cents - 0.0000001) {
+    throw new Error('Der Angebotspreis muss für die gleiche Menge günstiger als der normale Preis sein. Bitte Preise und Bezugsmengen prüfen.');
+  }
+  return { price, salePrice, onSale };
 }
 function priceOperation(item) {
   // Jeder notierte Preis ist ein eigener Datensatz: gleichzeitige Einträge
   // verschiedener Geräte bleiben erhalten, der neueste passende wird verwendet.
   return nextOp('prices', uid(), { storeId: item.storeId, name: item.name,
-    quote: clone(item.price), onSale: Boolean(item.onSale) });
+    quote: clone(effectiveQuote(item, state.prices)), regularQuote: clone(itemQuote(item, state.prices) || null), onSale: Boolean(item.onSale) });
 }
 function showComparison(item) {
   const box = $('#price-comparison'); box.replaceChildren();
@@ -207,11 +251,12 @@ function showComparison(item) {
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), onSale: Boolean(item.onSale) });
+  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale) });
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
   setQuoteFields(form, itemQuote(item, state.prices), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
+  setSaleFields(form, item.salePrice);
   form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
   showComparison(item); message(); $('#item-dialog').showModal();
 }
@@ -470,15 +515,26 @@ $('#store-select').addEventListener('change', () => {
   renderItems();
 });
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
-for (const key of ['priceEuros', 'priceQuantity', 'priceUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
+for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
+$('#item-form').elements.name.addEventListener('keydown', event => {
+  if (event.key === 'Escape') $('#item-suggestions').hidden = true;
+  if (event.key === 'ArrowDown' && !$('#item-suggestions').hidden) {
+    event.preventDefault(); $('#item-suggestions button')?.focus();
+  }
+});
+document.addEventListener('focusin', event => {
+  if (event.target !== $('#item-form').elements.name && !$('#item-suggestions').contains(event.target)) $('#item-suggestions').hidden = true;
+});
+for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
+for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const item = { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
-    unit, checked: false, createdBy: config.actor || 'Nico', price: readQuote(form), onSale: form.elements.onSale.checked };
+    unit, checked: false, createdBy: config.actor || 'Nico', ...readPricing(form) };
   const ops = [nextOp('items', uid(), item)];
-  if (item.price && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
+  if (effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
   commit(ops);
   form.reset(); delete form.dataset.manualPrice; rememberPriceInForm(); form.elements.name.focus();
 }); });
@@ -486,11 +542,12 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
-    price: readQuote(form), onSale: form.elements.onSale.checked };
+    ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
-  if (patch.price && ['price', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation({ ...item, ...patch }));
+  const edited = { ...item, ...delta };
+  if (effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
   commit(ops); $('#item-dialog').close();
 }); });
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', active(state.items).filter(row => row.storeId === selectedStore && row.checked).map(row => row.id), 'Erledigte Artikel entfernt')));

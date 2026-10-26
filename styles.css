@@ -470,6 +470,9 @@ a.button { display:inline-flex; align-items:center; justify-content:center; min-
 .store-row input { width:100%; }
 .store-row form button { width:100%; }
 .dialog-error { border:1px solid var(--danger); color:var(--danger); border-radius:10px; padding:12px; }
+.item-suggestions { border:1px solid var(--line); padding:12px; border-radius:12px; background:var(--accent-soft); }
+.suggestion-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; }
+.suggestion-choices button { min-width:0; overflow-wrap:anywhere; text-align:left; }
 @media(min-width:700px) {
   .price-grid { grid-template-columns:2fr 1fr 1fr; }
   .price-grid > label:first-child { grid-column:auto; }

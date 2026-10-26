@@ -45,8 +45,16 @@ export function latestPrices(history = [], name, unit) {
   return [...byStore.values()];
 }
 
-export function rememberedPrice(history, storeId, name, unit) {
-  return latestPrices(history, name, unit).find(row => row.storeId === storeId)?.quote || null;
+export function rememberedPrice(history = [], storeId, name, unit) {
+  // Ein früherer Aktionspreis wird nicht zum neuen Normalpreis. Ältere
+  // Datensätze ohne getrennten Normalpreis behalten ihre bisherige Bedeutung.
+  const rows = history.filter(row => !row.deletedAt && row.storeId === storeId && productKey(row.name) === productKey(name))
+    .sort((a, b) => `${b.createdAt}|${b.id}`.localeCompare(`${a.createdAt}|${a.id}`));
+  for (const row of rows) {
+    const quote = row.regularQuote === undefined ? row.quote : row.regularQuote;
+    if (unitRate(quote, unit) !== null) return quote;
+  }
+  return null;
 }
 
 export function itemQuote(item, history = []) {
@@ -54,8 +62,12 @@ export function itemQuote(item, history = []) {
   return item.price === undefined ? rememberedPrice(history, item.storeId, item.name, item.unit) : item.price;
 }
 
+export function effectiveQuote(item, history = []) {
+  return item.onSale && validQuote(item.salePrice) ? item.salePrice : itemQuote(item, history);
+}
+
 export function itemCost(item, history = []) {
-  const rate = unitRate(itemQuote(item, history), item.unit);
+  const rate = unitRate(effectiveQuote(item, history), item.unit);
   if (rate === null) return null;
   const cents = Math.round(item.quantity * rate);
   return Number.isSafeInteger(cents) && cents >= 0 ? cents : null;
