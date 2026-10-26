@@ -1,4 +1,4 @@
-import { active, addToList, clone, emptyData, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
@@ -950,6 +950,9 @@ async function sync(manual = false) {
       const remote = decodeFile(file);
       const batch = pending.slice();
       let merged = merge(remote, batch), tidy = null;
+      // Haben zwei Geräte gleichzeitig denselben Artikel neu angelegt, wird das Doppel hier deterministisch zusammengeführt (siehe data.js).
+      const folds = duplicateFolds(merged.items);
+      if (folds.length) merged = merge(merged, folds);
       // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB oder auf Wunsch. Es darf den Abgleich nie verhindern.
       if (compactRequested || due(merged)) {
         try { tidy = compact(merged); if (tidy.changed) merged = tidy.data; } catch { tidy = null; }
@@ -957,7 +960,7 @@ async function sync(manual = false) {
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
       // nicht erneut geschrieben zu werden.
       let written = false;
-      if (batch.some(op => !remote.sync.applied.includes(op.id)) || tidy?.changed) {
+      if (batch.some(op => !remote.sync.applied.includes(op.id)) || folds.length || tidy?.changed) {
         try {
           await api('PUT', { message: 'Einkauf & Rezepte: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
@@ -1151,7 +1154,7 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
   const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
   if (same) {
-    commit([nextOp('items', same.id, { quantity: same.after.quantity, unit: same.after.unit })], `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
+    commit([nextOp('items', same.id, { add: same.add })], `„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
     if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));

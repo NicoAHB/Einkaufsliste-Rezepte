@@ -2,16 +2,16 @@
 import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory } from './categories.js';
-// `prices`, `meals` und `pantry` sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry'];
-const optionalCollections = ['prices', 'meals', 'pantry'];
+// `prices`, `meals`, `pantry` und `aliases` sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -47,8 +47,13 @@ export function validateRow(key, row) {
   if (key === 'items' && row.salePrice !== undefined && row.salePrice !== null && !validQuote(row.salePrice)) throw new Error('Ungültiger Angebotspreis.');
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
   if (key === 'items' && row.category !== undefined && row.category !== null && typeof row.category !== 'string') throw new Error('Ungültige Kategorie.');
+  // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
+  if (key === 'items' && row._adds !== undefined && (!Array.isArray(row._adds) || !row._base || row._adds.some(entry => !entry || typeof entry.id !== 'string' ||
+      !Number.isFinite(Date.parse(entry.at)) || !(entry.quantity > 0) || typeof entry.unit !== 'string'))) throw new Error('Ungültige Mengenänderungen.');
   if (key === 'prices' && (typeof row.name !== 'string' || typeof row.storeId !== 'string' || !validQuote(row.quote))) throw new Error('Ungültiger gemerkter Preis.');
   if (key === 'prices' && row.regularQuote !== undefined && row.regularQuote !== null && !validQuote(row.regularQuote)) throw new Error('Ungültiger gemerkter Normalpreis.');
+  // Optional (Version 1.8): Preisentwicklung { was, at } und Herkunft der Notiz.
+  if (key === 'prices' && row.trend !== undefined && row.trend !== null && (!validQuote(row.trend.was) || !Number.isFinite(Date.parse(row.trend.at)))) throw new Error('Ungültige Preisentwicklung.');
   if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
       row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
       row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
@@ -61,6 +66,7 @@ export function validateRow(key, row) {
       (row.recipeId !== undefined && typeof row.recipeId !== 'string') || (row.title !== undefined && typeof row.title !== 'string') ||
       !(row.recipeId || row.title) || (row.done !== undefined && typeof row.done !== 'boolean'))) throw new Error('Ungültiger Eintrag im Wochenplan.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
+  if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
 }
 
 export function validate(data) {
@@ -96,10 +102,41 @@ export function operation(collection, entityId, patch, actor, at = new Date().to
 // (mit den Pflichtfeldern) wegen ihres früheren Zeitstempels verworfen werden. Wer gewinnt, ändert sich dadurch nicht.
 const byTime = (a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
+/* Mengen sind kein gewöhnliches Feld. Legen zwei Personen unabhängig voneinander „+1 Milch“ auf einen vorhandenen Artikel, müssen beide
+   Zuwächse bleiben (1 + 1 + 1 = 3), egal in welcher Reihenfolge und wie spät die Geräte abgleichen. Ein Zuwachs ist deshalb eine eigene
+   Änderung { add: { quantity, unit } }, die der Datensatz in `_adds` sammelt. Die Menge ergibt sich aus dem zuletzt ausdrücklich
+   gesetzten Wert (`_base`, wie bisher das jüngste Setzen gewinnt) plus allen Zuwächsen, die jünger als dieses Setzen sind. Das Ergebnis
+   hängt nur von den Änderungen ab, nicht von der Reihenfolge, in der sie eintreffen. */
+const keyOf = entry => `${entry.at}|${entry.id}`;
+function floorKey(row) {
+  const keys = [`${row.createdAt}|`];
+  for (const field of ['quantity', 'unit', '*']) if (row._clock?.[field]) keys.push(keyOf(row._clock[field]));
+  return keys.sort().at(-1);
+}
+export function foldAdds(base, adds, floor) {
+  let current = { quantity: base.quantity, unit: base.unit };
+  for (const add of [...adds].sort((a, b) => keyOf(a) < keyOf(b) ? -1 : 1)) {
+    if (keyOf(add) <= floor) continue;
+    const sum = combineQuantity(current, add);
+    if (sum) current = sum;
+  }
+  return current;
+}
+// Aufräumen: ältere Zuwächse in den Ausgangswert übernehmen. Gibt die Zahl der übernommenen Zuwächse zurück.
+export function foldOldAdds(row, cutoff) {
+  if (!row._adds) return 0;
+  const old = row._adds.filter(entry => entry.at < cutoff);
+  if (!old.length) return 0;
+  row._base = foldAdds(row._base, old, floorKey(row));
+  row._adds = row._adds.filter(entry => entry.at >= cutoff);
+  if (!row._adds.length) { delete row._adds; delete row._base; }
+  return old.length;
+}
+
 export function merge(data, operations) {
   const next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= [];
-  const applied = new Set(next.sync.applied), created = [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= [];
+  const applied = new Set(next.sync.applied), created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
     if (!collections.includes(op.collection)) throw new Error('Unbekannte Änderungsart.');
@@ -110,12 +147,22 @@ export function merge(data, operations) {
     }
     row._clock ||= {};
     for (const [field, value] of Object.entries(op.patch)) {
-      if (['id', 'createdAt', 'updatedAt', '_clock', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
+      if (['id', 'createdAt', 'updatedAt', '_clock', '_base', '_adds', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
+      if (field === 'add') {
+        if (op.collection === 'items' && value && Number.isFinite(value.quantity) && value.quantity > 0 && typeof value.unit === 'string') {
+          row._base ||= { quantity: row.quantity, unit: row.unit };
+          row._adds ||= [];
+          if (!row._adds.some(entry => entry.id === op.id)) row._adds.push({ id: op.id, at: op.at, quantity: value.quantity, unit: value.unit, by: op.actor });
+          touched.add(row);
+        }
+        continue;
+      }
       // „*“ ist die Sammelmarke des Aufräumens: Alle Felder gelten als so alt wie der Datensatz zuletzt geändert wurde.
       const settled = row._clock['*'], clock = row._clock[field];
       let previous = settled ? `${settled.at}|${settled.id}` : `${row.createdAt}|`;
       if (clock && `${clock.at}|${clock.id}` > previous) previous = `${clock.at}|${clock.id}`;
       if (`${op.at}|${op.id}` > previous) {
+        if (op.collection === 'items' && row._base && (field === 'quantity' || field === 'unit')) { row._base[field] = clone(value); touched.add(row); }
         row[field] = clone(value);
         row._clock[field] = { at: op.at, id: op.id };
       }
@@ -123,6 +170,9 @@ export function merge(data, operations) {
     row.updatedAt = [row.updatedAt, op.at].sort().at(-1);
     applied.add(op.id);
     next.updatedAt = [next.updatedAt, op.at].sort().at(-1);
+  }
+  for (const row of touched) {
+    if (row._adds?.length && row._base) { const current = foldAdds(row._base, row._adds, floorKey(row)); row.quantity = current.quantity; row.unit = current.unit; }
   }
   // Eine Änderung an einem Datensatz, den es nicht mehr gibt (z. B. nach dem Aufräumen auf einem anderen Gerät),
   // legt höchstens einen unvollständigen Datensatz an. Der wird verworfen, statt die ganze Datei ungültig zu machen.
@@ -203,10 +253,10 @@ export function combineQuantity(left, right) {
   return Number.isFinite(result.quantity) && result.quantity > 0 && result.quantity <= 1e6 ? result : null;
 }
 // rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
-// neue Menge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
+// `add`: was dazukommt, `after`: neue Gesamtmenge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
   const pool = active(items).filter(item => !item.checked && (item.storeId || '') === (storeId || ''))
-    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, quantity: item.quantity, unit: item.unit }));
+    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, added: null }));
   const fresh = [], counted = new Map();
   let skipped = 0;
   for (const row of rows) {
@@ -220,15 +270,43 @@ export function foldIntoList(rows, storeId, items = []) {
     if (match.placeholder) { match.quantity = row.quantity; match.unit = row.unit; match.placeholder = false; if (match.row) { match.row.quantity = row.quantity; match.row.unit = row.unit; delete match.row.noAmount; } continue; }
     const sum = combineQuantity(match, row);
     match.quantity = sum.quantity; match.unit = sum.unit;
-    if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; } else counted.set(match.id, match);
+    if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; }
+    else { match.added = match.added ? combineQuantity(match.added, row) : { quantity: row.quantity, unit: row.unit }; counted.set(match.id, match); }
   }
   return { fresh: fresh.map(({ pool: _pool, noAmount: _noAmount, ...row }) => row), skipped,
-    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, after: { quantity: entry.quantity, unit: entry.unit } })) };
+    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, add: entry.added, after: { quantity: entry.quantity, unit: entry.unit } })) };
 }
+/* Gleichzeitig angelegte Doppel („Milch“ auf zwei Geräten) werden deterministisch zusammengeführt: Der zuerst angelegte Artikel bleibt, der
+   andere wird gelöscht und seine Menge dem ersten zugerechnet. Beide Geräte erzeugen dieselben Operations-IDs, deshalb wird jede
+   Zusammenführung nur einmal angewendet. Artikel mit eigenem Preis bleiben getrennt (die Person wollte einen eigenen Eintrag). */
+export function duplicateFolds(items, now = new Date().toISOString()) {
+  const groups = new Map();
+  for (const item of active(items).filter(row => !row.checked && (row.price === undefined || row.price === null))) {
+    const key = `${item.storeId || ''}|${productKey(item.name)}`;
+    groups.set(key, [...(groups.get(key) || []), item]);
+  }
+  const ops = [];
+  for (const rows of groups.values()) {
+    if (rows.length < 2) continue;
+    rows.sort((a, b) => `${a.createdAt}|${a.id}`.localeCompare(`${b.createdAt}|${b.id}`));
+    const [keep, ...rest] = rows;
+    let total = { quantity: keep.quantity, unit: keep.unit };
+    for (const dup of rest) {
+      const sum = combineQuantity(total, dup);
+      if (!sum) continue;
+      total = sum;
+      ops.push({ id: `fold-add-${dup.id}`, collection: 'items', entityId: keep.id, patch: { add: { quantity: dup.quantity, unit: dup.unit } }, actor: dup.createdBy || 'Unbekannt', at: now },
+        { id: `fold-del-${dup.id}`, collection: 'items', entityId: dup.id, patch: { deletedAt: now }, actor: dup.createdBy || 'Unbekannt', at: now });
+    }
+  }
+  return ops;
+}
+
 // Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
 export function addToList(rows, storeId, actor, at, history = [], items = []) {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
   const created = newItems(fresh, storeId, actor, at, history, items);
-  const ops = [...created, ...counted.map(entry => operation('items', entry.id, { quantity: entry.after.quantity, unit: entry.after.unit }, actor, at))];
+  // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).
+  const ops = [...created, ...counted.map(entry => operation('items', entry.id, { add: entry.add }, actor, at))];
   return { ops, added: created.length, counted, skipped };
 }
