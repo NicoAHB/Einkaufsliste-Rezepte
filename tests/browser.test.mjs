@@ -1007,7 +1007,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  for (const width of [280, 320, 390]) {
+  for (const width of [280, 314, 360, 390, 430]) {
     test(`Platz oben (${width} px): Summe und Knöpfe überlappen nicht, Artikel beginnen früh, Im Laden: Geschäfte ganz oben`, async () => {
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 664 } } });
       await open(page);
@@ -1019,6 +1019,23 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
       assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
       assert.equal(await horizontalOverflow(page), 0);
+      // In jedem Geschäft (mit und ohne Angebotslink): Summentext und beide Knöpfe liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
+      for (const name of ['Edeka', 'Lidl', 'Rewe']) {
+        await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
+        const layout = await page.evaluate(() => {
+          const rect = selector => { const node = document.querySelector(selector); return node && !node.hidden && node.getClientRects().length ? node.getBoundingClientRect() : null; };
+          const card = rect('.summary'), text = rect('#shopping-total'), buttons = ['#offers-link', '#set-offers', '#open-receipt'].map(rect).filter(Boolean);
+          const inner = document.querySelector('#shopping-total').querySelector('strong, small');
+          return { card, text, buttons, textFits: !inner || inner.scrollWidth <= document.querySelector('#shopping-total').clientWidth + 1 };
+        });
+        assert.ok(layout.buttons.length >= 2, `${name}: Knöpfe sichtbar`);
+        assert.ok(layout.textFits, `${name}: Summentext ragt über seinen Platz hinaus`);
+        const parts = [layout.text, ...layout.buttons].sort((a, b) => a.left - b.left);
+        for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5, `${name}: Summe und Knöpfe überlappen bei ${width} px`);
+        assert.ok(parts.every(part => part.left >= layout.card.left - 0.5 && part.right <= layout.card.right + 0.5 && part.top >= layout.card.top - 0.5 && part.bottom <= layout.card.bottom + 0.5), `${name}: etwas liegt außerhalb der Karte`);
+        assert.ok(layout.card.height <= 64, `${name}: Karte ist ${layout.card.height} px hoch`);
+      }
+      await page.getByRole('tab', { name: /^Alle/ }).click();
       // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
       await page.click('#mode-shop');
       assert.equal(await page.locator('.topbar').isHidden(), true);

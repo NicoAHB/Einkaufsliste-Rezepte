@@ -606,12 +606,14 @@ details[open]>summary::after {
   line-height:1.3;
   color:var(--muted)
 }
-@media(max-width:359px) {
+/* Auf dem Handy nur Symbole: Mit Beschriftung bliebe neben „Geschätzt 6,76 €“ kein Platz. */
+@media(max-width:479px) {
   .shop-tools .label {
     display:none
   }
   .shop-tools .small {
-    padding:0 11px
+    width:44px;
+    padding:0
   }
 }
 
