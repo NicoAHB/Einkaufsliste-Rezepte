@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.0
+# Einkauf & Rezepte – Version 2.1
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,15 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.1: Artikel in den Mülleimer ziehen
+
+Keine neuen Datenfelder, nur Bedienung. In der Einkaufsliste (Ansicht **Planen**) löscht man einen Artikel auch per Geste: **Zeile lange gedrückt halten** (knapp eine halbe Sekunde, bis sie „abhebt“), dann **nach rechts** schieben. Am rechten Rand erscheint ein **roter Mülleimer**; er färbt sich dunkler und wird größer, sobald der Finger darüber ist. **Loslassen löscht** den Artikel (kurzer Hinweis „„Milch“ gelöscht“, wie beim Löschen im Dialog ohne Rückgängig-Knopf). Anderswo loslassen bricht ab, die Zeile gleitet zurück; auch **Esc** bricht ab (Tastatur am Rechner).
+
+- Wer sich vor Ablauf der Haltezeit bewegt, **scrollt** nur; ein kurzer Tipp öffnet wie bisher die Bearbeitung. Nach langem Halten ohne Löschen öffnet sich nichts und nichts wird abgehakt.
+- Gilt für offene, abgehakte und „neu von …“-Zeilen. Im Modus **Im Laden** gibt es die Geste absichtlich nicht (dort wird nur abgehakt).
+- Der Browser darf die Seite während des Ziehens nicht mitscrollen, und der Text einer Zeile soll sich beim langen Drücken nicht markieren lassen. Beides ist abgefangen, wurde aber nur in Chromium mit simulierten Berührungen geprüft, nicht auf einem echten iPhone.
+- Die Logik steht in `dragdelete.js` (Offline-Paket v12).
 
 ## Neu in Version 2.0: aufgeräumt und per Siri hinzufügen
 
@@ -383,6 +392,12 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.1:
+
+- [ ] Einkauf → Planen: Einen Artikel lange gedrückt halten, bis er abhebt, nach rechts in den roten Mülleimer schieben und loslassen: Er ist weg, die anderen bleiben. Prüfen, dass die Seite dabei nicht mitscrollt und kein Text markiert wird (iPhone!).
+- [ ] Nur kurz tippen öffnet die Bearbeitung; auf der Liste nach oben und unten wischen scrollt, ohne dass etwas abhebt.
+- [ ] Zeile ziehen, aber außerhalb des Mülleimers loslassen: nichts ist gelöscht, die Bearbeitung öffnet sich nicht.
 
 Weitere Testpunkte für Version 2.0:
 

@@ -1298,6 +1298,117 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
 
+  // Hilfen für „lange halten und nach rechts in den Mülleimer ziehen“ (Maus: echte Zeigerereignisse wie auf dem Handy)
+  const center = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
+  const holdRow = async (page, name) => {
+    const row = page.locator('#items .item', { hasText: name });
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.locator('.item-copy').boundingBox(), at = { x: box.x + 40, y: box.y + box.height / 2 };
+    await page.mouse.move(at.x, at.y); await page.mouse.down();
+    return { row, at };
+  };
+
+  test('Artikel löschen: lange halten und nach rechts in den roten Mülleimer schieben', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const names = () => page.locator('#items .item strong').allTextContents();
+    assert.ok((await names()).includes('Nudeln'));
+    // Nach dem Loslassen außerhalb der Fläche bleibt der Artikel; es öffnet sich auch nichts
+    let { at } = await holdRow(page, 'Nudeln');
+    await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#trash-zone.show').count(), 1, 'rote Fläche erscheint');
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0);
+    await page.mouse.move(at.x + 60, at.y, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.ok((await names()).includes('Nudeln'), 'nicht in der Fläche losgelassen: nichts gelöscht');
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'das Loslassen nach langem Halten öffnet die Bearbeitung nicht');
+    assert.equal(await page.locator('#items .item.drag-origin').count(), 0);
+    // Weniger als die Haltezeit und Bewegung: Scrollen, es hebt nichts ab
+    ({ at } = await holdRow(page, 'Nudeln'));
+    await page.mouse.move(4, at.y + 40, { steps: 3 });   // weg von der Zeile: ein Wischen, kein Tipp
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0, 'wer sich zuerst bewegt, scrollt nur');
+    await page.mouse.up();
+    // Kurzer Tipp öffnet weiterhin die Bearbeitung
+    await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page); await page.keyboard.press('Escape');
+    await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // In die Fläche ziehen und loslassen löscht
+    ({ at } = await holdRow(page, 'Nudeln'));
+    await page.waitForSelector('.drag-ghost');
+    const width = await page.evaluate(() => innerWidth);
+    await page.mouse.move(at.x + 80, at.y, { steps: 4 });
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0, 'noch nicht an der Fläche');
+    await page.mouse.move(width - 40, at.y, { steps: 6 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Nudeln'));
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    assert.equal(await page.locator('#trash-zone.show').count(), 0, 'Fläche verschwindet wieder');
+    assert.equal(await page.textContent('#notice-text'), '„Nudeln“ gelöscht');
+    assert.ok((await names()).includes('Tomaten'), 'die anderen Artikel bleiben');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Artikel löschen per Ziehen: Escape bricht ab, abgehakte und neue Artikel lassen sich ebenfalls löschen, Im-Laden-Modus nicht', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const width = await page.evaluate(() => innerWidth);
+    const names = () => page.locator('#items .item strong').allTextContents();
+    // Escape während des Ziehens
+    let { at } = await holdRow(page, 'Milch');
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 5 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.ok((await names()).includes('Milch'), 'abgebrochen: nichts gelöscht');
+    // Abgehakter Artikel
+    await page.getByRole('button', { name: 'Äpfel: abhaken' }).click();
+    ({ at } = await holdRow(page, 'Äpfel'));
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Äpfel'));
+    // Im Laden gibt es das Ziehen nicht
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    const tap = page.locator('.shop-tap').first(), box = await tap.boundingBox();
+    await page.mouse.move(box.x + 40, box.y + 20); await page.mouse.down();
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    await page.mouse.up();
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Artikel löschen per Touch: Seite scrollt beim Ziehen nicht mit, Löschen wird nach GitHub geschrieben', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    // genug Zeilen, damit die Seite scrollbar ist
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; });
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const at = await center(page.locator('#items .item', { hasText: 'Tomaten' }).locator('.item-copy'));
+    const width = await page.evaluate(() => innerWidth);
+    await touch('touchStart', at.x, at.y);
+    await page.waitForSelector('.drag-ghost');
+    for (let step = 1; step <= 8; step++) await touch('touchMove', at.x + (width - 30 - at.x) * step / 8, at.y + step * 6);
+    await page.waitForSelector('#trash-zone.hot');
+    assert.equal(await page.evaluate(() => scrollY), 0, 'die Seite hat nicht mitgescrollt');
+    await touch('touchEnd');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Tomaten'));
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.ok(remote.content.items.find(row => row.name === 'Tomaten').deletedAt, 'Löschmarkierung liegt auf GitHub');
+    assert.ok(!remote.content.items.find(row => row.name === 'Nudeln').deletedAt);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Datenumfang: Anzeige, Aufräumen auf Wunsch schreibt die kleinere Datei', async () => {
     const remote = github(bloated(40));
     const { ctx, page, problems } = await context({ config: connectedConfig });

@@ -2,6 +2,7 @@ import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, freq
 import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { shopCount, shopView } from './shop.js';
+import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
@@ -241,7 +242,7 @@ function acknowledge(ids) {
   renderItems(); if (shopOn()) renderShop();
 }
 function newsRow(entry) {
-  const item = entry.item, row = element('li', undefined, 'item news');
+  const item = entry.item, row = element('li', undefined, 'item news'); row.dataset.id = item.id;
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
   copy.setAttribute('aria-label', `${item.name}: bearbeiten`); copy.addEventListener('click', () => guard(() => editItem(item.id)));
   const notes = entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`);
@@ -262,7 +263,7 @@ function storeHead(label, count, none) {
   return row;
 }
 function itemRow(item, withStore = false) {
-  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
+  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`); row.dataset.id = item.id;
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
@@ -1572,6 +1573,12 @@ $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.id.value;
   if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
   removeRows('items', [id]); $('#item-dialog').close();
+}));
+// Zeile lange halten und nach rechts in den roten Mülleimer schieben löscht den Artikel (nur in der Planungsansicht, nicht „Im Laden“).
+dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
+  const item = state.items.find(row => row.id === id && !row.deletedAt);
+  if (!item) return;
+  removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
 }));
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
