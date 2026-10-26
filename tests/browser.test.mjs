@@ -64,14 +64,25 @@ const sheetOpen = page => page.waitForSelector('dialog[open]');
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0 }, behavior = { failPhotoPuts: false };
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,OPTIONS', 'access-control-expose-headers': 'ETag' };
+  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag' };
   return {
     stats, photos, behavior, get content() { return content; },
     async handler(route) {
       const request = route.request(), path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1] || '');
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      if (path === 'photos' && request.method() === 'GET') {
+        stats.photoLists++;
+        if (!photos.size) return route.fulfill({ status: 404, headers: cors, body: '{}' });
+        return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' },
+          body: JSON.stringify([...photos].map(([file, bytes]) => ({ type: 'file', name: file.split('/')[1], sha: `sha-${file}`, size: bytes.length }))) });
+      }
       if (path.startsWith('photos/')) {
+        if (request.method() === 'DELETE') {
+          if (JSON.parse(request.postData()).sha !== `sha-${path}`) return route.fulfill({ status: 409, headers: cors, body: '{}' });
+          stats.photoDeletes++; photos.delete(path);
+          return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: '{}' });
+        }
         if (request.method() === 'GET') {
           stats.photoGets++;
           return photos.has(path) ? route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/vnd.github.raw+json' }, body: photos.get(path) }) : route.fulfill({ status: 404, headers: cors, body: '{}' });
@@ -579,6 +590,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await loadedPhoto(a.page, 'Spät-Kuchen');
     await a.page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('einkauf-photo-queue:') && JSON.parse(localStorage.getItem(key)).length === 1));
     assert.equal(remote.photos.size, 0);
+    for (let attempt = 0; attempt < 50 && !remote.content.recipes.some(row => row.name === 'Spät-Kuchen'); attempt++) await a.page.waitForTimeout(200);
     assert.ok(remote.content.recipes.some(row => row.name === 'Spät-Kuchen'), 'Das Rezept selbst wird trotzdem abgeglichen');
     remote.behavior.failPhotoPuts = false;
     // Läuft gerade ein Abgleich, verpufft ein einzelner Klick; deshalb wiederholen, bis die Warteschlange leer ist.
@@ -716,6 +728,100 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#items .item', { hasText: 'Äpfel' }).count(), 0);
     assert.ok(await page.locator('#items .item', { hasText: 'Tomaten' }).count() >= 1);
     assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // Eine Datei voller alter, längst gelöschter Artikel, wie sie nach Monaten ohne Aufräumen entstünde.
+  const bloated = count => {
+    const content = structuredClone(demo), old = new Date(Date.now() - 40 * 86400000).toISOString();
+    for (let index = 0; index < count; index++) {
+      const clock = { at: old, id: `op-${index}` };
+      content.items.push({ id: `alt-${index}`, storeId: 'store-edeka', name: `Altartikel ${index}`, quantity: 1, unit: 'Stück', checked: true, createdBy: 'Nico', createdAt: old, updatedAt: old, deletedAt: old, onSale: false,
+        _clock: { storeId: clock, name: clock, quantity: clock, unit: clock, checked: clock, createdBy: clock, deletedAt: clock, onSale: clock } });
+    }
+    return content;
+  };
+  const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+
+  test('Datenumfang: Anzeige, Aufräumen auf Wunsch schreibt die kleinere Datei', async () => {
+    const remote = github(bloated(40));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.click('[data-tab=settings]');
+    assert.match(await page.textContent('#storage-text'), /KB von 879 KB belegt/);
+    assert.match(await page.textContent('#storage-hint'), /Aufräumbar: 40 Einträge/);
+    const before = JSON.stringify(remote.content).length, puts = remote.stats.puts;
+    await page.click('#compact-now');
+    await page.waitForFunction(() => /Aufgeräumt: 40 Einträge entfernt/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.stats.puts, puts + 1);
+    assert.ok(remote.content.items.every(row => !row.deletedAt), 'Gelöschtes ist endgültig weg');
+    assert.ok(JSON.stringify(remote.content).length < before / 2);
+    assert.ok(remote.content.names.some(entry => entry.name === 'Altartikel 3'), 'Namensgedächtnis bleibt');
+    assert.ok(remote.content.sync.compactedAt);
+    assert.match(await page.textContent('#storage-hint'), /Nichts zum Aufräumen/);
+    await page.click('#compact-now');
+    await page.waitForFunction(() => /nichts aufzuräumen/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.stats.puts, puts + 1, 'Ohne Änderung wird nichts geschrieben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Datenumfang: ab 250 KB räumt die App beim Abgleich von selbst auf, Vorschläge bleiben', async () => {
+    const remote = github(bloated(400));
+    assert.ok(JSON.stringify(remote.content).length > 250_000);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.ok(remote.content.items.every(row => !row.deletedAt));
+    assert.ok(JSON.stringify(remote.content).length < 100_000);
+    // Gelernter Name erscheint weiterhin als Vorschlag.
+    await page.fill('#item-form input[name=name]', 'Altartikel 12');
+    await page.waitForFunction(() => /Altartikel 12/.test(document.querySelector('#item-suggestions')?.textContent || ''));
+    await page.fill('#item-form input[name=name]', '');
+    // Ein Partnergerät mit eigener, noch nicht abgeglichener Änderung an einem aufgeräumten Artikel verliert nichts anderes.
+    await page.fill('#item-form input[name=name]', 'Hafermilch');
+    await page.click('#item-form button[type=submit]');
+    await synced(page);
+    assert.ok(remote.content.items.some(row => row.name === 'Hafermilch'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Datenumfang im Beispielmodus: Aufräumen lokal, keine Foto-Bereinigung', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#clean-photos').isHidden(), true);
+    await page.click('#compact-now');
+    await page.waitForFunction(() => /nichts aufzuräumen/.test(document.querySelector('#storage-note').textContent));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Fotos aufräumen: nur Dateien ohne Rezept werden gelöscht, lokaler Zwischenspeicher wird bereinigt', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+    const remote = github(demo), keep = 'aaaaaaaa-1111-4222-8333-444444444444', lost = 'bbbbbbbb-1111-4222-8333-444444444444', lost2 = 'cccccccc-1111-4222-8333-444444444444';
+    remote.content.recipes.find(row => row.id === 'recipe-pasta').photoId = keep;
+    for (const id of [keep, lost, lost2]) remote.photos.set(`photos/${id}.jpg`, jpeg);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.evaluate(async ([url]) => { await (await caches.open('einkauf-photos-v1')).put(new Request(url), new Response('x')); }, [`${base}/photo/${lost}`]);
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#clean-photos').isVisible(), true);
+    page.once('dialog', dialog => { assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/); void dialog.accept(); });
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /2 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
+    assert.deepEqual([...remote.photos.keys()], [`photos/${keep}.jpg`]);
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /Alle Fotos werden noch verwendet/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.stats.photoDeletes, 2);
+    await open(page); await synced(page);
+    const cached = await page.evaluate(async () => (await (await caches.open('einkauf-photos-v1')).keys()).map(request => request.url.split('/').pop()));
+    assert.ok(!cached.includes(lost), 'Foto ohne Rezept ist aus dem Zwischenspeicher entfernt');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
   });
 

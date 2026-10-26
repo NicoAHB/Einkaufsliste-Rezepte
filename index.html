@@ -130,13 +130,22 @@
         <button type="submit">Import-Einstellungen speichern</button>
         <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
       </form>
+      <div id="storage-card" class="card stack"><h3>Datenumfang</h3>
+        <progress id="storage-bar" max="100" value="0"></progress>
+        <p id="storage-text"></p>
+        <p id="storage-hint" class="hint"></p>
+        <button id="compact-now" class="secondary" type="button">Jetzt aufräumen</button>
+        <button id="clean-photos" class="secondary" type="button">Nicht mehr genutzte Fotos löschen</button>
+        <p id="storage-note" class="hint" role="status"></p>
+        <p class="hint">Die App räumt automatisch auf, sobald die Datei 250 KB überschreitet. Entfernt wird nur, was seit mehr als zwei Wochen gelöscht oder seit drei Wochen erledigt ist, sowie überholte Preise und Zeitstempel. Vorschläge und gelernte Kategorien bleiben erhalten. Alte Stände bleiben im Verlauf des privaten Daten-Repositorys auf GitHub.</p>
+      </div>
       <div class="card stack"><h3>Darstellung & Sicherung</h3>
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 1.5 · Gesamtliste mit optionalem Geschäft · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 1.6 · Datenumfang im Griff, Artikel zusammenzählen, Vorrat · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>

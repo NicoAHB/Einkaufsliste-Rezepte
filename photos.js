@@ -66,6 +66,21 @@ export function toBase64(bytes) {
   return btoa(binary);
 }
 
+// Verzeichnis der Fotos im Daten-Repository (neben der Datendatei).
+export const photosDir = dataPath => [...String(dataPath).split('/').slice(0, -1), 'photos'].join('/');
+
+// Lokal gespeicherte Fotos entfernen, auf die nichts mehr verweist (`keep`: Menge gültiger Kennungen).
+export async function prunePhotos(keep) {
+  if (!('caches' in window)) return;
+  const cache = await caches.open(CACHE);
+  for (const request of await cache.keys()) {
+    const id = new URL(request.url).pathname.split('/').pop();
+    if (keep.has(id)) continue;
+    await cache.delete(request);
+    if (urls.has(id)) { URL.revokeObjectURL(urls.get(id)); urls.delete(id); }
+  }
+}
+
 // Warteschlange der noch nicht hochgeladenen Fotos (je Datenspeicher), damit Offline-Fotos nicht verloren gehen.
 export const queued = key => { try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value.filter(validPhotoId) : []; } catch { return []; } };
 export function queuePhoto(key, id) {
