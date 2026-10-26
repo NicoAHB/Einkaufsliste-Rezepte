@@ -4,7 +4,7 @@ import { splitSteps } from './cook.js';
 import { shopCount, shopView } from './shop.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
-import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
+import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
@@ -17,7 +17,7 @@ let config = {}, base = emptyData(), pending = [], state = emptyData();
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
-let tagFilter = '', remoteEtag = '', deferredImport = null;
+let tagFilter = '', remoteEtag = '', deferredImport = null, deferredAdd = null;
 let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
 let pendingPhoto = null, photoRemoved = false, previewUrl = '';
 const photoMiss = new Map(), photoJobs = new Map();
@@ -167,6 +167,7 @@ function showView(next) {
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
+  queueMicrotask(() => { const id = form.elements.storeId.value; form.elements.name.placeholder = id ? `Was brauchst du? → ${storeName(id)}` : 'Was brauchst du? z. B. Zwiebeln'; });
   if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
   const current = form.elements.storeId.value;
   box.replaceChildren();
@@ -194,7 +195,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode(); syncForm();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -241,12 +242,12 @@ function acknowledge(ids) {
 }
 function newsRow(entry) {
   const item = entry.item, row = element('li', undefined, 'item news');
-  const copy = element('div', undefined, 'item-copy');
+  const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
+  copy.setAttribute('aria-label', `${item.name}: bearbeiten`); copy.addEventListener('click', () => guard(() => editItem(item.id)));
   const notes = entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`);
   copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit}${view === 'all' ? ` · ${storeName(item.storeId)}` : ''} · ${notes.join(', ')}`));
   const actions = element('div', undefined, 'item-actions');
-  actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'),
-    iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)), iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id])));
+  actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
   row.append(copy, actions);
   return row;
 }
@@ -270,7 +271,10 @@ function itemRow(item, withStore = false) {
   if (item.checked) check.append(icon('check'));
   check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   check.setAttribute('aria-pressed', String(Boolean(item.checked)));
-  const copy = element('div', undefined, 'item-copy');
+  // Die Zeile antippen öffnet die Bearbeitung; dort steht auch „Artikel löschen“.
+  const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
+  copy.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: bearbeiten`);
+  copy.addEventListener('click', () => guard(() => editItem(item.id)));
   copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}${withStore ? ` · ${storeName(item.storeId)}` : ''}`));
   const expired = saleExpired(item);
   if (item.onSale) copy.append(element('span', expired ? `Angebot abgelaufen (${dayLabel(item.saleUntil)})` : item.saleUntil ? `Im Angebot bis ${dayLabel(item.saleUntil)}` : 'Im Angebot', `sale-badge${expired ? ' expired' : ''}`));
@@ -289,10 +293,7 @@ function itemRow(item, withStore = false) {
     const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
     copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit} · eingetragen am ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
   }
-  const actions = element('div', undefined, 'item-actions');
-  actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
-    iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id])));
-  row.append(check, copy, actions);
+  row.append(check, copy);
   return row;
 }
 function renderItems() {
@@ -336,6 +337,13 @@ function renderItems() {
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
   renderQuickPick();
+}
+// Das Eingabeformular ist zugeklappt (nur Namensfeld und „+“), solange niemand hineintippt. Offen bleibt es, wenn der Fokus im Formular liegt,
+// schon etwas im Namensfeld steht oder „Kategorie, Preis & Angebot“ aufgeklappt ist.
+function syncForm() {
+  const form = $('#item-form');
+  const open = form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
+  form.classList.toggle('compact', !open);
 }
 function renderItemSuggestions() {
   const form = $('#item-form'), box = $('#item-suggestions'), typed = form.elements.name.value.trim();
@@ -389,7 +397,8 @@ function renderShoppingInfo() {
   const box = $('#shopping-total'); box.replaceChildren();
   box.append(element('p', store ? `${store.name} · offen` : view === 'none' ? 'Ohne Geschäft · offen' : 'Alle Geschäfte · offen', 'eyebrow'));
   box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
-  box.append(element('p', total.missing ? `${total.missing} Artikel ohne Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel eingerechnet.' : 'Erledigte zählen nicht mit.', 'hint'));
+  // Nur ein Hinweis, wenn etwas fehlt: „Alle eingerechnet“ braucht keine eigene Zeile.
+  if (total.missing) box.append(element('p', `${total.missing} Artikel ohne Preis, nicht eingerechnet`, 'hint'));
 }
 const perLabel = quote => quote.quantity === 1 ? `je ${quote.unit}` : `je ${format(quote.quantity)} ${quote.unit}`;
 // „▲ Teurer: 1,29 € → 1,39 € je Stück (+8 %)“: Pfeil und Wort, nicht nur die Farbe.
@@ -1107,6 +1116,10 @@ function fillSettings() {
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
   $('#theme').value = config.theme || 'system'; $('#group-items').checked = config.groupItems !== false; applyTheme();
+  // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
+  $('#settings').dataset.connected = connected() ? 'yes' : 'no';
+  $('#connection-details').open = !connected();
+  $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}` : 'nicht verbunden';
 }
 function applyTheme() {
   if (!config.theme || config.theme === 'system') delete document.documentElement.dataset.theme;
@@ -1137,7 +1150,7 @@ const shopOn = () => config.shopMode === true;
 function setShopMode(on) { saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
 function applyMode() {
   const on = shopOn();
-  $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#shopping-head').hidden = on;   // im Laden: oben gleich der Umschalter und die Geschäfte
+  $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#manage-stores').hidden = on;   // im Laden: oben gleich der Umschalter und die Geschäfte
   $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
   if (on) renderShop();
   syncShopAwake();
@@ -1483,6 +1496,7 @@ $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
 $('#item-form').elements.name.addEventListener('input', renderQuickPick);
+for (const event of ['focusin', 'focusout', 'input', 'toggle']) $('#item-form').addEventListener(event, () => setTimeout(syncForm, 0), true);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('#item-suggestions').hidden = true;
@@ -1554,6 +1568,11 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const kept = form.elements.storeId.value;
   form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick(); form.elements.name.focus();
 }); });
+$('#delete-item').addEventListener('click', () => guard(() => {
+  const id = $('#edit-item-form').elements.id.value;
+  if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
+  removeRows('items', [id]); $('#item-dialog').close();
+}));
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
@@ -1676,9 +1695,27 @@ $('#welcome-form').addEventListener('submit', event => { event.preventDefault();
   const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
   saveConfig({ ...config, actor }); fillSettings(); render(); $('#welcome').close();
   if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
+  if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => addFromLink(pending)); }
 }); });
 
 // Link aus dem Teilen-Dialog oder aus einem iOS-Kurzbefehl: …/?import=https://…
+// …/?add=Milch, Eier und Butter&store=Lidl (z. B. aus einem iPhone-Kurzbefehl mit Siri): legt die Artikel an. Die Adresse wird danach bereinigt.
+function incomingAdd() {
+  const params = new URLSearchParams(location.search), text = params.get('add');
+  if (text === null) return null;
+  history.replaceState(null, '', location.pathname);
+  return text.trim() ? { text: text.slice(0, 2000), store: (params.get('store') || '').slice(0, 80) } : null;
+}
+function addFromLink({ text, store }) {
+  const aliases = active(state.aliases || []);
+  const rows = text.split(/[\n;]+|,(?!\d)|\s+und\s+/i).map(part => part.trim()).filter(Boolean).slice(0, 30).map(part => parseIngredientLine(part)).filter(Boolean)
+    .map(row => ({ name: aliases.find(alias => alias.from === aliasKey(row.name))?.name || row.name, quantity: row.unit === NO_AMOUNT ? 1 : row.quantity, unit: row.unit === NO_AMOUNT ? 'Stück' : row.unit }));
+  if (!rows.length) throw new Error('Im Link stand nichts zum Hinzufügen.');
+  const wanted = productKey(store), match = wanted ? active(state.stores).find(row => productKey(row.name).includes(wanted)) : null;
+  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+  const result = addToList(rows, match?.id || '', config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+  commit(result.ops, `Hinzugefügt: ${rows.map(row => row.name).join(', ')}${match ? ` (${match.name})` : ''}${connected() ? '' : ' · nur auf diesem Gerät: hier ist GitHub nicht verbunden'}`);
+}
 function incomingLink() {
   const params = new URLSearchParams(location.search);
   const link = firstUrl(params.get('import') || params.get('url') || params.get('text') || '');
@@ -1690,11 +1727,14 @@ function incomingLink() {
 async function start() {
   try {
     config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); fillSettings();
-    const incoming = incomingLink();
+    const adding = incomingAdd(), incoming = incomingLink();
     await loadWorkspace();
     prunePhotos(usedPhotos()).catch(() => {});
-    if (!config.actor) { deferredImport = incoming; $('#welcome').showModal(); }
-    else if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
+    if (!config.actor) { deferredImport = incoming; deferredAdd = adding; $('#welcome').showModal(); }
+    else {
+      if (adding && ready) guard(() => addFromLink(adding));
+      if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
+    }
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void sync(); });

@@ -63,8 +63,11 @@
 
   <main>
     <section id="shopping" aria-labelledby="shopping-title">
-      <div id="shopping-head" class="section-head"><h2 id="shopping-title">Einkaufsliste</h2><button id="manage-stores" class="chip-button" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte</button></div>
-      <div id="mode-switch" class="segmented two" role="tablist" aria-label="Ansicht"><button id="mode-plan" type="button" role="tab" aria-selected="true">Planen</button><button id="mode-shop" type="button" role="tab" aria-selected="false">Im Laden</button></div>
+      <h2 id="shopping-title" class="visually-hidden">Einkaufsliste</h2>
+      <div id="mode-row" class="mode-row">
+        <div id="mode-switch" class="segmented two" role="tablist" aria-label="Ansicht"><button id="mode-plan" type="button" role="tab" aria-selected="true">Planen</button><button id="mode-shop" type="button" role="tab" aria-selected="false">Im Laden</button></div>
+        <button id="manage-stores" class="chip-button" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte</button>
+      </div>
       <div id="plan-view">
       <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <div class="summary">
@@ -119,10 +122,11 @@
       <div id="plan-days" class="plan-days"></div>
     </section>
 
-    <section id="settings" hidden aria-labelledby="settings-title">
+    <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
       <div class="section-head"><h2 id="settings-title">Einstellungen</h2></div>
-      <form id="settings-form" class="card stack">
-        <h3>Gemeinsame Liste</h3>
+      <form id="settings-form" class="card">
+        <details id="connection-details"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
+        <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
         <label>Eigentümer des Daten-Repos (eure Organisation)<input name="owner" placeholder="z. B. eure-kueche" autocomplete="off" autocapitalize="off" required maxlength="100"></label>
         <label>Privates Daten-Repository<input name="repo" placeholder="z. B. einkauf-daten" autocomplete="off" autocapitalize="off" required maxlength="100"></label>
@@ -132,6 +136,8 @@
         <p class="hint">Der Token bleibt im Browser dieses Geräts. Er gehört niemals ins öffentliche Repository. Verwende dafür nur vertrauenswürdige Geräte.</p>
         <button type="submit">Speichern & verbinden</button>
         <button id="disconnect" type="button" class="secondary">Token entfernen & Beispielmodus öffnen</button>
+        </div>
+        </details>
       </form>
       <form id="import-settings-form" class="card stack">
         <h3>Rezepte aus Links laden</h3>
@@ -156,13 +162,13 @@
         <p id="storage-note" class="hint" role="status"></p>
         <p class="hint">Die App räumt automatisch auf, sobald die Datei 250 KB überschreitet. Entfernt wird nur, was seit mehr als zwei Wochen gelöscht oder seit drei Wochen erledigt ist, sowie überholte Preise und Zeitstempel. Vorschläge und gelernte Kategorien bleiben erhalten. Alte Stände bleiben im Verlauf des privaten Daten-Repositorys auf GitHub.</p>
       </div>
-      <div class="card stack"><h3>Darstellung & Sicherung</h3>
+      <div class="card stack display-card"><h3>Darstellung & Sicherung</h3>
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 1.9 · Im Laden · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 2.0 · Aufgeräumt · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>
@@ -186,6 +192,7 @@
     <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
     <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Ohne Angebotspreis wird mit dem normalen Preis geschätzt.</p></div>
     <p class="hint" data-price-hint></p><div id="price-comparison"></div><button type="submit">Artikel speichern</button>
+    <button id="delete-item" type="button" class="danger">Artikel löschen</button>
   </form></dialog>
   <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <div id="recipe-import-note" class="import-note" hidden></div>

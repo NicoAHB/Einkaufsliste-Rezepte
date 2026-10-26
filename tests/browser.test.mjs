@@ -61,6 +61,9 @@ async function context(options = {}) {
 const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]'); await page.waitForFunction(() => document.querySelector('#items')); };
 const horizontalOverflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const sheetOpen = page => page.waitForSelector('dialog[open]');
+// Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
+const expandForm = page => page.focus('#item-form input[name=name]');
+const pickStore = async (page, name) => { await expandForm(page); await page.locator('#store-pick button', { hasText: name }).click(); };
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
@@ -124,7 +127,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       }
       await page.click('[data-tab=shopping]');
       const fits = () => page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return document.documentElement.scrollWidth <= document.documentElement.clientWidth && dialog.scrollWidth <= dialog.clientWidth; });
-      for (const [label, setup] of [['Geschäfte', () => page.click('#manage-stores')], ['Artikel', () => page.click('.item .icon-button')],
+      for (const [label, setup] of [['Geschäfte', () => page.click('#manage-stores')], ['Artikel', () => page.click('.item .item-copy')],
         ['Rezept', async () => { await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); }],
         ['Import Link', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); }],
         ['Import Screenshot', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=image]'); }],
@@ -488,7 +491,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.ok((await heads()).includes('Getränke'));
     // ... und die App lernt es für denselben Namen (andere Einheit, sonst würde die Menge des vorhandenen Artikels erhöht).
-    await page.fill('#item-form input[name=unit]', 'Flasche');
+    await expandForm(page); await page.fill('#item-form input[name=unit]', 'Flasche');
     await add('Xyzzy');
     assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').textContent(), '2');
     assert.ok(!(await heads()).includes('Sonstiges'));
@@ -659,13 +662,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const type = text => page.fill('#item-form input[name=name]', text);
     const submit = () => page.click('#item-form button[type=submit]');
-    await page.locator('#store-pick button', { hasText: 'Rewe' }).click();   // die Beispiel-Äpfel (4 Stück) liegen bei Rewe
+    await pickStore(page, 'Rewe');   // die Beispiel-Äpfel (4 Stück) liegen bei Rewe
     // Unsicher: „Apfel“ ist nicht „Äpfel“, solange es niemand bestätigt hat
     await type('Apfel'); await page.waitForSelector('#item-suggestions:not([hidden])');
     assert.match(await page.textContent('#item-suggestions'), /Meinst du dasselbe wie[\s\S]*Äpfel/);
     await submit();
     assert.equal(await page.locator('#items .item', { hasText: /^Apfel/ }).count(), 1, 'ohne Bestätigung bleibt es bei „Apfel“');
-    await page.getByRole('button', { name: 'Apfel löschen' }).click();
+    await page.getByRole('button', { name: /^Apfel, .*bearbeiten/ }).click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     // Bestätigt: ein Tipp merkt die Zuordnung
     await type('Apfel'); await page.waitForSelector('#item-suggestions:not([hidden])');
     await page.locator('#item-suggestions button', { hasText: 'Äpfel' }).click();
@@ -682,6 +685,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await type('Quark'); await submit(); await type('Quark'); await submit();
     assert.equal(await page.locator('#items .item', { hasText: 'Quark' }).count(), 1, 'gleiche Artikel zählen zusammen');
     await page.locator('#items .item', { hasText: 'Quark' }).locator('.check').click();
+    assert.equal(await page.locator('#quick-pick .chip').first().isVisible(), false, 'zugeklapptes Formular: keine Schnellwahl');
+    await expandForm(page);   // ins Namensfeld tippen klappt das Formular auf
     await page.waitForSelector('#quick-pick:not([hidden])');
     assert.deepEqual(await page.locator('#quick-pick .chip').allTextContents(), ['Quark']);
     await type('Qu'); assert.equal(await page.locator('#quick-pick').isHidden(), true, 'beim Tippen ausgeblendet');
@@ -920,6 +925,95 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Aufgeräumt: Formular zugeklappt, Liste gleich sichtbar; Zeile antippen bearbeitet, Löschen im Dialog', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const top = selector => page.locator(selector).first().evaluate(node => Math.round(node.getBoundingClientRect().top + scrollY));
+    const height = await page.evaluate(() => innerHeight);
+    // Zugeklappt: nur Namensfeld und „+“; die erste Artikelzeile steht ohne Scrollen im Bild
+    assert.equal(await page.locator('#item-form.compact').count(), 1);
+    for (const selector of ['#store-pick', '#item-form .qty', '#item-form .unit', '#item-form .price-fields']) assert.equal(await page.locator(selector).first().isVisible(), false, `${selector} versteckt`);
+    assert.equal(await page.locator('#item-form .add-button').isVisible(), true);
+    assert.ok(await top('#items .item') < height - 60, `erste Artikelzeile bei ${await top('#items .item')} px, Bildschirm ${height} px`);
+    // Hineintippen klappt auf, Tippen auf freie Fläche (ohne Text) klappt wieder zu
+    await page.focus('#item-form input[name=name]');
+    await page.waitForSelector('#item-form:not(.compact)');
+    assert.equal(await page.locator('#store-pick').isVisible(), true);
+    assert.equal(await page.locator('#item-form .qty').isVisible(), true);
+    const heading = await page.locator('#shopping-title').boundingBox(); await page.touchscreen.tap(heading.x + 3, heading.y + 3);
+    await page.waitForSelector('#item-form.compact');
+    // Mit Text im Namensfeld bleibt es offen
+    await page.fill('#item-form input[name=name]', 'Hafer'); await page.touchscreen.tap(heading.x + 3, heading.y + 3);
+    assert.equal(await page.locator('#item-form.compact').count(), 0);
+    await page.fill('#item-form input[name=name]', '');
+    await page.touchscreen.tap(heading.x + 3, heading.y + 3);
+    await page.waitForSelector('#item-form.compact');
+    // Hinzufügen mit dem „+“ im zugeklappten Zustand (Menge 1 Stück)
+    await page.fill('#item-form input[name=name]', 'Mandelmilch'); await page.click('#item-form .add-button');
+    assert.match(await page.locator('#items .item', { hasText: 'Mandelmilch' }).textContent(), /1 Stück/);
+    // Zeilen haben nur den Haken; Antippen öffnet die Bearbeitung, dort steht „Artikel löschen“
+    const row = page.locator('#items .item', { hasText: 'Mandelmilch' });
+    assert.equal(await row.locator('.icon-button').count(), 0, 'kein Stift und kein Mülleimer in der Zeile');
+    await row.locator('.item-copy').click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#edit-item-form input[name=name]'), 'Mandelmilch');
+    await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item', { hasText: 'Mandelmilch' }).count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Einstellungen: Verbindung eingeklappt und unten, sobald verbunden; Vorrat und Darstellung oben', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig });
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(a.page); await synced(a.page);
+    await a.page.click('[data-tab=settings]');
+    assert.equal(await a.page.locator('#connection-details').evaluate(node => node.open), false);
+    assert.match(await a.page.textContent('#connection-state'), /✓ haushalt\/daten · Nico/);
+    const order = await a.page.evaluate(() => [...document.querySelectorAll('#settings > *')].map(node => ({ id: node.id || node.className.split(' ').pop(), top: Math.round(node.getBoundingClientRect().top) })).filter(entry => entry.id && entry.id !== 'settings-title').sort((x, y) => x.top - y.top).map(entry => entry.id));
+    assert.deepEqual(order.slice(-1), ['settings-form'], 'die Verbindung steht ganz unten');
+    assert.ok(order.indexOf('pantry-card') < order.indexOf('storage-card'));
+    await a.page.locator('#connection-details summary').click();
+    assert.equal(await a.page.locator('#settings-form input[name=owner]').isVisible(), true);
+    assert.deepEqual(a.problems, []);
+    await a.ctx.close();
+    // Nicht verbunden: die Verbindung steht oben und ist offen
+    const b = await context({ seed: false });
+    await open(b.page); await b.page.waitForSelector('#welcome[open]');
+    await b.page.fill('#welcome-form input[name=actor]', 'Anna'); await b.page.click('#welcome-form button');
+    await b.page.click('[data-tab=settings]');
+    assert.equal(await b.page.locator('#connection-details').evaluate(node => node.open), true);
+    assert.equal(await b.page.locator('#settings').getAttribute('data-connected'), 'no');
+    await b.ctx.close();
+  });
+
+  test('Link …/?add=: Artikel per Kurzbefehl oder Siri hinzufügen, mit Geschäft, Mengen und zusammengezählt; Adresse wird bereinigt', async () => {
+    const { ctx, page, problems } = await context();
+    await page.goto(`${base}/index.html?add=${encodeURIComponent('Haferflocken, 2 Eier und 500 g Butter')}&store=lidl`);
+    await page.waitForSelector('#status[data-state]');
+    assert.equal(new URL(page.url()).search, '', 'die Adresse wird bereinigt, ein Neuladen fügt nichts doppelt hinzu');
+    assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Haferflocken, Eier, Butter \(Lidl\)/);
+    assert.match(await page.textContent('#notice-text'), /nur auf diesem Gerät/, 'im Beispielmodus ein Hinweis');
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    const rows = await page.locator('#items .item').evaluateAll(nodes => nodes.map(node => node.querySelector('strong').textContent + '|' + node.querySelector('small').textContent.split(' · ')[0]));
+    assert.ok(rows.includes('Eier|2 Stück') && rows.includes('Butter|500 g'), rows.join(', '));
+    assert.ok(rows.includes('Haferflocken|1 Stück'), 'ohne Menge: 1 Stück');
+    // Noch einmal dieselben Eier: zählt zum vorhandenen Eintrag dazu (kein zweiter Eintrag)
+    await page.goto(`${base}/index.html?add=Eier&store=Lidl`);
+    await page.waitForSelector('#status[data-state]');
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    assert.equal(await page.locator('#items .item', { hasText: 'Eier' }).count(), 1);
+    assert.match(await page.locator('#items .item', { hasText: 'Eier' }).textContent(), /3 Stück/);
+    // Ohne Text: nichts passiert; Zahlen mit Komma wie „1,5 l Milch“ werden nicht zerteilt
+    await page.goto(`${base}/index.html?add=${encodeURIComponent('1,5 l Hafermilch')}`);
+    await page.waitForSelector('#status[data-state]');
+    assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Hafermilch/);
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    assert.match(await page.locator('#items .item', { hasText: 'Hafermilch' }).textContent(), /1,5 l/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Favoriten, „Heute gekocht“ und „Lange nicht gekocht“', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -1077,7 +1171,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const pick = () => page.locator('#store-pick button').evaluateAll(nodes => nodes.map(node => [node.textContent, node.getAttribute('aria-pressed')]));
     assert.deepEqual(await pick(), [['Kein Geschäft', 'true'], ['Edeka', 'false'], ['Lidl', 'false'], ['Rewe', 'false']]);
     assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
-    const add = async (name, store) => { if (store !== undefined) await page.locator('#store-pick button', { hasText: store }).click(); await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
+    const add = async (name, store) => { if (store !== undefined) await pickStore(page, store); await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
     // Ohne Geschäft: steht übersichtlich ganz oben, eigener Filter erscheint
     await add('Klopapier');
     assert.deepEqual(await heads(), ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
@@ -1098,10 +1192,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#items .item').count(), 1);
     assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Rewe']);
     // Zweiter Tipp auf das gewählte Geschäft nimmt die Auswahl zurück: dann kommt der Artikel ohne Geschäft
-    await page.locator('#store-pick button', { hasText: 'Rewe' }).click();
+    await pickStore(page, 'Rewe');
     assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
     assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
-    await page.locator('#store-pick button', { hasText: 'Rewe' }).click();
+    await pickStore(page, 'Rewe');
     assert.match(await page.textContent('#shopping-total'), /Rewe · offen/);
     // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
@@ -1123,7 +1217,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context();
     await open(page);
     await page.getByRole('tab', { name: /^Rewe/ }).click();
-    await page.locator('#store-pick button', { hasText: 'Lidl' }).click();
+    await pickStore(page, 'Lidl');
     await page.fill('#item-form input[name=name]', 'Joghurt'); await page.click('#item-form button[type=submit]');
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0, 'In der Rewe-Ansicht steht der Lidl-Artikel nicht');
     await page.waitForSelector('#notice:not([hidden])');
@@ -1133,7 +1227,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('tab', { name: /^Alle/ }).click();
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1);
     // Rückgängig geht über den Mülleimer.
-    await page.getByRole('button', { name: 'Joghurt löschen' }).click();
+    await page.getByRole('button', { name: /^Joghurt, .*bearbeiten/ }).click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0);
     // Ein Artikel, der in der Ansicht erscheint, braucht keinen Hinweis.
     await page.getByRole('tab', { name: /^Lidl/ }).click();
