@@ -1,10 +1,10 @@
-# Einkauf & Rezepte – Version 1.4
+# Einkauf & Rezepte – Version 1.5
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
-- Einkaufsliste je Geschäft: Edeka, Lidl, Rewe; weitere Geschäfte anlegen, umbenennen und löschen.
+- Einkaufsliste für **alle Geschäfte zusammen** (Startseite) oder je Geschäft (Edeka, Lidl, Rewe; weitere anlegen, umbenennen, löschen). Ein Geschäft ist beim Hinzufügen mit einem Tipp wählbar, aber nicht nötig.
 - Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
 - Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
 - Die letzte Löschaktion rückgängig machen, solange die Seite geöffnet bleibt. Häkchen werden durch erneutes Antippen geändert, ohne Rückgängig-Meldung.
@@ -16,7 +16,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich erst in einem nächsten Schritt:** Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel auf der Einkaufsliste (nur im Wochenplan werden Zutaten schon zusammengezählt), Zwiebel/Zwiebeln-Erkennung und Vorratsliste. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
 
-## Neu in Version 1.4: Wochenplan, Gänge im Laden, Rezeptfotos, Favoriten
+## Neu in Version 1.5: Gesamtliste und optionales Geschäft
+
+- **Startseite = Gesamtliste.** Die Einkaufsliste öffnet mit dem Filter **Alle**: Alles, was ihr für den nächsten Einkauf braucht, in einer Liste. Darin steht zuerst der Abschnitt **Ohne Geschäft**, danach ein Abschnitt je Geschäft; innerhalb der Abschnitte bleiben die Gänge (Kategorien) erhalten. Die Summe oben gilt für alle offenen Artikel zusammen.
+- **Filter bleiben.** Neben „Alle“ gibt es einen Filter je Geschäft und **Ohne Geschäft** (erscheint, sobald es solche Artikel gibt). Die Angebote-Schaltfläche steht nur in der Ansicht eines einzelnen Geschäfts.
+- **Geschäft beim Hinzufügen mit einem Tipp wählen.** Direkt unter dem Namensfeld stehen die Schnellwahl-Knöpfe **Kein Geschäft**, **Edeka**, **Lidl** … Ein Tipp wählt das Geschäft, ein zweiter Tipp auf dasselbe nimmt die Auswahl zurück. **Ohne Auswahl bekommt der Artikel kein Geschäft** (es ist nichts vorausgewählt). Wer in der Ansicht eines einzelnen Geschäfts hinzufügt, bekommt dieses Geschäft vorgewählt, sonst verschwände der neue Artikel aus der Liste. Die Auswahl bleibt nach dem Hinzufügen stehen, damit man mehrere Artikel nacheinander für denselben Laden eintragen kann. Erscheint ein neuer Artikel nicht in der gerade gewählten Ansicht, meldet die App kurz, wo er steht („‚Joghurt‘ steht bei ‚Lidl‘“), mit **Rückgängig**.
+- **Später zuordnen oder ändern:** im Stift-Dialog des Artikels (Feld „Geschäft“). So wandert ein Artikel aus „Ohne Geschäft“ in den Abschnitt des Ladens, in dem ihr ihn dann doch kauft.
+- **Rezepte und Wochenplan** übernehmen Zutaten jetzt wahlweise **ohne Geschäft**; danach zeigt die App die Gesamtliste.
+- **Erledigtes** steht in der Gesamtliste gesammelt unten und nennt sein Geschäft. „Erledigte entfernen“ gilt für die gerade gewählte Ansicht.
+- Preise werden weiterhin je Geschäft gemerkt; ohne Geschäft kann man einen Preis eintragen, er wird aber erst nach Zuordnung eines Geschäfts für Vorschläge und Vergleiche gemerkt.
+- **Daten:** Ein Artikel ohne Geschäft hat `storeId: ""`. Auf einem Gerät mit Version 1.4 oder älter bleiben solche Artikel unsichtbar (sie gehen nicht verloren). Deshalb **auf beiden Geräten aktualisieren**, bevor ihr Artikel ohne Geschäft anlegt. Artikel eines **gelöschten** Geschäfts bleiben wie bisher überall verborgen.
+
+## Seit Version 1.4: Wochenplan, Gänge im Laden, Rezeptfotos, Favoriten
 
 ### Einkaufsliste nach Gängen (Kategorien)
 
@@ -257,6 +268,13 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 1.5 (auf beiden Geräten):
+
+- [ ] App öffnen: Startseite zeigt **Alle** mit Abschnitten je Geschäft. Auf einem Gerät einen Artikel **ohne Geschäft** anlegen; auf dem zweiten Gerät (ebenfalls Version 1.5) erscheint er nach dem Abgleich unter „Ohne Geschäft“.
+- [ ] Einen Artikel mit Geschäft anlegen (Schnellwahl unter dem Namensfeld), danach Geschäfts-Filter antippen: nur dessen Artikel; neue Artikel sind dort vorgewählt.
+- [ ] Artikel ohne Geschäft im Stift-Dialog einem Geschäft zuordnen: Er wechselt den Abschnitt.
+- [ ] Rezept „Auf die Liste“ ohne Geschäft übernehmen.
 
 Weitere Testpunkte für Version 1.4 (auf beiden Geräten):
 

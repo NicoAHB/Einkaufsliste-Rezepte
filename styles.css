@@ -613,6 +613,14 @@ details[open]>summary::after {
   background:rgba(255,255,255,.25);
   color:inherit
 }
+.store-pick {
+  margin-bottom:2px
+}
+.store-pick .chip {
+  min-height:40px;
+  padding:0 14px;
+  font-size:.92rem
+}
 .item-suggestions {
   margin:6px 0 2px
 }
@@ -681,8 +689,40 @@ details[open]>summary::after {
   letter-spacing:.08em;
   text-transform:uppercase
 }
-.item+.group-head {
+.item+.group-head,.item+.store-head {
   border-top:1px solid var(--line)
+}
+.group-head.sub {
+  padding:8px 16px 0;
+  background:transparent;
+  color:var(--muted)
+}
+.store-head {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:9px 16px;
+  background:var(--accent);
+  color:var(--on-accent);
+  font-size:.82rem;
+  font-weight:750;
+  letter-spacing:.06em;
+  text-transform:uppercase
+}
+.store-head .icon {
+  width:1.1em;
+  height:1.1em
+}
+.store-head span:nth-child(2) {
+  flex:1
+}
+.store-head.none {
+  background:var(--card);
+  color:var(--accent);
+  border-bottom:2px solid var(--accent)
+}
+.store-head .count {
+  font-variant-numeric:tabular-nums
 }
 .group-head .count {
   font-variant-numeric:tabular-nums
