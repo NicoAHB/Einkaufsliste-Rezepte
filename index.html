@@ -3,11 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#176b51">
+  <meta name="theme-color" content="#f4f6f2" id="theme-color">
+  <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Einkauf & Rezepte">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://*.workers.dev https://api.allorigins.win https://api.codetabs.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>Einkauf & Rezepte</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -16,82 +20,160 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
+  <!-- Symbole (Feather Icons, MIT-Lizenz): ein Satz für die ganze App, ohne Schriftdatei -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+    <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
+  </svg>
+
   <header class="topbar">
-    <div><p class="eyebrow">GEMEINSAM PLANEN, ENTSPANNT EINKAUFEN</p><h1>Einkauf & Rezepte</h1></div>
-    <button id="refresh" class="secondary" type="button">↻ Aktualisieren</button>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-cart"/></svg></span>
+      <div class="brand-copy">
+        <h1>Einkauf & Rezepte</h1>
+        <p class="syncline"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></p>
+      </div>
+    </div>
+    <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
-  <div class="syncbar"><span id="status" role="status" aria-live="polite">Wird geladen …</span><span id="identity"></span></div>
-  <div id="message" class="notice" role="alert" hidden></div>
-  <div id="demo-banner" class="notice">Beispielmodus · Beispieldaten und Preise sind erfunden. Deine Änderungen bleiben auf diesem Gerät. Verbinde GitHub unter „Einstellungen“, um gemeinsam einzukaufen.</div>
+  <div id="message" class="notice error" role="alert" hidden></div>
+  <div id="update-banner" class="notice" hidden><span>Eine neue Version der App ist bereit.</span><button id="reload" class="text-button" type="button">Neu laden</button></div>
+  <div id="demo-banner" class="notice"><span><strong>Beispielmodus</strong> · erfundene Daten</span><button id="demo-setup" class="text-button" type="button">Verbinden</button></div>
+
   <main>
     <section id="shopping" aria-labelledby="shopping-title">
-      <div class="section-head"><div><p class="eyebrow">ALLES DABEI</p><h2 id="shopping-title">Deine Einkaufsliste</h2></div><button id="manage-stores" class="secondary">Geschäfte</button></div>
-      <label for="store-select">Geschäft</label><select id="store-select"></select>
-      <div class="shop-tools"><a id="offers-link" class="button secondary" target="_blank" rel="noopener noreferrer">Angebote ansehen ↗</a><button id="set-offers" class="secondary" hidden>Angebotslink einrichten</button></div>
+      <div class="section-head"><h2 id="shopping-title">Einkaufsliste</h2><button id="manage-stores" class="chip-button" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte</button></div>
+      <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
+      <div class="summary">
+        <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
+        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer">Angebote<svg class="icon"><use href="#i-external"/></svg></a><button id="set-offers" class="secondary small" type="button" hidden>Angebote einrichten</button></div>
+      </div>
       <form id="item-form" class="card add-form">
-        <label class="wide">Was brauchst du?<input name="name" placeholder="z. B. Zwiebeln" maxlength="120" required autocomplete="off" aria-controls="item-suggestions"></label>
+        <label class="wide"><span class="visually-hidden">Was brauchst du?</span><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"></label>
+        <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
+        <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
+        <button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
-        <label>Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
-        <label>Einheit<input name="unit" value="Stück" list="units" maxlength="30" required></label>
         <details class="wide price-fields"><summary>Preis & Angebot (optional)</summary>
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
           <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
           <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" value="Stück" list="units" maxlength="30"></label></div><p class="hint">Der Angebotspreis zählt für die Summe, solange „Im Angebot“ angehakt ist. Der normale Preis bleibt erhalten.</p></div>
           <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Ein bereits gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.</p>
         </details>
-        <button class="wide" type="submit">＋ Zur Liste hinzufügen</button>
       </form>
-      <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
-      <div class="section-head"><p id="item-count"></p><button id="clear-checked" class="text-button">Erledigte entfernen</button></div>
+      <div class="section-head list-head"><p id="item-count"></p><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
       <ul id="items" class="item-list"></ul>
     </section>
+
     <section id="recipes" hidden aria-labelledby="recipes-title">
-      <div class="section-head"><div><p class="eyebrow">IDEEN FÜR EURE KÜCHE</p><h2 id="recipes-title">Deine Rezepte</h2></div><button id="add-recipe">＋ Rezept</button></div>
-      <label>Suchen<input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen"></label>
-      <label>Tag filtern<select id="tag-filter"><option value="">Alle Tags</option></select></label>
+      <div class="section-head"><h2 id="recipes-title">Rezepte</h2>
+        <div class="head-actions"><button id="import-recipe" class="secondary" type="button"><svg class="icon"><use href="#i-download"/></svg>Import</button><button id="add-recipe" type="button"><svg class="icon"><use href="#i-plus"/></svg>Neu</button></div></div>
+      <label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen" aria-label="Rezepte durchsuchen" enterkeyhint="search"></label>
+      <div id="tag-chips" class="chips" role="group" aria-label="Nach Tag filtern" hidden></div>
       <div id="recipe-list" class="recipe-grid"></div>
     </section>
+
     <section id="settings" hidden aria-labelledby="settings-title">
-      <p class="eyebrow">EURE GEMEINSAME LISTE</p><h2 id="settings-title">Einstellungen</h2>
+      <div class="section-head"><h2 id="settings-title">Einstellungen</h2></div>
       <form id="settings-form" class="card stack">
-        <label>Dein Name<select name="actor"><option>Nico</option><option>Partnerin</option></select></label>
-        <label>Eigentümer des Daten-Repos (eure Organisation)<input name="owner" placeholder="z. B. eure-kueche" autocomplete="off" required maxlength="100"></label>
-        <label>Privates Daten-Repository<input name="repo" placeholder="z. B. einkauf-daten" autocomplete="off" required maxlength="100"></label>
-        <label>Branch<input name="branch" value="main" required maxlength="200"></label>
-        <label>JSON-Datei im Daten-Repository<input name="path" value="daten.json" required maxlength="200"></label>
+        <h3>Gemeinsame Liste</h3>
+        <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
+        <label>Eigentümer des Daten-Repos (eure Organisation)<input name="owner" placeholder="z. B. eure-kueche" autocomplete="off" autocapitalize="off" required maxlength="100"></label>
+        <label>Privates Daten-Repository<input name="repo" placeholder="z. B. einkauf-daten" autocomplete="off" autocapitalize="off" required maxlength="100"></label>
+        <label>Branch<input name="branch" value="main" autocapitalize="off" required maxlength="200"></label>
+        <label>JSON-Datei im Daten-Repository<input name="path" value="daten.json" autocapitalize="off" required maxlength="200"></label>
         <label>Dein persönlicher GitHub-Token<input name="token" type="password" autocomplete="off" spellcheck="false" required></label>
         <p class="hint">Der Token bleibt im Browser dieses Geräts. Er gehört niemals ins öffentliche Repository. Verwende dafür nur vertrauenswürdige Geräte.</p>
         <button type="submit">Speichern & verbinden</button>
         <button id="disconnect" type="button" class="secondary">Token entfernen & Beispielmodus öffnen</button>
       </form>
+      <form id="import-settings-form" class="card stack">
+        <h3>Rezepte aus Links laden</h3>
+        <p class="hint">Browser dürfen fremde Webseiten nicht direkt lesen. Für Links braucht die App deshalb einen Hilfsdienst. Screenshots und eingefügter Text brauchen nichts davon und bleiben auf dem Gerät.</p>
+        <label>Eigener Hilfsdienst (empfohlen)<input name="importProxy" type="url" inputmode="url" placeholder="https://rezepte.dein-name.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200"></label>
+        <label class="checkbox-label"><input name="publicProxy" type="checkbox"> Öffentliche Hilfsdienste erlauben (allorigins.win, codetabs.com)</label>
+        <p class="hint">Dann wird nur der Link der Rezeptseite an diese Dienste gesendet, nie Token oder Listen. Öffentliche Dienste fallen manchmal aus oder werden von Rezeptseiten blockiert.</p>
+        <button type="submit">Import-Einstellungen speichern</button>
+        <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
+      </form>
       <div class="card stack"><h3>Darstellung & Sicherung</h3>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
-        <button id="export" class="secondary">Alle Daten als JSON sichern</button>
+        <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 1.2 · Artikelvorschläge & Angebotspreise · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 1.3 · Rezept-Import aus Link, Screenshot und Text · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>
-  <nav class="tabs" aria-label="Hauptbereiche"><button data-tab="shopping" aria-current="page">☑<span>Einkaufsliste</span></button><button data-tab="recipes">▤<span>Rezepte</span></button><button data-tab="settings">⚙<span>Einstellungen</span></button></nav>
-  <aside id="undo-bar" class="undo-bar" hidden><span id="undo-label"></span><button id="undo" class="secondary">Rückgängig</button></aside>
-  <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">WILLKOMMEN</p><h2>Wer kauft heute ein?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später ändern.</p><label>Dein Name<select name="actor"><option>Nico</option><option>Partnerin</option></select></label><button>Los geht’s</button></form></dialog>
-  <dialog id="stores-dialog"><div class="section-head"><h2>Geschäfte & Angebote</h2><button data-close="stores-dialog" class="secondary" aria-label="Schließen">✕</button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" placeholder="https://…" maxlength="2000"></label><button>Geschäft hinzufügen</button></form></dialog>
-  <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="section-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="secondary" aria-label="Schließen">✕</button></div>
-    <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
+
+  <nav class="tabs" aria-label="Hauptbereiche">
+    <button type="button" data-tab="shopping" aria-current="page"><span class="tab-icon"><svg class="icon"><use href="#i-cart"/></svg></span><span class="tab-label">Einkauf</span></button>
+    <button type="button" data-tab="recipes"><span class="tab-icon"><svg class="icon"><use href="#i-book"/></svg></span><span class="tab-label">Rezepte</span></button>
+    <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
+  </nav>
+  <aside id="undo-bar" class="undo-bar" hidden><span id="undo-label"></span><button id="undo" type="button" class="text-button">Rückgängig</button></aside>
+
+  <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>
+  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button>Geschäft hinzufügen</button></form></dialog>
+  <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <h3>Normaler Preis</h3><p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
     <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
     <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
     <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv ist. Ohne Angebotspreis wird mit dem normalen Preis geschätzt.</p></div>
     <p class="hint" data-price-hint></p><div id="price-comparison"></div><button type="submit">Artikel speichern</button>
   </form></dialog>
-  <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="section-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="secondary" aria-label="Schließen">✕</button></div>
+  <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div id="recipe-import-note" class="import-note" hidden></div>
     <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
-    <label>Portionen<input name="servings" inputmode="decimal" value="2" required></label>
-    <label>Tags, durch Komma getrennt<input name="tags" placeholder="schnell, vegetarisch" maxlength="300"></label>
-    <h3>Zutaten</h3><div id="ingredient-editor" class="stack"></div><button id="add-ingredient" type="button" class="secondary">＋ Zutat</button>
-    <label>Zubereitung<textarea name="instructions" rows="6" required maxlength="20000"></textarea></label><button>Rezept speichern</button></form></dialog>
-  <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="section-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="secondary" aria-label="Schließen">✕</button></div><p>Wähle ab, was du schon zu Hause hast.</p><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label><div id="transfer-ingredients"></div><button>Ausgewählte Zutaten hinzufügen</button></form></dialog>
-  <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"></datalist>
+    <div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" value="2" required></label><label>Tags (Komma)<input name="tags" placeholder="z. B. schnell" maxlength="300"></label></div>
+    <h3>Zutaten</h3><div id="ingredient-editor" class="stack"></div><button id="add-ingredient" type="button" class="secondary"><svg class="icon"><use href="#i-plus"/></svg>Zutat</button>
+    <label>Zubereitung<textarea name="instructions" rows="7" maxlength="20000" placeholder="Schritte oder Notizen"></textarea></label>
+    <label>Quelle (Link, optional)<input name="sourceUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off" autocomplete="off"></label>
+    <details id="recipe-raw" hidden><summary>Erkannten Rohtext anzeigen</summary><pre id="recipe-raw-text"></pre></details>
+    <button type="submit">Rezept speichern</button></form></dialog>
+  <dialog id="import-dialog"><form id="import-form" class="stack" novalidate><div class="sheet-head"><h2>Rezept importieren</h2><button type="button" data-close="import-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div class="segmented" role="tablist" aria-label="Quelle des Rezepts">
+      <button type="button" role="tab" data-source="link" aria-selected="true"><svg class="icon"><use href="#i-link"/></svg>Link</button>
+      <button type="button" role="tab" data-source="image" aria-selected="false"><svg class="icon"><use href="#i-image"/></svg>Screenshot</button>
+      <button type="button" role="tab" data-source="text" aria-selected="false"><svg class="icon"><use href="#i-text"/></svg>Text</button>
+    </div>
+    <div data-pane="link">
+      <label>Adresse der Rezeptseite<input name="url" type="url" inputmode="url" placeholder="https://www.chefkoch.de/rezepte/…" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2000"></label>
+      <label class="checkbox-label"><input name="publicProxy" type="checkbox"> Öffentliche Hilfsdienste erlauben</label>
+      <p class="hint" data-link-hint></p>
+    </div>
+    <div data-pane="image" hidden>
+      <label class="file-drop"><input name="images" type="file" accept="image/*" multiple class="visually-hidden"><svg class="icon"><use href="#i-image"/></svg><span>Screenshot oder Foto wählen</span><small>Auch mehrere Bilder nacheinander möglich</small></label>
+      <div id="import-previews" class="thumbs"></div>
+      <p class="hint">Die Texterkennung läuft komplett auf deinem Gerät, das Bild wird nirgends hochgeladen. Beim ersten Mal werden einmalig etwa 5 MB geladen.</p>
+    </div>
+    <div data-pane="text" hidden>
+      <label>Rezepttext<textarea name="text" rows="9" placeholder="Rezepttext hier einfügen: Titel, Zutaten, Zubereitung. Auch ein Link ist möglich." maxlength="60000"></textarea></label>
+    </div>
+    <progress id="import-progress" max="100" value="0" hidden></progress>
+    <p id="import-status" class="hint" role="status"></p>
+    <button id="import-run" type="submit">Rezept laden</button>
+    <p class="hint">Importierte Rezepte sind Vorschläge: Du prüfst und korrigierst alles, bevor es gespeichert wird.</p>
+  </form></dialog>
+  <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="sheet-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p>Wähle ab, was du schon zu Hause hast.</p><div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label></div><div id="transfer-ingredients"></div><button>Ausgewählte Zutaten hinzufügen</button></form></dialog>
+  <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
+  <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
 </body>
 </html>

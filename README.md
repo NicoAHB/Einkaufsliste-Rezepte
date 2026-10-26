@@ -1,6 +1,6 @@
-# Einkauf & Rezepte – Version 1.2
+# Einkauf & Rezepte – Version 1.3
 
-Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, drei Bereiche und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, drei Bereiche, Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
@@ -9,14 +9,64 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
 - Die letzte Löschaktion rückgängig machen, solange die Seite geöffnet bleibt. Häkchen werden durch erneutes Antippen geändert, ohne Rückgängig-Meldung.
 - Beim Tippen passende Artikelnamen aus eurem bisherigen Einkaufsverlauf übernehmen, auch nach dem Löschen und offline.
-- Rezepte mit einzelnen Zutaten, Zubereitung, Portionen und Tags anlegen, bearbeiten, löschen; nach Rezept/Zutat suchen und nach Tag filtern.
+- Rezepte mit einzelnen Zutaten, Zubereitung, Portionen, Tags und optionaler Quelle anlegen, bearbeiten, löschen; nach Rezept/Zutat/Tag suchen und nach Tag filtern. **Neu:** Import aus Link, Screenshot und Text (Abschnitt „Neu in Version 1.3“).
 - Portionen umrechnen. Beim Übernehmen Zutaten einzeln abwählen, Geschäft auswählen und nur die gewählten Zutaten hinzufügen.
 - Beispielmodus ohne GitHub, drei Beispielrezepte und eine über drei Geschäfte verteilte Beispielliste.
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
-**Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung und Fotos mit Verkleinerung. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
+**Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung, Rezeptfotos, Wochenplan und Vorratsliste. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
 
-## Neu in Version 1.2: Lernende Vorschläge und eigene Angebotspreise
+## Neu in Version 1.3: Rezept-Import, überarbeitete Oberfläche, technische Korrekturen
+
+### Rezepte importieren (Rezepte → **Import**)
+
+Immer gilt: Der Import liefert einen **Vorschlag**. Er öffnet den Rezept-Editor mit allen erkannten Feldern; erst nach deinem Tippen auf „Rezept speichern“ wird etwas gespeichert. Der Rohtext bleibt im Editor unter „Erkannten Rohtext anzeigen“ sichtbar, falls etwas fehlt.
+
+| Quelle | Wie es funktioniert | Braucht |
+| --- | --- | --- |
+| **Screenshot oder Foto** | Texterkennung (Tesseract, Deutsch) läuft **auf dem Gerät**. Das Bild wird nirgends hochgeladen. Helle und dunkle Screenshots, mehrere Bilder nacheinander und sehr lange Screenshots (werden in Streifen gelesen) funktionieren. Beim ersten Mal lädt die App einmalig ca. 5 MB nach, danach geht es auch offline. | nichts |
+| **Text** | Zutaten und Zubereitung aus Instagram, Notizen oder einer Webseite einfügen. Auch ein eingefügter Link, JSON-LD oder Seitenquelltext wird erkannt. | nichts |
+| **Link** | Liest die strukturierten Rezeptdaten der Seite (schema.org/Recipe, wie sie Chefkoch, Lecker, Rewe, Kitchen Stories und die meisten Rezeptseiten bereitstellen) inklusive Portionen, Zeit und Tags. Ohne solche Daten wird der Seitentext wie bei „Text“ ausgewertet. | einen **Hilfsdienst** (siehe unten) |
+
+**Warum ein Hilfsdienst für Links?** Browser dürfen fremde Webseiten aus Sicherheitsgründen nicht direkt lesen (CORS). Deshalb gibt es zwei Wege, die du in den Einstellungen unter „Rezepte aus Links laden“ wählst:
+
+1. **Eigener Hilfsdienst (empfohlen, kostenlos, verlässlich):** ein 60-Zeilen-Skript bei Cloudflare, das nur für eure App freigegeben ist. Einrichtung in **Abschnitt 13**, ca. 10 Minuten, einmalig.
+2. **Öffentliche Hilfsdienste (ohne Einrichtung):** allorigins.win und codetabs.com. Es wird dann **nur der Link der Rezeptseite** dorthin gesendet, nie dein Token oder deine Listen. Das ist standardmäßig **aus** und muss ausdrücklich erlaubt werden. Diese Dienste sind fremd: Sie können ausfallen, und manche Rezeptseiten blockieren sie. Sie wurden bei der Entwicklung nicht gegen echte Seiten getestet.
+
+Wenn ein Link sich nicht laden lässt, bleibt immer der Weg über **Text** (Seite öffnen, Zutaten und Zubereitung kopieren, einfügen) oder **Screenshot**.
+
+Was erkannt wird: Mengen wie `200 g`, `1,5 kg`, `1/2 TL`, `½ Bund`, `2–3 Zwiebeln`, `50 cl` (wird zu 500 ml), `eine halbe Zitrone`, `1 Dose à 400 g Tomaten`, Zutaten ohne Menge („Salz“, „etwas Zitronensaft“) als **„nach Bedarf“**. Eine erfundene Menge gibt es nie. Zutaten „nach Bedarf“ werden auf der Übernahme-Liste nicht vorausgewählt und landen sonst als „1 Stück“ auf der Einkaufsliste.
+
+Rezepte haben jetzt eine optionale **Quelle** (Link). Sie wird auf der Rezeptkarte angezeigt.
+
+### Link direkt aus Safari an die App senden
+
+Die App nimmt Links über `…/Einkaufsliste-Rezepte/?import=https://…` entgegen und öffnet dann sofort den Import. So geht es vom iPhone-Teilen-Menü aus (Kurzbefehl, einmalig anlegen; nicht getestet, da hier kein iPhone zur Verfügung stand):
+
+1. App **Kurzbefehle** → **+** → Namen „Rezept importieren“.
+2. Aktion **URL-codieren** hinzufügen, Eingabe: *Kurzbefehl-Eingabe*.
+3. Aktion **Text** hinzufügen: `https://nicoahb.github.io/Einkaufsliste-Rezepte/?import=` gefolgt von der Variablen *URL-codierter Text*.
+4. Aktion **URLs öffnen** hinzufügen (Eingabe: der Text aus Schritt 3).
+5. Oben auf **ⓘ** tippen → **Im Share Sheet anzeigen** einschalten, Eingabetypen nur **URLs** und **Safari-Webseiten**.
+
+Danach: Rezeptseite in Safari → Teilen → **Rezept importieren**. (Android: Wer die App über Chrome installiert, findet sie nach der Installation direkt im Teilen-Menü; dafür sorgt `share_target` im Manifest.)
+
+### Oberfläche
+
+Kompakter Kopf, Geschäfte als Reiter mit Anzahl offener Artikel, Summe und Angebote in einer Zeile, Eingabezeile direkt sichtbar, ausklappbare Rezeptkarten mit Portionen-Schalter, Dialoge als „Bottom-Sheet“, Symbole als SVG, überarbeitete Farben in Hell und Dunkel. Der Name der Person ist jetzt frei wählbar (nicht mehr nur „Nico“ oder „Partnerin“).
+
+### Technische Korrekturen
+
+- **Leiste unten „verrutscht“:** Ursache waren Eingabefelder mit nur 14,7 px Schrift. Unter 16 px zoomt iOS Safari beim Antippen automatisch in die Seite hinein; die fixierte Leiste verschiebt sich dann. Alle Felder haben jetzt mindestens 16 px. Zusätzlich weicht die Leiste aus, solange die Tastatur offen ist (erkannt über die sichtbare Höhe, nicht über den Fokus), sitzt auf `100dvh`/`env(safe-area-inset-*)` und kann die Seite nicht seitlich verbreitern. Auf 320 px breiten Geräten gab es einen 16 px großen seitlichen Überlauf im Rezepte-Kopf; behoben.
+- **Neuzeichnen alle 8 Sekunden:** Jeder Abgleich baute bisher die ganze Oberfläche neu auf. Das klappte geöffnete Rezepte zu und konnte geöffnete Auswahllisten schließen. Jetzt wird nur bei echten Änderungen neu gezeichnet, und geöffnete Rezepte bleiben offen.
+- **Weniger Datenverkehr:** Ohne eigene Änderungen fragt die App GitHub nur noch „hat sich etwas geändert?“ (ETag, HTTP 304). Solche Abfragen zählen nicht zum GitHub-Limit.
+- **Zusammenführen:** Änderungen werden vor dem Anwenden nach Zeitstempel sortiert. Vorher gingen die Pflichtfelder eines Artikels verloren, wenn eine spätere Änderung vor seiner Anlage-Änderung ankam; die Datei wäre dann ungültig gewesen. Wer gewinnt, hat sich nicht geändert.
+- **Backup:** Auf dem iPhone öffnet ein Download aus einer Homescreen-App oft eine Seite ohne Rückweg. Die App nutzt jetzt den Teilen-Dialog („In Dateien sichern“) und fällt sonst auf den Download zurück.
+- **Neue App-Version:** Statt still mitten in einer Eingabe zu wechseln, zeigt die App „Neue Version bereit“ mit Knopf „Neu laden“. Die Texterkennung liegt in einem eigenen Speicher und wird bei App-Updates nicht neu geladen.
+- **Aufgeräumt:** leere Datei `download` entfernt, `.nojekyll` ergänzt, vollständige PNG-Symbole (192/512 px, maskierbar) für Android, Statusleistenfarbe folgt dem gewählten Design.
+- **Tests:** Die in dieser README erwähnten Testdateien fehlten im Repository. Sie sind jetzt vorhanden (siehe Abschnitt 12).
+
+## Seit Version 1.2: Lernende Vorschläge und eigene Angebotspreise
 
 - **Artikelvorschläge:** „Kochschinken“ einmal eintragen. Beim nächsten Mal beispielsweise `kochs` eintippen und den Vorschlag antippen. Die App übernimmt den vollständigen Namen; danach kannst du Menge und Einheit ergänzen. Der Vorschlag fügt noch keinen Artikel zur Liste hinzu. Auch abgehakte und gelöschte Artikel werden als bekannte Namen berücksichtigt. Doppelte Namen mit anderer Großschreibung oder zusätzlichen Leerzeichen erscheinen nur einmal. Wortanfänge und häufig verwendete Namen stehen oben; höchstens sechs Vorschläge werden angezeigt.
 - **Gemeinsam lernen:** Die Namen stammen aus den vorhandenen Artikeldaten, einschließlich interner Löschmarkierungen. Deshalb sind keine zusätzliche Datei und kein externer Dienst nötig. Im verbundenen Modus bekommen beide Geräte die Vorschläge nach dem GitHub-Abgleich; im Beispielmodus bleiben sie auf dem jeweiligen Gerät. Bereits geladene Namen funktionieren auch offline.
@@ -36,7 +86,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. Bei aktivem Angebot zählt der eingetragene Angebotspreis; ohne Angebotspreis der normale Preis. Es wird kein zusätzlicher pauschaler Rabatt abgezogen.
 - **Beispielmodus:** Die neuen Beispielpreise sind frei erfunden. Sie werden nur bei einem frischen Beispielmodus geladen. Bereits vorhandene Browserdaten und eure private Datendatei werden niemals durch neue Beispiele ersetzt.
 
-**Bestehende App aktualisieren:** Die neuen App-Dateien einschließlich `prices.js` und `sw.js` im öffentlichen App-Repository ersetzen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
+**Bestehende App aktualisieren:** Die neuen App-Dateien (siehe Dateiliste in Abschnitt 3, ab Version 1.3 zusätzlich `recipe-import.js`, `page-source.js`, `ocr.js`, die Symbole `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` und der Ordner `vendor`) im öffentlichen App-Repository ersetzen bzw. hinzufügen. Beim ersten Öffnen nach einem Update zeigt die App „Neue Version bereit“; auf **Neu laden** tippen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
 
 ## 2. Zuerst verstehen: zwei Repositories
 
@@ -58,7 +108,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `data.js`, `prices.js`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `beispieldaten.json`, `.nojekyll` und `README.md` gemeinsam hochladen. Sie müssen **direkt im Hauptordner** liegen, nicht in einem zusätzlichen Unterordner. Die Tests sind für die App nicht erforderlich.
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -110,12 +160,12 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 ## 7. App auf jedem Gerät verbinden
 
 1. Auf dem iPhone den Pages-Link öffnen, **Einstellungen** wählen.
-2. Eigenen Namen auswählen: **Nico** bzw. **Partnerin**.
+2. Den eigenen Namen eintragen (frei wählbar, z. B. **Nico** bzw. den Namen deiner Partnerin). Er erscheint bei deinen Artikeln.
 3. Eigentümer: der **Organisationsname**, z. B. `eure-kueche`, nicht automatisch Nico.
 4. Daten-Repository: `einkauf-daten` (ohne URL).
 5. Branch: `main`; JSON-Datei: `daten.json`.
 6. Den eigenen Token in das Passwortfeld einfügen und **Speichern & verbinden** wählen.
-7. Warten, bis **Gespeichert · mit GitHub abgeglichen** erscheint und der Beispielmodus-Hinweis verschwindet.
+7. Warten, bis oben **Mit GitHub abgeglichen** (grüner Punkt) erscheint und der Beispielmodus-Hinweis verschwindet.
 8. Auf dem zweiten Gerät dasselbe mit dem **eigenen** Token wiederholen. Beide Geräte müssen denselben Eigentümer, Repository-Namen, Branch und Dateinamen benutzen.
 9. Als Probe einen Artikel hinzufügen und auf dem zweiten Gerät **Aktualisieren** drücken. Nach spätestens dem nächsten erfolgreichen Abgleich sollte er erscheinen.
 
@@ -124,7 +174,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 ## 8. Speichern, offline arbeiten und Fehler verstehen
 
 - Jede Änderung wird **zuerst lokal gespeichert**. Im GitHub-Modus werden ausstehende Änderungen zusätzlich in einer dauerhaften Warteschlange gespeichert. Bei vollem oder gesperrtem Browserspeicher erscheint ein Fehler; die Änderung wird dann nicht als übernommen dargestellt.
-- **Wird gesendet / aktualisiert**: ein GitHub-Abgleich läuft. **Gespeichert · mit GitHub abgeglichen**: keine ausstehenden lokalen Änderungen. **Lokal gespeichert** oder **Fehler · Änderungen lokal gesichert**: GitHub hat die Änderung noch nicht bestätigt.
+- Der Status steht oben unter dem Titel, mit farbigem Punkt: **Gleiche ab …** (blinkend): ein GitHub-Abgleich läuft. **Mit GitHub abgeglichen** (grün): keine ausstehenden lokalen Änderungen. **n Änderung(en) warten** (orange) oder **Fehler · lokal gesichert** (rot): GitHub hat die Änderung noch nicht bestätigt. **Nur auf diesem Gerät**: Beispielmodus.
 - Ohne Empfang kannst du nach einem vorherigen erfolgreichen Laden weiterarbeiten. Lass die App bei wiederhergestelltem Empfang geöffnet oder öffne sie erneut. **iOS synchronisiert diese App nicht zuverlässig im Hintergrund.**
 - Die App lädt bei sichtbarer Seite alle acht Sekunden neu. Bei Fehlern wartet sie länger; GitHubs Wartezeit und API-Limits werden berücksichtigt. Manuelles Aktualisieren löst einen erneuten Versuch aus.
 - **Ungültiger/abgelaufener Token (401):** über die Anleitung in Abschnitt 6 einen neuen erstellen und auf dem Gerät unter Einstellungen ersetzen. Die Datenadresse dabei unverändert lassen; dann bleibt die Warteschlange erhalten. Nicht den Browser-Speicher löschen.
@@ -144,12 +194,12 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | --- | --- |
 | `stores` | `id`, `name`, Zeitstempel und Löschmarkierung |
 | `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `salePrice`, `onSale` |
-| `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions` |
-| `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit` |
+| `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions`; optional `sourceUrl` (Quelle eines importierten Rezepts) |
+| `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit`; die Einheit `nach Bedarf` (Menge 1) steht für Zutaten ohne Mengenangabe |
 | `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung |
 
-Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden.
+Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden. Auch `recipes.sourceUrl` (Version 1.3) ist optional; ältere App-Versionen auf einem zweiten Gerät ignorieren das Feld, löschen es aber nicht.
 
 Jeder Datensatz hat `createdAt`, `updatedAt`, `deletedAt` und `_clock`. `deletedAt: null` bedeutet nicht gelöscht. `_clock` speichert je geändertem Feld dessen Zeitstempel und Operations-ID. Eine Operation enthält `id`, `collection`, `entityId`, `patch`, `actor` und `at`.
 
@@ -181,21 +231,35 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
 
+Weitere Testpunkte für Version 1.3 (auf dem iPhone):
+
+- [ ] Ins Feld „Was brauchst du?“ tippen: die Seite zoomt **nicht** heran, die Leiste unten bleibt, solange die Tastatur zu ist, am unteren Rand; bei offener Tastatur ist sie ausgeblendet und kommt danach zurück. Auch im Querformat und nach Wechsel zwischen Safari und Homescreen-App prüfen.
+- [ ] Rezepte → Import → **Screenshot**: einen Screenshot eines Rezepts (z. B. aus Instagram, helles und dunkles Design) wählen. Titel, Portionen, Zutaten und Zubereitung sollen im Editor erscheinen; Fehler dort korrigieren und speichern.
+- [ ] Rezepte → Import → **Text**: Zutaten und Zubereitung einer Webseite einfügen.
+- [ ] Rezepte → Import → **Link** mit erlaubten öffentlichen Hilfsdiensten oder mit eurem eigenen Hilfsdienst (Abschnitt 13). Wenn eine Seite sich nicht laden lässt, muss ein verständlicher Hinweis auf „Text“ erscheinen.
+- [ ] Importiertes Rezept auf die Liste übernehmen: „nach Bedarf“-Zutaten sind abgewählt, Mengen folgen den Portionen.
+- [ ] Ein Rezept aufklappen und 20 Sekunden stehen lassen: es darf sich nicht von selbst schließen.
+- [ ] Einstellungen → „Alle Daten als JSON sichern“: der Teilen-Dialog erscheint; „In Dateien sichern“ funktioniert.
+- [ ] Optional: Kurzbefehl „Rezept importieren“ aus dem Teilen-Menü von Safari.
+
 ## 12. Für die Weiterentwicklung
 
 Keine Laufzeitabhängigkeiten, kein Build-Schritt. Eine lokale HTTP-Vorschau ist nur für Entwickler optional: `python3 -m http.server 8000` im Projektordner; im Browser den lokalen Port öffnen. Produktionsbetrieb läuft über HTTPS bei Pages. Moderne Browser und Safari/iOS ab 15.4 mit Web Locks werden vorausgesetzt.
 
-Die reinen Datenprüfungen laufen mit einer aktuellen Node-Version (getestet mit Node 24):
+Tests (Node 22 oder neuer, keine Abhängigkeiten für die Logik):
 
 ```sh
-node --test --test-isolation=none tests/data.test.mjs tests/prices.test.mjs
+npm test                 # alles; die Browserprüfung wird ohne Playwright übersprungen
+npm run test:logic       # nur Logik: Daten, Preise, Import, Hilfsdienst
+npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright install chromium)
 ```
 
-Sie prüfen Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Rückgängig, Portionsübernahme, Versionsschutz und deutsche Mengeneingaben. Browserprüfungen mit simulierten GitHub-Antworten ersetzen keinen echten Abgleich mit euren Tokens; den abschließenden Zwei-Geräte-Test führt ihr nach der Einrichtung anhand der Checkliste aus.
+- `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
+- `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
+- `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).
+- `tests/browser.test.mjs`: mobile Ansicht mit 390 und 320 px (kein seitlicher Überlauf, Schrift mindestens 16 px, Leiste am unteren Rand), Tastatur-Verhalten, alle Import-Wege einschließlich echter Texterkennung, `?import=`, simulierter GitHub-Server mit 304-Antworten und Fehlern, Offline-Start, Dunkelmodus. Echte Konten und ein echtes iPhone ersetzt das nicht: Den abschließenden Zwei-Geräte-Test führt ihr anhand der Checkliste aus.
 
-Wenn Python-Playwright und Chromium bereits für die Entwicklung verfügbar sind, kann bei laufender lokaler Vorschau außerdem `python3 tests/browser_smoke.py` ausgeführt werden. Diese Prüfung testet die Bedienung in mobiler Chromium-Ansicht, Offline-Start, zwei simulierte Geräte, SHA-Konflikte, Änderungen während eines laufenden Schreibvorgangs, verlorene Bestätigungen und GitHub-Fehlermeldungen. Der Pfad zu Chromium steht im Testskript. Auf einem echten iPhone und gegen ein echtes privates Daten-Repository ist anschließend noch die obige Checkliste auszuführen. Die App selbst benötigt diese Testwerkzeuge nicht.
-
-Zusätzlich prüft `python3 tests/prices_browser.py` die Preisoberfläche auf 390 und 320 Pixel breiten Ansichten, gemerkte Geschäftspreise, leere und kostenlose Preise, Validierung im Dialog, Angebotslinks, Offline-Preise und ein echtes Upgrade vom ursprünglichen Offline-Paket bei erhaltenen lokalen Artikeln und Namen.
+Nicht getestet werden konnten: echte Rezeptseiten und die öffentlichen Hilfsdienste (in der Entwicklungsumgebung gesperrt; stattdessen realistische Beispiel-Seiten), echte GitHub-Abfragen sowie Safari/iOS. Die Hinweise zu iOS beruhen auf dem bekannten Verhalten von Safari.
 
 Weitere Testpunkte für Version 1.1:
 
@@ -216,4 +280,24 @@ Weitere Testpunkte für Version 1.2:
 - [ ] Kochschinken eintragen und löschen, dann `kochs` eintippen: Vorschlag antippen und vollständigen Namen übernehmen. Nach Neuladen und offline wiederholen.
 - [ ] Auf dem zweiten verbundenen Gerät nach dem Abgleich einen Namen vorschlagen lassen, der auf dem ersten Gerät eingegeben wurde.
 
-`python3 tests/usability_browser.py` prüft diese Bedienabläufe einschließlich kleiner mobiler Ansichten. Die normalen Browserprüfungen testen zusätzlich, dass gleichzeitige Änderungen an Normal- und Angebotspreis zwischen zwei simulierten Geräten erhalten bleiben. Ein Test auf einem echten iPhone bleibt Teil der manuellen Checkliste.
+
+## 13. Link-Import einrichten (optional, empfohlen)
+
+Mit einem eigenen Hilfsdienst lädt der Link-Import zuverlässig und ohne öffentliche Fremddienste. Er läuft bei Cloudflare Workers (kostenloser Tarif: 100.000 Aufrufe pro Tag, ihr braucht einige). Der Dienst speichert nichts, kennt weder Token noch Daten und antwortet **nur eurer App** (Prüfung des Absenders). Einmalig, ca. 10 Minuten; die Menüs bei Cloudflare ändern sich gelegentlich.
+
+1. Auf [cloudflare.com](https://www.cloudflare.com/) ein kostenloses Konto anlegen (E-Mail bestätigen).
+2. Im Menü **Workers & Pages** → **Create** → **Create Worker** (die Vorlage „Hello World“ genügt). Namen vergeben, z. B. `rezepte`, **Deploy**.
+3. **Edit code** wählen, den gesamten Beispielcode löschen und den Inhalt der Datei `worker/recipe-proxy.js` aus diesem Repository einfügen.
+4. Oben im Code die Zeile `const ALLOWED_ORIGINS = ['https://nicoahb.github.io'];` prüfen: dort muss der Ursprung eurer App stehen, also der Pages-Link **ohne Pfad** (bei `https://nicoahb.github.io/Einkaufsliste-Rezepte/` ist es `https://nicoahb.github.io`). Bei einem anderen Konto entsprechend ändern.
+5. **Deploy**. Die Adresse des Dienstes endet auf `.workers.dev`, z. B. `https://rezepte.dein-name.workers.dev`.
+6. In der App: **Einstellungen → Rezepte aus Links laden**, die Adresse bei „Eigener Hilfsdienst“ eintragen, **Import-Einstellungen speichern**, dann **Eigenen Hilfsdienst testen**. Es muss „Hilfsdienst funktioniert“ erscheinen.
+
+Die App erlaubt nur Adressen auf `*.workers.dev` (Sicherheitsrichtlinie `connect-src` in `index.html`). Wer eine eigene Domain verwenden möchte, ergänzt diese dort.
+
+Grenzen: Einige Seiten blockieren automatische Abrufe (Anmeldung, Bot-Schutz) oder laden Rezepte erst per JavaScript nach. Dann hilft „Text“ oder „Screenshot“.
+
+## 14. Drittanbieter-Komponenten
+
+- [Tesseract.js](https://github.com/naptha/tesseract.js) und tesseract.js-core 5.1.1 (Apache-2.0) sowie das deutsche Modell `deu` aus tessdata_best (Apache-2.0): Texterkennung, Dateien unter `vendor/tesseract/` mit Lizenztexten und Herkunft.
+- [Feather Icons](https://feathericons.com/) (MIT-Lizenz): Symbole, direkt in `index.html`.
+

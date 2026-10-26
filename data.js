@@ -1,5 +1,6 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
 import { offerUrl, productKey, rememberedPrice, validQuote } from './prices.js';
+import { NO_AMOUNT } from './recipe-import.js';
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
@@ -49,6 +50,8 @@ export function validate(data) {
       if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
           row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
           row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
+      // Optionale Erweiterung von v1: Quelle eines importierten Rezepts.
+      if (key === 'recipes' && row.sourceUrl !== undefined && typeof row.sourceUrl !== 'string') throw new Error('Ungültige Rezeptquelle.');
     }
   }
   return data;
@@ -61,11 +64,15 @@ export function operation(collection, entityId, patch, actor, at = new Date().to
   return { id: uid(), collection, entityId, patch, actor, at };
 }
 
+// Ältere Änderungen zuerst: Sonst könnte eine spätere Änderung den Datensatz anlegen und die Anlage-Änderung
+// (mit den Pflichtfeldern) wegen ihres früheren Zeitstempels verworfen werden. Wer gewinnt, ändert sich dadurch nicht.
+const byTime = (a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
 export function merge(data, operations) {
   const next = clone(validate(data));
   next.prices ||= [];
   const applied = new Set(next.sync.applied);
-  for (const op of operations) {
+  for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
     if (!collections.includes(op.collection)) throw new Error('Unbekannte Änderungsart.');
     let row = next[op.collection].find(entry => entry.id === op.entityId);
@@ -116,9 +123,11 @@ export function suggestItemNames(items, query, limit = 6) {
     .slice(0, limit).map(row => row.name);
 }
 
+// Zutaten „nach Bedarf“ (Salz, Pfeffer) haben keine Menge, die sich umrechnen ließe: Sie landen als 1 Stück auf der Liste.
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, history = []) {
-  return active(ingredients).filter(row => row.recipeId === recipeId).map(row =>
-    operation('items', uid(), { storeId, name: row.name, quantity: row.quantity * factor,
-      unit: row.unit, checked: false, createdBy: actor,
-      price: rememberedPrice(history, storeId, row.name, row.unit), onSale: false }, actor, at));
+  return active(ingredients).filter(row => row.recipeId === recipeId).map(row => {
+    const unit = row.unit === NO_AMOUNT ? 'Stück' : row.unit, quantity = row.unit === NO_AMOUNT ? 1 : row.quantity * factor;
+    return operation('items', uid(), { storeId, name: row.name, quantity, unit, checked: false, createdBy: actor,
+      price: rememberedPrice(history, storeId, row.name, unit), onSale: false }, actor, at);
+  });
 }
