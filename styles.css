@@ -84,6 +84,7 @@
   box-sizing:border-box
 }
 html {
+  overflow-x:hidden;
   background:var(--bg);
   -webkit-tap-highlight-color:transparent
 }
@@ -93,6 +94,7 @@ body {
   color:var(--text);
   min-height:100vh;
   min-height:100dvh;
+  overflow-x:hidden;
   overflow-x:clip;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) calc(var(--tabs-h) + 28px + env(safe-area-inset-bottom)) env(safe-area-inset-left)
 }
@@ -1809,9 +1811,8 @@ body.in-store main {
 .fold>summary .hint {
   margin:0 0 0 auto;
   min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap
+  text-align:right;
+  overflow-wrap:anywhere
 }
 .fold[open]>summary {
   margin-bottom:12px
@@ -2223,4 +2224,57 @@ body.in-store main {
 }
 .daily-actions button {
   flex:1
+}
+
+/* Sicherheitsnetz gegen seitliches Verschieben: Eingabefelder (iOS gibt Datumsfeldern eine eigene Mindestbreite) und Bereiche dürfen nie breiter sein als ihr Platz. */
+input,select,textarea {
+  min-width:0;
+  max-width:100%
+}
+details,summary,.card {
+  min-width:0;
+  max-width:100%
+}
+
+/* Anleitung */
+.help-body {
+  display:grid;
+  gap:8px;
+  margin:0 0 12px
+}
+.help-section {
+  padding:2px 14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card)
+}
+.help-section[open] {
+  border-color:var(--line-strong)
+}
+.help-section>summary {
+  min-height:48px
+}
+.help-section>summary h3 {
+  font-size:1.02rem
+}
+.help-text {
+  padding:0 0 12px;
+  line-height:1.5
+}
+.help-text p {
+  margin:0 0 8px
+}
+.help-text ul,.help-text ol {
+  margin:0 0 4px;
+  padding-left:20px
+}
+.help-text li {
+  margin:0 0 7px
+}
+.help-text code {
+  padding:1px 5px;
+  border-radius:5px;
+  background:var(--accent-soft);
+  font-size:.9em;
+  overflow-wrap:anywhere
 }

@@ -1,6 +1,6 @@
 /* „Rezepte des Tages“: Aus einer Webseite mit Rezeptvorschlägen (z. B. der Tagesrezepte-Seite von Chefkoch) die Rezept-Links herausziehen,
    die heute noch nicht entschieden sind. Reine Logik ohne DOM und ohne Netz; geladen wird in app.js über den Hilfsdienst. */
-import { decodeEntities, extractJsonLd, plainText } from './recipe-import.js';
+import { decodeEntities, durationLabel, extractJsonLd, parseIngredientLine, plainText } from './recipe-import.js';
 
 export const DAILY_MAX = 10;
 // Chefkoch: /rezepte/1234567/Spaghetti-Carbonara.html
@@ -61,4 +61,44 @@ export function extractRecipeLinks(html, base) {
 // Die Vorschläge für heute: nicht schon entschiedene (`decided`) und nicht schon vorhandene (`known`), höchstens `max`. Beides sind Mengen von recipeKey.
 export function planDay(links, decided = new Set(), known = new Set(), max = DAILY_MAX) {
   return links.filter(link => !decided.has(link.key) && !known.has(link.key)).slice(0, max);
+}
+
+/* ---------- Eingebaute Sammlung (ohne Hilfsdienst) ----------
+   rezepte-des-tages.json: Hausrezepte als { n: Name, p: Portionen, t: Minuten, c: Kategorie, z: [Zutaten], s: [Schritte] }.
+   Jeden Tag kommen drei neue Vorschläge. Die Reihenfolge ist für alle Geräte gleich (feste Mischung, Tag bestimmt die Stelle):
+   Wer dieselbe App benutzt, sieht am selben Tag dieselben drei Rezepte. */
+export const BUILTIN_SOURCE = 'eingebaut';
+export const BUILTIN_PER_DAY = 3;
+export const builtinKey = name => `eigene:${String(name).trim().toLocaleLowerCase('de')}`;
+// Tage seit 1970 für ein Datum der Form JJJJ-MM-TT.
+export const dayNumber = day => Math.floor(Date.parse(`${day}T00:00:00Z`) / 86400000);
+
+export function validBuiltin(entry) {
+  return Boolean(entry) && typeof entry.n === 'string' && entry.n.trim() && Number.isFinite(entry.p) && entry.p > 0 && Number.isFinite(entry.t) && entry.t > 0 &&
+    Array.isArray(entry.z) && entry.z.length > 0 && entry.z.every(line => typeof line === 'string') && Array.isArray(entry.s) && entry.s.length > 0 && entry.s.every(step => typeof step === 'string');
+}
+// Feste, von der Tageszahl unabhängige Mischung 0 … n-1 (Mulberry32 mit festem Startwert).
+export function fixedOrder(length, seed = 20260101) {
+  const order = Array.from({ length }, (_, index) => index);
+  let state = seed >>> 0;
+  const random = () => { state = (state + 0x6D2B79F5) >>> 0; let t = state; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let index = length - 1; index > 0; index--) { const other = Math.floor(random() * (index + 1)); [order[index], order[other]] = [order[other], order[index]]; }
+  return order;
+}
+// Die heutigen Vorschläge: ab der Stelle des Tages in der festen Reihenfolge die nächsten, die noch nicht entschieden und nicht schon vorhanden sind.
+export function planBuiltin(collection, day, decided = new Set(), known = new Set(), count = BUILTIN_PER_DAY) {
+  const valid = collection.filter(validBuiltin), size = valid.length;
+  if (!size) return [];
+  const order = fixedOrder(size), start = (((dayNumber(day) * count) % size) + size) % size, picks = [];
+  for (let offset = 0; offset < size && picks.length < count; offset++) {
+    const entry = valid[order[(start + offset) % size]], key = builtinKey(entry.n);
+    if (!decided.has(key) && !known.has(key)) picks.push({ key, title: entry.n, builtin: entry.n });
+  }
+  return picks;
+}
+// Entwurf wie aus dem Import: Zutaten über denselben Zerleger, Schritte nummeriert.
+export function draftFromBuiltin(entry) {
+  const ingredients = entry.z.map(parseIngredientLine).filter(Boolean);
+  const steps = entry.s.map((step, index) => `${index + 1}. ${step}`).join('\n\n');
+  return { name: entry.n, servings: entry.p, tags: entry.c ? [entry.c] : [], ingredients, instructions: `Gesamtzeit: ${durationLabel(entry.t)}\n\n${steps}`, warnings: [], via: 'schema', sourceUrl: '' };
 }
