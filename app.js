@@ -3,7 +3,7 @@ import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, 
 import { splitSteps } from './cook.js';
 import { shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
-import { BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
+import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
@@ -1051,7 +1051,7 @@ async function openHelp() {
 $('#open-help').addEventListener('click', () => guard(openHelp));
 
 /* ---------- Rezepte des Tages ---------- */
-// Ohne Einstellung kommen jeden Tag drei Rezepte aus der eingebauten Sammlung (rezepte-des-tages.json, kein Hilfsdienst nötig).
+// Ohne Einstellung kommen jeden Tag drei Rezepte aus der eingebauten Sammlung (rezepte-des-tages.json, kein Hilfsdienst nötig), danach neu zusammengestellte (recipe-maker.js).
 // Mit einem Link in den Einstellungen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
 // noch nicht entschiedenen Rezepte kommen einzeln zum Durchklicken. Gemerkt wird nur auf diesem Gerät: heutige Auswahl, Stand und alles Entschiedene.
 const dailyStore = () => `einkauf-daily:${namespace()}`;
@@ -1070,7 +1070,9 @@ function saveDaily() { try { localStorage.setItem(dailyStore(), JSON.stringify({
 // Schlüssel der eigenen Rezepte: Quelle (Link) und Name, damit dasselbe Rezept nicht noch einmal vorgeschlagen wird.
 const knownRecipeKeys = () => new Set(active(state.recipes).flatMap(row => [row.name ? builtinKey(row.name) : '', row.sourceUrl ? recipeKey(row.sourceUrl) : '']).filter(Boolean));
 // Wie viele sind heute noch offen? null = heute noch nicht geladen.
-const dailyLeft = () => { const d = loadDaily(); return d.day === localDay() && d.source === dailySourceKey() ? Math.max(0, d.queue.length - d.index) : null; };
+// Ein heute geladener, aber leerer Stand der Sammlung (aus der Zeit vor den neuen Rezepten) gilt als veraltet und wird neu geplant.
+const dailyFresh = d => d.day === localDay() && d.source === dailySourceKey() && !(d.builtin && !d.queue.length);
+const dailyLeft = () => { const d = loadDaily(); return dailyFresh(d) ? Math.max(0, d.queue.length - d.index) : null; };
 function renderDailyButton() {
   const left = dailyLeft();
   $('#daily-label').textContent = left === null ? 'Rezepte des Tages' : left === 0 ? 'Rezepte des Tages: alles gesehen' : `Rezepte des Tages · ${left} offen`;
@@ -1086,10 +1088,12 @@ async function loadBuiltin() {
 }
 async function loadDailyList(signal) {
   const source = dailySource(), old = loadDaily(), key = dailySourceKey();
-  if (old.day === localDay() && old.source === key) return old;
+  if (dailyFresh(old)) return old;
   if (!source) {
-    const collection = await loadBuiltin();
-    daily = { day: localDay(), source: key, queue: planBuiltin(collection, localDay(), new Set(old.decided), knownRecipeKeys()), index: 0, outcome: {}, decided: old.decided, found: collection.length, builtin: true };
+    const collection = await loadBuiltin(), known = knownRecipeKeys(), queue = planBuiltin(collection, localDay(), new Set(old.decided), known);
+    // Ist die Sammlung durch, kommen die fehlenden Plätze des Tages aus neu zusammengestellten Rezepten (recipe-maker.js, wird erst dann geladen).
+    if (queue.length < BUILTIN_PER_DAY) queue.push(...(await import('./recipe-maker.js')).planGenerated(localDay(), known, queue.length));
+    daily = { day: localDay(), source: key, queue, index: 0, outcome: {}, decided: old.decided, found: collection.length, builtin: true };
   } else {
     const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) }, signal);
     const links = extractRecipeLinks(html, source);
@@ -1106,7 +1110,8 @@ function prefetchDaily() {
 }
 async function dailyDraft(item) {
   if (!dailyDrafts.has(item.key)) {
-    if (item.builtin) {
+    if (item.gen !== undefined) dailyDrafts.set(item.key, draftFromBuiltin((await import('./recipe-maker.js')).makeRecipe(item.gen)));
+    else if (item.builtin) {
       const entry = (await loadBuiltin()).find(candidate => candidate.n === item.builtin);
       if (!entry) throw new Error('Dieses Rezept gibt es in der Sammlung nicht mehr.');
       dailyDrafts.set(item.key, draftFromBuiltin(entry));
@@ -1117,8 +1122,8 @@ async function dailyDraft(item) {
   }
   return dailyDrafts.get(item.key);
 }
-function dailyButtons({ add = false, skip = false, retry = false, reset = false } = {}) {
-  $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry; $('#daily-reset').hidden = !reset;
+function dailyButtons({ add = false, skip = false, retry = false } = {}) {
+  $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
   $('#daily-add').disabled = $('#daily-skip').disabled = false;
 }
 function fillDailyCard(draft, item) {
@@ -1139,7 +1144,7 @@ function fillDailyCard(draft, item) {
   if (item.url) {
     const link = element('a', `Auf ${hostLabel(item.url)} ansehen`, 'daily-link'); link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
     card.append(link);
-  } else card.append(element('p', 'Aus der eingebauten Sammlung', 'hint'));
+  } else card.append(element('p', item.gen === undefined ? 'Aus der eingebauten Sammlung' : 'Neu zusammengestellt. Gespeichert wird nur, was du hinzufügst.', 'hint'));
 }
 async function showDaily() {
   const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress'), note = $('#daily-note');
@@ -1154,8 +1159,7 @@ async function showDaily() {
     while (d.index < d.queue.length && known.has(d.queue[d.index].key)) { d.outcome[d.queue[d.index].key] = 'known'; d.index += 1; }
     saveDaily(); renderDailyButton();
     if (!d.queue.length) {
-      if (d.builtin) { card.replaceChildren(element('p', `Du hast alle ${d.found} Rezepte der Sammlung gesehen oder schon bei deinen Rezepten.`)); dailyButtons({ reset: true }); return; }
-      card.replaceChildren(element('p', d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
+      card.replaceChildren(element('p', d.builtin ? 'Heute gibt es keine neuen Vorschläge. Morgen geht es weiter.' : d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
       dailyButtons(); return;
     }
     if (d.index >= d.queue.length) {
@@ -1186,7 +1190,7 @@ function decideDaily(outcome) {
   const d = loadDaily(), item = d.queue[d.index];
   if (!item) return;
   d.outcome[item.key] = outcome;
-  if (!d.decided.includes(item.key)) d.decided.push(item.key);
+  if (item.gen === undefined && !d.decided.includes(item.key)) d.decided.push(item.key);   // gemerkt wird nur die Sammlung; neu zusammengestellte Rezepte kommen von selbst nicht wieder
   d.index += 1; saveDaily(); renderDailyButton();
   return showDaily();
 }
@@ -1202,10 +1206,6 @@ function addDailyRecipe() {
 $('#daily-open').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   $('#daily-dialog').showModal(); showDaily();
-}));
-$('#daily-reset').addEventListener('click', () => guard(() => {
-  const d = loadDaily(); d.decided = d.decided.filter(key => !key.startsWith('eigene:')); d.day = ''; saveDaily();
-  return showDaily();
 }));
 $('#daily-add').addEventListener('click', () => guard(() => { addDailyRecipe(); return decideDaily('added'); }));
 $('#daily-skip').addEventListener('click', () => guard(() => decideDaily('skipped')));
