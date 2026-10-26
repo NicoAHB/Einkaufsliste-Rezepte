@@ -52,7 +52,7 @@
 
   <header class="topbar">
     <h1 class="visually-hidden">Einkauf & Rezepte</h1>
-    <button id="syncline" class="syncline" type="button" title="Jetzt abgleichen (ohne Verbindung: Einstellungen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></button>
+    <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Einstellungen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></p>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
   <div id="message" class="notice error" role="alert" hidden></div>
@@ -131,9 +131,11 @@
         <label>Branch<input name="branch" value="main" autocapitalize="off" required maxlength="200"></label>
         <label>JSON-Datei im Daten-Repository<input name="path" value="daten.json" autocapitalize="off" required maxlength="200"></label>
         <label>Dein persönlicher GitHub-Token<input name="token" type="password" autocomplete="off" spellcheck="false" required></label>
-        <p class="hint">Der Token bleibt im Browser dieses Geräts. Er gehört niemals ins öffentliche Repository. Verwende dafür nur vertrauenswürdige Geräte.</p>
+        <label>Token gültig bis (optional)<input name="tokenExpires" type="date"></label>
+        <p class="hint">Das Ablaufdatum steht bei GitHub beim Token. Sieben Tage vorher erinnert dich die Statuszeile oben. Bei „No expiration“ leer lassen.</p>
+        <p class="hint">Der Token bleibt im Browser dieses Geräts. Er gehört niemals ins öffentliche Repository. Verwende dafür nur vertrauenswürdige Geräte. „Token entfernen“ trennt dieses Gerät und öffnet den Beispielmodus; deine Daten auf GitHub bleiben unberührt.</p>
         <button type="submit">Speichern & verbinden</button>
-        <button id="disconnect" type="button" class="secondary">Token entfernen & Beispielmodus öffnen</button>
+        <button id="disconnect" type="button" class="secondary">Token entfernen</button>
         </div>
         </details>
       </form>
@@ -178,7 +180,7 @@
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.6 · Geschäfte als Logo · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.7 · Speichern-Knöpfe · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>

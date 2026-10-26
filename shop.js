@@ -1,3 +1,4 @@
+import { chainOf } from './brand.js';
 /* „Im Laden“-Modus: Was steht für das Geschäft, in dem man gerade ist, noch auf der Liste? Reine Logik ohne DOM.
    Artikel ohne Geschäft kann man in jedem Laden kaufen. Sie stehen deshalb überall, bis sie abgehakt sind: Wer sie bei Edeka abhakt,
    findet sie bei Lidl nicht mehr. Damit man einen versehentlichen Tipp zurücknehmen kann, bleibt ein solcher Artikel nur in dem Geschäft
@@ -18,6 +19,5 @@ export function shopView(items, storeId, session = new Map(), takesAnywhere = tr
 // Zahl der offenen Artikel, die man in diesem Geschäft kaufen kann (eigene und „überall möglich“).
 export const shopCount = (items, storeId, takesAnywhere = true) => items.filter(item => !item.checked && (item.storeId ? item.storeId === storeId : takesAnywhere)).length;
 
-// Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien: Dort kauft man kein Brot nebenbei.
-const DRUGSTORE = /^(ro(ss|ß)mann|dm|dm-drogerie|müller|mueller|douglas|budni)(\b|$)/i;
-export const takesAnywhere = store => typeof store?.anywhere === 'boolean' ? store.anywhere : !DRUGSTORE.test(String(store?.name || '').trim());
+// Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien (Tabelle in brand.js): Dort kauft man kein Brot nebenbei.
+export const takesAnywhere = store => typeof store?.anywhere === 'boolean' ? store.anywhere : !chainOf(store?.name)?.drugstore;

@@ -1,5 +1,5 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
-import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
+import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
@@ -29,6 +29,7 @@ const format = number => new Intl.NumberFormat('de-DE', { maximumFractionDigits:
 const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 // Für Eingabefelder: ohne Tausenderpunkt, sonst würde „1.000“ später als 1 gelesen.
 const plain = number => String(Math.round(number * 1000) / 1000).replace('.', ',');
+const dateTime = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(at));
 const shortDate = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' }).format(new Date(at));
 const connected = () => Boolean(config.owner && config.repo && config.token);
 const namespace = (value = config) => value.owner && value.repo ?
@@ -96,11 +97,14 @@ function saveLocal(nextBase, nextPending) {
   storageWrite(namespace(), { base: nextBase, pending: nextPending });
   base = nextBase; pending = nextPending; state = merge(base, pending);
 }
-function status(text, mode = 'local') { $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode; }
+function status(text, mode = 'local') {
+  $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode;
+  if (mode === 'ok' && connectFailed) { connectFailed = false; updateSaveButtons(); }
+}
 function restingStatus() {
   if (!connected()) status('Nur auf diesem Gerät', 'local');
   else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
-  else if (ready && tokenDaysLeft() !== null && tokenDaysLeft() <= 7) status(`Token läuft ${tokenLabel(tokenDaysLeft())} ab · neuen anlegen`, 'pending');
+  else if (ready && tokenWarning() !== null) status(`Token ${tokenLabel(tokenWarning())} · neuen anlegen`, tokenWarning() < 0 ? 'error' : 'pending');
   else if (ready) status('Mit GitHub abgeglichen', 'ok');
   else status('Noch nicht verbunden', 'pending');
 }
@@ -550,7 +554,9 @@ function renderStores() {
     form.append(nameLabel, linkLabel, anywhereLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
-      currentStore(store.id); commit([nextOp('stores', store.id, { name, offersUrl: offerUrl(link.value), anywhere: anywhere.checked })]); renderStores();
+      currentStore(store.id); const typed = offerUrl(link.value);
+      // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
+      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked })]); renderStores();
     }); });
     const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
@@ -1028,8 +1034,6 @@ async function api(method, body, etag = '') {
     });
   } catch { throw new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'); }
   finally { clearTimeout(timeout); }
-  const expires = response.headers.get('github-authentication-token-expiration');
-  if (expires) noteTokenExpiry(expires);
   // 304: seit der letzten Abfrage unverändert. Solche Abfragen zählen nicht zum GitHub-Limit.
   if (response.status === 304) return null;
   if (!response.ok) {
@@ -1129,7 +1133,7 @@ async function loadWorkspace() {
   render(); restingStatus(); if (connected()) await sync(true);
 }
 function fillSettings() {
-  for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token']) {
+  for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token', 'tokenExpires']) {
     $('#settings-form').elements[key].value = config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '');
   }
   const importForm = $('#import-settings-form');
@@ -1138,11 +1142,29 @@ function fillSettings() {
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
   applyFolds();
-  showConnectionState();
+  showConnectionState(); updateSaveButtons();
 }
+// Speichern-Knöpfe der Einstellungen: grau mit „Gespeichert am …“, solange nichts geändert ist; bei einer Änderung wieder aktiv.
+function saveButtonState(form, dirty, savedAt, idle) {
+  const node = form.querySelector('button[type=submit]');
+  node.disabled = !dirty;
+  node.textContent = dirty ? idle : savedAt ? `Gespeichert am ${dateTime(savedAt)}` : 'Gespeichert';
+}
+const CONNECTION_FIELDS = ['actor', 'owner', 'repo', 'branch', 'path', 'token', 'tokenExpires'];
+let connectFailed = false;   // das letzte Speichern & Verbinden ist gescheitert: Der Knopf bleibt für einen neuen Versuch aktiv
+function updateSaveButtons() {
+  showConnectionState();
+  const form = $('#settings-form'), imports = $('#import-settings-form');
+  const changed = CONNECTION_FIELDS.some(key => form.elements[key].value.trim() !== (config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '')));
+  saveButtonState(form, !connected() || changed || connectFailed, config.savedAt, connected() ? 'Speichern' : 'Speichern & verbinden');
+  const importChanged = imports.elements.importProxy.value.trim() !== (config.importProxy || '') || imports.elements.publicProxy.checked !== Boolean(config.publicProxy);
+  saveButtonState(imports, importChanged, config.importSavedAt, 'Import-Einstellungen speichern');
+  if (!importChanged && !config.importSavedAt && !config.importProxy && !config.publicProxy) imports.querySelector('button[type=submit]').textContent = 'Import-Einstellungen speichern';
+}
+for (const id of ['#settings-form', '#import-settings-form']) for (const type of ['input', 'change']) $(id).addEventListener(type, updateSaveButtons);
 function showConnectionState() {
   const left = tokenDaysLeft();
-  $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}${left !== null && left <= 14 ? ` · Token läuft ${tokenLabel(left)} ab` : ''}` : 'nicht verbunden';
+  $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}${left !== null && left <= 14 ? ` · Token ${tokenLabel(left)}` : ''}` : 'nicht verbunden';
 }
 // Welche Bereiche der Einstellungen offen sind, merkt sich jedes Gerät. „Gemeinsame Liste“ steht offen, solange nichts verbunden ist.
 function applyFolds() {
@@ -1153,15 +1175,11 @@ document.querySelectorAll('#settings details.fold').forEach(node => node.addEven
   const open = [...document.querySelectorAll('#settings details.fold[open]')].map(entry => entry.id).filter(id => id !== 'connection-details' || connected());
   if (JSON.stringify(open) !== JSON.stringify(config.folds || [])) saveConfig({ ...config, folds: open });
 }));
-// Läuft der Token bald ab, sagt GitHub das in einem Antwortkopf (nur bei Tokens mit Ablaufdatum): Dann warnt die Statuszeile ab sieben Tagen vorher.
-const tokenDaysLeft = () => Number.isFinite(Date.parse(config.tokenExpires)) ? Math.ceil((Date.parse(config.tokenExpires) - Date.now()) / 86400000) : null;
-const tokenLabel = days => days <= 0 ? 'heute' : days === 1 ? 'morgen' : `in ${days} Tagen`;
-function noteTokenExpiry(header) {
-  const at = Date.parse(String(header).trim().replace(' UTC', 'Z').replace(' ', 'T'));
-  if (!Number.isFinite(at)) return;
-  const iso = new Date(at).toISOString();
-  if (iso !== config.tokenExpires) { saveConfig({ ...config, tokenExpires: iso }); showConnectionState(); }
-}
+// Ablaufdatum des Tokens (steht bei GitHub beim Token, hier von Hand eingetragen: GitHub gibt es dem Browser nicht heraus). Ab sieben Tagen vorher warnt die Statuszeile.
+// Der Token gilt bis zum Ende dieses Tages. Ergebnis: Tage ab heute (0 = heute, negativ = abgelaufen) oder null ohne Datum.
+const tokenDaysLeft = () => /^\d{4}-\d{2}-\d{2}$/.test(config.tokenExpires || '') ? Math.round((Date.parse(`${config.tokenExpires}T12:00:00`) - Date.parse(`${localDay()}T12:00:00`)) / 86400000) : null;
+const tokenLabel = days => days < 0 ? 'abgelaufen' : days === 0 ? 'läuft heute ab' : days === 1 ? 'läuft morgen ab' : `läuft in ${days} Tagen ab`;
+const tokenWarning = () => { const left = tokenDaysLeft(); return left !== null && left <= 7 ? left : null; };
 const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
 function applyTheme() {
   const root = document.documentElement, palette = PALETTES.includes(config.palette) ? config.palette : 'blau';
@@ -1170,7 +1188,9 @@ function applyTheme() {
   root.dataset.palette = palette;
   document.querySelectorAll('#palette button').forEach(node => node.setAttribute('aria-checked', String(node.dataset.palette === palette)));
   // Die Farbe der Statusleiste folgt der gewählten Hintergrundfarbe, nicht nur dem Gerät.
-  const [red, green, blue] = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+  const channels = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).map(Number);
+  if (channels.length < 3 || channels[3] === 0) return;   // noch keine Farbe berechnet: Statusleiste unverändert lassen
+  const [red, green, blue] = channels;
   $('#theme-color').content = `#${[red, green, blue].map(value => Math.round(value).toString(16).padStart(2, '0')).join('')}`;
 }
 function sameTarget(left, right) { return namespace(left) === namespace(right); }
@@ -1537,7 +1557,7 @@ $('#template-form').addEventListener('submit', event => { event.preventDefault()
 
 /* ---------- Datenumfang ---------- */
 const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
-const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry;
+const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry + removed.aliases + removed.templates;
 function noteCompaction(result) {
   $('#storage-note').textContent = !result?.changed ? 'Es gab nichts aufzuräumen.' :
     `Aufgeräumt: ${entries(result.removed)} Einträge entfernt, ${kb(result.before - result.after)} gespart.`;
@@ -1592,7 +1612,10 @@ document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('c
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
 // Die Statuszeile oben ist zugleich ein Knopf: verbunden gleicht sie ab, sonst führt sie in die Einstellungen zum Verbinden.
-$('#syncline').addEventListener('click', () => guard(() => connected() ? sync(true) : tab('settings')));
+$('#syncline').addEventListener('click', () => guard(() => {
+  if (connected() && tokenWarning() === null) return sync(true);
+  tab('settings'); $('#connection-details').open = true;   // ohne Verbindung oder bei ablaufendem Token: dorthin, wo man ihn einträgt
+}));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
@@ -1749,22 +1772,28 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   const form = event.currentTarget, next = { ...config };
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token']) next[key] = form.elements[key].value.trim();
-  if (next.token !== config.token) delete next.tokenExpires;
+  next.tokenExpires = form.elements.tokenExpires.value;
+  if (next.token !== config.token && next.tokenExpires === (config.tokenExpires || '')) next.tokenExpires = '';   // neuer Token: das alte Datum gilt nicht mehr
   if (!/^[A-Za-z0-9-]+$/.test(next.owner) || !/^[A-Za-z0-9_.-]+$/.test(next.repo) ||
       !next.branch || !next.path.endsWith('.json') || next.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Bitte Benutzername, Repository, Branch und einen relativen JSON-Dateinamen prüfen (keine vollständige URL).');
   if (!sameTarget(config, next) && pending.length) throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
+  delete next.savedAt;
   saveConfig(next); retryAt = 0; message(); await loadWorkspace();
+  // „Gespeichert am …“ erst, wenn die Verbindung klappt; sonst bleibt der Knopf für einen neuen Versuch aktiv.
+  connectFailed = $('#status').dataset.state === 'error';
+  if (!connectFailed) saveConfig({ ...config, savedAt: new Date().toISOString() });
+  updateSaveButtons();
 }); });
 $('#import-settings-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, text = form.elements.importProxy.value.trim(), proxy = workerHost(text);
   if (text && !proxy) throw new Error('Bitte die Adresse deines Cloudflare-Workers eingeben. Sie beginnt mit https:// und endet auf .workers.dev.');
-  saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked });
-  form.elements.importProxy.value = proxy; message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
+  saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked, importSavedAt: new Date().toISOString() });
+  form.elements.importProxy.value = proxy; updateSaveButtons(); message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
 }); });
 $('#test-proxy').addEventListener('click', () => guard(async () => {
   const proxy = workerHost($('#import-settings-form').elements.importProxy.value);
   if (!proxy) throw new Error('Bitte zuerst die Adresse deines Hilfsdienstes eintragen (https://…workers.dev).');
-  saveConfig({ ...config, importProxy: proxy });
+  saveConfig({ ...config, importProxy: proxy, importSavedAt: new Date().toISOString() }); updateSaveButtons();
   try { await fetchRecipePage('https://example.com/', { workerUrl: proxy, allowPublic: false }); }
   catch (error) { throw new Error(`Der Hilfsdienst antwortet nicht wie erwartet. ${error.message}`); }
   message(); status('Hilfsdienst funktioniert', 'ok'); setTimeout(restingStatus, 2500);
@@ -1772,7 +1801,8 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, folds: config.folds, storeStyle: config.storeStyle, importProxy: config.importProxy, publicProxy: config.publicProxy });
+  const { owner, repo, branch, path, token, tokenExpires, savedAt, ...kept } = config;   // alles andere (Name, Darstellung, Hilfsdienst …) bleibt auf diesem Gerät
+  saveConfig(kept);
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));

@@ -31,6 +31,8 @@ export function validateRow(key, row) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
+  // `anywhere` (Version 2.6): ob „Im Laden“ Artikel ohne Geschäft angezeigt werden; fehlt oder null = Voreinstellung nach dem Namen (siehe shop.js).
+  if (key === 'stores' && row.anywhere !== undefined && row.anywhere !== null && typeof row.anywhere !== 'boolean') throw new Error('Ungültige Einstellung für Artikel ohne Geschäft.');
   if (key === 'stores' && row.offersUrl !== undefined) {
     if (typeof row.offersUrl !== 'string') throw new Error('Ungültiger Angebotslink.');
     offerUrl(row.offersUrl);
