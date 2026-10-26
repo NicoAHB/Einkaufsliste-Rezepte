@@ -69,8 +69,9 @@ const pickStore = async (page, name) => { await expandForm(page); await page.loc
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false };
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag' };
+  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, tokenExpires: '' };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag, github-authentication-token-expiration' };
+  const expiry = () => behavior.tokenExpires ? { 'github-authentication-token-expiration': behavior.tokenExpires } : {};
   return {
     stats, photos, behavior, get content() { return content; },
     async handler(route) {
@@ -99,8 +100,8 @@ function github(initial) {
       }
       if (request.method() === 'GET') {
         stats.gets++;
-        if (request.headers()['if-none-match'] === etag) { stats.notModified++; return route.fulfill({ status: 304, headers: { ...cors, etag } }); }
-        return route.fulfill({ status: 200, headers: { ...cors, etag, 'content-type': 'application/json' },
+        if (request.headers()['if-none-match'] === etag) { stats.notModified++; return route.fulfill({ status: 304, headers: { ...cors, ...expiry(), etag } }); }
+        return route.fulfill({ status: 200, headers: { ...cors, ...expiry(), etag, 'content-type': 'application/json' },
           body: JSON.stringify({ encoding: 'base64', sha, content: Buffer.from(JSON.stringify(content)).toString('base64') }) });
       }
       const body = JSON.parse(request.postData());
@@ -1007,6 +1008,133 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Vorlagen: Liste als Vorlage speichern und später wieder auf die Liste setzen (mit Geschäft, zusammengezählt)', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    assert.equal(await page.locator('#open-templates').isHidden(), true, 'zugeklapptes Formular: Vorlagen erst beim Hineintippen');
+    await expandForm(page);
+    await page.click('#open-templates'); await sheetOpen(page);
+    assert.match(await page.textContent('#template-list'), /Noch keine Vorlage/);
+    assert.match(await page.textContent('#template-hint'), /4 offenen Artikel von „Alle Geschäfte“/);
+    await page.fill('#template-form input[name=name]', 'Wocheneinkauf');
+    await page.click('#template-form button[type=submit]');
+    assert.match(await page.textContent('#template-list'), /Wocheneinkauf\s*4 Artikel/);
+    await synced(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    const saved = remote.content.templates.find(row => row.name === 'Wocheneinkauf');
+    assert.equal(saved.items.length, 4, 'liegt auf GitHub, die Partnerin sieht sie auch');
+    assert.ok(saved.items.some(entry => entry.name === 'Tomaten' && entry.storeId === 'store-edeka'), 'mit Geschäft');
+    // Zweimal speichern ersetzt die Vorlage, statt eine zweite anzulegen
+    await page.click('#template-form button[type=submit]', { trial: true }).catch(() => {});
+    await page.fill('#template-form input[name=name]', 'wocheneinkauf'); await page.click('#template-form button[type=submit]');
+    assert.equal(await page.locator('#template-list li').count(), 1);
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // Tomaten löschen, Vorlage verwenden: Tomaten sind zurück, die anderen werden zusammengezählt
+    await page.getByRole('button', { name: /^Tomaten, .*bearbeiten/ }).click(); await sheetOpen(page); await page.click('#delete-item');
+    await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten' }).count(), 0);
+    await expandForm(page); await page.click('#open-templates'); await sheetOpen(page);
+    await page.getByRole('button', { name: 'Auf die Liste' }).click();
+    await page.waitForSelector('#template-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /„Wocheneinkauf“: 1 neu, 3 dazugezählt/);
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten' }).count(), 1, 'Tomaten stehen wieder bei Edeka');
+    // Löschen einer Vorlage
+    await expandForm(page); await page.click('#open-templates'); await sheetOpen(page);
+    await page.getByRole('button', { name: /Vorlage „Wocheneinkauf“ löschen/ }).click();
+    assert.match(await page.textContent('#template-list'), /Noch keine Vorlage/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Einstellungen merken, welche Bereiche offen waren (pro Gerät, auch nach dem Neuladen)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#connection-details').evaluate(node => node.open), true, 'ohne Verbindung steht „Gemeinsame Liste“ offen');
+    await page.click('#display-details > summary'); await page.click('#pantry-details > summary');
+    await page.click('#pantry-details > summary');   // wieder zu
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
+    const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
+    await ctx.close();
+  });
+
+  test('Token mit Ablaufdatum: Warnung in der Statuszeile ab sieben Tagen vorher, sonst nichts', async () => {
+    const remote = github(structuredClone(demo));
+    const stamp = days => new Date(Date.now() + days * 86400000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+    remote.behavior.tokenExpires = stamp(60);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    assert.equal(await page.textContent('#status'), 'Mit GitHub abgeglichen', 'in 60 Tagen: keine Warnung');
+    remote.behavior.tokenExpires = stamp(3);
+    await pollNow(page);
+    await page.waitForFunction(() => /Token läuft in [23] Tagen ab/.test(document.querySelector('#status').textContent));
+    assert.equal(await page.getAttribute('#status', 'data-state'), 'pending');
+    await page.click('[data-tab=settings]');
+    assert.match(await page.textContent('#connection-state'), /Token läuft in [23] Tagen ab/);
+    // Neuer Token ohne Ablaufdatum: Warnung verschwindet
+    remote.behavior.tokenExpires = '';
+    await page.click('#connection-details > summary');
+    await page.fill('#settings-form input[name=token]', 'neuer-token'); await page.click('#settings-form button[type=submit]');
+    await page.waitForFunction(() => document.querySelector('#status').textContent === 'Mit GitHub abgeglichen');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).tokenExpires, undefined);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Preiszeile unter dem Artikel ist kurz (eine Zeile statt langem Satz)', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
+    await open(page);
+    const note = page.locator('#items .item', { hasText: 'Tomaten' }).locator('small.price-note', { hasText: /^(Am günstigsten|Preis):/ });
+    const text = await note.textContent();
+    assert.match(text, /^Am günstigsten: .+ [\d,]+\s€\/\S+ · \d\d\.\d\d\.\d\d( \(alt\))?$/, text);
+    assert.ok((await note.boundingBox()).height < 2.2 * parseFloat(await note.evaluate(node => getComputedStyle(node).lineHeight)), 'höchstens zwei Zeilen statt vier');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Android (Pixel 7, Chrome): Layout, Ziehen zum Löschen per Touch, kein Kontextmenü beim langen Drücken', async () => {
+    const { devices } = playwright;
+    const { ctx, page, problems } = await context({ context: { ...devices['Pixel 7'] } });
+    await open(page);
+    assert.match(await page.evaluate(() => navigator.userAgent), /Android/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.ok((await page.locator('#items .item').first().boundingBox()).y < 420, 'erste Zeile früh im Bild');
+    const row = page.locator('#items .item', { hasText: 'Milch' });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    // Langes Drücken löst auf Android ein „contextmenu“ aus: Es wird unterdrückt
+    const prevented = await row.locator('.item-copy').evaluate(node => { const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; });
+    assert.equal(prevented, true);
+    const box = await row.locator('.item-copy').boundingBox(), width = await page.evaluate(() => innerWidth);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const y = box.y + box.height / 2;
+    // Kurzes Halten mit Wischen bricht ab (es soll scrollen)
+    await touch('touchStart', box.x + 40, y); await touch('touchMove', box.x + 40, y + 30); await page.waitForTimeout(600);
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    await touch('touchEnd');
+    // Halten, ziehen, loslassen im roten Mülleimer
+    await touch('touchStart', box.x + 40, y);
+    await page.waitForSelector('.drag-ghost');
+    for (let step = 1; step <= 8; step++) await touch('touchMove', box.x + 40 + (width - 30 - box.x - 40) * step / 8, y);
+    await page.waitForSelector('#trash-zone.hot');
+    assert.equal(await page.evaluate(() => scrollY) >= 0, true);
+    await touch('touchEnd');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Milch'));
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'danach öffnet sich nichts');
+    // Im Laden: Geschäfte oben, Layout ohne Überlauf
+    await page.click('#mode-shop');
+    assert.ok((await page.locator('#shop-chips .chip').first().boundingBox()).y < 24);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -1491,7 +1619,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   const center = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
   const holdRow = async (page, name) => {
     const row = page.locator('#items .item', { hasText: name });
-    await row.scrollIntoViewIfNeeded();
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));   // mittig, damit die untere Leiste die Zeile nicht verdeckt
     const box = await row.locator('.item-copy').boundingBox(), at = { x: box.x + 40, y: box.y + box.height / 2 };
     await page.mouse.move(at.x, at.y); await page.mouse.down();
     return { row, at };

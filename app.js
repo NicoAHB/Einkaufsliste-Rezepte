@@ -99,6 +99,7 @@ function status(text, mode = 'local') { $('#status').textContent = text; $('#sta
 function restingStatus() {
   if (!connected()) status('Nur auf diesem Gerät', 'local');
   else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
+  else if (ready && tokenDaysLeft() !== null && tokenDaysLeft() <= 7) status(`Token läuft ${tokenLabel(tokenDaysLeft())} ab · neuen anlegen`, 'pending');
   else if (ready) status('Mit GitHub abgeglichen', 'ok');
   else status('Noch nicht verbunden', 'pending');
 }
@@ -196,6 +197,7 @@ function render() {
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode(); syncForm();
+  if ($('#template-dialog').open) renderTemplates();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -290,8 +292,8 @@ function itemRow(item, withStore = false) {
   const quotes = comparePrices(item, state.stores, state.prices);
   if (quotes.length) {
     const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
-    const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
-    copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit} · eingetragen am ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
+    // Eine kurze Zeile; die ausführliche Fassung („zuletzt eingetragen am …“ je Geschäft) steht im Preisvergleich des Bearbeiten-Dialogs.
+    copy.append(element('small', `${quotes.length === 1 ? 'Preis' : 'Am günstigsten'}: ${stores} ${euros(best.rate)}/${best.unit} · ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
   }
   row.append(check, copy);
   return row;
@@ -1014,6 +1016,8 @@ async function api(method, body, etag = '') {
     });
   } catch { throw new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'); }
   finally { clearTimeout(timeout); }
+  const expires = response.headers.get('github-authentication-token-expiration');
+  if (expires) noteTokenExpiry(expires);
   // 304: seit der letzten Abfrage unverändert. Solche Abfragen zählen nicht zum GitHub-Limit.
   if (response.status === 304) return null;
   if (!response.ok) {
@@ -1121,8 +1125,30 @@ function fillSettings() {
   $('#theme').value = config.theme || 'system'; $('#group-items').checked = config.groupItems !== false; applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
-  $('#connection-details').open = !connected();
-  $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}` : 'nicht verbunden';
+  applyFolds();
+  showConnectionState();
+}
+function showConnectionState() {
+  const left = tokenDaysLeft();
+  $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}${left !== null && left <= 14 ? ` · Token läuft ${tokenLabel(left)} ab` : ''}` : 'nicht verbunden';
+}
+// Welche Bereiche der Einstellungen offen sind, merkt sich jedes Gerät. „Gemeinsame Liste“ steht offen, solange nichts verbunden ist.
+function applyFolds() {
+  const saved = config.folds || [];
+  document.querySelectorAll('#settings details.fold').forEach(node => { node.open = node.id === 'connection-details' && !connected() ? true : saved.includes(node.id); });
+}
+document.querySelectorAll('#settings details.fold').forEach(node => node.addEventListener('toggle', () => {
+  const open = [...document.querySelectorAll('#settings details.fold[open]')].map(entry => entry.id).filter(id => id !== 'connection-details' || connected());
+  if (JSON.stringify(open) !== JSON.stringify(config.folds || [])) saveConfig({ ...config, folds: open });
+}));
+// Läuft der Token bald ab, sagt GitHub das in einem Antwortkopf (nur bei Tokens mit Ablaufdatum): Dann warnt die Statuszeile ab sieben Tagen vorher.
+const tokenDaysLeft = () => Number.isFinite(Date.parse(config.tokenExpires)) ? Math.ceil((Date.parse(config.tokenExpires) - Date.now()) / 86400000) : null;
+const tokenLabel = days => days <= 0 ? 'heute' : days === 1 ? 'morgen' : `in ${days} Tagen`;
+function noteTokenExpiry(header) {
+  const at = Date.parse(String(header).trim().replace(' UTC', 'Z').replace(' ', 'T'));
+  if (!Number.isFinite(at)) return;
+  const iso = new Date(at).toISOString();
+  if (iso !== config.tokenExpires) { saveConfig({ ...config, tokenExpires: iso }); showConnectionState(); }
 }
 const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
 function applyTheme() {
@@ -1444,6 +1470,58 @@ $('#pantry-form').addEventListener('submit', event => { event.preventDefault(); 
   form.reset(); form.elements.name.focus();
 }); });
 
+/* ---------- Vorlagen ---------- */
+const templateRows = () => active(state.templates || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+const templateSource = () => visibleItems().filter(item => inView(item) && !item.checked);
+function renderTemplates() {
+  const list = $('#template-list'); list.replaceChildren();
+  const rows = templateRows();
+  if (!rows.length) list.append(element('li', 'Noch keine Vorlage.', 'empty'));
+  for (const row of rows) {
+    const entry = element('li'), copy = element('span');
+    copy.append(element('strong', row.name), element('small', `${row.items.length} Artikel`));
+    entry.append(copy, button('Auf die Liste', () => useTemplate(row.id), 'small'),
+      iconButton('trash', `Vorlage „${row.name}“ löschen`, () => removeRows('templates', [row.id]), 'danger'));
+    list.append(entry);
+  }
+  const source = templateSource(), store = viewStore();
+  $('#template-hint').textContent = source.length
+    ? `Gespeichert werden die ${source.length} offenen Artikel von „${store ? store.name : view === 'none' ? 'Ohne Geschäft' : 'Alle Geschäfte'}“ mit Menge und Geschäft.`
+    : 'Gerade stehen keine offenen Artikel auf der Liste.';
+  $('#template-form').querySelector('button').disabled = !source.length;
+}
+function useTemplate(id) {
+  const row = active(state.templates || []).find(entry => entry.id === id);
+  if (!row) throw new Error('Diese Vorlage wurde inzwischen gelöscht.');
+  const stores = new Set(active(state.stores).map(store => store.id)), groups = new Map();
+  for (const item of row.items) {
+    const key = item.storeId && stores.has(item.storeId) ? item.storeId : '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ name: item.name, quantity: item.quantity, unit: item.unit });
+  }
+  const ops = [], total = { added: 0, counted: 0, skipped: 0 };
+  for (const [storeId, rows] of groups) {
+    lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+    const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+    ops.push(...result.ops); total.added += result.added; total.counted += result.counted.length; total.skipped += result.skipped;
+  }
+  if (!ops.length) throw new Error('Alles davon steht schon auf der Liste.');
+  const parts = [total.added && `${total.added} neu`, total.counted && `${total.counted} dazugezählt`, total.skipped && `${total.skipped} schon vorhanden`].filter(Boolean);
+  commit(ops, `„${row.name}“: ${parts.join(', ')}`);
+  $('#template-dialog').close();
+}
+$('#open-templates').addEventListener('click', () => guard(() => { renderTemplates(); $('#template-dialog').showModal(); }));
+$('#template-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, name = form.elements.name.value.trim().replace(/\s+/g, ' '), source = templateSource();
+  if (!name) throw new Error('Bitte einen Namen eingeben.');
+  if (!source.length) throw new Error('Es gibt keine offenen Artikel zum Speichern.');
+  if (source.length > 80) throw new Error('Eine Vorlage nimmt höchstens 80 Artikel auf. Bitte erst die Ansicht auf ein Geschäft eingrenzen.');
+  const items = source.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit, ...(item.storeId ? { storeId: item.storeId } : {}) }));
+  const same = templateRows().find(entry => entry.name.toLowerCase() === name.toLowerCase());
+  commit([same ? nextOp('templates', same.id, { items }) : nextOp('templates', uid(), { name, items })], `Vorlage „${same?.name || name}“ gespeichert (${items.length} Artikel)`);
+  form.reset(); renderTemplates();
+}); });
+
 /* ---------- Datenumfang ---------- */
 const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry;
@@ -1658,6 +1736,7 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   const form = event.currentTarget, next = { ...config };
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token']) next[key] = form.elements[key].value.trim();
+  if (next.token !== config.token) delete next.tokenExpires;
   if (!/^[A-Za-z0-9-]+$/.test(next.owner) || !/^[A-Za-z0-9_.-]+$/.test(next.repo) ||
       !next.branch || !next.path.endsWith('.json') || next.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Bitte Benutzername, Repository, Branch und einen relativen JSON-Dateinamen prüfen (keine vollständige URL).');
   if (!sameTarget(config, next) && pending.length) throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
@@ -1680,7 +1759,7 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, importProxy: config.importProxy, publicProxy: config.publicProxy });
+  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, folds: config.folds, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));

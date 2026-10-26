@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.4
+# Einkauf & Rezepte – Version 2.5
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,9 +16,17 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
 
+## Neu in Version 2.5: Vorlagen, kürzere Preiszeilen, Token-Warnung
+
+- **Vorlagen.** Eine Vorlage ist eine gespeicherte Liste, z. B. „Wocheneinkauf“. In der Einkaufsliste ins Namensfeld tippen: Unter der Schnellwahl erscheint **Vorlagen**. Im Dialog steht oben, was schon gespeichert ist (**Auf die Liste** trägt alle Artikel ein, schon offene werden zusammengezählt, jeder Artikel bleibt bei seinem Geschäft; Mülleimer löscht die Vorlage). Unten speichert **Als Vorlage speichern** die **offenen** Artikel der gerade gewählten Ansicht (Alle Geschäfte oder ein Geschäft) mit Menge und Geschäft. Gleicher Name (Groß-/Kleinschreibung egal) ersetzt die Vorlage. Höchstens 80 Artikel je Vorlage. Vorlagen liegen in der gemeinsamen Datei (`templates`), beide sehen sie.
+- **Kürzere Preiszeile.** Unter einem Artikel steht statt des langen Satzes nur noch **„Am günstigsten: Lidl 3,98 €/kg · 25.10.26“** (bei einem einzigen Geschäft „Preis: …“), mit „(alt)“, wenn die Notiz über zwei Monate alt ist. Die ausführliche Fassung („zuletzt eingetragen am …“ je Geschäft) steht im Preisvergleich im Bearbeiten-Dialog.
+- **Token-Warnung.** Hat der Token ein Ablaufdatum, meldet GitHub es mit jeder Antwort. Sieben Tage vorher steht oben in der Statuszeile **„Token läuft in 3 Tagen ab · neuen anlegen“** (orange), in den Einstellungen unter „Gemeinsame Liste“ ab 14 Tagen vorher ebenfalls. Bei einem Token ohne Ablauf erscheint nichts. Ist er abgelaufen, bleibt es bei der bisherigen Meldung (Änderungen bleiben lokal gesichert). Ein neuer Token löscht die Warnung. Ob GitHub den Ablaufhinweis im Browser freigibt, haben wir nur mit einer Simulation geprüft: Bleibt die Warnung bei einem Token mit Ablaufdatum aus, ist das der Grund und nichts geht verloren.
+- **Einstellungen merken die offenen Bereiche** (pro Gerät). „Gemeinsame Liste“ steht offen, solange nicht verbunden ist; das wird nicht gemerkt.
+- **Android.** Ziehen zum Löschen, Layout, Im Laden und die Unterdrückung des Kontextmenüs beim langen Drücken sind mit einem emulierten Pixel 7 (Chrome) geprüft, **nicht** auf einem echten Android-Gerät.
+
 ## Neu in Version 2.4: Einstellungen zum Auf- und Zuklappen
 
-Jeder Bereich der Einstellungen (Gemeinsame Liste, Rezepte aus Links laden, Vorrat, Datenumfang, Darstellung & Sicherung) ist ein Abschnitt, den man mit einem Tipp auf die Überschrift (Pfeil rechts) auf- und zuklappt. Sie stehen zunächst zu; nur „Gemeinsame Liste“ ist offen, solange noch nicht verbunden ist. Wie lange sie offen bleiben, merkt sich die App nicht: Beim nächsten Besuch sind sie wieder zu.
+Jeder Bereich der Einstellungen (Gemeinsame Liste, Rezepte aus Links laden, Vorrat, Datenumfang, Darstellung & Sicherung) ist ein Abschnitt, den man mit einem Tipp auf die Überschrift (Pfeil rechts) auf- und zuklappt. Sie stehen zunächst zu; nur „Gemeinsame Liste“ ist offen, solange noch nicht verbunden ist. Seit Version 2.5 merkt sich jedes Gerät, welche Bereiche offen waren.
 
 ## Neu in Version 2.3: weniger Platz oben, Geschäfte zuerst im Laden
 
@@ -383,6 +391,7 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln |
 | `pantry` (optional) | Vorrat (Version 1.6): `name` und die üblichen Zeitstempel |
 | `names` (optional) | Namensgedächtnis aus aufgeräumten Artikeln (Version 1.6): `name`, `count`, `at`, optional `category`, `unit` |
+| `templates` (optional) | Einkaufsvorlagen (Version 2.5): `name` (höchstens 60 Zeichen) und `items`: bis zu 80 Artikel `{ name, quantity, unit, storeId? }`; die ganze Artikelliste wird als ein Feld zusammengeführt (die neuere Fassung gewinnt) |
 | `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), z. B. aus Kassenbons und Schreibweisen: `from` (normalisierter Text, z. B. `tom cherry`), `name` (Name in der App) |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung (wird beim Aufräumen auf die letzten 600 gekürzt); `sync.compactedAt` nennt den Zeitpunkt des letzten Aufräumens |
 
@@ -417,6 +426,12 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.5:
+
+- [ ] Ins Namensfeld tippen → **Vorlagen**: Liste als Vorlage speichern, einen Artikel löschen, Vorlage auf die Liste setzen. Auf dem zweiten Handy erscheint die Vorlage ebenfalls.
+- [ ] Einstellungen: Bereich aufklappen, App schließen und neu öffnen: derselbe Bereich ist offen.
+- [ ] Android: Zeile lange halten und in den roten Mülleimer ziehen; die Seite scrollt dabei nicht, es erscheint kein Kontextmenü.
 
 Weitere Testpunkte für Version 2.3:
 
