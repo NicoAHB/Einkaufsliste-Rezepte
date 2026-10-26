@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.1
+# Einkauf & Rezepte – Version 2.2
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,6 +16,16 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
 
+## Neu in Version 2.2: Farbwahl, Standard ist dunkles Blau
+
+Das bisherige Dunkelgrün ist ersetzt: **Standard ist jetzt Blau** (im Dunkelmodus ein tiefes Marineblau, im Hellmodus ein zartes Pastellblau). Unter **Einstellungen → Darstellung & Sicherung → Farbe** stehen sechs Farben zur Wahl: **Blau, Grün, Türkis, Flieder, Rosé, Pfirsich**. Die Wahl wirkt sofort, bleibt auf diesem Gerät gespeichert (jedes Gerät kann seine eigene Farbe haben) und ändert die Hintergrundfarbe, die Karten, Linien, Knöpfe und die Farbe der Statusleiste.
+
+- **Hell = Pastell, Dunkel = tiefer Ton.** Die Farbe ist unabhängig von „Darstellung“ (Wie auf dem Gerät / Hell / Dunkel). Wer Grün mag, wählt es einfach wieder aus.
+- Alle Farben leiten sich in `styles.css` aus einem einzigen Farbton (`--h`) ab; eine weitere Farbe braucht nur eine Zeile dort, einen Knopf in `index.html` und den Namen in `theme.js` und `app.js` (`PALETTES`).
+- `theme.js` setzt Farbe und Hell/Dunkel vor dem ersten Anzeigen, damit beim Start nicht kurz die Standardfarbe aufblitzt.
+- Ein Test prüft für jede Farbe in Hell und Dunkel, dass Text, Zweittext, Akzent und Knopfbeschriftung mindestens 4,5 : 1 Kontrast haben. Rot für Warnungen und das Gelb von „Neu von …“ bleiben in jeder Farbe gleich.
+- Das App-Symbol (grüner Einkaufskorb) ist unverändert.
+
 ## Neu in Version 2.1: Artikel in den Mülleimer ziehen
 
 Keine neuen Datenfelder, nur Bedienung. In der Einkaufsliste (Ansicht **Planen**) löscht man einen Artikel auch per Geste: **Zeile lange gedrückt halten** (knapp eine halbe Sekunde, bis sie „abhebt“), dann **nach rechts** schieben. Am rechten Rand erscheint ein **roter Mülleimer**; er färbt sich dunkler und wird größer, sobald der Finger darüber ist. **Loslassen löscht** den Artikel (kurzer Hinweis „„Milch“ gelöscht“, wie beim Löschen im Dialog ohne Rückgängig-Knopf). Anderswo loslassen bricht ab, die Zeile gleitet zurück; auch **Esc** bricht ab (Tastatur am Rechner).
@@ -23,7 +33,7 @@ Keine neuen Datenfelder, nur Bedienung. In der Einkaufsliste (Ansicht **Planen**
 - Wer sich vor Ablauf der Haltezeit bewegt, **scrollt** nur; ein kurzer Tipp öffnet wie bisher die Bearbeitung. Nach langem Halten ohne Löschen öffnet sich nichts und nichts wird abgehakt.
 - Gilt für offene, abgehakte und „neu von …“-Zeilen. Im Modus **Im Laden** gibt es die Geste absichtlich nicht (dort wird nur abgehakt).
 - Der Browser darf die Seite während des Ziehens nicht mitscrollen, und der Text einer Zeile soll sich beim langen Drücken nicht markieren lassen. Beides ist abgefangen, wurde aber nur in Chromium mit simulierten Berührungen geprüft, nicht auf einem echten iPhone.
-- Die Logik steht in `dragdelete.js` (Offline-Paket v12).
+- Die Logik steht in `dragdelete.js` (Offline-Paket v12, seit Version 2.2 v13).
 
 ## Neu in Version 2.0: aufgeräumt und per Siri hinzufügen
 
@@ -392,6 +402,11 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.2:
+
+- [ ] Einstellungen → Farbe: Rosé antippen. Alles färbt sich sofort um, auch die Statusleiste oben (iPhone: Hell- und Dunkelmodus prüfen). App schließen und neu öffnen: Die Farbe ist von Anfang an da.
+- [ ] Dunkelmodus auf Blau: Text auf Karten, Knöpfen und in den Reitern ist gut lesbar; „Neu von …“ bleibt gelb, der Mülleimer beim Ziehen bleibt rot.
 
 Weitere Testpunkte für Version 2.1:
 

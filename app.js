@@ -1122,12 +1122,16 @@ function fillSettings() {
   $('#connection-details').open = !connected();
   $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}` : 'nicht verbunden';
 }
+const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
 function applyTheme() {
-  if (!config.theme || config.theme === 'system') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = config.theme;
-  // Die Farbe der Statusleiste folgt dem gewählten Design, nicht nur dem Gerät.
-  const dark = config.theme === 'dark' || (config.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  $('#theme-color').content = dark ? '#0f1914' : '#f4f6f2';
+  const root = document.documentElement, palette = PALETTES.includes(config.palette) ? config.palette : 'blau';
+  if (!config.theme || config.theme === 'system') delete root.dataset.theme;
+  else root.dataset.theme = config.theme;
+  root.dataset.palette = palette;
+  document.querySelectorAll('#palette button').forEach(node => node.setAttribute('aria-checked', String(node.dataset.palette === palette)));
+  // Die Farbe der Statusleiste folgt der gewählten Hintergrundfarbe, nicht nur dem Gerät.
+  const [red, green, blue] = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+  $('#theme-color').content = `#${[red, green, blue].map(value => Math.round(value).toString(16).padStart(2, '0')).join('')}`;
 }
 function sameTarget(left, right) { return namespace(left) === namespace(right); }
 async function backup() {
@@ -1671,11 +1675,15 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  saveConfig({ actor: config.actor, theme: config.theme, importProxy: config.importProxy, publicProxy: config.publicProxy });
+  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
+$('#palette').addEventListener('click', event => guard(() => {
+  const choice = event.target.closest('button[data-palette]')?.dataset.palette;
+  if (choice) { saveConfig({ ...config, palette: choice }); applyTheme(); }
+}));
 $('#export').addEventListener('click', () => guard(backup));
 $('#open-receipt').addEventListener('click', () => guard(() => openReceipt()));
 $('#cook-awake').addEventListener('change', event => guard(async () => { awake.cook.failed = false; saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake('cook', event.target.checked); }));

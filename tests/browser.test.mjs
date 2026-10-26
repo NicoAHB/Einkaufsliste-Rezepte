@@ -426,16 +426,93 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Dunkelmodus: Farben und Statusleistenfarbe folgen der Einstellung', async () => {
+  test('Dunkelmodus: Farben und Statusleistenfarbe folgen der Einstellung (Standard ist Blau)', async () => {
     const { ctx, page } = await context({ context: { colorScheme: 'light' } });
     await open(page);
-    assert.equal(await page.getAttribute('#theme-color', 'content'), '#f4f6f2');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#ecf0f9', 'hell: Pastellblau');
     await page.click('[data-tab=settings]');
     await page.selectOption('#theme', 'dark');
-    assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f1914');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 25, 20)');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f182e', 'dunkel: Dunkelblau, nicht mehr Dunkelgrün');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 24, 46)');
     await ctx.close();
   });
+
+  // Farbwahl: sechs Farben, hell als Pastell und dunkel als tiefer Ton; gemerkt pro Gerät, schon vor dem ersten Anzeigen angewendet
+  const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
+  const colorOf = (page, token) => page.evaluate(name => {
+    const probe = document.createElement('i'); probe.style.color = `var(${name})`; document.body.append(probe);
+    const color = getComputedStyle(probe).color.match(/[\d.]+/g).slice(0, 3).map(Number); probe.remove(); return color;
+  }, token);
+  const luminance = rgb => { const [r, g, b] = rgb.map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const contrast = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + .05) / (lo + .05); };
+
+  test('Farbwahl: Auswahl in den Einstellungen wirkt sofort, bleibt nach dem Neuladen und färbt die Statusleiste', async () => {
+    const { ctx, page, problems } = await context({ context: { colorScheme: 'dark' } });
+    await open(page);
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#palette button').count(), 6);
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'blau');
+    const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await page.locator('#palette button[data-palette=rose]').scrollIntoViewIfNeeded();
+    await page.click('#palette button[data-palette=rose]');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
+    const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.notEqual(after, before, 'der Hintergrund hat die Farbe gewechselt');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#2e0f1a', 'Statusleiste: dunkles Rosé');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'rose');
+    // Nach dem Neuladen steht die Farbe schon vor dem Start der App (theme.js im Kopf der Seite)
+    await page.reload(); await page.waitForSelector('#status[data-state]');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
+    // Hell wird es ein Pastellton; Darstellung und Farbe sind unabhängig
+    await page.selectOption('#theme', 'light');
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#f9ecf0');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    // Eine unbekannte gemerkte Farbe fällt auf Blau zurück
+    await page.evaluate(() => localStorage.setItem('einkauf-settings-v1', JSON.stringify({ actor: 'Nico', palette: 'gelb' })));
+    await page.reload(); await page.waitForSelector('#status[data-state]');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Farbwahl: Beim Trennen der Verbindung bleibt die Farbe', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: { ...connectedConfig, palette: 'flieder' }, context: { colorScheme: 'light' } });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
+    await page.click('[data-tab=settings]');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#connection-details summary').click();
+    await page.click('#disconnect');
+    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'flieder');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  for (const scheme of ['light', 'dark']) {
+    test(`Farbwahl: Alle Farben bleiben gut lesbar (${scheme}, Kontrast mindestens 4,5 : 1)`, async () => {
+      const { ctx, page } = await context({ context: { colorScheme: scheme } });
+      await open(page);
+      for (const palette of PALETTES) {
+        await page.evaluate(name => { document.documentElement.dataset.palette = name; }, palette);
+        const c = {}; for (const token of ['--bg', '--card', '--text', '--muted', '--accent', '--accent-soft', '--on-accent', '--danger']) c[token] = await colorOf(page, token);
+        for (const [a, b] of [['--text', '--bg'], ['--text', '--card'], ['--muted', '--bg'], ['--muted', '--card'], ['--accent', '--bg'], ['--accent', '--card'],
+          ['--on-accent', '--accent'], ['--accent', '--accent-soft'], ['--text', '--accent-soft'], ['--danger', '--card']]) {
+          assert.ok(contrast(c[a], c[b]) >= 4.5, `${scheme}/${palette}: ${a} auf ${b} nur ${contrast(c[a], c[b]).toFixed(2)} : 1`);
+        }
+      }
+      await ctx.close();
+    });
+  }
 
   test('Offline: App und Texterkennung starten ohne Netz, Update-Hinweis erscheint', async () => {
     const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow' } });

@@ -2,16 +2,19 @@
    Die Farbvariablen steuern helles, dunkles und automatisch gewähltes Design.
    Wichtig für iOS: Eingabefelder müssen mindestens 16 px Schrift haben, sonst zoomt Safari beim
    Antippen die Seite heran und die fixierte Leiste unten „rutscht“. */
+/* Alle Farben leiten sich von --h (Farbton) ab; die gewählte Farbe in den Einstellungen setzt nur --h. Hell = Pastelltöne, Dunkel = tiefe Töne. */
 :root {
   color-scheme:light;
-  --bg:#f4f6f2;
+  --h:222;
+  --al:32%;
+  --bg:hsl(var(--h) 50% 95%);
   --card:#fff;
-  --text:#17251f;
-  --muted:#586960;
-  --line:#e0e7e0;
-  --line-strong:#c5d1c8;
-  --accent:#12694d;
-  --accent-soft:#e3f1e9;
+  --text:hsl(var(--h) 40% 12%);
+  --muted:hsl(var(--h) 18% 36%);
+  --line:hsl(var(--h) 30% 88%);
+  --line-strong:hsl(var(--h) 22% 74%);
+  --accent:hsl(var(--h) 62% var(--al));
+  --accent-soft:hsl(var(--h) 60% 91%);
   --on-accent:#fff;
   --danger:#b3261e;
   --danger-soft:#fdeceb;
@@ -20,8 +23,8 @@
   --news:#fff1c9;
   --news-line:#d9a400;
   --news-text:#5a4300;
-  --bar:rgba(255,255,255,.9);
-  --shadow:0 1px 2px rgba(23,37,31,.05),0 8px 24px rgba(23,37,31,.06);
+  --bar:hsl(var(--h) 50% 98% / .9);
+  --shadow:0 1px 2px hsl(var(--h) 40% 12% / .05),0 8px 24px hsl(var(--h) 40% 12% / .06);
   --tabs-h:64px;
   font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-text-size-adjust:100%;
@@ -29,15 +32,15 @@
 }
 :root[data-theme=dark] {
   color-scheme:dark;
-  --bg:#0f1914;
-  --card:#18261f;
-  --text:#ecf3ee;
-  --muted:#9fb2a7;
-  --line:#26382e;
-  --line-strong:#3a5144;
-  --accent:#7fd6ad;
-  --accent-soft:#1f3a2d;
-  --on-accent:#08281a;
+  --bg:hsl(var(--h) 50% 12%);
+  --card:hsl(var(--h) 38% 18%);
+  --text:hsl(var(--h) 35% 95%);
+  --muted:hsl(var(--h) 22% 74%);
+  --line:hsl(var(--h) 32% 26%);
+  --line-strong:hsl(var(--h) 26% 38%);
+  --accent:hsl(var(--h) 70% 78%);
+  --accent-soft:hsl(var(--h) 40% 27%);
+  --on-accent:hsl(var(--h) 60% 12%);
   --danger:#ffa8a1;
   --danger-soft:#3a1f1d;
   --ok:#5fd09b;
@@ -45,21 +48,21 @@
   --news:#3d3212;
   --news-line:#e0b84a;
   --news-text:#f6e3a6;
-  --bar:rgba(24,38,31,.9);
+  --bar:hsl(var(--h) 38% 18% / .9);
   --shadow:none
 }
 @media(prefers-color-scheme:dark) {
   :root:not([data-theme=light]) {
     color-scheme:dark;
-    --bg:#0f1914;
-    --card:#18261f;
-    --text:#ecf3ee;
-    --muted:#9fb2a7;
-    --line:#26382e;
-    --line-strong:#3a5144;
-    --accent:#7fd6ad;
-    --accent-soft:#1f3a2d;
-    --on-accent:#08281a;
+    --bg:hsl(var(--h) 50% 12%);
+    --card:hsl(var(--h) 38% 18%);
+    --text:hsl(var(--h) 35% 95%);
+    --muted:hsl(var(--h) 22% 74%);
+    --line:hsl(var(--h) 32% 26%);
+    --line-strong:hsl(var(--h) 26% 38%);
+    --accent:hsl(var(--h) 70% 78%);
+    --accent-soft:hsl(var(--h) 40% 27%);
+    --on-accent:hsl(var(--h) 60% 12%);
     --danger:#ffa8a1;
     --danger-soft:#3a1f1d;
     --ok:#5fd09b;
@@ -67,10 +70,16 @@
     --news:#3d3212;
     --news-line:#e0b84a;
     --news-text:#f6e3a6;
-    --bar:rgba(24,38,31,.9);
+    --bar:hsl(var(--h) 38% 18% / .9);
     --shadow:none
   }
 }
+/* Wählbare Farben (Einstellungen → Darstellung); ohne Angabe gilt Blau. */
+:root[data-palette=gruen] { --h:152; --al:27% }
+:root[data-palette=tuerkis] { --h:188; --al:26% }
+:root[data-palette=flieder] { --h:268 }
+:root[data-palette=rose] { --h:340 }
+:root[data-palette=pfirsich] { --h:18 }
 * {
   box-sizing:border-box
 }
@@ -1391,7 +1400,7 @@ dialog[open] {
   animation:sheet .22s ease-out
 }
 dialog::backdrop {
-  background:rgba(8,22,16,.55)
+  background:hsl(var(--h) 50% 5% / .6)
 }
 .sheet-head {
   position:sticky;
@@ -1975,3 +1984,47 @@ dialog.cook {
     transition:none
   }
 }
+
+/* Farbwahl in den Einstellungen */
+.palette-field {
+  margin-bottom:10px
+}
+.palette-field>span {
+  display:block;
+  margin-bottom:6px;
+  font-weight:600;
+  font-size:.88rem;
+  color:var(--muted)
+}
+.palette {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:8px
+}
+.palette button {
+  justify-content:flex-start;
+  min-height:48px;
+  padding:0 12px;
+  background:var(--card);
+  color:var(--text);
+  border:2px solid var(--line);
+  font-weight:600
+}
+.palette button[aria-checked=true] {
+  border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent)
+}
+.swatch {
+  flex:none;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  border:1px solid var(--line-strong);
+  background:linear-gradient(135deg,hsl(var(--sh) 50% 93%) 50%,hsl(var(--sh) 62% 32%) 50%)
+}
+.palette [data-palette=blau] { --sh:222 }
+.palette [data-palette=gruen] { --sh:152 }
+.palette [data-palette=tuerkis] { --sh:188 }
+.palette [data-palette=flieder] { --sh:268 }
+.palette [data-palette=rose] { --sh:340 }
+.palette [data-palette=pfirsich] { --sh:18 }

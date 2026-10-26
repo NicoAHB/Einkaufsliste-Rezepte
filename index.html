@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f4f6f2" id="theme-color">
+  <meta name="theme-color" content="#ecf0f9" id="theme-color">
+  <script src="theme.js"></script>
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -165,10 +166,18 @@
       <div class="card stack display-card"><h3>Darstellung & Sicherung</h3>
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
+        <div class="palette-field"><span id="palette-label">Farbe</span><div id="palette" class="palette" role="radiogroup" aria-labelledby="palette-label">
+          <button type="button" role="radio" aria-checked="true" data-palette="blau"><span class="swatch"></span>Blau</button>
+          <button type="button" role="radio" aria-checked="false" data-palette="gruen"><span class="swatch"></span>Grün</button>
+          <button type="button" role="radio" aria-checked="false" data-palette="tuerkis"><span class="swatch"></span>Türkis</button>
+          <button type="button" role="radio" aria-checked="false" data-palette="flieder"><span class="swatch"></span>Flieder</button>
+          <button type="button" role="radio" aria-checked="false" data-palette="rose"><span class="swatch"></span>Rosé</button>
+          <button type="button" role="radio" aria-checked="false" data-palette="pfirsich"><span class="swatch"></span>Pfirsich</button>
+        </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.1 · Zum Löschen ziehen · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 2.2 · Farbwahl · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
       </div>
     </section>
   </main>
