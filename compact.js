@@ -6,7 +6,7 @@
    Aufgeräumt wird nur, was sicher nicht mehr gebraucht wird, und zwar auf dem gemeinsamen Stand, nicht auf einem einzelnen
    Gerät: Das Ergebnis wird wie jede Änderung mit der SHA der gelesenen Datei geschrieben. Ändert ein anderes Gerät dazwischen,
    wird neu gelesen und neu aufgeräumt. Was weg ist, liegt weiter im Git-Verlauf des privaten Daten-Repositorys. */
-import { clone, validate } from './data.js';
+import { clone, foldOldAdds, validate } from './data.js';
 import { isCategory } from './categories.js';
 import { productKey, unitSpec } from './prices.js';
 
@@ -19,7 +19,8 @@ export const POLICY = {
   settledDays: 14,       // ab hier brauchen Datensätze keine Zeitstempel je Feld mehr
   keepApplied: 600,      // Liste bereits angewendeter Änderungen (nur gegen doppeltes Senden nötig)
   keepPrices: 2,         // gemerkte Preise je Geschäft, Produkt und Einheitengruppe
-  maxNames: 300          // Namensgedächtnis für Vorschläge
+  maxNames: 300,         // Namensgedächtnis für Vorschläge
+  maxAliases: 400        // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
 };
 const DAY = 86400000;
 
@@ -34,7 +35,7 @@ function remember(names, rows, max) {
     const key = productKey(row.name), at = row.updatedAt || row.createdAt;
     const entry = known.get(key) || { name: row.name.trim().replace(/\s+/g, ' '), count: 0, at };
     entry.count += Number(row.weight) || 1;
-    if (at >= entry.at) { entry.at = at; if (isCategory(row.category)) entry.category = row.category; }
+    if (at >= entry.at) { entry.at = at; if (isCategory(row.category)) entry.category = row.category; if (typeof row.unit === 'string' && row.unit) entry.unit = row.unit; }
     else if (!entry.category && isCategory(row.category)) entry.category = row.category;
     known.set(key, entry);
   }
@@ -45,13 +46,13 @@ function remember(names, rows, max) {
    ist `changed` false (dann wird auch nichts geschrieben). */
 export function compact(input, now = new Date(), policy = POLICY) {
   const next = clone(input);
-  next.prices ||= []; next.meals ||= []; next.pantry ||= [];
-  const before = sizeOf(input), removed = { items: 0, recipes: 0, ingredients: 0, stores: 0, prices: 0, meals: 0, pantry: 0, clocks: 0, applied: 0 };
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= [];
+  const before = sizeOf(input), removed = { items: 0, recipes: 0, ingredients: 0, stores: 0, prices: 0, meals: 0, pantry: 0, aliases: 0, clocks: 0, adds: 0, applied: 0 };
   const olderThan = (stamp, days) => Number.isFinite(Date.parse(stamp)) && Date.parse(stamp) < now.getTime() - days * DAY;
   const gone = [];   // entfernte Artikel für das Namensgedächtnis
 
   // 1. Gelöschtes endgültig entfernen, erledigte Artikel nach langer Zeit ebenfalls.
-  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'pantry']) {
+  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'pantry', 'aliases']) {
     next[key] = next[key].filter(row => {
       const drop = (row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
         (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays));
@@ -80,8 +81,9 @@ export function compact(input, now = new Date(), policy = POLICY) {
   }
   next.prices = next.prices.filter(row => { const drop = doomed.has(row.id); if (drop) removed.prices++; return !drop; });
   // 5. Zeitstempel je Feld sind nur für gleichzeitige Änderungen nötig. Bei lange unveränderten Datensätzen genügt eine Sammelmarke.
-  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry']) {
+  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases']) {
     for (const row of next[key]) {
+      if (key === 'items') removed.adds += foldOldAdds(row, new Date(now.getTime() - policy.settledDays * DAY).toISOString());
       const fields = Object.keys(row._clock || {}).filter(field => field !== '*');
       if (fields.length && olderThan(row.updatedAt, policy.settledDays)) { row._clock = { '*': { at: row.updatedAt, id: '' } }; removed.clocks++; }
     }
@@ -91,10 +93,16 @@ export function compact(input, now = new Date(), policy = POLICY) {
     removed.applied = next.sync.applied.length - policy.keepApplied;
     next.sync.applied = next.sync.applied.slice(-policy.keepApplied);
   }
+  // 7. Gemerkte Kassenbon-Zuordnungen: bei sehr vielen bleiben die zuletzt geänderten.
+  if (next.aliases.length > policy.maxAliases) {
+    const keep = new Set([...next.aliases].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, policy.maxAliases).map(row => row.id));
+    removed.aliases += next.aliases.length - keep.size;
+    next.aliases = next.aliases.filter(row => keep.has(row.id));
+  }
   if (gone.length) next.names = remember(next.names || [], gone, policy.maxNames);
 
   // Leere Hilfslisten nicht erst anlegen, sonst gilt die Datei nach jedem Lauf als geändert.
-  for (const key of ['prices', 'meals', 'pantry']) if (!next[key].length && !input[key]?.length) delete next[key];
+  for (const key of ['prices', 'meals', 'pantry', 'aliases']) if (!next[key].length && !input[key]?.length) delete next[key];
   const changed = Object.values(removed).some(Boolean);
   if (changed) next.sync.compactedAt = now.toISOString();
   validate(next);

@@ -29,7 +29,7 @@ test('Gleicher Name im selben Geschäft: Menge wird erhöht statt eines zweiten 
   const items = [row('a', 'Zwiebeln', 2, 'Stück')];
   const result = addToList([{ name: ' zwiebeln', quantity: 3, unit: 'Stück' }], 'store-edeka', 'Nico', AT, [], items);
   assert.equal(result.added, 0);
-  assert.deepEqual(result.counted, [{ id: 'a', name: 'Zwiebeln', after: { quantity: 5, unit: 'Stück' } }]);
+  assert.deepEqual(result.counted, [{ id: 'a', name: 'Zwiebeln', add: { quantity: 3, unit: 'Stück' }, after: { quantity: 5, unit: 'Stück' } }]);
   assert.equal(result.ops.length, 1);
   const out = merge(open(items), result.ops).items.find(item => item.id === 'a');
   assert.equal(out.quantity, 5);
