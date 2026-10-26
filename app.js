@@ -1,5 +1,10 @@
-import { active, clone, emptyData, ingredientItems, merge, operation, positive, suggestItemNames, uid, validate } from './data.js';
+import { active, clone, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
+import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
+import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
+import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
+import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
+import { isJpeg, localPhotoUrl, photoPath, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -8,13 +13,23 @@ let busy = false, ready = false, selectedStore = '', lastTime = 0, undoAction = 
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let priceFormStore = null;
-const portions = new Map();
+let tagFilter = '', remoteEtag = '', deferredImport = null;
+let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
+let pendingPhoto = null, photoRemoved = false, previewUrl = '';
+const photoMiss = new Map(), photoJobs = new Map();
+let importSource = 'link', importAbort = null, previewUrls = [];
+const portions = new Map(), openRecipes = new Set();
 const format = number => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(number);
 const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+// Für Eingabefelder: ohne Tausenderpunkt, sonst würde „1.000“ später als 1 gelesen.
+const plain = number => String(Math.round(number * 1000) / 1000).replace('.', ',');
 const shortDate = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' }).format(new Date(at));
 const connected = () => Boolean(config.owner && config.repo && config.token);
 const namespace = (value = config) => value.owner && value.repo ?
   `einkauf-data-v1:${JSON.stringify([value.owner.toLowerCase(), value.repo.toLowerCase(), value.branch, value.path])}` : 'einkauf-demo-v1';
+// Wenn sich weder Zeitstempel noch Zahl der angewendeten Änderungen ändern, hat sich auch nichts Sichtbares geändert.
+const signature = () => `${state.updatedAt}|${state.sync.applied.length}`;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Ausschließlich Textknoten für Nutzereingaben: Rezeptnamen können kein HTML ausführen.
 function element(tag, text, className) {
@@ -23,10 +38,20 @@ function element(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
+function icon(name) {
+  const svg = document.createElementNS(SVG_NS, 'svg'), use = document.createElementNS(SVG_NS, 'use');
+  svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use);
+  return svg;
+}
 function button(text, action, className = 'secondary') {
   const node = element('button', text, className);
   node.type = 'button';
   node.addEventListener('click', () => guard(action));
+  return node;
+}
+function iconButton(name, label, action, className = '') {
+  const node = button('', action, `icon-button ${className}`.trim());
+  node.append(icon(name)); node.setAttribute('aria-label', label); node.title = label;
   return node;
 }
 function message(text = '') {
@@ -49,19 +74,21 @@ function storageWrite(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Bitte Speicher freigeben und erneut versuchen. Diese Änderung wurde nicht übernommen.'); }
 }
+function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; }
 function saveLocal(nextBase, nextPending) {
   storageWrite(namespace(), { base: nextBase, pending: nextPending });
   base = nextBase; pending = nextPending; state = merge(base, pending);
 }
-function status(text) { $('#status').textContent = text; }
+function status(text, mode = 'local') { $('#status').textContent = text; $('#status').dataset.state = mode; }
 function restingStatus() {
-  status(!connected() ? 'Gespeichert · nur auf diesem Gerät' :
-    pending.length ? `Lokal gespeichert · ${pending.length} Änderung(en) warten` :
-    ready ? 'Gespeichert · mit GitHub abgeglichen' : 'Noch nicht mit GitHub verbunden');
+  if (!connected()) status('Nur auf diesem Gerät', 'local');
+  else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
+  else if (ready) status('Mit GitHub abgeglichen', 'ok');
+  else status('Noch nicht verbunden', 'pending');
 }
 function nextOp(collection, id, patch) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  return operation(collection, id, patch, config.actor || 'Nico', new Date(lastTime).toISOString());
+  return operation(collection, id, patch, config.actor || 'Unbekannt', new Date(lastTime).toISOString());
 }
 function commit(ops, undo = null) {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -76,11 +103,12 @@ function commit(ops, undo = null) {
 }
 
 function tab(name) {
-  for (const id of ['shopping', 'recipes', 'settings']) $(`#${id}`).hidden = name !== id;
+  for (const id of ['shopping', 'recipes', 'plan', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
   });
+  window.scrollTo(0, 0);
 }
 function storeOptions(select, preferred = selectedStore) {
   select.replaceChildren();
@@ -98,12 +126,67 @@ function currentStore(id) {
 function render() {
   $('#identity').textContent = config.actor || '';
   $('#demo-banner').hidden = connected();
-  storeOptions($('#store-select'));
-  selectedStore = $('#store-select').value;
-  renderItems(); renderRecipes();
+  const stores = active(state.stores);
+  if (!stores.some(store => store.id === selectedStore)) selectedStore = stores[0]?.id || '';
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan();
   $('#item-form').querySelector('button[type=submit]').disabled = !ready || !selectedStore;
   $('#add-recipe').disabled = !ready;
+  $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
+}
+function renderStoreChips() {
+  const box = $('#store-chips'); box.replaceChildren();
+  for (const store of active(state.stores)) {
+    const open = active(state.items).filter(item => item.storeId === store.id && !item.checked).length;
+    const chip = element('button', store.name, 'chip'); chip.type = 'button';
+    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === selectedStore));
+    if (open) chip.append(element('span', String(open), 'count'));
+    chip.addEventListener('click', () => {
+      selectedStore = store.id; renderStoreChips(); renderItems();
+    });
+    box.append(chip);
+  }
+  // Nur die Chip-Leiste verschieben, nie die ganze Seite.
+  const selected = box.querySelector('[aria-selected=true]');
+  if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
+}
+const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+function groupHead(label, count) {
+  const row = element('li', undefined, 'group-head');
+  row.append(element('span', label), element('span', String(count), 'count'));
+  return row;
+}
+function itemRow(item) {
+  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
+  const check = button('', () => {
+    const latest = state.items.find(entry => entry.id === item.id);
+    if (!latest || latest.deletedAt) return;
+    commit([nextOp('items', item.id, { checked: !latest.checked })]);
+  }, 'check');
+  if (item.checked) check.append(icon('check'));
+  check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
+  check.setAttribute('aria-pressed', String(Boolean(item.checked)));
+  const copy = element('div', undefined, 'item-copy');
+  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
+  if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
+  if (item.onSale && item.salePrice) {
+    copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
+    const normal = itemQuote(item, state.prices);
+    if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
+  }
+  const cost = itemCost(item, state.prices);
+  if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
+  const quotes = comparePrices(item, state.stores, state.prices);
+  if (quotes.length) {
+    const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
+    const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
+    copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
+  }
+  const actions = element('div', undefined, 'item-actions');
+  actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
+    iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id], 'Artikel gelöscht')));
+  row.append(check, copy, actions);
+  return row;
 }
 function renderItems() {
   if (priceFormStore !== selectedStore) {
@@ -113,42 +196,20 @@ function renderItems() {
   }
   renderShoppingInfo();
   const list = $('#items'); list.replaceChildren();
-  const items = active(state.items).filter(item => item.storeId === selectedStore)
-    .sort((a, b) => Number(Boolean(a.checked)) - Number(Boolean(b.checked)) || a.name.localeCompare(b.name, 'de'));
-  const done = items.filter(item => item.checked).length;
-  $('#item-count').textContent = `${items.length - done} offen · ${done} erledigt`;
-  $('#clear-checked').disabled = !done;
-  if (!items.length) list.append(element('li', 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
-  for (const item of items) {
-    const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
-    const check = button(item.checked ? '✓' : '', () => {
-      const latest = state.items.find(entry => entry.id === item.id);
-      if (!latest || latest.deletedAt) return;
-      commit([nextOp('items', item.id, { checked: !latest.checked })]);
-    }, 'check');
-    check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
-    check.setAttribute('aria-pressed', String(Boolean(item.checked)));
-    const copy = element('div', undefined, 'item-copy');
-    copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
-    if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
-    if (item.onSale && item.salePrice) {
-      copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
-      const normal = itemQuote(item, state.prices);
-      if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
-    }
-    const cost = itemCost(item, state.prices);
-    if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
-    const quotes = comparePrices(item, state.stores, state.prices);
-    if (quotes.length) {
-      const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
-      const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
-      copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
-    }
-    const edit = button('✎', () => editItem(item.id), 'icon-button');
-    edit.setAttribute('aria-label', `${item.name} bearbeiten`);
-    const remove = button('✕', () => removeRows('items', [item.id], 'Artikel gelöscht'), 'icon-button');
-    const actions = element('div', undefined, 'item-actions'); actions.append(edit, remove);
-    remove.setAttribute('aria-label', `${item.name} löschen`); row.append(check, copy, actions); list.append(row);
+  const rows = active(state.items).filter(item => item.storeId === selectedStore);
+  const open = rows.filter(item => !item.checked), done = rows.filter(item => item.checked).sort(byName);
+  $('#item-count').textContent = `${open.length} offen · ${done.length} erledigt`;
+  $('#clear-checked').disabled = !done.length;
+  if (!rows.length) list.append(element('li', 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
+  // Nach Gängen im Laden geordnet (abschaltbar in den Einstellungen); Erledigtes steht immer unten.
+  const grouped = config.groupItems !== false;
+  if (grouped) for (const group of groupByCategory(open, state.items)) {
+    list.append(groupHead(group.label, group.items.length));
+    group.items.forEach(item => list.append(itemRow(item)));
+  } else open.sort(byName).forEach(item => list.append(itemRow(item)));
+  if (done.length) {
+    if (grouped) list.append(groupHead('Erledigt', done.length));
+    done.forEach(item => list.append(itemRow(item)));
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
 }
@@ -172,9 +233,9 @@ function renderShoppingInfo() {
   else $('#offers-link').removeAttribute('href');
   const total = shoppingTotal(state.items.filter(row => row.storeId === selectedStore), state.prices);
   const box = $('#shopping-total'); box.replaceChildren();
-  box.append(element('p', store ? `${store.name} · noch einzukaufen` : 'Noch einzukaufen', 'eyebrow'));
+  box.append(element('p', store ? `${store.name} · offen` : 'Offen', 'eyebrow'));
   box.append(element('strong', !total.count ? 'Alles erledigt' : total.priced ? `Geschätzt ${euros(total.cents)}` : 'Noch keine Preisschätzung'));
-  box.append(element('p', total.missing ? `${total.missing} Artikel ohne passenden Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel berücksichtigt. Preise können sich ändern.' : 'Erledigte Artikel werden nicht mitgerechnet.', 'hint'));
+  box.append(element('p', total.missing ? `${total.missing} Artikel ohne Preis fehlen in der Summe.` : total.count ? 'Alle offenen Artikel eingerechnet.' : 'Erledigte zählen nicht mit.', 'hint'));
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
 function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
@@ -196,8 +257,20 @@ function toggleSaleFields(form) {
     form.elements.saleUnit.value = form.elements.priceUnit.value;
   }
 }
+function fillCategorySelects() {
+  document.querySelectorAll('select[data-categories]').forEach(select => {
+    select.replaceChildren(new Option('Automatisch', ''));
+    for (const category of CATEGORIES) select.add(new Option(category.label, category.id));
+  });
+}
+// „Automatisch (Obst & Gemüse)“: zeigt, was die App für diesen Namen vorschlagen würde.
+function categoryHint(select, name) {
+  const guess = String(name).trim() ? suggestCategory(name, state.items) : null;
+  select.options[0].textContent = guess ? `Automatisch (${categoryLabel(guess)})` : 'Automatisch';
+}
 function rememberPriceInForm() {
   const form = $('#item-form');
+  categoryHint(form.elements.category, form.elements.name.value);
   if (form.dataset.manualPrice === 'yes') return;
   const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   const quote = rememberedPrice(state.prices, selectedStore, name, unit);
@@ -251,9 +324,11 @@ function showComparison(item) {
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale) });
+  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale),
+    category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
+  categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   setQuoteFields(form, itemQuote(item, state.prices), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice);
@@ -274,16 +349,16 @@ function renderStores() {
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
     input.name = 'name';
     const linkLabel = element('label', 'Angebotslink (optional)'), link = element('input');
-    link.name = 'offersUrl'; link.type = 'url'; link.value = storeOfferUrl(store); link.maxLength = 2000; link.placeholder = 'https://…';
+    link.name = 'offersUrl'; link.type = 'url'; link.inputMode = 'url'; link.value = storeOfferUrl(store); link.maxLength = 2000; link.placeholder = 'https://…';
     linkLabel.append(link);
-    const save = element('button', '✓', 'secondary'); save.setAttribute('aria-label', `${store.name} umbenennen`);
+    const save = element('button', 'Speichern', 'secondary'); save.setAttribute('aria-label', `${store.name} speichern`);
     const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
     form.append(nameLabel, linkLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id); commit([nextOp('stores', store.id, { name, offersUrl: offerUrl(link.value) })]); renderStores();
     }); });
-    const remove = button('✕', () => {
+    const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
       if (!confirm(`„${store.name}“ löschen? Die Artikel werden ausgeblendet. Du kannst das Löschen rückgängig machen.`)) return;
       removeRows('stores', [store.id], 'Geschäft gelöscht'); renderStores();
@@ -292,68 +367,130 @@ function renderStores() {
   }
 }
 
+function chip(text, pressed, action) {
+  const node = element('button', text, 'chip'); node.type = 'button'; node.setAttribute('aria-pressed', String(pressed));
+  node.addEventListener('click', action);
+  return node;
+}
 function renderRecipes() {
-  const search = $('#recipe-search').value.toLocaleLowerCase('de');
-  const filter = $('#tag-filter'), previous = filter.value;
-  filter.replaceChildren(new Option('Alle Tags', ''));
+  const search = $('#recipe-search').value.trim().toLocaleLowerCase('de');
   const recipes = active(state.recipes);
-  for (const tag of [...new Set(recipes.flatMap(recipe => recipe.tags))].sort()) filter.add(new Option(tag, tag));
-  filter.value = [...filter.options].some(option => option.value === previous) ? previous : '';
+  const tags = [...new Set(recipes.flatMap(recipe => recipe.tags))].sort((a, b) => a.localeCompare(b, 'de'));
+  if (tagFilter && !tags.includes(tagFilter)) tagFilter = '';
+  const chips = $('#tag-chips'); chips.replaceChildren(); chips.hidden = !recipes.length;
+  chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }),
+    chip('Lange nicht gekocht', oldestFirst, () => { oldestFirst = !oldestFirst; renderRecipes(); }));
+  for (const tag of tags) chips.append(chip(tag, tag === tagFilter, () => { tagFilter = tagFilter === tag ? '' : tag; renderRecipes(); }));
   const grid = $('#recipe-list'); grid.replaceChildren();
+  const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
+  const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
+  // Favoriten zuerst; „Lange nicht gekocht“ zeigt zuerst, was noch nie oder am längsten nicht auf dem Tisch stand.
+  const order = oldestFirst ? (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b) :
+    (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b);
   for (const recipe of recipes.filter(recipe => {
-    const names = active(state.ingredients).filter(row => row.recipeId === recipe.id).map(row => row.name).join(' ');
-    return `${recipe.name} ${names}`.toLocaleLowerCase('de').includes(search) && (!filter.value || recipe.tags.includes(filter.value));
-  }).sort((a, b) => a.name.localeCompare(b.name, 'de'))) {
-    const card = element('article', undefined, 'card recipe-card');
-    card.append(element('h3', recipe.name));
+    const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
+    return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
+      (!tagFilter || recipe.tags.includes(tagFilter)) && (!favoritesOnly || recipe.favorite);
+  }).sort(order)) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
+  if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
+  hydratePhotos();
+}
+function recipeCard(recipe, ingredients) {
+  const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
+  if (recipe.photoId) {
+    const frame = element('div', undefined, 'recipe-photo'), image = element('img');
+    image.dataset.photoId = recipe.photoId; image.alt = `Foto: ${recipe.name}`; image.hidden = true; image.loading = 'lazy';
+    frame.append(icon('camera'), image); card.append(frame);
+  }
+  const head = element('div', undefined, 'recipe-head');
+  const star = iconButton('star', recipe.favorite ? `${recipe.name} ist Favorit, zum Entfernen tippen` : `${recipe.name} als Favorit markieren`,
+    () => commit([nextOp('recipes', recipe.id, { favorite: !recipe.favorite })]), 'fav');
+  star.setAttribute('aria-pressed', String(Boolean(recipe.favorite)));
+  head.append(element('h3', recipe.name), star); card.append(head);
+  const source = webUrl(recipe.sourceUrl), cooked = recipe.lastCookedAt && relativeDay(recipe.lastCookedAt);
+  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(recipe.servings)} Portionen`, source && hostLabel(source),
+    cooked && cooked !== 'geplant' && `gekocht ${cooked}`].filter(Boolean).join(' · '), 'recipe-meta'));
+  if (recipe.tags.length) {
     const tags = element('div', undefined, 'tags');
     recipe.tags.forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
-    const label = element('label', 'Portionen'), servingInput = element('input');
-    servingInput.className = 'servings'; servingInput.inputMode = 'decimal'; servingInput.value = portions.get(recipe.id) || recipe.servings;
-    servingInput.setAttribute('aria-label', `Portionen für ${recipe.name}`); label.append(servingInput); card.append(label);
-    const ingredients = active(state.ingredients).filter(row => row.recipeId === recipe.id);
-    const list = element('ul', undefined, 'recipe-ingredients');
-    const updateAmounts = () => {
-      const count = positive(servingInput.value); portions.set(recipe.id, count);
-      list.replaceChildren(...ingredients.map(row => element('li', `${format(row.quantity * count / recipe.servings)} ${row.unit} ${row.name}`)));
-    };
-    updateAmounts(); servingInput.addEventListener('change', () => guard(updateAmounts)); card.append(list);
-    const details = element('details'), summary = element('summary', 'Zubereitung');
-    details.append(summary, element('p', recipe.instructions, 'preview')); card.append(details);
-    const actions = element('div', undefined, 'actions');
-    actions.append(button('Zutaten auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), ''),
-      button('Bearbeiten', () => editRecipe(recipe.id)), button('Löschen', () => {
-        if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id], 'Rezept gelöscht');
-      }, 'danger'));
-    card.append(actions); grid.append(card);
   }
-  if (!grid.children.length) grid.append(element('p', 'Noch kein passendes Rezept. Lege eines an oder ändere die Suche.', 'empty'));
+  const details = element('details', undefined, 'recipe-details'); details.open = openRecipes.has(recipe.id);
+  details.addEventListener('toggle', () => { if (details.open) openRecipes.add(recipe.id); else openRecipes.delete(recipe.id); });
+  details.append(element('summary', 'Zutaten & Zubereitung'));
+  const servingInput = element('input'), list = element('ul', undefined, 'recipe-ingredients');
+  servingInput.inputMode = 'decimal'; servingInput.value = plain(portions.get(recipe.id) || recipe.servings);
+  servingInput.setAttribute('aria-label', `Portionen für ${recipe.name}`);
+  const updateAmounts = () => {
+    const count = positive(servingInput.value); portions.set(recipe.id, count);
+    list.replaceChildren(...ingredients.map(row => element('li', ingredientLabel(row, count / recipe.servings))));
+  };
+  const step = delta => () => { servingInput.value = plain(Math.max(1, positive(servingInput.value) + delta)); updateAmounts(); };
+  const stepper = element('div', undefined, 'stepper');
+  stepper.append(element('span', 'Portionen'), iconButton('minus', 'Eine Portion weniger', step(-1), 'round secondary'), servingInput,
+    iconButton('plus', 'Eine Portion mehr', step(1), 'round secondary'));
+  updateAmounts(); servingInput.addEventListener('change', () => guard(updateAmounts));
+  servingInput.addEventListener('input', () => { try { updateAmounts(); } catch { /* Eingabe noch unvollständig */ } });
+  details.append(stepper, list);
+  details.append(element('h4', 'Zubereitung'), element('p', recipe.instructions || 'Keine Zubereitung eingetragen.', 'recipe-steps'));
+  if (source) {
+    const link = element('a', `Quelle: ${hostLabel(source)}`, 'source-link');
+    link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.append(icon('external'));
+    details.append(link);
+  }
+  const more = element('div', undefined, 'detail-actions');
+  more.append(button('Heute gekocht', () => commit([nextOp('recipes', recipe.id, { lastCookedAt: isoDate() })]), 'secondary small'),
+    button('Bearbeiten', () => editRecipe(recipe.id), 'secondary small'),
+    button('Löschen', () => {
+      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id], 'Rezept gelöscht');
+    }, 'danger small'));
+  details.append(more);
+  card.append(details);
+  const actions = element('div', undefined, 'actions');
+  actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), 'primary-action'),
+    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })));
+  card.append(actions);
+  return card;
 }
 function ingredientRow(value = {}) {
   const row = element('div', undefined, 'ingredient-row'); row.dataset.id = value.id || uid();
   for (const [key, caption, fallback] of [['name', 'Zutat', ''], ['quantity', 'Menge', '1'], ['unit', 'Einheit', 'Stück']]) {
     const label = element('label', caption, key === 'name' ? 'wide' : '');
-    const input = element('input'); input.dataset.field = key; input.value = value[key] ?? fallback;
+    const input = element('input'); input.dataset.field = key; input.value = key === 'quantity' && typeof value[key] === 'number' ? plain(value[key]) : value[key] ?? fallback;
     input.required = true; input.maxLength = key === 'name' ? 120 : 30;
     if (key === 'quantity') input.inputMode = 'decimal';
     if (key === 'unit') input.setAttribute('list', 'units');
     label.append(input); row.append(label);
   }
-  row.append(button('Zutat entfernen', () => row.remove(), 'text-button'));
+  row.append(iconButton('trash', 'Zutat entfernen', () => row.remove(), 'danger'));
   $('#ingredient-editor').append(row);
 }
-function editRecipe(id = '') {
+// `draft` stammt aus dem Import: Das Formular zeigt dann einen Vorschlag, gespeichert wird erst nach dem Prüfen.
+function editRecipe(id = '', draft = null) {
   const form = $('#recipe-form'); form.reset();
   recipeBaseline = id ? clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt)) : null;
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   ingredientBaseline = id ? clone(active(state.ingredients).filter(row => row.recipeId === id)) : [];
   form.elements.id.value = id;
-  $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : 'Neues Rezept';
-  if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'tags']) {
-    form.elements[field].value = field === 'tags' ? recipeBaseline.tags.join(', ') : recipeBaseline[field];
+  $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : draft ? 'Importiertes Rezept prüfen' : 'Neues Rezept';
+  if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'tags', 'sourceUrl']) {
+    form.elements[field].value = field === 'tags' ? recipeBaseline.tags.join(', ') : recipeBaseline[field] ?? '';
+  }
+  if (draft) {
+    form.elements.name.value = draft.name || ''; form.elements.servings.value = plain(draft.servings || 2);
+    form.elements.tags.value = (draft.tags || []).join(', '); form.elements.instructions.value = draft.instructions || '';
+    form.elements.sourceUrl.value = draft.sourceUrl || '';
   }
   $('#ingredient-editor').replaceChildren();
-  (ingredientBaseline.length ? ingredientBaseline : [{}]).forEach(ingredientRow);
+  (draft ? draft.ingredients : ingredientBaseline.length ? ingredientBaseline : [{}]).forEach(ingredientRow);
+  if (draft && !draft.ingredients.length) ingredientRow();
+  pendingPhoto = null; photoRemoved = false; showPhotoPreview('');
+  if (recipeBaseline?.photoId) ensurePhoto(recipeBaseline.photoId).then(url => { if (url && !pendingPhoto && !photoRemoved && $('#recipe-dialog').open) showPhotoPreview(url, false); });
+  const note = $('#recipe-import-note'); note.replaceChildren(); note.hidden = !draft;
+  if (draft) {
+    note.append(element('p', draft.via === 'schema' ? 'Das Rezept wurde aus den Daten der Seite übernommen. Bitte kurz prüfen.' : 'Das Rezept wurde aus Text geschätzt. Bitte alles prüfen und korrigieren.'));
+    for (const warning of draft.warnings || []) note.append(element('p', warning, 'warn'));
+  }
+  $('#recipe-raw').hidden = !draft?.raw; $('#recipe-raw').open = false; $('#recipe-raw-text').textContent = draft?.raw || '';
   $('#recipe-dialog').showModal();
 }
 // Nur gegenüber dem Öffnungsstand geänderte Felder speichern. So überschreibt
@@ -362,16 +499,27 @@ function changed(patch, before) {
   return Object.fromEntries(Object.entries(patch).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before?.[key])));
 }
 function saveRecipe(event) {
-  event.preventDefault(); guard(() => {
-    const form = event.currentTarget, id = form.elements.id.value || uid();
+  event.preventDefault();
+  const form = event.currentTarget;
+  guard(async () => {
+    const id = form.elements.id.value || uid();
     if (recipeBaseline && !active(state.recipes).some(row => row.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte schließen und neu anlegen.');
+    const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
+    if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
     const patch = { name: form.elements.name.value.trim(), servings: positive(form.elements.servings.value),
       instructions: form.elements.instructions.value.trim(), tags: [...new Set(form.elements.tags.value.split(',').map(tag => tag.trim()).filter(Boolean))] };
-    if (!patch.name || !patch.instructions) throw new Error('Bitte Namen und Zubereitung ausfüllen.');
+    if (sourceUrl || recipeBaseline?.sourceUrl) patch.sourceUrl = sourceUrl;
+    if (!patch.name) throw new Error('Bitte dem Rezept einen Namen geben.');
     const rows = [...$('#ingredient-editor').children].map(row => ({ id: row.dataset.id, recipeId: id,
       name: row.querySelector('[data-field=name]').value.trim(), quantity: positive(row.querySelector('[data-field=quantity]').value),
       unit: row.querySelector('[data-field=unit]').value.trim() }));
     if (!rows.length || rows.some(row => !row.name || !row.unit)) throw new Error('Bitte mindestens eine vollständige Zutat eingeben.');
+    // Das Foto muss lokal gespeichert sein, bevor die Änderung abgeglichen wird, sonst fände der Upload es nicht.
+    const photo = pendingPhoto;
+    if (photo) {
+      await storePhoto(photo.id, photo.blob); patch.photoId = photo.id;
+      if (connected()) queuePhoto(queueKey(), photo.id);
+    } else if (photoRemoved && recipeBaseline?.photoId) patch.photoId = null;
     const ops = [], recipeChanges = changed(patch, recipeBaseline);
     if (Object.keys(recipeChanges).length) ops.push(nextOp('recipes', id, recipeChanges));
     for (const { id: ingredientId, ...fields } of rows) {
@@ -381,17 +529,20 @@ function saveRecipe(event) {
     for (const row of ingredientBaseline.filter(row => !rows.some(candidate => candidate.id === row.id))) {
       ops.push(nextOp('ingredients', row.id, { deletedAt: new Date().toISOString() }));
     }
-    commit(ops); $('#recipe-dialog').close();
+    try { commit(ops); }
+    catch (error) { if (photo) unqueuePhoto(queueKey(), photo.id); throw error; }
+    $('#recipe-dialog').close();
   });
 }
 function openTransfer(id, servings) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
-  const form = $('#transfer-form'); form.elements.servings.value = servings;
+  const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
   storeOptions(form.elements.storeId); $('#transfer-ingredients').replaceChildren();
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
     const label = element('label', undefined, 'transfer-row'), check = element('input');
-    check.type = 'checkbox'; check.checked = true; check.value = row.id;
+    // Salz, Pfeffer und Co. („nach Bedarf“) hat man meist da: nicht vorausgewählt.
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT; check.value = row.id;
     // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
     label._ingredient = clone(row); label.append(check, element('span')); $('#transfer-ingredients').append(label);
   }
@@ -399,17 +550,272 @@ function openTransfer(id, servings) {
 }
 function updateTransfer() {
   const factor = positive($('#transfer-form').elements.servings.value) / transferRecipe.servings;
-  for (const label of $('#transfer-ingredients').children) {
-    const row = label._ingredient; label.querySelector('span').textContent = `${format(row.quantity * factor)} ${row.unit} ${row.name}`;
-  }
+  for (const label of $('#transfer-ingredients').children) label.querySelector('span').textContent = ingredientLabel(label._ingredient, factor);
 }
 
+/* ---------- Rezeptfotos ---------- */
+const queueKey = () => `einkauf-photo-queue:${namespace()}`;
+const photoApi = id => `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${photoPath(config.path, id).split('/').map(encodeURIComponent).join('/')}`;
+const githubHeaders = extra => ({ Authorization: `Bearer ${config.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...extra });
+async function timed(address, init) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
+  try { return await fetch(address, { ...init, cache: 'no-store', signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+async function downloadPhoto(id) {
+  try {
+    const response = await timed(`${photoApi(id)}?ref=${encodeURIComponent(config.branch)}`, { headers: githubHeaders({ Accept: 'application/vnd.github.raw+json' }) });
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return isJpeg(bytes) ? new Blob([bytes], { type: 'image/jpeg' }) : null;
+  } catch { return null; }
+}
+// Anzeigeadresse eines Fotos: erst lokal, sonst (verbunden) aus dem Daten-Repository, danach lokal gemerkt.
+function ensurePhoto(id) {
+  if (photoJobs.has(id)) return photoJobs.get(id);
+  const job = (async () => {
+    const local = await localPhotoUrl(id);
+    if (local || !connected() || Date.now() - (photoMiss.get(id) || 0) < 30000) return local;
+    const blob = await downloadPhoto(id);
+    if (!blob) { photoMiss.set(id, Date.now()); return null; }
+    await storePhoto(id, blob).catch(() => {});
+    return (await localPhotoUrl(id)) ?? URL.createObjectURL(blob);
+  })().finally(() => photoJobs.delete(id));
+  photoJobs.set(id, job);
+  return job;
+}
+// Fotos, die noch fehlen (z. B. weil das andere Gerät sie erst hochlädt), werden bei jedem Abgleich erneut versucht.
+function hydratePhotos() {
+  document.querySelectorAll('img[data-photo-id]:not([data-loaded])').forEach(image => {
+    ensurePhoto(image.dataset.photoId).then(url => {
+      if (!url || !image.isConnected) return;
+      image.src = url; image.hidden = false; image.dataset.loaded = 'yes';
+      image.parentElement.querySelector('.icon')?.setAttribute('hidden', '');
+    });
+  });
+}
+// Hochladen als eigene Datei. Kennungen sind einmalig, deshalb ist „Datei existiert schon“ (422 wegen fehlender SHA) ein Erfolg.
+let photoRetryAt = 0;
+async function uploadPhotos(manual = false) {
+  // Nach einem Fehler erst nach 20 Sekunden wieder versuchen, außer die Person löst den Abgleich selbst aus.
+  if (!connected() || (!manual && Date.now() < photoRetryAt)) return;
+  const key = queueKey();
+  const later = () => { photoRetryAt = Date.now() + 20000; };
+  for (const id of queued(key)) {
+    try {
+      const blob = await readPhoto(id);
+      if (!blob) { unqueuePhoto(key, id); continue; }
+      const body = JSON.stringify({ message: 'Einkauf & Rezepte: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
+      const response = await timed(photoApi(id), { method: 'PUT', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body });
+      if (response.ok) unqueuePhoto(key, id);
+      else if (response.status === 422 && /sha/i.test(await response.text())) unqueuePhoto(key, id);
+      else return later();   // z. B. 409 (gleichzeitiger Commit) oder 403
+    } catch { return later(); }
+  }
+}
+function showPhotoPreview(url, remember = true) {
+  if (previewUrl && previewUrl.startsWith('blob:') && remember) URL.revokeObjectURL(previewUrl);
+  previewUrl = remember ? url : '';
+  $('#photo-preview').hidden = !url;
+  if (url) $('#photo-preview-img').src = url; else $('#photo-preview-img').removeAttribute('src');
+  $('#photo-label').textContent = url ? 'Foto ändern' : 'Foto hinzufügen';
+}
+
+/* ---------- Wochenplan ---------- */
+function renderPlan() {
+  const days = weekDays(planWeek), today = isoDate();
+  $('#week-label').textContent = weekLabel(planWeek);
+  $('#week-today').hidden = days.includes(today);
+  const meals = active(state.meals).filter(meal => days.includes(meal.date));
+  const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
+  const box = $('#plan-days'); box.replaceChildren();
+  for (const day of days) {
+    const card = element('article', undefined, `day${day === today ? ' today' : ''}`);
+    const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
+    title.append(element('small', dayMonthLabel(day)));
+    head.append(title, iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
+    card.append(head);
+    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes));
+    box.append(card);
+  }
+  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
+}
+function mealRow(meal, recipes) {
+  const recipe = recipes.get(meal.recipeId);
+  const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`);
+  const check = button('', () => toggleMeal(meal.id), 'check');
+  if (meal.done) check.append(icon('check'));
+  check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
+  check.setAttribute('aria-pressed', String(Boolean(meal.done)));
+  const copy = element('div', undefined, 'meal-copy');
+  copy.append(recipe ? button(name, () => showRecipe(recipe.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
+  row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
+    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id], 'Gericht entfernt')));
+  return row;
+}
+// „Gekocht“ merkt sich auch am Rezept, wann es zuletzt auf dem Tisch stand.
+function toggleMeal(id) {
+  const meal = state.meals.find(row => row.id === id && !row.deletedAt);
+  if (!meal) return;
+  const ops = [nextOp('meals', id, { done: !meal.done })], today = isoDate();
+  const recipe = meal.recipeId && active(state.recipes).find(row => row.id === meal.recipeId), day = meal.date < today ? meal.date : today;
+  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day }));
+  commit(ops);
+}
+function showRecipe(id) {
+  $('#recipe-search').value = ''; tagFilter = ''; favoritesOnly = false; oldestFirst = false; openRecipes.add(id);
+  tab('recipes'); renderRecipes();
+  document.querySelector(`[data-recipe-id="${id}"]`)?.scrollIntoView({ block: 'start' });
+}
+function openMeal(options = {}) {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const form = $('#meal-form'); form.reset();
+  const meal = options.id ? state.meals.find(row => row.id === options.id && !row.deletedAt) : null;
+  if (options.id && !meal) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  mealBaseline = meal ? clone(meal) : null;
+  const select = form.elements.recipeId; select.replaceChildren(new Option('Rezept wählen …', ''));
+  const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
+  for (const recipe of recipes) select.add(new Option(`${recipe.favorite ? '★ ' : ''}${recipe.name}`, recipe.id));
+  select.add(new Option('Eigenes Gericht (ohne Rezept) …', '__custom'));
+  form.elements.id.value = options.id || '';
+  form.elements.date.value = meal?.date || options.date || isoDate();
+  select.value = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
+  if (!select.value && meal) select.value = '__custom';
+  form.elements.title.value = meal?.title || '';
+  form.elements.servings.value = plain(meal?.servings || options.servings || recipes.find(recipe => recipe.id === select.value)?.servings || 2);
+  syncMealForm(false);
+  $('#meal-title').textContent = meal ? 'Gericht ändern' : 'Gericht planen';
+  $('#meal-dialog').showModal();
+}
+function syncMealForm(changedRecipe) {
+  const form = $('#meal-form'), choice = form.elements.recipeId.value;
+  form.querySelector('[data-custom]').hidden = choice !== '__custom';
+  const recipe = active(state.recipes).find(row => row.id === choice);
+  if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
+}
+function saveMeal(event) {
+  event.preventDefault(); guard(() => {
+    const form = event.currentTarget, choice = form.elements.recipeId.value, custom = choice === '__custom', title = form.elements.title.value.trim();
+    const date = form.elements.date.value;
+    if (!validDay(date)) throw new Error('Bitte einen Tag auswählen.');
+    if (!choice) throw new Error('Bitte ein Rezept wählen oder „Eigenes Gericht“ eintragen.');
+    if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
+    if (!custom) currentRecipe(choice);
+    const id = form.elements.id.value || uid();
+    const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
+    if (!mealBaseline) patch.done = false;
+    const delta = changed(patch, mealBaseline);
+    if (Object.keys(delta).length) commit([nextOp('meals', id, delta)]);
+    planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan');
+  });
+}
+function currentRecipe(id) {
+  if (!active(state.recipes).some(recipe => recipe.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte ein anderes wählen.');
+}
+function weekRows() {
+  const form = $('#week-form'), days = weekDays(planWeek);
+  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.recipeId && !(form.elements.skipDone.checked && meal.done));
+  return aggregateIngredients(meals, active(state.recipes), active(state.ingredients));
+}
+function renderWeekRows() {
+  const box = $('#week-ingredients'); box.replaceChildren();
+  const rows = weekRows();
+  if (!rows.length) box.append(element('p', 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
+  for (const row of rows) {
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(row));
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT;
+    label._row = row;
+    if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
+    label.append(check, text); box.append(label);
+  }
+}
+function openWeekShopping() {
+  const form = $('#week-form'); storeOptions(form.elements.storeId);
+  $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
+  renderWeekRows(); $('#week-dialog').showModal();
+}
+
+/* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
+const IMPORT_LABELS = { link: 'Rezept laden', image: 'Text erkennen', text: 'Text auswerten' };
+function setImportSource(name) {
+  importSource = name;
+  document.querySelectorAll('#import-form [data-source]').forEach(node => node.setAttribute('aria-selected', String(node.dataset.source === name)));
+  document.querySelectorAll('#import-form [data-pane]').forEach(node => { node.hidden = node.dataset.pane !== name; });
+  $('#import-run').textContent = IMPORT_LABELS[name];
+  importStatus(''); message();
+}
+function importStatus(text, fraction) {
+  $('#import-status').textContent = text;
+  $('#import-progress').hidden = fraction === undefined; if (fraction !== undefined) $('#import-progress').value = Math.round(fraction * 100);
+}
+function linkHint() {
+  const form = $('#import-form'), proxy = workerHost(config.importProxy);
+  $('#import-form [data-link-hint]').textContent = proxy ? 'Die Seite wird über deinen eigenen Hilfsdienst geladen.' :
+    form.elements.publicProxy.checked ? `Nur der Link wird an ${PUBLIC_PROXIES.map(row => row.name).join(' oder ')} gesendet. Falls das nicht klappt: Seite öffnen, Text kopieren und unter „Text“ einfügen.` :
+    'Zum Laden braucht die App einen Hilfsdienst. Erlaube die öffentlichen Dienste (es wird nur der Link gesendet) oder richte einen eigenen ein. Screenshot und Text funktionieren immer ohne.';
+}
+function releasePreviews() { previewUrls.forEach(url => URL.revokeObjectURL(url)); previewUrls = []; }
+function openImport(options = {}) {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const form = $('#import-form'); form.reset(); releasePreviews(); $('#import-previews').replaceChildren();
+  form.elements.publicProxy.checked = Boolean(config.publicProxy);
+  setImportSource(options.source || 'link'); linkHint();
+  if (options.url) form.elements.url.value = options.url;
+  $('#import-dialog').showModal();
+  if (options.url && (workerHost(config.importProxy) || config.publicProxy)) form.requestSubmit();
+}
+function showPreviews(files) {
+  releasePreviews(); const box = $('#import-previews'); box.replaceChildren();
+  for (const file of files) {
+    const url = URL.createObjectURL(file), image = element('img'); previewUrls.push(url);
+    image.src = url; image.alt = `Ausgewählt: ${file.name}`; box.append(image);
+  }
+}
+async function runImport() {
+  if (importAbort) return;
+  const form = $('#import-form'), text = form.elements.text.value.trim();
+  // Ein eingefügter Link im Textfeld ist ein Link-Import.
+  if (importSource === 'text' && /^https?:\/\/\S+$/i.test(text)) { form.elements.url.value = text; setImportSource('link'); }
+  message();
+  importAbort = new AbortController();
+  const { signal } = importAbort, runButton = $('#import-run');
+  runButton.disabled = true;
+  try {
+    let draft, raw = '';
+    if (importSource === 'link') {
+      const allowPublic = form.elements.publicProxy.checked;
+      if (allowPublic !== Boolean(config.publicProxy)) saveConfig({ ...config, publicProxy: allowPublic });
+      importStatus('Seite wird geladen …', 0.1);
+      const link = form.elements.url.value.trim(), { html } = await fetchRecipePage(link, { workerUrl: config.importProxy, allowPublic }, signal);
+      draft = recipeFromHtml(html, link);
+      if (draft.via === 'text') raw = htmlToText(html).slice(0, 8000);
+    } else if (importSource === 'image') {
+      const files = [...form.elements.images.files];
+      if (!files.length) throw new Error('Bitte zuerst einen Screenshot oder ein Foto wählen.');
+      const { recognizeImages } = await import('./ocr.js');
+      raw = await recognizeImages(files, (fraction, label) => importStatus(label, fraction), signal);
+      if (!raw) throw new Error('Im Bild wurde kein Text erkannt. Bitte einen schärferen Ausschnitt wählen oder den Text einfügen.');
+      draft = parseRecipeText(raw);
+    } else {
+      if (!text) throw new Error('Bitte zuerst den Rezepttext einfügen.');
+      draft = recipeFromAnyText(text);
+      if (draft.via === 'text') raw = text;
+    }
+    $('#import-dialog').close();
+    editRecipe('', { ...draft, raw });
+  } catch (error) {
+    if (error?.name !== 'AbortError') { importStatus(''); message(error.message); }
+  } finally { importAbort = null; runButton.disabled = false; importStatus(''); }
+}
+
+/* ---------- GitHub ---------- */
 // GitHub Contents API: erst aktuellen Stand lesen, nur eigene Operationen anwenden,
 // dann mit genau dessen SHA schreiben. 409/422 führen zu erneutem Lesen und Mischen.
 function apiPath() {
   return `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${config.path.split('/').map(encodeURIComponent).join('/')}`;
 }
-async function api(method, body) {
+async function api(method, body, etag = '') {
   let response;
   // AbortController funktioniert auch auf älteren iPhones, die die neuere
   // Hilfsmethode AbortSignal.timeout noch nicht anbieten.
@@ -418,11 +824,13 @@ async function api(method, body) {
     response = await fetch(`${apiPath()}${method === 'GET' ? `?ref=${encodeURIComponent(config.branch)}` : ''}`, {
       method, cache: 'no-store', signal: controller.signal,
       headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${config.token}`,
-        'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(etag ? { 'If-None-Match': etag } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {})
     });
   } catch { throw new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'); }
   finally { clearTimeout(timeout); }
+  // 304: seit der letzten Abfrage unverändert. Solche Abfragen zählen nicht zum GitHub-Limit.
+  if (response.status === 304) return null;
   if (!response.ok) {
     const error = new Error(response.status === 401 ?
       'Der GitHub-Token ist ungültig oder abgelaufen. Auf GitHub unter Settings → Developer settings → Personal access tokens → Fine-grained tokens einen neuen Token für das Daten-Repository erstellen (Contents: Read and write). Auf diesem Gerät unter Einstellungen ersetzen.' :
@@ -436,7 +844,9 @@ async function api(method, body) {
     if ([403, 429].includes(response.status)) error.retryAt = Math.max(Date.now() + 60000, retry ? Date.now() + retry * 1000 : reset || 0);
     throw error;
   }
-  return response.json();
+  const json = await response.json();
+  if (method === 'GET') json.etag = response.headers.get('ETag') || '';
+  return json;
 }
 function decodeFile(file) {
   if (file.encoding !== 'base64' || typeof file.content !== 'string') throw new Error('GitHub liefert die Datei nicht als kleine JSON-Datei. Bitte Datei und Größe prüfen (erste Version: unter 900 KB).');
@@ -453,27 +863,38 @@ let retryAt = 0;
 async function sync(manual = false) {
   if (!connected()) { restingStatus(); return; }
   if (busy || (!manual && Date.now() < retryAt)) return;
-  busy = true; $('#refresh').disabled = true; status('Wird gesendet / aktualisiert …');
+  busy = true; $('#refresh').disabled = true;
+  if (pending.length || manual || !ready) status('Gleiche ab …', 'busy');
   try {
+    if (queued(queueKey()).length) await uploadPhotos(manual);
     for (let attempt = 0; attempt < 4; attempt++) {
-      const file = await api('GET'), remote = decodeFile(file);
+      // Ohne eigene Änderungen genügt die Frage „hat sich etwas geändert?“ (HTTP 304).
+      const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
+      if (!file) { retryAt = 0; message(); restingStatus(); hydratePhotos(); return; }
+      const remote = decodeFile(file);
       const batch = pending.slice(), merged = merge(remote, batch);
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
       // nicht erneut geschrieben zu werden.
+      let written = false;
       if (batch.some(op => !remote.sync.applied.includes(op.id))) {
         try {
           await api('PUT', { message: 'Einkauf & Rezepte: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
+          written = true;
         } catch (error) { if ([409, 422].includes(error.status) && attempt < 3) continue; throw error; }
       }
-      const sent = new Set(batch.map(op => op.id));
+      const sent = new Set(batch.map(op => op.id)), wasReady = ready, before = signature();
       saveLocal(merged, pending.filter(op => !sent.has(op.id)));
-      ready = true; retryAt = 0; message(); render(); restingStatus();
+      remoteEtag = written ? '' : file.etag;
+      ready = true; retryAt = 0; message();
+      // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
+      if (!wasReady || signature() !== before) render();
+      restingStatus(); hydratePhotos();
       return;
     }
   } catch (error) {
     retryAt = error.retryAt || Date.now() + ([401, 404].includes(error.status) ? 60000 : 15000);
-    status(`Fehler · ${pending.length ? 'Änderungen lokal gesichert' : 'Abgleich nicht möglich'}`); message(error.message);
+    status(pending.length ? 'Fehler · lokal gesichert' : 'Abgleich nicht möglich', 'error'); message(error.message);
   } finally {
     busy = false; $('#refresh').disabled = false;
     if (pending.length && !retryAt) setTimeout(() => void sync(), 300);
@@ -481,7 +902,7 @@ async function sync(manual = false) {
 }
 async function loadWorkspace() {
   ready = false; pending = []; base = emptyData(); state = base; undoAction = null; $('#undo-bar').hidden = true;
-  priceFormStore = null;
+  priceFormStore = null; remoteEtag = '';
   const cache = localStorage.getItem(namespace());
   if (cache) {
     let saved;
@@ -497,25 +918,43 @@ async function loadWorkspace() {
 }
 function fillSettings() {
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token']) {
-    $('#settings-form').elements[key].value = config[key] || ({ actor: 'Nico', branch: 'main', path: 'daten.json' }[key] || '');
+    $('#settings-form').elements[key].value = config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '');
   }
-  $('#theme').value = config.theme || 'system'; applyTheme();
+  const importForm = $('#import-settings-form');
+  importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
+  $('#theme').value = config.theme || 'system'; $('#group-items').checked = config.groupItems !== false; applyTheme();
 }
 function applyTheme() {
   if (!config.theme || config.theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = config.theme;
+  // Die Farbe der Statusleiste folgt dem gewählten Design, nicht nur dem Gerät.
+  const dark = config.theme === 'dark' || (config.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  $('#theme-color').content = dark ? '#0f1914' : '#f4f6f2';
 }
 function sameTarget(left, right) { return namespace(left) === namespace(right); }
+async function backup() {
+  const name = `einkauf-backup-${new Date().toISOString().slice(0, 10)}.json`, json = JSON.stringify(state, null, 2);
+  const file = new File([json], name, { type: 'application/json' });
+  // Auf dem iPhone öffnet ein Download aus einer Homescreen-App oft eine Seite ohne Rückweg: besser den Teilen-Dialog nehmen.
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; }
+    catch (error) { if (error?.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const link = element('a'); link.href = url; link.download = name;
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
+/* ---------- Ereignisse ---------- */
+fillCategorySelects();
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
-$('#store-select').addEventListener('change', () => {
-  selectedStore = $('#store-select').value;
-  renderItems();
-});
+$('#demo-setup').addEventListener('click', () => tab('settings'));
+$('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
+$('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('#item-suggestions').hidden = true;
   if (event.key === 'ArrowDown' && !$('#item-suggestions').hidden) {
@@ -525,24 +964,37 @@ $('#item-form').elements.name.addEventListener('keydown', event => {
 document.addEventListener('focusin', event => {
   if (event.target !== $('#item-form').elements.name && !$('#item-suggestions').contains(event.target)) $('#item-suggestions').hidden = true;
 });
+// Beim Tippen schiebt iOS die Tastatur hoch: Sie verkleinert nur den sichtbaren Bereich, nicht das Layout.
+// Die fixierte Leiste würde dann mitten auf dem Bildschirm hängen bleiben. Solange die Tastatur offen ist,
+// wird sie ausgeblendet. Erkannt wird die Tastatur selbst, nicht der Fokus: iOS nimmt dem Feld ihn nicht zuverlässig weg.
+const typing = node => node?.matches?.('input:not([type=checkbox],[type=radio],[type=file],[type=button],[type=submit]),textarea,select');
+const viewport = window.visualViewport;
+function syncKeyboard() {
+  const open = Boolean(viewport) && viewport.scale < 1.05 && window.innerHeight - viewport.height > 120;
+  document.body.classList.toggle('typing', open && Boolean(typing(document.activeElement)));
+}
+viewport?.addEventListener('resize', syncKeyboard);
+document.addEventListener('focusin', () => setTimeout(syncKeyboard, 350));
+document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
+  const category = form.elements.category.value || suggestCategory(name, state.items);
   const item = { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
-    unit, checked: false, createdBy: config.actor || 'Nico', ...readPricing(form) };
+    unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   const ops = [nextOp('items', uid(), item)];
   if (effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
   commit(ops);
-  form.reset(); delete form.dataset.manualPrice; rememberPriceInForm(); form.elements.name.focus();
+  form.reset(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; form.elements.name.focus();
 }); });
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
-    ...readPricing(form) };
+    category: form.elements.category.value || null, ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
@@ -563,11 +1015,43 @@ $('#undo').addEventListener('click', () => guard(() => {
   undoAction = null; $('#undo-bar').hidden = true;
 }));
 $('#recipe-search').addEventListener('input', renderRecipes);
-$('#tag-filter').addEventListener('change', renderRecipes);
 $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
+$('#import-recipe').addEventListener('click', () => guard(() => openImport()));
 $('#add-ingredient').addEventListener('click', () => ingredientRow());
 $('#recipe-form').addEventListener('submit', saveRecipe);
+document.querySelectorAll('#import-form [data-source]').forEach(node => node.addEventListener('click', () => setImportSource(node.dataset.source)));
+$('#import-form').elements.publicProxy.addEventListener('change', linkHint);
+$('#import-form').elements.images.addEventListener('change', event => showPreviews([...event.target.files]));
+$('#import-form').addEventListener('submit', event => { event.preventDefault(); guard(runImport); });
+$('#import-dialog').addEventListener('close', () => { importAbort?.abort(); releasePreviews(); importStatus(''); });
+$('#week-prev').addEventListener('click', () => { planWeek = addDays(planWeek, -7); renderPlan(); });
+$('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7); renderPlan(); });
+$('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
+$('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
+$('#meal-form').addEventListener('submit', saveMeal);
+$('#meal-form').elements.recipeId.addEventListener('change', () => syncMealForm(true));
+$('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
+$('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
+  if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
+  const storeId = currentStore(form.elements.storeId.value);
+  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+  const rows = selected.map(row => row.unit === NO_AMOUNT ? { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity, unit: row.unit });
+  commit(newItems(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, state.items));
+  selectedStore = storeId; $('#week-dialog').close(); render(); tab('shopping');
+}); });
+$('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  const blob = await resizePhoto(file);
+  pendingPhoto = { id: uid(), blob }; photoRemoved = false;
+  showPhotoPreview(URL.createObjectURL(blob));
+}));
+$('#photo-remove').addEventListener('click', () => { pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
+$('#recipe-dialog').addEventListener('close', () => { pendingPhoto = null; showPhotoPreview(''); });
 $('#transfer-form').elements.servings.addEventListener('change', () => guard(updateTransfer));
+// Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
+$('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
 $('#transfer-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, selected = [...$('#transfer-ingredients').children]
     .filter(label => label.querySelector('input').checked).map(label => label._ingredient);
@@ -575,7 +1059,7 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices));
+  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices, state.items));
   selectedStore = form.elements.storeId.value; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
@@ -585,45 +1069,74 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
   if (!/^[A-Za-z0-9-]+$/.test(next.owner) || !/^[A-Za-z0-9_.-]+$/.test(next.repo) ||
       !next.branch || !next.path.endsWith('.json') || next.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Bitte Benutzername, Repository, Branch und einen relativen JSON-Dateinamen prüfen (keine vollständige URL).');
   if (!sameTarget(config, next) && pending.length) throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
-  storageWrite(CONFIG_KEY, next); config = next; retryAt = 0; message(); await loadWorkspace();
+  saveConfig(next); retryAt = 0; message(); await loadWorkspace();
 }); });
+$('#import-settings-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, text = form.elements.importProxy.value.trim(), proxy = workerHost(text);
+  if (text && !proxy) throw new Error('Bitte die Adresse deines Cloudflare-Workers eingeben. Sie beginnt mit https:// und endet auf .workers.dev.');
+  saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked });
+  form.elements.importProxy.value = proxy; message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
+}); });
+$('#test-proxy').addEventListener('click', () => guard(async () => {
+  const proxy = workerHost($('#import-settings-form').elements.importProxy.value);
+  if (!proxy) throw new Error('Bitte zuerst die Adresse deines Hilfsdienstes eintragen (https://…workers.dev).');
+  saveConfig({ ...config, importProxy: proxy });
+  try { await fetchRecipePage('https://example.com/', { workerUrl: proxy, allowPublic: false }); }
+  catch (error) { throw new Error(`Der Hilfsdienst antwortet nicht wie erwartet. ${error.message}`); }
+  message(); status('Hilfsdienst funktioniert', 'ok'); setTimeout(restingStatus, 2500);
+}));
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  const next = { actor: config.actor, theme: config.theme }; storageWrite(CONFIG_KEY, next); config = next;
+  saveConfig({ actor: config.actor, theme: config.theme, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
-$('#theme').addEventListener('change', () => guard(() => {
-  const next = { ...config, theme: $('#theme').value }; storageWrite(CONFIG_KEY, next); config = next; applyTheme();
-}));
-$('#export').addEventListener('click', () => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
-  const link = element('a'); link.href = url; link.download = `einkauf-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
+$('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
+$('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
+$('#export').addEventListener('click', () => guard(backup));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
 $('#welcome-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const next = { ...config, actor: event.currentTarget.elements.actor.value };
-  storageWrite(CONFIG_KEY, next); config = next; fillSettings(); render(); $('#welcome').close();
+  const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
+  saveConfig({ ...config, actor }); fillSettings(); render(); $('#welcome').close();
+  if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
 }); });
+
+// Link aus dem Teilen-Dialog oder aus einem iOS-Kurzbefehl: …/?import=https://…
+function incomingLink() {
+  const params = new URLSearchParams(location.search);
+  const link = firstUrl(params.get('import') || params.get('url') || params.get('text') || '');
+  if (params.has('import') || params.has('url') || params.has('text')) history.replaceState(null, '', location.pathname);
+  return link;
+}
 // Andere Tabs dürfen ihre Warteschlangen nicht gegenseitig überschreiben.
 // Ein zweiter Tab bleibt deshalb vollständig inaktiv, bis der erste geschlossen ist.
 async function start() {
   try {
     config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); fillSettings();
-    await loadWorkspace(); if (!config.actor) $('#welcome').showModal();
+    const incoming = incomingLink();
+    await loadWorkspace();
+    if (!config.actor) { deferredImport = incoming; $('#welcome').showModal(); }
+    else if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void sync(); });
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
-  } catch (error) { message(error.message); status('Fehler · Einrichtung prüfen'); }
+    matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+    if ('serviceWorker' in navigator) {
+      // Neue App-Version: Hinweis statt stillem Wechsel mitten in einer Eingabe.
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('#update-banner').hidden = false; });
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) registration?.update?.().catch(() => {}); });
+      }).catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
+    }
+  } catch (error) { message(error.message); status('Fehler · Einrichtung prüfen', 'error'); }
 }
 if (navigator.locks) {
   navigator.locks.request('einkauf-app-v1', { ifAvailable: true }, async lock => {
     if (!lock) {
       document.querySelectorAll('button,input,select,textarea').forEach(node => { node.disabled = true; });
       message('Die App ist bereits in einem anderen Tab oder Fenster geöffnet. Schließe es und lade diese Seite neu.');
-      status('Zweiter Tab pausiert'); return;
+      status('Zweiter Tab pausiert', 'error'); return;
     }
     await start(); await new Promise(() => {});
   });
