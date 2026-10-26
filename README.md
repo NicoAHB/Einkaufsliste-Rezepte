@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 1.6
+# Einkauf & Rezepte – Version 1.7
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -7,7 +7,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - Einkaufsliste für **alle Geschäfte zusammen** (Startseite) oder je Geschäft (Edeka, Lidl, Rewe; weitere anlegen, umbenennen, löschen). Ein Geschäft ist beim Hinzufügen mit einem Tipp wählbar, aber nicht nötig.
 - Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
 - Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
-- Die letzte Löschaktion rückgängig machen, solange die Seite geöffnet bleibt. Häkchen werden durch erneutes Antippen geändert, ohne Rückgängig-Meldung.
+- Keine Rückgängig-Leiste: Ein Artikel, Geschäft, Rezept oder Gericht wird mit dem Mülleimer entfernt, versehentlich Entferntes legt man neu an. Kurze Hinweise (z. B. wo ein neuer Artikel steht) verschwinden nach wenigen Sekunden von selbst. Häkchen werden durch erneutes Antippen geändert.
 - Beim Tippen passende Artikelnamen aus eurem bisherigen Einkaufsverlauf übernehmen, auch nach dem Löschen und offline.
 - Rezepte mit einzelnen Zutaten, Zubereitung, Portionen, Tags und optionaler Quelle anlegen, bearbeiten, löschen; nach Rezept/Zutat/Tag suchen und nach Tag filtern. **Neu:** Import aus Link, Screenshot und Text (Abschnitt „Neu in Version 1.3“).
 - Portionen umrechnen. Beim Übernehmen Zutaten einzeln abwählen, Geschäft auswählen und nur die gewählten Zutaten hinzufügen.
@@ -16,18 +16,22 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
 
+## Neu in Version 1.7: keine Rückgängig-Leiste mehr
+
+Die Leiste „Rückgängig“ über der unteren Leiste ist entfernt. Wer etwas zurücknehmen will, nimmt den Mülleimer (neu hinzugefügte Artikel) oder legt Gelöschtes neu an. Geblieben sind kurze Hinweise ohne Knopf, die nach vier Sekunden von selbst verschwinden: wo ein neuer Artikel steht, wenn er in der gewählten Ansicht nicht erscheint, auf welche Menge ein Artikel erhöht wurde und was bei „Auf die Liste“ übernommen wurde. Die Daten ändern sich dadurch nicht; beide Geräte können unabhängig voneinander aktualisiert werden.
+
 ## Neu in Version 1.6: Datei bleibt klein, gleiche Artikel zählen zusammen, Vorrat
 
 ### Die App darf nicht zu groß werden: Aufräumen und Datenumfang
 
-Bisher löschte die App nie wirklich, sondern markierte nur („Löschmarkierung“), damit Rückgängig und der Abgleich zweier Geräte funktionieren. Ohne Aufräumen wächst die Datei dadurch um knapp 2 KB je Artikel, bei 20 Artikeln pro Woche wäre die Grenze von 900 KB in etwa einem halben Jahr erreicht. Jetzt gilt:
+Bisher löschte die App nie wirklich, sondern markierte nur („Löschmarkierung“), damit der Abgleich zweier Geräte funktioniert. Ohne Aufräumen wächst die Datei dadurch um knapp 2 KB je Artikel, bei 20 Artikeln pro Woche wäre die Grenze von 900 KB in etwa einem halben Jahr erreicht. Jetzt gilt:
 
 - **Automatisch:** Sobald die gemeinsame Datei 250 KB überschreitet, räumt die App beim nächsten Abgleich selbst auf. Bei normaler Nutzung (rund 20 Artikel pro Woche) pendelt sich die Datei bei etwa 150 KB ein, dauerhaft und ohne dass jemand daran denken muss.
 - **Von Hand:** Einstellungen → **Datenumfang** zeigt den Füllstand („9 KB von 879 KB belegt“), was aufräumbar wäre, und den Knopf **Jetzt aufräumen**.
 - **Was entfernt wird:** gelöschte Einträge nach **14 Tagen**; erledigte, aber nie entfernte Artikel nach **21 Tagen**; vergangene Gerichte im Wochenplan nach 120 Tagen; alte Preisnotizen (je Geschäft, Produkt und Einheit bleiben die zwei neuesten); die Zeitstempel je Feld bei Einträgen, die seit 14 Tagen unverändert sind; ältere Einträge der Liste bereits übertragener Änderungen (es bleiben die letzten 600). Alles, was nicht gelöscht ist, bleibt: offene Artikel, Rezepte, Zutaten, Geschäfte und der Vorrat.
 - **Vorschläge und gelernte Kategorien bleiben:** Aus entfernten Artikeln merkt sich die App Name, Kategorie und Häufigkeit (höchstens 300 Namen, Feld `names`). Wer „Kochschinken“ einmal in „Fleisch & Fisch“ eingeordnet hat, behält das auch nach dem Aufräumen.
 - **Sicher für zwei Geräte:** Aufgeräumt wird auf dem gerade gelesenen gemeinsamen Stand und mit derselben Prüfung geschrieben wie jede andere Änderung. Ändert das andere Gerät gleichzeitig, wird neu gelesen und neu aufgeräumt. Nichts wird einseitig auf einem Gerät gelöscht.
-- **Grenze für Offline-Geräte:** Ein Gerät, das **länger als 14 Tage** offline war, kann Änderungen an Einträgen enthalten, die inzwischen aufgeräumt wurden. Diese Änderungen werden beim Abgleich verworfen (statt halbe Einträge anzulegen). Neu angelegte Einträge sind nicht betroffen. Auch **Rückgängig** gilt nur, solange die Seite offen ist.
+- **Grenze für Offline-Geräte:** Ein Gerät, das **länger als 14 Tage** offline war, kann Änderungen an Einträgen enthalten, die inzwischen aufgeräumt wurden. Diese Änderungen werden beim Abgleich verworfen (statt halbe Einträge anzulegen). Neu angelegte Einträge sind nicht betroffen.
 - **Das Backup liegt in Git:** Alles, was aufgeräumt wird, steht weiter im Verlauf (Commits) des privaten Daten-Repositorys auf GitHub und lässt sich dort wiederherstellen. Die Datei selbst wird ohne Einrückung geschrieben (etwa halb so groß wie vorher).
 - **Rezeptfotos** liegen als eigene Dateien im Daten-Repository und zählen nicht zur Datenmenge. Ersetzte oder entfernte Fotos bleiben dort zurück. Unter **Datenumfang → Nicht mehr genutzte Fotos löschen** (nur verbunden) werden Fotodateien gelöscht, auf die kein Rezept mehr verweist; vorher fragt die App nach. **Nur sinnvoll, wenn beide Geräte gerade abgeglichen sind:** Ein Foto, das ein anderes Gerät eben hochgeladen und noch nicht an ein Rezept gehängt hat, würde sonst als ungenutzt gelten. Fotos im lokalen Speicher, auf die nichts mehr verweist, räumt die App beim Start selbst weg.
 
@@ -37,7 +41,7 @@ Beim Hinzufügen, bei **Auf die Liste** (Rezept) und bei **Einkauf für die Woch
 
 - Eingerechnet wird nur, was sicher passt: g und kg (ab 1000 g wird kg angezeigt), ml und l, Stück, oder dieselbe Einheit (Bund, EL …). **500 g Tomaten und 2 Stück Tomaten bleiben getrennte Einträge**, ebenso Einträge in verschiedenen Geschäften oder erledigte Artikel.
 - Zutaten **„nach Bedarf“** (Salz, Pfeffer) werden nicht noch einmal aufgeschrieben, wenn der Artikel schon offen auf der Liste steht.
-- **Rückgängig** (Leiste unten) stellt die alte Menge wieder her bzw. entfernt die neuen Einträge; sie nennt, was passiert ist („Übernommen: 3 neu, 2 dazugezählt“). Wer beim Hinzufügen einen Preis eingibt, bekommt immer einen eigenen Eintrag.
+- Ein kurzer Hinweis nennt, was passiert ist („Übernommen: 3 neu, 2 dazugezählt“). Eine falsch erhöhte Menge ändert man im Stift-Dialog, einen falschen Eintrag löscht man mit dem Mülleimer. Wer beim Hinzufügen einen Preis eingibt, bekommt immer einen eigenen Eintrag.
 
 ### Vorrat
 
@@ -47,7 +51,7 @@ Einstellungen → **Vorrat**: Zutaten, die ihr immer zu Hause habt (Salz, Mehl, 
 
 - **Startseite = Gesamtliste.** Die Einkaufsliste öffnet mit dem Filter **Alle**: Alles, was ihr für den nächsten Einkauf braucht, in einer Liste. Darin steht zuerst der Abschnitt **Ohne Geschäft**, danach ein Abschnitt je Geschäft; innerhalb der Abschnitte bleiben die Gänge (Kategorien) erhalten. Die Summe oben gilt für alle offenen Artikel zusammen.
 - **Filter bleiben.** Neben „Alle“ gibt es einen Filter je Geschäft und **Ohne Geschäft** (erscheint, sobald es solche Artikel gibt). Die Angebote-Schaltfläche steht nur in der Ansicht eines einzelnen Geschäfts.
-- **Geschäft beim Hinzufügen mit einem Tipp wählen.** Direkt unter dem Namensfeld stehen die Schnellwahl-Knöpfe **Kein Geschäft**, **Edeka**, **Lidl** … Ein Tipp wählt das Geschäft, ein zweiter Tipp auf dasselbe nimmt die Auswahl zurück. **Ohne Auswahl bekommt der Artikel kein Geschäft** (es ist nichts vorausgewählt). Wer in der Ansicht eines einzelnen Geschäfts hinzufügt, bekommt dieses Geschäft vorgewählt, sonst verschwände der neue Artikel aus der Liste. Die Auswahl bleibt nach dem Hinzufügen stehen, damit man mehrere Artikel nacheinander für denselben Laden eintragen kann. Erscheint ein neuer Artikel nicht in der gerade gewählten Ansicht, meldet die App kurz, wo er steht („‚Joghurt‘ steht bei ‚Lidl‘“), mit **Rückgängig**.
+- **Geschäft beim Hinzufügen mit einem Tipp wählen.** Direkt unter dem Namensfeld stehen die Schnellwahl-Knöpfe **Kein Geschäft**, **Edeka**, **Lidl** … Ein Tipp wählt das Geschäft, ein zweiter Tipp auf dasselbe nimmt die Auswahl zurück. **Ohne Auswahl bekommt der Artikel kein Geschäft** (es ist nichts vorausgewählt). Wer in der Ansicht eines einzelnen Geschäfts hinzufügt, bekommt dieses Geschäft vorgewählt, sonst verschwände der neue Artikel aus der Liste. Die Auswahl bleibt nach dem Hinzufügen stehen, damit man mehrere Artikel nacheinander für denselben Laden eintragen kann. Erscheint ein neuer Artikel nicht in der gerade gewählten Ansicht, meldet die App kurz, wo er steht („‚Joghurt‘ steht bei ‚Lidl‘“). Der Hinweis verschwindet nach wenigen Sekunden.
 - **Später zuordnen oder ändern:** im Stift-Dialog des Artikels (Feld „Geschäft“). So wandert ein Artikel aus „Ohne Geschäft“ in den Abschnitt des Ladens, in dem ihr ihn dann doch kauft.
 - **Rezepte und Wochenplan** übernehmen Zutaten jetzt wahlweise **ohne Geschäft**; danach zeigt die App die Gesamtliste.
 - **Erledigtes** steht in der Gesamtliste gesammelt unten und nennt sein Geschäft. „Erledigte entfernen“ gilt für die gerade gewählte Ansicht.
@@ -71,7 +75,7 @@ Die Einkaufsliste ist nach Gängen im Laden geordnet: Obst & Gemüse, Brot & Bac
 - **Gericht planen:** mit **＋** am Tag oder mit dem Kalender-Symbol auf einer Rezeptkarte. Wähle ein Rezept (Favoriten stehen oben) und die Portionen, oder ein **eigenes Gericht** ohne Rezept („Pizza bestellen“).
 - **Gekocht abhaken:** Der Haken merkt sich am Rezept das Kochdatum („gekocht vor 3 Tagen“).
 - **Einkauf für die Woche:** zählt die Zutaten aller geplanten Gerichte **zusammen** und rechnet auf die geplanten Portionen um. 800 g + 400 g Tomaten werden 1,2 kg, g und kg bzw. ml und l werden zusammengerechnet. Unterschiedliche Einheiten wie „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt; „Zwiebel“ und „Zwiebeln“ gelten als verschiedene Namen. Unter jeder Zeile steht, aus welchem Rezept sie stammt. Schon gekochte Gerichte lassen sich auslassen; „nach Bedarf“-Zutaten sind abgewählt. Danach wählst du das Geschäft und übernimmst die Auswahl auf die Einkaufsliste.
-- Tippen auf den Namen eines Gerichts springt zum Rezept. Löschen lässt sich mit „Rückgängig“ zurücknehmen.
+- Tippen auf den Namen eines Gerichts springt zum Rezept. Entfernen geht mit dem Mülleimer.
 
 ### Favoriten, „zuletzt gekocht“ und Rezeptfotos
 
@@ -134,7 +138,7 @@ Kompakter Kopf, Geschäfte als Reiter mit Anzahl offener Artikel, Summe und Ange
 
 - **Artikelvorschläge:** „Kochschinken“ einmal eintragen. Beim nächsten Mal beispielsweise `kochs` eintippen und den Vorschlag antippen. Die App übernimmt den vollständigen Namen; danach kannst du Menge und Einheit ergänzen. Der Vorschlag fügt noch keinen Artikel zur Liste hinzu. Auch abgehakte und gelöschte Artikel werden als bekannte Namen berücksichtigt. Doppelte Namen mit anderer Großschreibung oder zusätzlichen Leerzeichen erscheinen nur einmal. Wortanfänge und häufig verwendete Namen stehen oben; höchstens sechs Vorschläge werden angezeigt.
 - **Gemeinsam lernen:** Die Namen stammen aus den vorhandenen Artikeldaten und dem Namensgedächtnis, das beim Aufräumen aus entfernten Artikeln entsteht (Version 1.6). Deshalb sind keine zusätzliche Datei und kein externer Dienst nötig. Im verbundenen Modus bekommen beide Geräte die Vorschläge nach dem GitHub-Abgleich; im Beispielmodus bleiben sie auf dem jeweiligen Gerät. Bereits geladene Namen funktionieren auch offline.
-- **Abhaken ohne Meldung:** Ein Häkchen erneut antippen, um den Artikel wieder zu öffnen. Dabei erscheint kein Rückgängig-Balken. Für gelöschte Artikel, erledigte Artikel und gelöschte Rezepte/Geschäfte bleibt die Lösch-Rückgängig-Funktion erhalten.
+- **Abhaken ohne Meldung:** Ein Häkchen erneut antippen, um den Artikel wieder zu öffnen.
 - **Getrennter Angebotspreis:** Im Artikel- oder Hinzufügen-Formular „Im Angebot“ aktivieren. Darunter erscheint ein eigenes Feld für den **Angebotspreis**, einschließlich Menge und Einheit. Standardmäßig wird die Bezugsmenge des normalen Preises vorgeschlagen. Beispiel: normal **2,49 € je Packung**, Angebot **1,79 € je Packung**, zwei Packungen: **3,58 €** in der Summe.
 - **Normalpreis bleibt erhalten:** Wird „Im Angebot“ ausgeschaltet, gilt wieder der normale Preis. Ein bereits gespeicherter Angebotspreis bleibt zum erneuten Aktivieren erhalten. Ohne eingetragenen Angebotspreis wird vorsichtig mit dem normalen Preis geschätzt. Ein Angebotspreis darf auch allein eingetragen werden, wenn der Normalpreis unbekannt ist; nach dem Ausschalten fehlt dann ein Preis, statt einen zu erfinden. Wenn beide Preise bekannt sind, prüft das Formular, ob das Angebot für dieselbe Menge günstiger ist.
 - **Preisgedächtnis:** Die Preisnotiz speichert den verwendeten Preis und den bekannten Normalpreis getrennt. Der Geschäftsvergleich berücksichtigt die zuletzt eingetragene Preisnotiz; neue Artikel erhalten den letzten bekannten Normalpreis als Vorschlag. Alte Angebote werden dadurch nicht automatisch auf neue Einkäufe angewendet. Alte Preise und Angebotsmarkierungen bleiben beim Update unverändert; einen separaten Angebotspreis kannst du nachtragen.
@@ -245,7 +249,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 - **Kein Zugriff (403):** Mitgliedschaft, Write-Rolle, Contents-Berechtigung und Token-Freigabe prüfen. GitHub kann auch wegen eines API-Limits 403 melden. Dann abwarten. Beim Daten-Repo keine erzwungenen Pull Requests für App-Schreibzugriffe voraussetzen.
 - **Nicht gefunden (404):** Eigentümer, Repo, `main` und `daten.json` einschließlich Groß-/Kleinschreibung prüfen. GitHub versteckt private Repos auch bei fehlenden Token-Rechten hinter 404; es ist nicht automatisch eine fehlende Datei.
 - **Schreibkonflikt (409/422):** Die App lädt und mischt bis zu viermal erneut. Bleibt der Fehler, später aktualisieren und Branch-Regeln prüfen. Lokale Änderungen bleiben erhalten.
-- **Rückgängig:** stellt die letzte Löschaktion wieder her. Häkchen werden ohne Meldung durch erneutes Antippen zurückgesetzt. Ein späteres Rückgängig ist selbst eine neue gemeinsame Änderung und kann daher eine zwischenzeitliche Änderung am selben Feld ersetzen. Nach Neuladen ist der Rückgängig-Knopf weg; die Daten und Warteschlange bleiben.
+- **Versehentlich gelöscht:** Seit Version 1.7 gibt es keinen Rückgängig-Knopf mehr. Ein Häkchen setzt man durch erneutes Antippen zurück; Gelöschtes legt man neu an. Gelöschte Einträge bleiben noch 14 Tage in der Datei (danach räumt die App auf), die App zeigt sie aber nicht mehr an. Ältere Stände findet man im Verlauf des privaten Daten-Repositorys auf GitHub.
 - **Zweiter Tab:** pro Browser-Ursprung darf nur ein App-Tab aktiv sein, damit zwei Tabs nicht dieselbe lokale Warteschlange überschreiben. Den ersten Tab schließen und den zweiten neu laden. Zwei Geräte sind ausdrücklich unterstützt.
 
 Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browsers. Es werden keine externen Skripte, Analysewerkzeuge oder Schriften geladen. Trotzdem nur auf vertrauenswürdigen Geräten verwenden und Browserdaten nicht löschen, solange Änderungen ausstehen. Andere Seiten unter demselben Pages-Ursprung gehören ebenfalls zu dieser Vertrauensgrenze. **Token entfernen** entfernt die Zugangsdaten; lokale Daten und Warteschlangen bleiben für die spätere erneute Verbindung erhalten. Für vollständiges Entfernen erst synchronisieren und sichern, dann die Website-Daten in den Geräteeinstellungen löschen. Safari im privaten Modus ist für dauerhafte Daten ungeeignet.
@@ -288,10 +292,10 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Als Nico und Partnerin verbinden. Auf beiden Geräten muss der gemeinsame GitHub-Status erscheinen.
 - [ ] In Edeka einen Artikel mit `1,5 kg` hinzufügen; im zweiten Gerät aktualisieren und Namen/Menge/Person prüfen.
 - [ ] Beide Geräte fügen gleichzeitig unterschiedliche Artikel hinzu: nach Abgleich müssen beide Artikel vorhanden sein.
-- [ ] Auf einem Gerät Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Erneut antippen öffnet den Artikel, ohne Rückgängig-Meldung.
-- [ ] Erledigte entfernen, danach Rückgängig; einen einzelnen Artikel löschen und wiederherstellen.
-- [ ] Geschäft hinzufügen, umbenennen und mit einem Artikel löschen; direkt Rückgängig testen.
-- [ ] Eigenes Rezept mit zwei Zutaten, Tags und Zubereitung anlegen; Suche, Tagfilter, Bearbeiten und Löschen/Rückgängig testen.
+- [ ] Auf einem Gerät Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Erneut antippen öffnet den Artikel, ohne Meldung.
+- [ ] Erledigte entfernen; einen einzelnen Artikel mit dem Mülleimer löschen.
+- [ ] Geschäft hinzufügen, umbenennen und mit einem Artikel löschen.
+- [ ] Eigenes Rezept mit zwei Zutaten, Tags und Zubereitung anlegen; Suche, Tagfilter, Bearbeiten und Löschen testen.
 - [ ] Beispiel-Pasta von 2 auf 4 Portionen stellen: Nudeln 400 g, Tomaten 800 g. „Zutaten auf die Liste“ öffnen, eine Zutat abwählen, Lidl wählen, bestätigen. Nur die ausgewählten Mengen sollen dort stehen.
 - [ ] Nach erfolgreichem Online-Aufruf Flugmodus aktivieren, Artikel anlegen und die App neu öffnen. Er muss lokal bleiben. Flugmodus aus, App geöffnet lassen, zweiten Geräteabgleich prüfen.
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
@@ -301,8 +305,8 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 Weitere Testpunkte für Version 1.6 (auf beiden Geräten aktualisieren):
 
 - [ ] Einstellungen → Datenumfang zeigt einen kleinen Prozentwert. **Jetzt aufräumen** meldet „nichts aufzuräumen“ oder die Zahl entfernter Einträge; die Liste bleibt unverändert, Vorschläge funktionieren weiter (z. B. einen vor Wochen gelöschten Artikel eintippen).
-- [ ] „Bananen 2 Stück“ und noch einmal „Bananen 3 Stück“ hinzufügen: ein Eintrag mit 5 Stück. **Rückgängig** setzt auf 2 zurück. „Bananen 1 kg“ ergibt einen zweiten Eintrag.
-- [ ] Ein Rezept auf die Liste übernehmen, dessen Zutat schon auf der Liste steht: Die Menge wird addiert („dazugezählt“), Rückgängig stellt sie wieder her.
+- [ ] „Bananen 2 Stück“ und noch einmal „Bananen 3 Stück“ hinzufügen: ein Eintrag mit 5 Stück. Ein Hinweis nennt die neue Menge. „Bananen 1 kg“ ergibt einen zweiten Eintrag.
+- [ ] Ein Rezept auf die Liste übernehmen, dessen Zutat schon auf der Liste steht: Die Menge wird addiert („dazugezählt“).
 - [ ] Einstellungen → Vorrat: „Salz“ und „Olivenöl“ eintragen. Rezept „Auf die Liste“: diese Zutaten sind abgewählt und mit „Vorrat“ gekennzeichnet. Auf dem zweiten Gerät erscheint der Vorrat nach dem Abgleich.
 - [ ] Optional im verbundenen Modus: Ein Rezeptfoto ersetzen, dann Einstellungen → „Nicht mehr genutzte Fotos löschen“ (beide Geräte vorher abgleichen).
 
@@ -344,7 +348,7 @@ npm run test:logic       # nur Logik: Daten, Preise, Import, Hilfsdienst
 npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright install chromium)
 ```
 
-- `tests/compact.test.mjs`: Aufräumen (Fristen für gelöschte und erledigte Artikel, Folgen für Zutaten/Preise/Artikel entfernter Rezepte und Geschäfte, Zeitstempel und Sammelmarke, verwaiste Änderungen eines alten Geräts, Namensgedächtnis, Simulation von einem Jahr Nutzung mit rund 20 Artikeln pro Woche). `tests/list.test.mjs`: Zusammenzählen gleicher Artikel (Einheiten, Geschäfte, „nach Bedarf“, Rückgängig) und Vorrat.
+- `tests/compact.test.mjs`: Aufräumen (Fristen für gelöschte und erledigte Artikel, Folgen für Zutaten/Preise/Artikel entfernter Rezepte und Geschäfte, Zeitstempel und Sammelmarke, verwaiste Änderungen eines alten Geräts, Namensgedächtnis, Simulation von einem Jahr Nutzung mit rund 20 Artikeln pro Woche). `tests/list.test.mjs`: Zusammenzählen gleicher Artikel (Einheiten, Geschäfte, „nach Bedarf“) und Vorrat.
 - `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
 - `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
 - `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).
@@ -358,7 +362,7 @@ Weitere Testpunkte für Version 1.1:
 - [ ] Edeka wählen, Angebotsseite öffnen und eigenen Link unter „Geschäfte“ speichern.
 - [ ] Artikel mit 2 kg und einem Preis von 1,99 € je 500 g anlegen: geschätzt 7,96 €.
 - [ ] Beim selben Artikel einen passenden anderen Geschäftspreis notieren; Vergleich je kg und Datum kontrollieren.
-- [ ] Artikel abhaken: geschätzte Summe sinkt; Rückgängig stellt sie wieder her.
+- [ ] Artikel abhaken: geschätzte Summe sinkt; erneut antippen stellt sie wieder her.
 - [ ] Preis leeren: fehlender Preis wird angezeigt, nicht als kostenlos gerechnet. Preis 0: wird ausdrücklich als kostenlos mitgerechnet.
 - [ ] App erneut öffnen, denselben Namen im selben Geschäft eingeben und gemerkten Preis prüfen; Geschäft wechseln und anderen Vorschlag prüfen.
 - [ ] Gleicher Name mit „Packung“: kein Vergleich mit unbekannter Packungsgröße; g und l werden nicht ineinander umgerechnet.
@@ -366,7 +370,7 @@ Weitere Testpunkte für Version 1.1:
 
 Weitere Testpunkte für Version 1.2:
 
-- [ ] Artikel abhaken und wieder öffnen: keine neue Rückgängig-Benachrichtigung. Löschen und Lösch-Rückgängig funktionieren weiter.
+- [ ] Artikel abhaken und wieder öffnen: keine Benachrichtigung. Löschen funktioniert wie gewohnt.
 - [ ] Normalpreis 2,49 €, Angebotspreis 1,79 €, jeweils je Packung, Menge 2: Summe 3,58 €. Angebot ausschalten: Summe 4,98 €, beide Preise bleiben gespeichert.
 - [ ] Unterschiedliche Bezugsmengen (z. B. normal je 500 g, Angebot je kg) und ein Angebot ohne bekannten Normalpreis prüfen.
 - [ ] Kochschinken eintragen und löschen, dann `kochs` eintippen: Vorschlag antippen und vollständigen Namen übernehmen. Nach Neuladen und offline wiederholen.

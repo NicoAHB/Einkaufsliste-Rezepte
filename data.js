@@ -203,10 +203,10 @@ export function combineQuantity(left, right) {
   return Number.isFinite(result.quantity) && result.quantity > 0 && result.quantity <= 1e6 ? result : null;
 }
 // rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
-// vorher, nachher) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
+// neue Menge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
   const pool = active(items).filter(item => !item.checked && (item.storeId || '') === (storeId || ''))
-    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, before: { quantity: item.quantity, unit: item.unit }, quantity: item.quantity, unit: item.unit }));
+    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, quantity: item.quantity, unit: item.unit }));
   const fresh = [], counted = new Map();
   let skipped = 0;
   for (const row of rows) {
@@ -223,14 +223,12 @@ export function foldIntoList(rows, storeId, items = []) {
     if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; } else counted.set(match.id, match);
   }
   return { fresh: fresh.map(({ pool: _pool, noAmount: _noAmount, ...row }) => row), skipped,
-    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, before: entry.before, after: { quantity: entry.quantity, unit: entry.unit } })) };
+    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, after: { quantity: entry.quantity, unit: entry.unit } })) };
 }
-// Fertige Änderungen für eine Liste von Zeilen, dazu die Rückgängig-Anweisungen (neue Artikel löschen, Mengen zurücksetzen).
+// Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
 export function addToList(rows, storeId, actor, at, history = [], items = []) {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
   const created = newItems(fresh, storeId, actor, at, history, items);
   const ops = [...created, ...counted.map(entry => operation('items', entry.id, { quantity: entry.after.quantity, unit: entry.after.unit }, actor, at))];
-  const undo = [...created.map(op => ({ collection: 'items', id: op.entityId, patch: { deletedAt: at } })),
-    ...counted.map(entry => ({ collection: 'items', id: entry.id, patch: { quantity: entry.before.quantity, unit: entry.before.unit } }))];
-  return { ops, undo, added: created.length, counted, skipped };
+  return { ops, added: created.length, counted, skipped };
 }

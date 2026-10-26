@@ -459,7 +459,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Gleiche Artikel werden zusammengezählt; Rückgängig; Rezept-Zutaten zählen zur Liste dazu', async () => {
+  test('Gleiche Artikel werden zusammengezählt; Rezept-Zutaten zählen zur Liste dazu', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.getByRole('tab', { name: /^Edeka/ }).click();
@@ -471,9 +471,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await add('Bananen', '2', 'Stück'); await add('bananen', '3', 'Stk.');
     assert.equal(await rows('Bananen').count(), 1);
     assert.match(await rows('Bananen').textContent(), /5 Stück/);
-    assert.match(await page.textContent('#undo-label'), /„Bananen“: jetzt 5 Stück/);
-    await page.click('#undo');
-    assert.match(await rows('Bananen').textContent(), /2 Stück/);
+    assert.match(await page.textContent('#notice-text'), /„Bananen“: jetzt 5 Stück/);
     // Andere Einheit: eigener Eintrag.
     await add('Bananen', '1', 'kg');
     assert.equal(await rows('Bananen').count(), 2);
@@ -489,14 +487,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.selectOption('#transfer-form select[name=storeId]', 'store-edeka');
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#undo-label'), /dazugezählt/);
+    assert.match(await page.textContent('#notice-text'), /dazugezählt/);
     await page.getByRole('tab', { name: /^Edeka/ }).click();
     assert.equal(await rows('Nudeln').count(), 1);
     assert.match(await rows('Nudeln').textContent(), /700 g/);
     assert.match(await rows('Tomaten').first().textContent(), /1,6 kg/);
-    await page.click('#undo');
-    assert.match(await rows('Nudeln').textContent(), /500 g/);
-    assert.match(await rows('Tomaten').first().textContent(), /1,2 kg/);
+    assert.equal(await page.getByRole('button', { name: 'Rückgängig' }).count(), 0, 'Es gibt keinen Rückgängig-Knopf');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -523,12 +519,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.check('#transfer-form input[name=rememberPantry]');
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#undo-label'), /in den Vorrat/);
+    assert.match(await page.textContent('#notice-text'), /in den Vorrat/);
     await page.click('[data-tab=settings]');
     assert.ok((await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'));
-    await page.click('#undo');
-    assert.ok(!(await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'), 'Rückgängig nimmt den Vorrat wieder heraus');
     // Entfernen
+    await page.getByRole('button', { name: 'Tomaten aus dem Vorrat entfernen' }).click();
     await page.getByRole('button', { name: 'Nudeln aus dem Vorrat entfernen' }).click();
     assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['olivenöl']);
     // Wochenliste: Vorrat ebenfalls gekennzeichnet
@@ -606,12 +601,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.uncheck('#week-form input[name=skipDone]');
     assert.ok((await page.locator('#week-ingredients').textContent()).includes('Nudeln'));
     await page.click('#week-dialog [data-close]');
-    // Wochen blättern, löschen, Rückgängig
+    // Wochen blättern, löschen
     await page.click('#week-next'); assert.equal(await page.locator('.meal').count(), 0);
     await page.click('#week-today'); assert.equal(await today.locator('.meal').count(), 3);
     await today.locator('.meal', { hasText: 'Pizza bestellen' }).getByRole('button', { name: /entfernen/ }).click();
     assert.equal(await today.locator('.meal').count(), 2);
-    await page.click('#undo'); assert.equal(await today.locator('.meal').count(), 3);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -741,24 +735,26 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Artikel, der in der gewählten Ansicht nicht erscheint: Hinweis mit Rückgängig', async () => {
+  test('Artikel, der in der gewählten Ansicht nicht erscheint: kurzer Hinweis, der von selbst verschwindet', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.getByRole('tab', { name: /^Rewe/ }).click();
     await page.locator('#store-pick button', { hasText: 'Lidl' }).click();
     await page.fill('#item-form input[name=name]', 'Joghurt'); await page.click('#item-form button[type=submit]');
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0, 'In der Rewe-Ansicht steht der Lidl-Artikel nicht');
-    await page.waitForSelector('#undo-bar:not([hidden])');
-    assert.equal(await page.textContent('#undo-label'), '„Joghurt“ steht bei „Lidl“');
+    await page.waitForSelector('#notice:not([hidden])');
+    assert.equal(await page.textContent('#notice-text'), '„Joghurt“ steht bei „Lidl“');
+    assert.equal(await page.getByRole('button', { name: 'Rückgängig' }).count(), 0, 'Es gibt keinen Rückgängig-Knopf');
+    await page.waitForSelector('#notice', { state: 'hidden', timeout: 8000 });
     await page.getByRole('tab', { name: /^Alle/ }).click();
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1);
-    await page.click('#undo');
+    // Rückgängig geht über den Mülleimer.
+    await page.getByRole('button', { name: 'Joghurt löschen' }).click();
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0);
     // Ein Artikel, der in der Ansicht erscheint, braucht keinen Hinweis.
     await page.getByRole('tab', { name: /^Lidl/ }).click();
-    await page.locator('#undo-bar').evaluate(node => { node.hidden = true; });
     await page.fill('#item-form input[name=name]', 'Quark'); await page.click('#item-form button[type=submit]');
-    assert.equal(await page.locator('#undo-bar').isHidden(), true);
+    assert.equal(await page.locator('#notice').isHidden(), true);
     assert.equal(await page.locator('#items .item', { hasText: 'Quark' }).count(), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -786,8 +782,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('.item.checked').count(), 1, 'Nur die erledigten Artikel der gewählten Ansicht werden entfernt');
     await page.click('#clear-checked');
     assert.equal(await page.locator('.item.checked').count(), 0);
-    await page.click('#undo');
-    assert.equal(await page.locator('.item.checked').count(), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
