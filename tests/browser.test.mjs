@@ -826,6 +826,100 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Im Laden: Geschäft wählen, Artikel ohne Geschäft überall bis abgehakt (erst Edeka, dann Lidl), Einkauf beenden mit Kassenbon', async () => {
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(() => {
+      window.__wake = { requests: 0, releases: 0 };
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wake.requests++; return { release: async () => { window.__wake.releases++; }, addEventListener() {} }; } } });
+    });
+    await open(page);
+    // Ein Artikel ohne Geschäft (Beispieldaten: Tomaten und Nudeln bei Edeka, Milch bei Lidl, Äpfel bei Rewe)
+    await page.fill('#item-form input[name=name]', 'Brot'); await page.click('#item-form button[type=submit]');
+    await page.click('#mode-shop');
+    assert.equal(await page.locator('#plan-view').isHidden(), true);
+    assert.equal(await page.locator('#item-form').isHidden(), true, 'kein Eingabeformular im Laden');
+    const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.querySelector('.count')?.textContent ?? '', node.getAttribute('aria-selected')]));
+    assert.deepEqual(await chips(), [['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'nichts vorgewählt; Brot zählt in jedem Geschäft mit');
+    assert.match(await page.textContent('#shop-list'), /Tippe oben auf das Geschäft/);
+    const names = () => page.locator('#shop-list .shop-item .shop-name').allTextContents();
+    const chip = name => page.locator('#shop-chips .chip', { hasText: name });
+    // Bei Edeka
+    await chip('Edeka').click();
+    assert.deepEqual((await names()).sort(), ['Brot', 'Nudeln', 'Tomaten']);
+    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.match(await page.textContent('#shop-list'), /Überall möglich/);
+    assert.match(await page.textContent('#shop-list'), /2 Artikel für andere Geschäfte/);
+    assert.equal(await page.locator('#shop-list .item-actions, #shop-list .icon-button').count(), 0, 'kein Stift, kein Mülleimer');
+    assert.ok(await page.locator('.shop-tap').first().evaluate(node => node.getBoundingClientRect().height >= 60), 'große Tippfläche');
+    await page.locator('.shop-tap', { hasText: 'Brot' }).click();
+    assert.match(await page.textContent('#shop-status'), /Noch 2 offen/);
+    assert.match(await page.textContent('#shop-list .shop-done'), /Erledigt \(1\)[\s\S]*Brot/);
+    assert.deepEqual(await chips(), [['Edeka', '2', 'true'], ['Lidl', '1', 'false'], ['Rewe', '1', 'false']]);
+    // Danach bei Lidl: Brot steht dort nicht mehr (weder offen noch erledigt)
+    await chip('Lidl').click();
+    assert.deepEqual(await names(), ['Milch']);
+    assert.ok(!(await page.textContent('#shop-list')).includes('Brot'));
+    // Zurück bei Edeka: Brot ist unter „Erledigt“ und lässt sich wieder öffnen; dann ist es auch bei Lidl wieder da
+    await chip('Edeka').click();
+    await page.locator('#shop-list .shop-done summary').click();
+    await page.locator('#shop-list .shop-done .shop-tap', { hasText: 'Brot' }).click();
+    await chip('Lidl').click();
+    assert.deepEqual((await names()).sort(), ['Brot', 'Milch']);
+    // Bei Lidl gekauft: bei Rewe nicht mehr; ein Artikel von Lidl bleibt bei Edeka außen vor
+    await page.locator('.shop-tap', { hasText: 'Brot' }).click();
+    await page.locator('.shop-tap', { hasText: 'Milch' }).click();
+    await chip('Rewe').click();
+    assert.deepEqual(await names(), ['Äpfel']);
+    // Bildschirm anlassen gilt nur in dieser Ansicht
+    await page.check('#shop-awake');
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => window.__wake.releases === 1);
+    await page.click('[data-tab=shopping]');
+    await page.waitForFunction(() => window.__wake.requests === 2);
+    // Einkauf beenden: Abgehaktes verschwindet, Kassenbon-Dialog mit dem Geschäft
+    await page.click('#shop-finish'); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /2 abgehakte Artikel werden von der Liste entfernt/);
+    await page.click('#finish-receipt');
+    await page.waitForSelector('#receipt-dialog[open]');
+    await page.fill('#receipt-form textarea[name=text]', 'Kassenbon\nBrot 1,99 A\nSUMME 1,99');
+    await page.click('#receipt-parse');
+    assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe', 'das Geschäft, in dem man zuletzt war');
+    await page.keyboard.press('Escape');
+    await page.click('#mode-plan');
+    assert.equal(await page.locator('#plan-view').isVisible(), true);
+    const text = await page.textContent('#items');
+    assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
+    assert.ok(text.includes('Tomaten') && text.includes('Äpfel'), 'offene bleiben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: Modus bleibt nach dem Neuladen, Neues von anderen steht schmal oben, kein seitlicher Überlauf bei 320 px', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
+    await open(page);
+    await page.evaluate(() => {
+      const key = 'einkauf-demo-v1', data = JSON.parse(localStorage.getItem(key)), at = new Date().toISOString();
+      data.base.items.push({ id: 'butter', storeId: 'store-edeka', name: 'Butter', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Anna', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+      localStorage.setItem(key, JSON.stringify(data));
+      localStorage.setItem('einkauf-seen:einkauf-demo-v1', JSON.stringify({ ids: data.base.items.filter(item => item.id !== 'butter').map(item => item.id) }));
+    });
+    await page.click('#mode-shop');
+    await page.reload(); await page.waitForSelector('#status[data-state]');
+    assert.equal(await page.locator('#shop-view').isVisible(), true, 'der Modus bleibt auf diesem Gerät gespeichert');
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    assert.match(await page.textContent('#shop-list .shop-item.news'), /Butter[\s\S]*neu von Anna/);
+    assert.equal(await page.locator('#shop-list .shop-item:not(.news) .shop-name', { hasText: 'Butter' }).count(), 0);
+    assert.equal(await horizontalOverflow(page), 0);
+    await page.locator('#shop-list .shop-item.news').getByRole('button', { name: 'Übernehmen' }).click();
+    assert.equal(await page.locator('#shop-list .shop-item.news').count(), 0);
+    assert.equal(await page.locator('#shop-list .shop-item:not(.news) .shop-name', { hasText: 'Butter' }).count(), 1);
+    await page.click('#mode-plan');
+    assert.equal(await page.locator('#shop-view').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Favoriten, „Heute gekocht“ und „Lange nicht gekocht“', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

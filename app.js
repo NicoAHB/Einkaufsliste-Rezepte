@@ -1,6 +1,7 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
+import { shopCount, shopView } from './shop.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
@@ -129,6 +130,7 @@ function tab(name) {
   });
   window.scrollTo(0, 0);
   if (name === 'settings') renderStorage();
+  syncShopAwake();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
 function storeOptions(select, preferred = select.value, allowNone = false) {
@@ -192,7 +194,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -235,7 +237,7 @@ function acknowledge(ids) {
   ensureSeen(); ids.forEach(id => seen.add(id));
   const keep = currentIds(state.items);
   try { localStorage.setItem(seenKey(), JSON.stringify({ ids: [...seen].filter(id => keep.has(id)) })); } catch { /* s. o. */ }
-  renderItems();
+  renderItems(); if (shopOn()) renderShop();
 }
 function newsRow(entry) {
   const item = entry.item, row = element('li', undefined, 'item news');
@@ -1127,20 +1129,120 @@ async function backup() {
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* ---------- Im Laden ---------- */
+// Umschalter „Planen | Im Laden“ (gilt für dieses Gerät). Im Laden: Geschäft oben wählen, nur das Wichtige sehen, abhaken.
+let shopStore = '', shopDoneOpen = false;
+const shopChecked = new Map();   // Artikel ohne Geschäft, die in dieser Sitzung in einem Geschäft abgehakt wurden: Kennung → Geschäft
+const shopOn = () => config.shopMode === true;
+function setShopMode(on) { saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
+function applyMode() {
+  const on = shopOn();
+  $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#shopping-head').hidden = on;   // im Laden: oben gleich der Umschalter und die Geschäfte
+  $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
+  if (on) renderShop();
+  syncShopAwake();
+}
+function syncShopAwake() {
+  const supported = 'wakeLock' in navigator;
+  $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && config.shopAwake === true && !awake.shop.failed;
+  const want = supported && config.shopAwake === true && shopOn() && !$('#shopping').hidden && !document.hidden;
+  void keepAwake('shop', want);
+}
+function shopRow(item) {
+  const row = element('li', undefined, `shop-item${item.checked ? ' checked' : ''}`);
+  const tap = element('button', undefined, 'shop-tap'); tap.type = 'button';
+  const mark = element('span', undefined, 'shop-mark'); if (item.checked) mark.append(icon('check'));
+  tap.append(mark, element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
+  tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
+  tap.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
+  tap.addEventListener('click', () => guard(() => {
+    const latest = state.items.find(entry => entry.id === item.id);
+    if (!latest || latest.deletedAt) return;
+    // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
+    if (!latest.checked && !latest.storeId) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
+    commit([nextOp('items', item.id, { checked: !latest.checked })]);
+  }));
+  row.append(tap);
+  return row;
+}
+function shopNewsRow(entry) {
+  const item = entry.item, row = element('li', undefined, 'shop-item news');
+  const copy = element('div', undefined, 'item-copy');
+  copy.append(element('strong', item.name, 'shop-name'), element('small', `${format(item.quantity)} ${item.unit} · ${entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`).join(', ')}`));
+  row.append(copy, button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
+  return row;
+}
+function renderShop() {
+  const stores = active(state.stores), items = visibleItems();
+  if (shopStore && !stores.some(store => store.id === shopStore)) shopStore = '';
+  const chips = $('#shop-chips'); chips.replaceChildren();
+  for (const store of stores) {
+    const chip = element('button', store.name, 'chip'); chip.type = 'button';
+    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
+    const count = shopCount(items, store.id); if (count) chip.append(element('span', String(count), 'count'));
+    chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
+    chips.append(chip);
+  }
+  const selected = chips.querySelector('[aria-selected=true]');
+  if (selected) chips.scrollLeft = Math.max(0, selected.offsetLeft - (chips.clientWidth - selected.offsetWidth) / 2);
+  const list = $('#shop-list'); list.replaceChildren();
+  if (!shopStore) {
+    $('#shop-status').textContent = '';
+    list.append(element('li', stores.length ? 'Tippe oben auf das Geschäft, in dem du gerade bist.' : 'Es gibt noch kein Geschäft. Lege unter „Planen“ eines an.', 'empty'));
+    return;
+  }
+  ensureSeen();
+  const shop = shopView(items, shopStore, shopChecked), here = [...shop.open, ...shop.anywhere];
+  const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
+  const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory());
+  const total = shoppingTotal(here, state.prices);
+  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : `Alles erledigt bei ${storeName(shopStore)}.`;
+  news.forEach(entry => list.append(shopNewsRow(entry)));
+  for (const group of groups(shop.open)) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
+  const anywhere = groups(shop.anywhere);
+  if (anywhere.length) {
+    list.append(element('li', 'Überall möglich', 'store-head none'));
+    for (const group of anywhere) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
+  }
+  if (shop.elsewhere) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
+  if (shop.done.length) {
+    const done = element('li', undefined, 'shop-done'), details = element('details'), inner = element('ul');
+    details.open = shopDoneOpen; details.addEventListener('toggle', () => { shopDoneOpen = details.open; });
+    details.append(element('summary', `Erledigt (${shop.done.length})`), inner);
+    shop.done.sort((a, b) => a.name.localeCompare(b.name, 'de')).forEach(item => inner.append(shopRow(item)));
+    done.append(details); list.append(done);
+  }
+}
+function openFinish() {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const checked = visibleItems().filter(item => item.checked).length;
+  $('#finish-text').textContent = checked ? `${checked} abgehakte ${checked === 1 ? 'Artikel wird' : 'Artikel werden'} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.';
+  $('#finish-dialog').showModal();
+}
+function finishShopping(withReceipt) {
+  const ids = visibleItems().filter(item => item.checked).map(item => item.id);
+  if (ids.length) removeRows('items', ids);
+  shopChecked.clear();
+  $('#finish-dialog').close();
+  if (withReceipt) openReceipt(shopStore);
+}
+
 /* ---------- Kochmodus ---------- */
 // Haken in Zutaten und Schritten gelten nur für dieses Öffnen der App; sie werden nicht gespeichert und nicht abgeglichen.
 const cooked = new Map();
-let wakeLock = null, wakeWanted = false;
-async function keepAwake(on) {
-  wakeWanted = on;
-  const hint = $('#cook-awake-hint');
-  if (!on) { try { await wakeLock?.release(); } catch { /* schon freigegeben */ } wakeLock = null; hint.textContent = ''; return; }
+// Bildschirm anlassen (Wake Lock), getrennt für den Kochmodus und den Laden-Modus. Mehrfaches Anfordern ist harmlos.
+const awake = { cook: { lock: null, wanted: false, failed: false, box: '#cook-awake', hint: '#cook-awake-hint' }, shop: { lock: null, wanted: false, failed: false, box: '#shop-awake', hint: '#shop-awake-hint' } };
+async function keepAwake(name, on) {
+  const entry = awake[name], hint = $(entry.hint);
+  entry.wanted = on;
+  if (!on) { try { await entry.lock?.release(); } catch { /* schon freigegeben */ } entry.lock = null; hint.textContent = ''; return; }
+  if (entry.lock || entry.failed) return;   // nach einem Fehlschlag erst wieder, wenn die Person den Schalter erneut betätigt
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    const lock = await navigator.wakeLock.request('screen');
+    entry.lock = lock; lock.addEventListener('release', () => { if (entry.lock === lock) entry.lock = null; });
     hint.textContent = 'Der Bildschirm bleibt an, solange diese Ansicht offen ist.';
   } catch {
-    wakeLock = null; $('#cook-awake').checked = false; wakeWanted = false;
+    entry.lock = null; entry.failed = true; $(entry.box).checked = false; entry.wanted = false;
     hint.textContent = 'Das lässt sich auf diesem Gerät gerade nicht einschalten. Du kannst unter Einstellungen → Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
   }
 }
@@ -1169,7 +1271,7 @@ function openCook(id, servings) {
   $('#cook-awake-label').hidden = !supported; $('#cook-awake').checked = supported && config.cookAwake === true; $('#cook-awake-hint').textContent = '';
   $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate() })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
   $('#cook-dialog').showModal();
-  if (supported && config.cookAwake === true) void keepAwake(true);
+  if (supported && config.cookAwake === true) void keepAwake('cook', true);
 }
 
 /* ---------- Kassenbon ---------- */
@@ -1182,7 +1284,9 @@ function knownNames() {
   }
   return [...names.values()];
 }
-function openReceipt() {
+let receiptStore = '';
+function openReceipt(storeId = '') {
+  receiptStore = typeof storeId === 'string' ? storeId : '';
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (!active(state.stores).length) throw new Error('Bitte zuerst ein Geschäft anlegen.');
   const form = $('#receipt-form'); form.reset();
@@ -1226,7 +1330,7 @@ function parseReceiptText() {
   const form = $('#receipt-form'), parsed = parseReceipt(form.elements.text.value);
   if (!parsed.items.length) throw new Error('Auf dem Text wurden keine Artikelzeilen erkannt. Bitte den ganzen Text des Kassenbons einfügen (Artikel mit Preis, je Zeile).');
   receiptParsed = parsed;
-  storeOptions(form.elements.storeId, storeForChain(parsed.chain, state.stores) || viewStore()?.id || '', false);
+  storeOptions(form.elements.storeId, storeForChain(parsed.chain, state.stores) || receiptStore || viewStore()?.id || '', false);
   form.elements.date.value = parsed.date || isoDate();
   const list = $('#receipt-lines'); list.replaceChildren(); receiptLines = [];
   const names = $('#receipt-names'); names.replaceChildren(); const known = knownNames();
@@ -1547,11 +1651,21 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#export').addEventListener('click', () => guard(backup));
-$('#open-receipt').addEventListener('click', () => guard(openReceipt));
-$('#cook-awake').addEventListener('change', event => guard(async () => { saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake(event.target.checked); }));
-$('#cook-dialog').addEventListener('close', () => { void keepAwake(false); });
+$('#open-receipt').addEventListener('click', () => guard(() => openReceipt()));
+$('#cook-awake').addEventListener('change', event => guard(async () => { awake.cook.failed = false; saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake('cook', event.target.checked); }));
+$('#cook-dialog').addEventListener('close', () => { void keepAwake('cook', false); });
 // iOS gibt die Sperre frei, sobald die App in den Hintergrund geht; beim Zurückkehren wird sie neu angefordert.
-document.addEventListener('visibilitychange', () => { if (!document.hidden && wakeWanted && !wakeLock && $('#cook-dialog').open) void keepAwake(true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (awake.cook.wanted && !awake.cook.lock && $('#cook-dialog').open) void keepAwake('cook', true);
+  syncShopAwake();
+});
+$('#mode-plan').addEventListener('click', () => guard(() => setShopMode(false)));
+$('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
+$('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopAwake: event.target.checked }); syncShopAwake(); }));
+$('#shop-finish').addEventListener('click', () => guard(openFinish));
+$('#finish-only').addEventListener('click', () => guard(() => finishShopping(false)));
+$('#finish-receipt').addEventListener('click', () => guard(() => finishShopping(true)));
 $('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
 $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
 $('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });

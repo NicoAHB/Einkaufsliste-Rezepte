@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 1.8
+# Einkauf & Rezepte – Version 1.9
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 1.9: Modus „Im Laden“
+
+Oben in der Einkaufsliste schaltet **Planen | Im Laden** um (die Wahl bleibt auf diesem Gerät gespeichert). **Planen** ist die bisherige Ansicht mit Eingabeformular, Preisen und Bearbeiten. **Im Laden** zeigt nur das Wichtige:
+
+- **Geschäft oben wählen:** große Schalter für Edeka, Lidl, Rewe … mit der Zahl der offenen Artikel. Es ist nichts vorgewählt, bis ihr tippt; ein Tipp wechselt das Geschäft jederzeit.
+- **Eine Zeile je Artikel:** Name und Menge in großer Schrift, ein Tipp hakt ab. Kein Eingabefeld, kein Stift, kein Mülleimer, damit im Gedränge nichts versehentlich gelöscht wird. Nach Gängen im Laden geordnet (Obst & Gemüse, Brot, Kühlregal …), wie in der Planen-Ansicht.
+- **Kopfzeile:** „Noch 7 offen · ca. 23,40 €“ (die Schätzung nur, wenn Preise bekannt sind) und „3 Artikel für andere Geschäfte“ am Listenende.
+- **Artikel ohne Geschäft stehen überall,** in jedem Geschäft unter **„Überall möglich“**, bis sie abgehakt sind. Wer sie bei Edeka abhakt, findet sie bei Lidl nicht mehr (auch nicht unter „Erledigt“). Nur bei Edeka steht der Artikel in dieser Sitzung unter „Erledigt“, falls ihr euch vertippt habt: ein Tipp öffnet ihn wieder, dann ist er auch bei Lidl wieder da. Nach einem Neustart der App ist diese Merkhilfe weg; der abgehakte Artikel bleibt trotzdem in allen Läden verschwunden (er ist ja erledigt).
+- **Erledigt (n)** ist eingeklappt und lässt sich aufklappen; ein Tipp auf eine erledigte Zeile öffnet sie wieder.
+- **„Neu von Anna“** steht auch im Laden, schmal und gelb ganz oben, mit „Übernehmen“. So seht ihr, was die Partnerin unterwegs ergänzt hat.
+- **Bildschirm anlassen** (nur wo das Gerät es anbietet) hält das Display wach, solange die Ladenansicht offen ist. Beim Wechsel auf einen anderen Bereich oder in den Hintergrund wird die Sperre freigegeben.
+- **Einkauf beenden:** entfernt alle abgehakten Artikel von der Liste (eine Rückfrage nennt die Zahl) und bietet an, gleich den **Kassenbon** einzufügen. Das Geschäft, in dem ihr zuletzt wart, ist dort vorgewählt, falls der Bon den Markt nicht selbst nennt.
+- Neue Artikel legt ihr unter **Planen** an. Es ändert sich nichts am Datenmodell; beide Geräte können unabhängig voneinander aktualisieren.
 
 ## Neu in Version 1.8: Kassenbons, Mengen ohne Verlust, Kochmodus, „Neu von …“
 
@@ -202,7 +216,7 @@ Kompakter Kopf, Geschäfte als Reiter mit Anzahl offener Artikel, Summe und Ange
 - **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. Bei aktivem Angebot zählt der eingetragene Angebotspreis; ohne Angebotspreis der normale Preis. Es wird kein zusätzlicher pauschaler Rabatt abgezogen.
 - **Beispielmodus:** Die neuen Beispielpreise sind frei erfunden. Sie werden nur bei einem frischen Beispielmodus geladen. Bereits vorhandene Browserdaten und eure private Datendatei werden niemals durch neue Beispiele ersetzt.
 
-**Bestehende App aktualisieren:** Die neuen App-Dateien (siehe Dateiliste in Abschnitt 3, ab Version 1.3 zusätzlich `recipe-import.js`, `page-source.js`, `ocr.js`, ab Version 1.4 `categories.js`, `plan.js`, `photos.js`, ab Version 1.6 `compact.js`, ab Version 1.8 `receipt.js`, `cook.js`, `news.js`, die Symbole `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` und der Ordner `vendor`) im öffentlichen App-Repository ersetzen bzw. hinzufügen. Beim ersten Öffnen nach einem Update zeigt die App „Neue Version bereit“; auf **Neu laden** tippen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
+**Bestehende App aktualisieren:** Die neuen App-Dateien (siehe Dateiliste in Abschnitt 3, ab Version 1.3 zusätzlich `recipe-import.js`, `page-source.js`, `ocr.js`, ab Version 1.4 `categories.js`, `plan.js`, `photos.js`, ab Version 1.6 `compact.js`, ab Version 1.8 `receipt.js`, `cook.js`, `news.js`, ab Version 1.9 `shop.js`, die Symbole `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` und der Ordner `vendor`) im öffentlichen App-Repository ersetzen bzw. hinzufügen. Beim ersten Öffnen nach einem Update zeigt die App „Neue Version bereit“; auf **Neu laden** tippen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
 
 ## 2. Zuerst verstehen: zwei Repositories
 
@@ -224,7 +238,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -351,6 +365,13 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
 
+Weitere Testpunkte für Version 1.9:
+
+- [ ] Einkauf → **Im Laden**: Edeka antippen, Artikel abhaken, zu Lidl wechseln. Ein Artikel ohne Geschäft, den ihr bei Edeka abgehakt habt, steht bei Lidl nicht mehr.
+- [ ] „Bildschirm anlassen“ einschalten: Der Bildschirm bleibt an, solange die Ladenansicht offen ist, und wird beim Wechsel zu „Rezepte“ wieder freigegeben.
+- [ ] Die Partnerin ergänzt unterwegs einen Artikel: Er steht gelb oben („neu von …“), „Übernehmen“ reiht ihn ein.
+- [ ] **Einkauf beenden → Beenden und Kassenbon einfügen:** Abgehaktes ist von der Liste entfernt, der Kassenbon-Dialog öffnet sich.
+
 Weitere Testpunkte für Version 1.8 (auf beiden Geräten aktualisieren):
 
 - [ ] **Gleichzeitig dazuzählen:** Auf der Liste steht „Milch 1“. Ein Gerät in den Flugmodus, auf beiden Geräten je „Milch“ hinzufügen, Flugmodus aus: Ergebnis „3“.
@@ -409,7 +430,7 @@ npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright
 ```
 
 - `tests/compact.test.mjs`: Aufräumen (Fristen für gelöschte und erledigte Artikel, Folgen für Zutaten/Preise/Artikel entfernter Rezepte und Geschäfte, Zeitstempel und Sammelmarke, verwaiste Änderungen eines alten Geräts, Namensgedächtnis, Simulation von einem Jahr Nutzung mit rund 20 Artikeln pro Woche). `tests/list.test.mjs`: Zusammenzählen gleicher Artikel (Einheiten, Geschäfte, „nach Bedarf“) und Vorrat.
-- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Namensvorschläge. `tests/trend.test.mjs`: sichere Preisänderungen, Aktionen, Umrechnung, 60-Tage-Frist, Zuordnungen, Aufräumen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“.
+- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Namensvorschläge. `tests/trend.test.mjs`: sichere Preisänderungen, Aktionen, Umrechnung, 60-Tage-Frist, Zuordnungen, Aufräumen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“. `tests/shop.test.mjs`: Modus „Im Laden“ (Geschäft wählen, Artikel ohne Geschäft, erst Edeka dann Lidl).
 - `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
 - `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
 - `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).
