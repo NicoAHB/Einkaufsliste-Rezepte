@@ -1,4 +1,4 @@
-import { active, addToList, clone, emptyData, foldIntoList, listRow, merge, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, clone, emptyData, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
@@ -179,7 +179,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderStorage();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -605,13 +605,15 @@ function openTransfer(id, servings) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
-  storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren();
+  storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren(); form.elements.rememberPantry.checked = false;
+  const keys = pantryKeys(state.pantry);
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
-    const label = element('label', undefined, 'transfer-row'), check = element('input');
-    // Salz, Pfeffer und Co. („nach Bedarf“) hat man meist da: nicht vorausgewählt.
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT; check.value = row.id;
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), stocked = inPantry(keys, row.name);
+    // Salz, Pfeffer und Co. („nach Bedarf“) und der Vorrat: hat man meist da, nicht vorausgewählt.
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked; check.value = row.id;
     // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
-    label._ingredient = clone(row); label.append(check, element('span')); $('#transfer-ingredients').append(label);
+    label._ingredient = clone(row); label.append(check, element('span')); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    $('#transfer-ingredients').append(label);
   }
   updateTransfer(); $('#transfer-dialog').showModal();
 }
@@ -787,20 +789,22 @@ function weekRows() {
 }
 function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
-  const rows = weekRows();
+  const rows = weekRows(), keys = pantryKeys(state.pantry);
   if (!rows.length) box.append(element('p', 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
   for (const row of rows) {
     const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(row));
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT;
+    const stocked = inPantry(keys, row.name);
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked;
     label._row = row;
     if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
-    label.append(check, text); box.append(label);
+    label.append(check, text); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    box.append(label);
   }
 }
 function openWeekShopping() {
   const form = $('#week-form'); storeOptions(form.elements.storeId, defaultStore(), true);
   $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
-  renderWeekRows(); $('#week-dialog').showModal();
+  form.elements.rememberPantry.checked = false; renderWeekRows(); $('#week-dialog').showModal();
 }
 
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
@@ -1020,6 +1024,23 @@ async function backup() {
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* ---------- Vorrat ---------- */
+function renderPantry() {
+  const list = $('#pantry-list'); list.replaceChildren();
+  const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  if (!rows.length) list.append(element('li', 'Noch nichts im Vorrat.', 'empty'));
+  for (const row of rows) {
+    const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id], `„${row.name}“ aus dem Vorrat entfernt`)));
+    list.append(entry);
+  }
+}
+$('#pantry-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, name = form.elements.name.value.trim().replace(/\s+/g, ' ');
+  if (!name) throw new Error('Bitte eine Zutat eingeben.');
+  if (pantryAdditions([name], pantryKeys(state.pantry)).length) commit([nextOp('pantry', uid(), { name })]);
+  form.reset(); form.elements.name.focus();
+}); });
+
 /* ---------- Datenumfang ---------- */
 const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry;
@@ -1106,12 +1127,18 @@ for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'sal
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js), Rückgängig macht alles zusammen rückgängig.
-function addRows(rows, storeId) {
+// `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
+function addRows(rows, storeId, unchecked = [], remember = false) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
-  if (!result.ops.length) throw new Error('Alles davon steht schon auf der Liste.');
-  const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`].filter(Boolean);
-  commit(result.ops, { label: `Übernommen: ${parts.join(', ')}`, patches: result.undo });
+  const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
+  if (!result.ops.length && !stocked.length) throw new Error('Alles davon steht schon auf der Liste.');
+  const pantryOps = stocked.map(name => ({ id: uid(), name })).map(entry => ({ entry, op: nextOp('pantry', entry.id, { name: entry.name }) }));
+  const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
+    stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
+  const gone = new Date().toISOString();
+  commit([...result.ops, ...pantryOps.map(row => row.op)], { label: `Übernommen: ${parts.join(', ')}`,
+    patches: [...result.undo, ...pantryOps.map(row => ({ collection: 'pantry', id: row.entry.id, patch: { deletedAt: gone } }))] });
 }
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
@@ -1180,7 +1207,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const storeId = currentStore(form.elements.storeId.value);
-  addRows(selected.map(row => listRow(row)), storeId);
+  addRows(selected.map(row => listRow(row)), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name), form.elements.rememberPantry.checked);
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
@@ -1201,7 +1228,8 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
-  addRows(selected.map(row => listRow(row, factor)), currentStore(form.elements.storeId.value));
+  addRows(selected.map(row => listRow(row, factor)), currentStore(form.elements.storeId.value),
+    [...$('#transfer-ingredients').children].filter(label => !label.querySelector('input').checked).map(label => label._ingredient.name), form.elements.rememberPantry.checked);
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {

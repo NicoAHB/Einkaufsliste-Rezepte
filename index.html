@@ -130,6 +130,11 @@
         <button type="submit">Import-Einstellungen speichern</button>
         <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
       </form>
+      <div id="pantry-card" class="card stack"><h3>Vorrat</h3>
+        <p class="hint">Was ihr immer zu Hause habt, zum Beispiel Salz, Mehl oder Öl. Diese Zutaten sind beim Übernehmen von Rezepten und beim Wocheneinkauf vorab abgewählt und mit „Vorrat“ gekennzeichnet.</p>
+        <form id="pantry-form" class="inline-form"><label><span class="visually-hidden">Zutat für den Vorrat</span><input name="name" placeholder="z. B. Salz" maxlength="80" required autocomplete="off"></label><button type="submit">Hinzufügen</button></form>
+        <ul id="pantry-list" class="pantry-list"></ul>
+      </div>
       <div id="storage-card" class="card stack"><h3>Datenumfang</h3>
         <progress id="storage-bar" max="100" value="0"></progress>
         <p id="storage-text"></p>
@@ -219,8 +224,9 @@
     <label class="checkbox-label"><input name="skipDone" type="checkbox" checked> Schon gekochte Gerichte auslassen</label>
     <label>Geschäft<select name="storeId"></select></label>
     <div id="week-ingredients"></div>
+    <label class="checkbox-label"><input name="rememberPantry" type="checkbox"> Abgewählte Zutaten als Vorrat merken</label>
     <button type="submit">Ausgewählte Zutaten hinzufügen</button></form></dialog>
-  <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="sheet-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p>Wähle ab, was du schon zu Hause hast.</p><div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label></div><div id="transfer-ingredients"></div><button>Ausgewählte Zutaten hinzufügen</button></form></dialog>
+  <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="sheet-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p>Wähle ab, was du schon zu Hause hast.</p><div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label></div><div id="transfer-ingredients"></div><label class="checkbox-label"><input name="rememberPantry" type="checkbox"> Abgewählte Zutaten als Vorrat merken</label><button>Ausgewählte Zutaten hinzufügen</button></form></dialog>
   <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
   <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
 </body>

@@ -501,6 +501,46 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Vorrat: in den Einstellungen pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=settings]');
+    for (const name of ['Nudeln', 'olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
+    await page.fill('#pantry-form input[name=name]', 'NUDELN'); await page.click('#pantry-form button');   // Doppelte werden nicht angelegt
+    assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['Nudeln', 'olivenöl']);
+    const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
+    await page.click('[data-tab=recipes]');
+    await card.locator('summary').click();
+    await card.getByRole('button', { name: 'Auf die Liste' }).click();
+    await sheetOpen(page);
+    const row = name => page.locator('#transfer-ingredients .transfer-row', { hasText: name });
+    assert.equal(await row('Nudeln').locator('input').isChecked(), false);
+    assert.equal(await row('Nudeln').locator('.pantry-badge').count(), 1);
+    assert.equal(await row('Tomaten').locator('input').isChecked(), true);
+    assert.equal(await row('Tomaten').locator('.pantry-badge').count(), 0);
+    // Tomaten für dieses Mal abwählen und als Vorrat merken
+    await row('Tomaten').locator('input').uncheck();
+    await page.check('#transfer-form input[name=rememberPantry]');
+    await page.click('#transfer-form button:not([data-close])');
+    await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#undo-label'), /in den Vorrat/);
+    await page.click('[data-tab=settings]');
+    assert.ok((await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'));
+    await page.click('#undo');
+    assert.ok(!(await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'), 'Rückgängig nimmt den Vorrat wieder heraus');
+    // Entfernen
+    await page.getByRole('button', { name: 'Nudeln aus dem Vorrat entfernen' }).click();
+    assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['olivenöl']);
+    // Wochenliste: Vorrat ebenfalls gekennzeichnet
+    await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
+    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Tomaten-Pasta' }); await page.click('#meal-form button[type=submit]');
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    assert.equal(await page.locator('#week-ingredients .transfer-row', { hasText: 'Olivenöl' }).locator('input').isChecked(), false);
+    assert.equal(await page.locator('#week-ingredients .pantry-badge').count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Favoriten, „Heute gekocht“ und „Lange nicht gekocht“', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

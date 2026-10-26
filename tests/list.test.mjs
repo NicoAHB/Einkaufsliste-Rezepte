@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { active, addToList, combineQuantity, foldIntoList, merge } from '../data.js';
+import { active, addToList, combineQuantity, foldIntoList, inPantry, merge, operation, pantryAdditions, pantryKeys, validate } from '../data.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
 const AT = '2026-10-27T10:00:00.000Z';
@@ -78,4 +78,33 @@ test('addToList: neue Artikel mit Rückgängig-Anweisung, vorhandene erhöht, al
   assert.equal(active(out.items).find(item => item.id === 'a').quantity, 750);
   assert.ok(active(out.items).some(item => item.name === 'Äpfel' && item.quantity === 6));
   assert.deepEqual(result.undo.map(entry => Object.keys(entry.patch)[0]).sort(), ['deletedAt', 'quantity']);
+});
+
+const stock = (...names) => pantryKeys(names.map(name => ({ name, deletedAt: null })));
+
+test('Vorrat: Name, Groß-/Kleinschreibung und zusammengesetzte Namen', () => {
+  const keys = stock('Salz', 'Pfeffer', 'Olivenöl');
+  assert.equal(inPantry(keys, 'salz'), true);
+  assert.equal(inPantry(keys, ' Olivenöl '), true);
+  assert.equal(inPantry(keys, 'Salz, Pfeffer'), true, 'alle Teile im Vorrat');
+  assert.equal(inPantry(keys, 'Salz und Pfeffer'), true);
+  assert.equal(inPantry(keys, 'Salz (fein)'), true, 'Klammerzusatz zählt nicht');
+  assert.equal(inPantry(keys, 'Salz, Zucker'), false, 'ein Teil fehlt');
+  assert.equal(inPantry(keys, 'Meersalz'), false, 'kein Teilwort-Treffer');
+  assert.equal(inPantry(keys, ''), false);
+  assert.equal(inPantry(stock(), 'Salz'), false);
+});
+
+test('Vorrat: gelöschte Einträge zählen nicht; neue Namen ohne Doppelte und ohne Vorhandenes', () => {
+  const keys = pantryKeys([{ name: 'Salz', deletedAt: null }, { name: 'Mehl', deletedAt: '2026-10-27T10:00:00.000Z' }]);
+  assert.equal(inPantry(keys, 'Mehl'), false);
+  assert.deepEqual(pantryAdditions(['Salz, Pfeffer', 'pfeffer', 'Mehl und Zucker'], keys), ['Pfeffer', 'Mehl', 'Zucker']);
+  assert.deepEqual(pantryAdditions([], keys), []);
+});
+
+test('Vorrat ist eine optionale Erweiterung: alte Dateien bleiben gültig, neue Zeilen werden geprüft', () => {
+  assert.doesNotThrow(() => validate(structuredClone(demo)));
+  const out = merge(structuredClone(demo), [operation('pantry', 'p1', { name: 'Salz' }, 'Nico', AT)]);
+  assert.deepEqual(active(out.pantry).map(row => row.name), ['Salz']);
+  assert.deepEqual(merge(structuredClone(demo), [operation('pantry', 'p2', { name: '  ' }, 'Nico', AT)]).pantry, [], 'ungültiger Vorrat wird verworfen');
 });

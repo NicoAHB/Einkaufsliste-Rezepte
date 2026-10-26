@@ -176,6 +176,18 @@ export function ingredientItems(ingredients, recipeId, storeId, factor, actor, a
   return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, history, items);
 }
 
+/* Vorrat: Zutaten, die man immer zu Hause hat. Ein Name wie „Salz, Pfeffer“ oder „Salz und Pfeffer“ besteht aus mehreren Teilen
+   und zählt nur dann als Vorrat, wenn jeder Teil im Vorrat steht. Klammerzusätze („Zwiebel (rot)“) bleiben unberücksichtigt. */
+const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
+export const pantryKeys = rows => new Set(active(rows || []).map(row => productKey(row.name)));
+export const inPantry = (keys, name) => { const parts = nameParts(name); return parts.length > 0 && parts.every(part => keys.has(productKey(part))); };
+// Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
+export function pantryAdditions(names, keys) {
+  const found = new Map();
+  for (const name of names) for (const part of nameParts(name)) { const key = productKey(part); if (!keys.has(key) && !found.has(key)) found.set(key, part); }
+  return [...found.values()];
+}
+
 /* Gleiche Artikel zusammenzählen. Eine Menge wird zu einem offenen Artikel mit demselben Namen im selben Geschäft addiert
    (oder zu „ohne Geschäft“), wenn die Einheiten zusammenpassen. Nichts wird geraten: 500 g und 2 Stück bleiben getrennt, ebenso
    „1 Bund“ und „2 EL“. Eine Zutat „nach Bedarf“ wird nicht noch einmal aufgeschrieben, wenn der Artikel schon auf der Liste steht. */
