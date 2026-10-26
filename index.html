@@ -122,7 +122,7 @@
     </section>
 
     <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
-      <div class="section-head"><h2 id="settings-title">Einstellungen</h2></div>
+      <div class="section-head"><h2 id="settings-title">Einstellungen</h2><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <form id="settings-form" class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
@@ -182,8 +182,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.9 · Rezepte ohne Hilfsdienst · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.10 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -234,6 +233,10 @@
     <div id="daily-card" class="daily-card" aria-live="polite"></div>
     <p id="daily-note" class="hint" role="status"></p>
     <div class="daily-actions"><button id="daily-skip" class="secondary" type="button">Überspringen</button><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button><button id="daily-reset" class="secondary" type="button" hidden>Von vorn beginnen</button></div></div></dialog>
+  <dialog id="help-dialog"><div class="stack"><div class="sheet-head"><h2>Anleitung</h2><button type="button" data-close="help-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div id="help-body" class="help-body"></div>
+    <p class="hint"><a href="https://github.com/NicoAHB/Einkaufsliste-Rezepte#readme" target="_blank" rel="noopener noreferrer">Technische Anleitung und Testliste auf GitHub (öffnet im Browser)</a></p>
+    <button type="button" data-close="help-dialog" class="secondary">Schließen</button></div></dialog>
   <dialog id="finish-dialog"><div class="stack"><div class="sheet-head"><h2>Einkauf beenden</h2><button type="button" data-close="finish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="finish-text"></p>
     <button id="finish-receipt" type="button">Beenden und Kassenbon einfügen</button>

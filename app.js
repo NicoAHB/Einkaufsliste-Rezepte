@@ -1017,6 +1017,39 @@ async function runImport() {
   } finally { importAbort = null; runButton.disabled = false; importStatus(''); }
 }
 
+/* ---------- Anleitung ---------- */
+// Die Anleitung ist ein eigenes Fenster in der App (mit Schließen-Knopf), kein Link auf eine Textdatei: Eine Datei in der Home-Bildschirm-App hat keinen Weg zurück.
+// Inhalt steht in help.js und wird erst beim ersten Öffnen geladen. `**fett**` und `Code` werden ohne HTML aufgebaut.
+function richText(text) {
+  const fragment = document.createDocumentFragment();
+  for (const part of text.split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+    if (!part) continue;
+    if (part.startsWith('**')) fragment.append(element('strong', part.slice(2, -2)));
+    else if (part.startsWith('`')) fragment.append(element('code', part.slice(1, -1)));
+    else fragment.append(part);
+  }
+  return fragment;
+}
+let helpBuilt = false;
+async function openHelp() {
+  if (!helpBuilt) {
+    const { HELP } = await import('./help.js'), body = $('#help-body');
+    for (const section of HELP) {
+      const details = element('details', undefined, 'fold help-section'), summary = element('summary'), inner = element('div', undefined, 'help-text');
+      details.open = Boolean(section.open);
+      summary.append(element('h3', section.title)); details.append(summary, inner);
+      for (const block of section.blocks) {
+        if (block.p) { const paragraph = element('p'); paragraph.append(richText(block.p)); inner.append(paragraph); }
+        else { const list = element(block.ol ? 'ol' : 'ul'); for (const line of block.ol || block.ul) { const item = element('li'); item.append(richText(line)); list.append(item); } inner.append(list); }
+      }
+      body.append(details);
+    }
+    helpBuilt = true;
+  }
+  $('#help-dialog').showModal();
+}
+$('#open-help').addEventListener('click', () => guard(openHelp));
+
 /* ---------- Rezepte des Tages ---------- */
 // Ohne Einstellung kommen jeden Tag drei Rezepte aus der eingebauten Sammlung (rezepte-des-tages.json, kein Hilfsdienst nötig).
 // Mit einem Link in den Einstellungen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
@@ -1204,8 +1237,8 @@ async function api(method, body, etag = '') {
   if (!response.ok) {
     const error = new Error(response.status === 401 ?
       'Der GitHub-Token ist ungültig oder abgelaufen. Auf GitHub unter Settings → Developer settings → Personal access tokens → Fine-grained tokens einen neuen Token für das Daten-Repository erstellen (Contents: Read and write). Auf diesem Gerät unter Einstellungen ersetzen.' :
-      response.status === 403 ? 'GitHub verweigert den Zugriff oder begrenzt Anfragen. Bitte Token-Rechte (Contents: Read and write), eine mögliche Freigabe und das GitHub-Limit prüfen. Details stehen in der README. Lokale Änderungen bleiben erhalten.' :
-      response.status === 404 ? 'GitHub findet Repository, Branch oder JSON-Datei nicht, oder dein Token hat keinen Zugriff. Prüfe Eigentümer, Repository, Branch, Dateiname und Token-Auswahl. Lege daten.json im privaten Repository an (siehe README).' :
+      response.status === 403 ? 'GitHub verweigert den Zugriff oder begrenzt Anfragen. Bitte Token-Rechte (Contents: Read and write), eine mögliche Freigabe und das GitHub-Limit prüfen. Details stehen in der Anleitung (Einstellungen → Anleitung). Lokale Änderungen bleiben erhalten.' :
+      response.status === 404 ? 'GitHub findet Repository, Branch oder JSON-Datei nicht, oder dein Token hat keinen Zugriff. Prüfe Eigentümer, Repository, Branch, Dateiname und Token-Auswahl. Lege daten.json im privaten Repository an (siehe Anleitung).' :
       response.status === 429 ? 'Zu viele Anfragen an GitHub. Bitte kurz warten; lokale Änderungen bleiben erhalten.' :
       `GitHub meldet Fehler ${response.status}. Lokal gespeicherte Änderungen bleiben erhalten. Bitte später erneut aktualisieren.`);
     error.status = response.status;

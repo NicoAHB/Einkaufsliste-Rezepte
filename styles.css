@@ -2235,3 +2235,46 @@ details,summary,.card {
   min-width:0;
   max-width:100%
 }
+
+/* Anleitung */
+.help-body {
+  display:grid;
+  gap:8px;
+  margin:0 0 12px
+}
+.help-section {
+  padding:2px 14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card)
+}
+.help-section[open] {
+  border-color:var(--line-strong)
+}
+.help-section>summary {
+  min-height:48px
+}
+.help-section>summary h3 {
+  font-size:1.02rem
+}
+.help-text {
+  padding:0 0 12px;
+  line-height:1.5
+}
+.help-text p {
+  margin:0 0 8px
+}
+.help-text ul,.help-text ol {
+  margin:0 0 4px;
+  padding-left:20px
+}
+.help-text li {
+  margin:0 0 7px
+}
+.help-text code {
+  padding:1px 5px;
+  border-radius:5px;
+  background:var(--accent-soft);
+  font-size:.9em;
+  overflow-wrap:anywhere
+}

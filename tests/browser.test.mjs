@@ -1542,6 +1542,52 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
+  test('Anleitung: eigenes Fenster in der App, gegliedert, schließbar, kein Rohtext', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('a[href$=".md"]').count(), 0, 'kein Link auf eine Textdatei');
+    assert.equal(await page.locator('#open-help').isVisible(), true, 'Knopf steht oben, nicht in einem zugeklappten Bereich');
+    await page.click('#open-help'); await sheetOpen(page);
+    const sections = page.locator('#help-body details.help-section');
+    assert.ok(await sections.count() >= 10, 'gegliedert in Abschnitte');
+    assert.equal(await page.locator('#help-body details[open]').count(), 1, 'nur der erste Abschnitt ist offen');
+    const text = await page.textContent('#help-body');
+    assert.ok(!/\*\*|`|^#|\]\(/m.test(text), `Markdown-Zeichen im Text: ${text.match(/\*\*|`|\]\(/)?.[0]}`);
+    assert.ok(await page.locator('#help-body strong').count() > 10, 'Wichtiges ist fett');
+    assert.ok(await page.locator('#help-body code').count() >= 2, 'Eingaben als Code');
+    // Abschnitte auf- und zuklappen
+    const second = sections.nth(1);
+    await second.locator('summary').click();
+    assert.equal(await second.evaluate(node => node.open), true);
+    assert.match(await second.textContent(), /privates.*Repository/s);
+    await second.locator('summary').click();
+    assert.equal(await second.evaluate(node => node.open), false);
+    // Äußerer Link nur auf GitHub, in neuem Fenster
+    const link = page.locator('#help-dialog a');
+    assert.equal(await link.count(), 1);
+    assert.match(await link.getAttribute('href'), /^https:\/\/github\.com\/NicoAHB\/Einkaufsliste-Rezepte/);
+    assert.match(await link.getAttribute('rel'), /noopener/);
+    assert.equal(await link.getAttribute('target'), '_blank');
+    // Schließen: Knopf oben, Knopf unten, Escape
+    const close = async how => {
+      if (how === 'top') await page.click('#help-dialog .sheet-head [data-close]');
+      else if (how === 'bottom') await page.click('#help-dialog > .stack > [data-close]');
+      else await page.keyboard.press('Escape');
+      await page.waitForSelector('dialog[open]', { state: 'detached' });
+    };
+    await close('top');
+    for (const how of ['bottom', 'escape']) { await page.click('#open-help'); await sheetOpen(page); await close(how); }
+    assert.equal(await page.locator('#help-body details.help-section').count(), await sections.count(), 'wird nicht doppelt aufgebaut');
+    assert.equal(await horizontalOverflow(page), 0);
+    // Das Fenster passt auch auf kleine Geräte
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.click('#open-help'); await sheetOpen(page);
+    assert.ok(await page.evaluate(() => { const dialog = document.querySelector('#help-dialog'); return dialog.scrollWidth <= dialog.clientWidth; }), 'kein seitlicher Überlauf im Fenster');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
