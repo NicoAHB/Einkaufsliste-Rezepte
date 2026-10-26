@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.5
+# Einkauf & Rezepte – Version 2.6
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,12 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.6: Rossmann, Geschäfte als Logo
+
+- **Artikel ohne Geschäft stehen bei Drogerien nicht.** Im Modus „Im Laden“ erscheinen Artikel ohne Geschäft sonst unter „Überall möglich“. Bei **Rossmann** (auch „Roßmann“), **dm**, **Müller**, **Douglas** und **Budni** stehen sie standardmäßig **nicht** dort, und auch der Zähler am Reiter zählt sie nicht. Unten steht ein Hinweis („1 Artikel ohne Geschäft stehen hier nicht“). Pro Geschäft einstellbar: **Geschäfte** (Symbol neben „Planen | Im Laden“) → beim Geschäft **„Im Laden“ auch Artikel ohne Geschäft anzeigen**. Die Einstellung liegt in der gemeinsamen Datei (Feld `anywhere` am Geschäft), beide sehen dasselbe.
+- **Angebotsseite für Rossmann:** `https://www.rossmann.de/de/angebote` ist als Standardlink hinterlegt (wie bei Edeka, Lidl und Rewe). Ein **leeres Feld im Dialog „Geschäfte“ heißt jetzt „Standardlink der Kette“**, sonst keiner; so bekommt auch ein früher ohne Link angelegtes Rossmann den Link. Ein eigener Link gewinnt immer.
+- **Geschäfte als Text oder Logo:** Einstellungen → Darstellung & Sicherung → **Geschäfte anzeigen als**. „Logo“ zeigt Edeka, Lidl, Rewe, Rossmann, Aldi, Kaufland und Penny als **Schriftzug in den Farben der Kette** (Reiter, Schnellwahl beim Hinzufügen, Überschriften in der Liste, Im Laden). Es sind **keine Original-Logos** (Markenzeichen, Bilddateien), nur Name und Farben. Unbekannte Geschäfte bleiben Text. Die Wahl gilt pro Gerät.
 
 ## Neu in Version 2.5: Vorlagen, kürzere Preiszeilen, Token-Warnung
 
@@ -426,6 +432,11 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.6:
+
+- [ ] Im Laden bei Rossmann: Ein Artikel ohne Geschäft steht dort nicht, bei Edeka schon. Unter „Geschäfte“ lässt es sich pro Geschäft umstellen. Planen → Rossmann: „Angebote“ öffnet die Rossmann-Angebotsseite.
+- [ ] Einstellungen → „Geschäfte anzeigen als“ → Logo: Reiter und Überschriften zeigen die Schriftzüge in Kettenfarben; zurück auf Text.
 
 Weitere Testpunkte für Version 2.5:
 

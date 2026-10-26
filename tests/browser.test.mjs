@@ -1135,6 +1135,87 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // Beispieldaten plus ein Rossmann (wie über das Formular angelegt: Angebotslink leer), ein Artikel dort und ein Artikel ohne Geschäft
+  const withRossmann = () => {
+    const data = structuredClone(demo), at = '2026-10-25T00:00:00.000Z';
+    data.stores.push({ id: 'store-ross', name: 'Roßmann', offersUrl: '', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.items.push({ id: 'item-shampoo', storeId: 'store-ross', name: 'Shampoo', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, onSale: false },
+      { id: 'item-brot', storeId: '', name: 'Brot', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, onSale: false });
+    return data;
+  };
+
+  test('Rossmann: Artikel ohne Geschäft stehen dort im Laden nicht (einstellbar), Angebotsseite ist hinterlegt', async () => {
+    const remote = github(withRossmann());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    // Planen: Angebotsseite von Rossmann
+    await page.getByRole('tab', { name: /^Roßmann/ }).click();
+    assert.equal(await page.getAttribute('#offers-link', 'href'), 'https://www.rossmann.de/de/angebote');
+    // Im Laden: bei Edeka steht Brot unter „Überall möglich“, bei Rossmann nicht
+    await page.click('#mode-shop');
+    const names = async () => (await page.locator('#shop-list .shop-name').allTextContents()).sort();
+    const chip = name => page.locator('#shop-chips .chip', { hasText: name });
+    await chip('Edeka').click();
+    assert.ok((await names()).includes('Brot'));
+    await chip('Roßmann').click();
+    assert.deepEqual(await names(), ['Shampoo']);
+    assert.match(await page.textContent('#shop-list'), /1 Artikel ohne Geschäft stehen hier nicht/);
+    assert.match(await chip('Roßmann').textContent(), /Roßmann\s*1$/, 'der Zähler am Reiter zählt Brot nicht mit');
+    assert.match(await chip('Edeka').textContent(), /Edeka\s*3$/);
+    // Einstellbar: im Dialog „Geschäfte“ lässt sich das pro Geschäft umstellen
+    await page.click('#shop-back'); await page.click('#manage-stores'); await sheetOpen(page);
+    const row = name => page.locator('#store-editor .store-row').nth({ Edeka: 0, 'Roßmann': 3 }[name]);
+    assert.equal(await row('Roßmann').locator('input[name=anywhere]').isChecked(), false, 'Drogerie: standardmäßig aus');
+    assert.equal(await row('Edeka').locator('input[name=anywhere]').isChecked(), true);
+    assert.match(await row('Roßmann').locator('input[name=offersUrl]').inputValue(), /rossmann\.de\/de\/angebote/, 'der Standardlink steht im Feld');
+    await row('Roßmann').locator('input[name=anywhere]').check(); await row('Roßmann').getByRole('button', { name: /speichern/ }).click();
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await page.click('#mode-shop'); await chip('Roßmann').click();
+    assert.deepEqual(await names(), ['Brot', 'Shampoo'], 'nach der Umstellung stehen Artikel ohne Geschäft auch dort');
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.stores.find(row => row.id === 'store-ross').anywhere, true, 'die Einstellung liegt in der gemeinsamen Datei');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Geschäfte als Text oder Logo: Auswahl in den Einstellungen, bleibt nach dem Neuladen', async () => {
+    const data = withRossmann(), at = '2026-10-25T00:00:00.000Z';
+    data.stores.push({ id: 'store-metzger', name: 'Metzger Müller', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    const remote = github(data);
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    assert.equal(await page.locator('.brand').count(), 0, 'Standard: Text');
+    await openSettings(page);
+    assert.equal(await page.inputValue('#store-style'), 'text');
+    await page.selectOption('#store-style', 'logo');
+    await page.click('[data-tab=shopping]');
+    const brand = cls => page.locator(`#store-chips .chip .${cls}`);
+    assert.equal(await brand('brand-edeka').count(), 1);
+    assert.equal(await brand('brand-lidl').count(), 1);
+    assert.equal(await brand('brand-rewe').count(), 1);
+    assert.equal(await brand('brand-rossmann').count(), 1, 'Roßmann und Rossmann werden erkannt');
+    assert.equal(await page.locator('#store-chips .chip .brand').count(), 4, 'Metzger Müller ist unbekannt und bleibt Text');
+    assert.match(await page.locator('#store-chips .chip', { hasText: 'Metzger' }).textContent(), /Metzger Müller/);
+    assert.ok(await page.locator('#items .store-head .brand').count() >= 1, 'auch die Überschriften in der Liste');
+    assert.ok(await page.getByRole('tab', { name: /^Edeka/ }).count() === 1, 'der Name bleibt für Screenreader und Suche erhalten');
+    await expandForm(page);
+    assert.ok(await page.locator('#store-pick .chip .brand-lidl').count() === 1, 'auch die Schnellwahl beim Hinzufügen');
+    await page.click('#mode-shop');
+    assert.equal(await page.locator('#shop-chips .chip .brand-edeka').count(), 1, 'und im Laden');
+    assert.equal(await horizontalOverflow(page), 0);
+    // bleibt nach dem Neuladen, und zurück auf Text
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.locator('#shop-chips .chip .brand-edeka').count(), 1);
+    await page.click('#shop-back'); await openSettings(page);
+    await page.selectOption('#store-style', 'text');
+    await page.click('[data-tab=shopping]');
+    assert.equal(await page.locator('.brand').count(), 0);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
   test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

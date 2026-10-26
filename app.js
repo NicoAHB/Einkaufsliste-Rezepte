@@ -1,7 +1,8 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
-import { shopCount, shopView } from './shop.js';
+import { shopCount, shopView, takesAnywhere } from './shop.js';
+import { brandOf } from './brand.js';
 import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
@@ -173,8 +174,9 @@ function renderStorePick() {
   if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
   const current = form.elements.storeId.value;
   box.replaceChildren();
-  const add = (id, label) => {
-    const chip = element('button', label, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(id === current));
+  const add = (id, label, store = false) => {
+    const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(id === current));
+    if (store) chip.append(storeLabel(label));
     chip.addEventListener('click', () => {
       form.elements.storeId.value = id && id === form.elements.storeId.value ? '' : id;
       renderStorePick(); storeChanged();
@@ -182,7 +184,7 @@ function renderStorePick() {
     box.append(chip);
   };
   add('', 'Kein Geschäft');
-  for (const store of active(state.stores)) add(store.id, store.name);
+  for (const store of active(state.stores)) add(store.id, store.name, true);
 }
 function storeChanged() {
   const form = $('#item-form');
@@ -206,8 +208,9 @@ function render() {
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
   const items = visibleItems(), open = id => items.filter(item => !item.checked && (id === 'all' || (id === 'none' ? !item.storeId : item.storeId === id))).length;
-  const add = (id, label, count) => {
-    const chip = element('button', label, 'chip'); chip.type = 'button';
+  const add = (id, label, count, store = false) => {
+    const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button';
+    if (store) chip.append(storeLabel(label));
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(id === view));
     if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => showView(id));
@@ -216,7 +219,7 @@ function renderStoreChips() {
   add('all', 'Alle', open('all'));
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
-  for (const store of active(state.stores)) add(store.id, store.name, open(store.id));
+  for (const store of active(state.stores)) add(store.id, store.name, open(store.id), true);
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
@@ -258,9 +261,15 @@ function groupHead(label, count) {
   row.append(element('span', label), element('span', String(count), 'count'));
   return row;
 }
+// Name eines Geschäfts: als Text oder (Einstellung „Geschäfte anzeigen als“) als Schriftzug in den Farben der Kette; unbekannte Geschäfte bleiben Text.
+function storeLabel(name) {
+  const key = config.storeStyle === 'logo' ? brandOf(name) : '';
+  return key ? element('span', name, `brand brand-${key}`) : document.createTextNode(name);
+}
 function storeHead(label, count, none) {
-  const row = element('li', undefined, `store-head${none ? ' none' : ''}`);
-  row.append(icon('store'), element('span', label), element('span', String(count), 'count'));
+  const row = element('li', undefined, `store-head${none ? ' none' : ''}`), name = element('span');
+  name.append(none ? document.createTextNode(label) : storeLabel(label));
+  row.append(icon('store'), name, element('span', String(count), 'count'));
   return row;
 }
 function itemRow(item, withStore = false) {
@@ -535,10 +544,13 @@ function renderStores() {
     linkLabel.append(link);
     const save = element('button', 'Speichern', 'secondary'); save.setAttribute('aria-label', `${store.name} speichern`);
     const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
-    form.append(nameLabel, linkLabel, save);
+    const anywhereLabel = element('label', undefined, 'checkbox-label'), anywhere = element('input');
+    anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.checked = takesAnywhere(store);
+    anywhereLabel.append(anywhere, ' „Im Laden“ auch Artikel ohne Geschäft anzeigen');
+    form.append(nameLabel, linkLabel, anywhereLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
-      currentStore(store.id); commit([nextOp('stores', store.id, { name, offersUrl: offerUrl(link.value) })]); renderStores();
+      currentStore(store.id); commit([nextOp('stores', store.id, { name, offersUrl: offerUrl(link.value), anywhere: anywhere.checked })]); renderStores();
     }); });
     const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
@@ -1122,7 +1134,7 @@ function fillSettings() {
   }
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
-  $('#theme').value = config.theme || 'system'; $('#group-items').checked = config.groupItems !== false; applyTheme();
+  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
   applyFolds();
@@ -1225,9 +1237,9 @@ function renderShop() {
   if (shopStore && !stores.some(store => store.id === shopStore)) shopStore = '';
   const chips = $('#shop-chips'); chips.replaceChildren();
   for (const store of stores) {
-    const chip = element('button', store.name, 'chip'); chip.type = 'button';
+    const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
-    const count = shopCount(items, store.id); if (count) chip.append(element('span', String(count), 'count'));
+    const count = shopCount(items, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
     chips.append(chip);
   }
@@ -1240,7 +1252,7 @@ function renderShop() {
     return;
   }
   ensureSeen();
-  const shop = shopView(items, shopStore, shopChecked), here = [...shop.open, ...shop.anywhere];
+  const shop = shopView(items, shopStore, shopChecked, takesAnywhere(stores.find(store => store.id === shopStore))), here = [...shop.open, ...shop.anywhere];
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory());
   const total = shoppingTotal(here, state.prices);
@@ -1253,6 +1265,7 @@ function renderShop() {
     for (const group of anywhere) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
   }
   if (shop.elsewhere) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
+  if (shop.hidden) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte“)`, 'shop-note'));
   if (shop.done.length) {
     const done = element('li', undefined, 'shop-done'), details = element('details'), inner = element('ul');
     details.open = shopDoneOpen; details.addEventListener('toggle', () => { shopDoneOpen = details.open; });
@@ -1759,10 +1772,11 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
-  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, folds: config.folds, importProxy: config.importProxy, publicProxy: config.publicProxy });
+  saveConfig({ actor: config.actor, theme: config.theme, palette: config.palette, folds: config.folds, storeStyle: config.storeStyle, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
+$('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#palette').addEventListener('click', event => guard(() => {
   const choice = event.target.closest('button[data-palette]')?.dataset.palette;

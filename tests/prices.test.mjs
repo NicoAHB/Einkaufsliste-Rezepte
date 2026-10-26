@@ -62,5 +62,8 @@ test('Angebotslinks: nur https ohne Zugangsdaten; Standardlinks für bekannte H�
   for (const bad of ['http://a.de', 'javascript:alert(1)', 'https://u:p@a.de', 'kein link']) assert.throws(() => offerUrl(bad));
   assert.match(storeOfferUrl({ name: 'Edeka' }), /^https:\/\/www\.edeka\.de/);
   assert.equal(storeOfferUrl({ name: 'Aldi' }), '');
-  assert.equal(storeOfferUrl({ name: 'Edeka', offersUrl: '' }), '');
+  assert.match(storeOfferUrl({ name: 'Edeka', offersUrl: '' }), /^https:\/\/www\.edeka\.de/, 'ein leeres Feld heißt: Standardlink der Kette');
+  assert.equal(storeOfferUrl({ name: 'Aldi', offersUrl: '' }), '');
+  for (const name of ['Rossmann', 'Roßmann', ' ROSSMANN ']) assert.equal(storeOfferUrl({ name }), 'https://www.rossmann.de/de/angebote', name);
+  assert.equal(storeOfferUrl({ name: 'Roßmann', offersUrl: 'https://www.rossmann.de/de/angebote/x' }), 'https://www.rossmann.de/de/angebote/x', 'ein eigener Link gewinnt');
 });

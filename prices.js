@@ -158,11 +158,14 @@ export function offerUrl(value) {
 
 export function storeOfferUrl(store) {
   if (!store) return '';
-  if (store.offersUrl !== undefined) return offerUrl(store.offersUrl);
+  // Ein leeres Feld heißt „Standardlink der Kette“ (falls bekannt), sonst keiner. So bekommt auch ein früher ohne Link angelegtes Geschäft den Standard.
+  if (store.offersUrl) return offerUrl(store.offersUrl);
   const defaults = {
     edeka: 'https://www.edeka.de/angebote/',
     lidl: 'https://www.lidl.de/c/online-prospekte/s10005610',
-    rewe: 'https://www.rewe.de/angebote/nationale-angebote/'
+    rewe: 'https://www.rewe.de/angebote/nationale-angebote/',
+    rossmann: 'https://www.rossmann.de/de/angebote',
+    'roßmann': 'https://www.rossmann.de/de/angebote'
   };
   return defaults[productKey(store.name)] || '';
 }
