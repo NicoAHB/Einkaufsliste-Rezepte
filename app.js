@@ -1,7 +1,10 @@
-import { active, clone, emptyData, ingredientItems, merge, operation, positive, suggestItemNames, uid, validate } from './data.js';
+import { active, clone, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, uid, validDay, validate } from './data.js';
 import { comparePrices, effectiveQuote, itemCost, itemQuote, offerUrl, parseCents, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
+import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
+import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
+import { isJpeg, localPhotoUrl, photoPath, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -11,6 +14,9 @@ let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let priceFormStore = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null;
+let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
+let pendingPhoto = null, photoRemoved = false, previewUrl = '';
+const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
 const portions = new Map(), openRecipes = new Set();
 const format = number => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(number);
@@ -97,7 +103,7 @@ function commit(ops, undo = null) {
 }
 
 function tab(name) {
-  for (const id of ['shopping', 'recipes', 'settings']) $(`#${id}`).hidden = name !== id;
+  for (const id of ['shopping', 'recipes', 'plan', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
@@ -122,7 +128,7 @@ function render() {
   $('#demo-banner').hidden = connected();
   const stores = active(state.stores);
   if (!stores.some(store => store.id === selectedStore)) selectedStore = stores[0]?.id || '';
-  renderStoreChips(); renderItems(); renderRecipes();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan();
   $('#item-form').querySelector('button[type=submit]').disabled = !ready || !selectedStore;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -144,6 +150,44 @@ function renderStoreChips() {
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
 }
+const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+function groupHead(label, count) {
+  const row = element('li', undefined, 'group-head');
+  row.append(element('span', label), element('span', String(count), 'count'));
+  return row;
+}
+function itemRow(item) {
+  const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
+  const check = button('', () => {
+    const latest = state.items.find(entry => entry.id === item.id);
+    if (!latest || latest.deletedAt) return;
+    commit([nextOp('items', item.id, { checked: !latest.checked })]);
+  }, 'check');
+  if (item.checked) check.append(icon('check'));
+  check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
+  check.setAttribute('aria-pressed', String(Boolean(item.checked)));
+  const copy = element('div', undefined, 'item-copy');
+  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
+  if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
+  if (item.onSale && item.salePrice) {
+    copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
+    const normal = itemQuote(item, state.prices);
+    if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
+  }
+  const cost = itemCost(item, state.prices);
+  if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
+  const quotes = comparePrices(item, state.stores, state.prices);
+  if (quotes.length) {
+    const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
+    const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
+    copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
+  }
+  const actions = element('div', undefined, 'item-actions');
+  actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
+    iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id], 'Artikel gelöscht')));
+  row.append(check, copy, actions);
+  return row;
+}
 function renderItems() {
   if (priceFormStore !== selectedStore) {
     priceFormStore = selectedStore;
@@ -152,42 +196,20 @@ function renderItems() {
   }
   renderShoppingInfo();
   const list = $('#items'); list.replaceChildren();
-  const items = active(state.items).filter(item => item.storeId === selectedStore)
-    .sort((a, b) => Number(Boolean(a.checked)) - Number(Boolean(b.checked)) || a.name.localeCompare(b.name, 'de'));
-  const done = items.filter(item => item.checked).length;
-  $('#item-count').textContent = `${items.length - done} offen · ${done} erledigt`;
-  $('#clear-checked').disabled = !done;
-  if (!items.length) list.append(element('li', 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
-  for (const item of items) {
-    const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`);
-    const check = button('', () => {
-      const latest = state.items.find(entry => entry.id === item.id);
-      if (!latest || latest.deletedAt) return;
-      commit([nextOp('items', item.id, { checked: !latest.checked })]);
-    }, 'check');
-    if (item.checked) check.append(icon('check'));
-    check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
-    check.setAttribute('aria-pressed', String(Boolean(item.checked)));
-    const copy = element('div', undefined, 'item-copy');
-    copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}`));
-    if (item.onSale) copy.append(element('span', 'Im Angebot', 'sale-badge'));
-    if (item.onSale && item.salePrice) {
-      copy.append(element('small', `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
-      const normal = itemQuote(item, state.prices);
-      if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
-    }
-    const cost = itemCost(item, state.prices);
-    if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
-    const quotes = comparePrices(item, state.stores, state.prices);
-    if (quotes.length) {
-      const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
-      const label = quotes.length === 1 ? `Preis notiert bei ${stores}` : `Günstigster notierter Preis (${quotes.length} Geschäfte): ${stores}`;
-      copy.append(element('small', `${label} · ${euros(best.rate)}/${best.unit}`, 'price-note'));
-    }
-    const actions = element('div', undefined, 'item-actions');
-    actions.append(iconButton('edit', `${item.name} bearbeiten`, () => editItem(item.id)),
-      iconButton('trash', `${item.name} löschen`, () => removeRows('items', [item.id], 'Artikel gelöscht')));
-    row.append(check, copy, actions); list.append(row);
+  const rows = active(state.items).filter(item => item.storeId === selectedStore);
+  const open = rows.filter(item => !item.checked), done = rows.filter(item => item.checked).sort(byName);
+  $('#item-count').textContent = `${open.length} offen · ${done.length} erledigt`;
+  $('#clear-checked').disabled = !done.length;
+  if (!rows.length) list.append(element('li', 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
+  // Nach Gängen im Laden geordnet (abschaltbar in den Einstellungen); Erledigtes steht immer unten.
+  const grouped = config.groupItems !== false;
+  if (grouped) for (const group of groupByCategory(open, state.items)) {
+    list.append(groupHead(group.label, group.items.length));
+    group.items.forEach(item => list.append(itemRow(item)));
+  } else open.sort(byName).forEach(item => list.append(itemRow(item)));
+  if (done.length) {
+    if (grouped) list.append(groupHead('Erledigt', done.length));
+    done.forEach(item => list.append(itemRow(item)));
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
 }
@@ -235,8 +257,20 @@ function toggleSaleFields(form) {
     form.elements.saleUnit.value = form.elements.priceUnit.value;
   }
 }
+function fillCategorySelects() {
+  document.querySelectorAll('select[data-categories]').forEach(select => {
+    select.replaceChildren(new Option('Automatisch', ''));
+    for (const category of CATEGORIES) select.add(new Option(category.label, category.id));
+  });
+}
+// „Automatisch (Obst & Gemüse)“: zeigt, was die App für diesen Namen vorschlagen würde.
+function categoryHint(select, name) {
+  const guess = String(name).trim() ? suggestCategory(name, state.items) : null;
+  select.options[0].textContent = guess ? `Automatisch (${categoryLabel(guess)})` : 'Automatisch';
+}
 function rememberPriceInForm() {
   const form = $('#item-form');
+  categoryHint(form.elements.category, form.elements.name.value);
   if (form.dataset.manualPrice === 'yes') return;
   const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   const quote = rememberedPrice(state.prices, selectedStore, name, unit);
@@ -290,9 +324,11 @@ function showComparison(item) {
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale) });
+  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale),
+    category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
+  categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   setQuoteFields(form, itemQuote(item, state.prices), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice);
@@ -331,30 +367,49 @@ function renderStores() {
   }
 }
 
+function chip(text, pressed, action) {
+  const node = element('button', text, 'chip'); node.type = 'button'; node.setAttribute('aria-pressed', String(pressed));
+  node.addEventListener('click', action);
+  return node;
+}
 function renderRecipes() {
   const search = $('#recipe-search').value.trim().toLocaleLowerCase('de');
   const recipes = active(state.recipes);
   const tags = [...new Set(recipes.flatMap(recipe => recipe.tags))].sort((a, b) => a.localeCompare(b, 'de'));
   if (tagFilter && !tags.includes(tagFilter)) tagFilter = '';
-  const chips = $('#tag-chips'); chips.replaceChildren(); chips.hidden = !tags.length;
-  for (const tag of tags) {
-    const chip = element('button', tag, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(tag === tagFilter));
-    chip.addEventListener('click', () => { tagFilter = tagFilter === tag ? '' : tag; renderRecipes(); });
-    chips.append(chip);
-  }
+  const chips = $('#tag-chips'); chips.replaceChildren(); chips.hidden = !recipes.length;
+  chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }),
+    chip('Lange nicht gekocht', oldestFirst, () => { oldestFirst = !oldestFirst; renderRecipes(); }));
+  for (const tag of tags) chips.append(chip(tag, tag === tagFilter, () => { tagFilter = tagFilter === tag ? '' : tag; renderRecipes(); }));
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
+  const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
+  // Favoriten zuerst; „Lange nicht gekocht“ zeigt zuerst, was noch nie oder am längsten nicht auf dem Tisch stand.
+  const order = oldestFirst ? (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b) :
+    (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b);
   for (const recipe of recipes.filter(recipe => {
     const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
-    return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) && (!tagFilter || recipe.tags.includes(tagFilter));
-  }).sort((a, b) => a.name.localeCompare(b.name, 'de'))) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
-  if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Tag.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
+    return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
+      (!tagFilter || recipe.tags.includes(tagFilter)) && (!favoritesOnly || recipe.favorite);
+  }).sort(order)) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
+  if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
+  hydratePhotos();
 }
 function recipeCard(recipe, ingredients) {
-  const card = element('article', undefined, 'card recipe-card');
-  card.append(element('h3', recipe.name));
-  const source = webUrl(recipe.sourceUrl);
-  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(recipe.servings)} Portionen`, source && hostLabel(source)].filter(Boolean).join(' · '), 'recipe-meta'));
+  const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
+  if (recipe.photoId) {
+    const frame = element('div', undefined, 'recipe-photo'), image = element('img');
+    image.dataset.photoId = recipe.photoId; image.alt = `Foto: ${recipe.name}`; image.hidden = true; image.loading = 'lazy';
+    frame.append(icon('camera'), image); card.append(frame);
+  }
+  const head = element('div', undefined, 'recipe-head');
+  const star = iconButton('star', recipe.favorite ? `${recipe.name} ist Favorit, zum Entfernen tippen` : `${recipe.name} als Favorit markieren`,
+    () => commit([nextOp('recipes', recipe.id, { favorite: !recipe.favorite })]), 'fav');
+  star.setAttribute('aria-pressed', String(Boolean(recipe.favorite)));
+  head.append(element('h3', recipe.name), star); card.append(head);
+  const source = webUrl(recipe.sourceUrl), cooked = recipe.lastCookedAt && relativeDay(recipe.lastCookedAt);
+  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(recipe.servings)} Portionen`, source && hostLabel(source),
+    cooked && cooked !== 'geplant' && `gekocht ${cooked}`].filter(Boolean).join(' · '), 'recipe-meta'));
   if (recipe.tags.length) {
     const tags = element('div', undefined, 'tags');
     recipe.tags.forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
@@ -382,13 +437,17 @@ function recipeCard(recipe, ingredients) {
     link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.append(icon('external'));
     details.append(link);
   }
+  const more = element('div', undefined, 'detail-actions');
+  more.append(button('Heute gekocht', () => commit([nextOp('recipes', recipe.id, { lastCookedAt: isoDate() })]), 'secondary small'),
+    button('Bearbeiten', () => editRecipe(recipe.id), 'secondary small'),
+    button('Löschen', () => {
+      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id], 'Rezept gelöscht');
+    }, 'danger small'));
+  details.append(more);
   card.append(details);
   const actions = element('div', undefined, 'actions');
   actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), 'primary-action'),
-    iconButton('edit', `${recipe.name} bearbeiten`, () => editRecipe(recipe.id)),
-    iconButton('trash', `${recipe.name} löschen`, () => {
-      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id], 'Rezept gelöscht');
-    }, 'danger'));
+    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })));
   card.append(actions);
   return card;
 }
@@ -424,6 +483,8 @@ function editRecipe(id = '', draft = null) {
   $('#ingredient-editor').replaceChildren();
   (draft ? draft.ingredients : ingredientBaseline.length ? ingredientBaseline : [{}]).forEach(ingredientRow);
   if (draft && !draft.ingredients.length) ingredientRow();
+  pendingPhoto = null; photoRemoved = false; showPhotoPreview('');
+  if (recipeBaseline?.photoId) ensurePhoto(recipeBaseline.photoId).then(url => { if (url && !pendingPhoto && !photoRemoved && $('#recipe-dialog').open) showPhotoPreview(url, false); });
   const note = $('#recipe-import-note'); note.replaceChildren(); note.hidden = !draft;
   if (draft) {
     note.append(element('p', draft.via === 'schema' ? 'Das Rezept wurde aus den Daten der Seite übernommen. Bitte kurz prüfen.' : 'Das Rezept wurde aus Text geschätzt. Bitte alles prüfen und korrigieren.'));
@@ -438,8 +499,10 @@ function changed(patch, before) {
   return Object.fromEntries(Object.entries(patch).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before?.[key])));
 }
 function saveRecipe(event) {
-  event.preventDefault(); guard(() => {
-    const form = event.currentTarget, id = form.elements.id.value || uid();
+  event.preventDefault();
+  const form = event.currentTarget;
+  guard(async () => {
+    const id = form.elements.id.value || uid();
     if (recipeBaseline && !active(state.recipes).some(row => row.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte schließen und neu anlegen.');
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
@@ -451,6 +514,12 @@ function saveRecipe(event) {
       name: row.querySelector('[data-field=name]').value.trim(), quantity: positive(row.querySelector('[data-field=quantity]').value),
       unit: row.querySelector('[data-field=unit]').value.trim() }));
     if (!rows.length || rows.some(row => !row.name || !row.unit)) throw new Error('Bitte mindestens eine vollständige Zutat eingeben.');
+    // Das Foto muss lokal gespeichert sein, bevor die Änderung abgeglichen wird, sonst fände der Upload es nicht.
+    const photo = pendingPhoto;
+    if (photo) {
+      await storePhoto(photo.id, photo.blob); patch.photoId = photo.id;
+      if (connected()) queuePhoto(queueKey(), photo.id);
+    } else if (photoRemoved && recipeBaseline?.photoId) patch.photoId = null;
     const ops = [], recipeChanges = changed(patch, recipeBaseline);
     if (Object.keys(recipeChanges).length) ops.push(nextOp('recipes', id, recipeChanges));
     for (const { id: ingredientId, ...fields } of rows) {
@@ -460,7 +529,9 @@ function saveRecipe(event) {
     for (const row of ingredientBaseline.filter(row => !rows.some(candidate => candidate.id === row.id))) {
       ops.push(nextOp('ingredients', row.id, { deletedAt: new Date().toISOString() }));
     }
-    commit(ops); $('#recipe-dialog').close();
+    try { commit(ops); }
+    catch (error) { if (photo) unqueuePhoto(queueKey(), photo.id); throw error; }
+    $('#recipe-dialog').close();
   });
 }
 function openTransfer(id, servings) {
@@ -480,6 +551,189 @@ function openTransfer(id, servings) {
 function updateTransfer() {
   const factor = positive($('#transfer-form').elements.servings.value) / transferRecipe.servings;
   for (const label of $('#transfer-ingredients').children) label.querySelector('span').textContent = ingredientLabel(label._ingredient, factor);
+}
+
+/* ---------- Rezeptfotos ---------- */
+const queueKey = () => `einkauf-photo-queue:${namespace()}`;
+const photoApi = id => `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${photoPath(config.path, id).split('/').map(encodeURIComponent).join('/')}`;
+const githubHeaders = extra => ({ Authorization: `Bearer ${config.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...extra });
+async function timed(address, init) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
+  try { return await fetch(address, { ...init, cache: 'no-store', signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+async function downloadPhoto(id) {
+  try {
+    const response = await timed(`${photoApi(id)}?ref=${encodeURIComponent(config.branch)}`, { headers: githubHeaders({ Accept: 'application/vnd.github.raw+json' }) });
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return isJpeg(bytes) ? new Blob([bytes], { type: 'image/jpeg' }) : null;
+  } catch { return null; }
+}
+// Anzeigeadresse eines Fotos: erst lokal, sonst (verbunden) aus dem Daten-Repository, danach lokal gemerkt.
+function ensurePhoto(id) {
+  if (photoJobs.has(id)) return photoJobs.get(id);
+  const job = (async () => {
+    const local = await localPhotoUrl(id);
+    if (local || !connected() || Date.now() - (photoMiss.get(id) || 0) < 30000) return local;
+    const blob = await downloadPhoto(id);
+    if (!blob) { photoMiss.set(id, Date.now()); return null; }
+    await storePhoto(id, blob).catch(() => {});
+    return (await localPhotoUrl(id)) ?? URL.createObjectURL(blob);
+  })().finally(() => photoJobs.delete(id));
+  photoJobs.set(id, job);
+  return job;
+}
+// Fotos, die noch fehlen (z. B. weil das andere Gerät sie erst hochlädt), werden bei jedem Abgleich erneut versucht.
+function hydratePhotos() {
+  document.querySelectorAll('img[data-photo-id]:not([data-loaded])').forEach(image => {
+    ensurePhoto(image.dataset.photoId).then(url => {
+      if (!url || !image.isConnected) return;
+      image.src = url; image.hidden = false; image.dataset.loaded = 'yes';
+      image.parentElement.querySelector('.icon')?.setAttribute('hidden', '');
+    });
+  });
+}
+// Hochladen als eigene Datei. Kennungen sind einmalig, deshalb ist „Datei existiert schon“ (422 wegen fehlender SHA) ein Erfolg.
+let photoRetryAt = 0;
+async function uploadPhotos(manual = false) {
+  // Nach einem Fehler erst nach 20 Sekunden wieder versuchen, außer die Person löst den Abgleich selbst aus.
+  if (!connected() || (!manual && Date.now() < photoRetryAt)) return;
+  const key = queueKey();
+  const later = () => { photoRetryAt = Date.now() + 20000; };
+  for (const id of queued(key)) {
+    try {
+      const blob = await readPhoto(id);
+      if (!blob) { unqueuePhoto(key, id); continue; }
+      const body = JSON.stringify({ message: 'Einkauf & Rezepte: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
+      const response = await timed(photoApi(id), { method: 'PUT', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body });
+      if (response.ok) unqueuePhoto(key, id);
+      else if (response.status === 422 && /sha/i.test(await response.text())) unqueuePhoto(key, id);
+      else return later();   // z. B. 409 (gleichzeitiger Commit) oder 403
+    } catch { return later(); }
+  }
+}
+function showPhotoPreview(url, remember = true) {
+  if (previewUrl && previewUrl.startsWith('blob:') && remember) URL.revokeObjectURL(previewUrl);
+  previewUrl = remember ? url : '';
+  $('#photo-preview').hidden = !url;
+  if (url) $('#photo-preview-img').src = url; else $('#photo-preview-img').removeAttribute('src');
+  $('#photo-label').textContent = url ? 'Foto ändern' : 'Foto hinzufügen';
+}
+
+/* ---------- Wochenplan ---------- */
+function renderPlan() {
+  const days = weekDays(planWeek), today = isoDate();
+  $('#week-label').textContent = weekLabel(planWeek);
+  $('#week-today').hidden = days.includes(today);
+  const meals = active(state.meals).filter(meal => days.includes(meal.date));
+  const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
+  const box = $('#plan-days'); box.replaceChildren();
+  for (const day of days) {
+    const card = element('article', undefined, `day${day === today ? ' today' : ''}`);
+    const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
+    title.append(element('small', dayMonthLabel(day)));
+    head.append(title, iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
+    card.append(head);
+    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes));
+    box.append(card);
+  }
+  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
+}
+function mealRow(meal, recipes) {
+  const recipe = recipes.get(meal.recipeId);
+  const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`);
+  const check = button('', () => toggleMeal(meal.id), 'check');
+  if (meal.done) check.append(icon('check'));
+  check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
+  check.setAttribute('aria-pressed', String(Boolean(meal.done)));
+  const copy = element('div', undefined, 'meal-copy');
+  copy.append(recipe ? button(name, () => showRecipe(recipe.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
+  row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
+    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id], 'Gericht entfernt')));
+  return row;
+}
+// „Gekocht“ merkt sich auch am Rezept, wann es zuletzt auf dem Tisch stand.
+function toggleMeal(id) {
+  const meal = state.meals.find(row => row.id === id && !row.deletedAt);
+  if (!meal) return;
+  const ops = [nextOp('meals', id, { done: !meal.done })], today = isoDate();
+  const recipe = meal.recipeId && active(state.recipes).find(row => row.id === meal.recipeId), day = meal.date < today ? meal.date : today;
+  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day }));
+  commit(ops);
+}
+function showRecipe(id) {
+  $('#recipe-search').value = ''; tagFilter = ''; favoritesOnly = false; oldestFirst = false; openRecipes.add(id);
+  tab('recipes'); renderRecipes();
+  document.querySelector(`[data-recipe-id="${id}"]`)?.scrollIntoView({ block: 'start' });
+}
+function openMeal(options = {}) {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const form = $('#meal-form'); form.reset();
+  const meal = options.id ? state.meals.find(row => row.id === options.id && !row.deletedAt) : null;
+  if (options.id && !meal) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  mealBaseline = meal ? clone(meal) : null;
+  const select = form.elements.recipeId; select.replaceChildren(new Option('Rezept wählen …', ''));
+  const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
+  for (const recipe of recipes) select.add(new Option(`${recipe.favorite ? '★ ' : ''}${recipe.name}`, recipe.id));
+  select.add(new Option('Eigenes Gericht (ohne Rezept) …', '__custom'));
+  form.elements.id.value = options.id || '';
+  form.elements.date.value = meal?.date || options.date || isoDate();
+  select.value = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
+  if (!select.value && meal) select.value = '__custom';
+  form.elements.title.value = meal?.title || '';
+  form.elements.servings.value = plain(meal?.servings || options.servings || recipes.find(recipe => recipe.id === select.value)?.servings || 2);
+  syncMealForm(false);
+  $('#meal-title').textContent = meal ? 'Gericht ändern' : 'Gericht planen';
+  $('#meal-dialog').showModal();
+}
+function syncMealForm(changedRecipe) {
+  const form = $('#meal-form'), choice = form.elements.recipeId.value;
+  form.querySelector('[data-custom]').hidden = choice !== '__custom';
+  const recipe = active(state.recipes).find(row => row.id === choice);
+  if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
+}
+function saveMeal(event) {
+  event.preventDefault(); guard(() => {
+    const form = event.currentTarget, choice = form.elements.recipeId.value, custom = choice === '__custom', title = form.elements.title.value.trim();
+    const date = form.elements.date.value;
+    if (!validDay(date)) throw new Error('Bitte einen Tag auswählen.');
+    if (!choice) throw new Error('Bitte ein Rezept wählen oder „Eigenes Gericht“ eintragen.');
+    if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
+    if (!custom) currentRecipe(choice);
+    const id = form.elements.id.value || uid();
+    const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
+    if (!mealBaseline) patch.done = false;
+    const delta = changed(patch, mealBaseline);
+    if (Object.keys(delta).length) commit([nextOp('meals', id, delta)]);
+    planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan');
+  });
+}
+function currentRecipe(id) {
+  if (!active(state.recipes).some(recipe => recipe.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte ein anderes wählen.');
+}
+function weekRows() {
+  const form = $('#week-form'), days = weekDays(planWeek);
+  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.recipeId && !(form.elements.skipDone.checked && meal.done));
+  return aggregateIngredients(meals, active(state.recipes), active(state.ingredients));
+}
+function renderWeekRows() {
+  const box = $('#week-ingredients'); box.replaceChildren();
+  const rows = weekRows();
+  if (!rows.length) box.append(element('p', 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
+  for (const row of rows) {
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(row));
+    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT;
+    label._row = row;
+    if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
+    label.append(check, text); box.append(label);
+  }
+}
+function openWeekShopping() {
+  const form = $('#week-form'); storeOptions(form.elements.storeId);
+  $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
+  renderWeekRows(); $('#week-dialog').showModal();
 }
 
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
@@ -612,10 +866,11 @@ async function sync(manual = false) {
   busy = true; $('#refresh').disabled = true;
   if (pending.length || manual || !ready) status('Gleiche ab …', 'busy');
   try {
+    if (queued(queueKey()).length) await uploadPhotos(manual);
     for (let attempt = 0; attempt < 4; attempt++) {
       // Ohne eigene Änderungen genügt die Frage „hat sich etwas geändert?“ (HTTP 304).
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
-      if (!file) { retryAt = 0; message(); restingStatus(); return; }
+      if (!file) { retryAt = 0; message(); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
       const batch = pending.slice(), merged = merge(remote, batch);
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
@@ -634,7 +889,7 @@ async function sync(manual = false) {
       ready = true; retryAt = 0; message();
       // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
       if (!wasReady || signature() !== before) render();
-      restingStatus();
+      restingStatus(); hydratePhotos();
       return;
     }
   } catch (error) {
@@ -667,7 +922,7 @@ function fillSettings() {
   }
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
-  $('#theme').value = config.theme || 'system'; applyTheme();
+  $('#theme').value = config.theme || 'system'; $('#group-items').checked = config.groupItems !== false; applyTheme();
 }
 function applyTheme() {
   if (!config.theme || config.theme === 'system') delete document.documentElement.dataset.theme;
@@ -691,6 +946,7 @@ async function backup() {
 }
 
 /* ---------- Ereignisse ---------- */
+fillCategorySelects();
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
@@ -698,6 +954,7 @@ $('#demo-setup').addEventListener('click', () => tab('settings'));
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
+$('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('#item-suggestions').hidden = true;
   if (event.key === 'ArrowDown' && !$('#item-suggestions').hidden) {
@@ -725,8 +982,9 @@ $('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-di
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!name || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
+  const category = form.elements.category.value || suggestCategory(name, state.items);
   const item = { storeId: currentStore(selectedStore), name, quantity: positive(form.elements.quantity.value),
-    unit, checked: false, createdBy: config.actor || 'Unbekannt', ...readPricing(form) };
+    unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   const ops = [nextOp('items', uid(), item)];
   if (effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
   commit(ops);
@@ -736,7 +994,7 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
-    ...readPricing(form) };
+    category: form.elements.category.value || null, ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
@@ -766,6 +1024,31 @@ $('#import-form').elements.publicProxy.addEventListener('change', linkHint);
 $('#import-form').elements.images.addEventListener('change', event => showPreviews([...event.target.files]));
 $('#import-form').addEventListener('submit', event => { event.preventDefault(); guard(runImport); });
 $('#import-dialog').addEventListener('close', () => { importAbort?.abort(); releasePreviews(); importStatus(''); });
+$('#week-prev').addEventListener('click', () => { planWeek = addDays(planWeek, -7); renderPlan(); });
+$('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7); renderPlan(); });
+$('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
+$('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
+$('#meal-form').addEventListener('submit', saveMeal);
+$('#meal-form').elements.recipeId.addEventListener('change', () => syncMealForm(true));
+$('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
+$('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
+  if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
+  const storeId = currentStore(form.elements.storeId.value);
+  lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+  const rows = selected.map(row => row.unit === NO_AMOUNT ? { name: row.name, quantity: 1, unit: 'Stück' } : { name: row.name, quantity: row.quantity, unit: row.unit });
+  commit(newItems(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, state.items));
+  selectedStore = storeId; $('#week-dialog').close(); render(); tab('shopping');
+}); });
+$('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  const blob = await resizePhoto(file);
+  pendingPhoto = { id: uid(), blob }; photoRemoved = false;
+  showPhotoPreview(URL.createObjectURL(blob));
+}));
+$('#photo-remove').addEventListener('click', () => { pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
+$('#recipe-dialog').addEventListener('close', () => { pendingPhoto = null; showPhotoPreview(''); });
 $('#transfer-form').elements.servings.addEventListener('change', () => guard(updateTransfer));
 // Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
@@ -776,7 +1059,7 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices));
+  commit(ingredientItems(selected, transferRecipe.id, currentStore(form.elements.storeId.value), factor, config.actor, new Date(lastTime).toISOString(), state.prices, state.items));
   selectedStore = form.elements.storeId.value; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
@@ -808,6 +1091,7 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
   saveConfig({ actor: config.actor, theme: config.theme, importProxy: config.importProxy, publicProxy: config.publicProxy });
   fillSettings(); message(); await loadWorkspace();
 }));
+$('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#export').addEventListener('click', () => guard(backup));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());

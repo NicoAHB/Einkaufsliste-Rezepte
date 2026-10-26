@@ -1,6 +1,6 @@
-# Einkauf & Rezepte – Version 1.3
+# Einkauf & Rezepte – Version 1.4
 
-Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, drei Bereiche, Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
@@ -14,9 +14,35 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - Beispielmodus ohne GitHub, drei Beispielrezepte und eine über drei Geschäfte verteilte Beispielliste.
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
-**Absichtlich erst in einem nächsten Schritt:** Kategorien und gemerkte Kategorie, Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel, Zwiebel/Zwiebeln-Erkennung, Rezeptfotos, Wochenplan und Vorratsliste. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
+**Absichtlich erst in einem nächsten Schritt:** Schnellauswahl häufiger Artikel, Zusammenzählen gleicher Artikel auf der Einkaufsliste (nur im Wochenplan werden Zutaten schon zusammengezählt), Zwiebel/Zwiebeln-Erkennung und Vorratsliste. Die Preisberechnung rechnet bereits g/kg und ml/l um; Artikel selbst werden noch nicht automatisch zusammengelegt. Gleiche Artikel bleiben in dieser Version getrennt. Es gibt keine Vorratsliste. Rezepte und Zutaten liegen bereits einzeln vor, damit Erweiterungen darauf aufbauen können.
 
-## Neu in Version 1.3: Rezept-Import, überarbeitete Oberfläche, technische Korrekturen
+## Neu in Version 1.4: Wochenplan, Gänge im Laden, Rezeptfotos, Favoriten
+
+### Einkaufsliste nach Gängen (Kategorien)
+
+Die Einkaufsliste ist nach Gängen im Laden geordnet: Obst & Gemüse, Brot & Backwaren, Fleisch & Fisch, Milch/Käse/Eier, Tiefkühl, Vorrat & Konserven, Gewürze/Öl/Soßen, Süßes & Snacks, Getränke, Haushalt & Drogerie, Sonstiges. Erledigtes steht unten unter „Erledigt“.
+
+- **Woher die Kategorie kommt:** (1) was ihr für den Artikel eingestellt habt, (2) sonst die zuletzt für **denselben Namen** verwendete Kategorie (die App lernt aus euren Artikeln, auch nach dem Löschen und auf beiden Geräten), (3) sonst eine Schätzung nach Stichwörtern („Kochschinken“ → Fleisch & Fisch, „Kokosmilch“ → Vorrat, nicht Milch). Findet sich nichts, steht der Artikel unter „Sonstiges“; es wird nichts geraten.
+- **Ändern:** Beim Hinzufügen unter „Kategorie, Preis & Angebot“ (dort steht, was die App vorschlagen würde, z. B. „Automatisch (Obst & Gemüse)“) oder später im Stift-Dialog. Die Änderung gilt künftig für jeden Artikel mit diesem Namen.
+- **Abschalten:** Einstellungen → „Einkaufsliste nach Kategorien ordnen“ (gilt nur für dieses Gerät).
+- Die Stichwortliste kennt viele, aber nicht alle Produkte. Fehlzuordnungen einmal korrigieren genügt.
+
+### Wochenplan (neuer Tab „Plan“)
+
+- Sieben Tage, Montag bis Sonntag, mit Wochen-Blättern („KW 44 · 26.10.–01.11.“) und „Heute“. Der heutige Tag ist hervorgehoben.
+- **Gericht planen:** mit **＋** am Tag oder mit dem Kalender-Symbol auf einer Rezeptkarte. Wähle ein Rezept (Favoriten stehen oben) und die Portionen, oder ein **eigenes Gericht** ohne Rezept („Pizza bestellen“).
+- **Gekocht abhaken:** Der Haken merkt sich am Rezept das Kochdatum („gekocht vor 3 Tagen“).
+- **Einkauf für die Woche:** zählt die Zutaten aller geplanten Gerichte **zusammen** und rechnet auf die geplanten Portionen um. 800 g + 400 g Tomaten werden 1,2 kg, g und kg bzw. ml und l werden zusammengerechnet. Unterschiedliche Einheiten wie „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt; „Zwiebel“ und „Zwiebeln“ gelten als verschiedene Namen. Unter jeder Zeile steht, aus welchem Rezept sie stammt. Schon gekochte Gerichte lassen sich auslassen; „nach Bedarf“-Zutaten sind abgewählt. Danach wählst du das Geschäft und übernimmst die Auswahl auf die Einkaufsliste.
+- Tippen auf den Namen eines Gerichts springt zum Rezept. Löschen lässt sich mit „Rückgängig“ zurücknehmen.
+
+### Favoriten, „zuletzt gekocht“ und Rezeptfotos
+
+- **Favoriten:** Stern oben rechts auf der Rezeptkarte. Favoriten stehen zuerst; der Filter „★ Favoriten“ zeigt nur sie.
+- **Zuletzt gekocht:** „Heute gekocht“ in der aufgeklappten Rezeptkarte, oder der Haken im Wochenplan. Der Filter „Lange nicht gekocht“ zeigt zuerst, was noch nie oder am längsten nicht auf dem Tisch stand.
+- **Fotos:** Im Rezept-Editor „Foto hinzufügen“ (iPhone: Kamera oder Fotos). Das Foto wird auf dem Gerät auf höchstens 1200 Pixel verkleinert (JPEG, meist 100–250 KB). **Speicherort:** Es liegt nicht in `daten.json` (sonst wäre die 900-KB-Grenze schnell erreicht), sondern als eigene Datei `photos/<Kennung>.jpg` im **privaten Daten-Repository**, neben `daten.json`. Dasselbe Token wie bisher genügt (Contents: Read and write). Das zweite Gerät lädt das Foto beim Anzeigen nach und merkt es sich. Ohne Empfang bleibt ein neues Foto lokal in einer Warteschlange und wird beim nächsten Abgleich hochgeladen; das Rezept selbst wird in der Zwischenzeit schon abgeglichen. Im Beispielmodus bleiben Fotos nur auf dem Gerät.
+- **Grenzen:** Wird ein Foto ersetzt oder entfernt, bleibt die alte Datei im Daten-Repository liegen (Fotos werden nie überschrieben, deshalb gibt es keine Schreibkonflikte). Sie lässt sich bei Bedarf auf GitHub unter `photos/` löschen. Das JSON-Backup enthält die Rezeptdaten, aber nicht die Fotodateien. Fotos wachsen im Daten-Repo mit; bei 100 Fotos sind das etwa 15–25 MB, weit unter dem Limit von GitHub.
+
+## Seit Version 1.3: Rezept-Import, überarbeitete Oberfläche, technische Korrekturen
 
 ### Rezepte importieren (Rezepte → **Import**)
 
@@ -86,7 +112,7 @@ Kompakter Kopf, Geschäfte als Reiter mit Anzahl offener Artikel, Summe und Ange
 - **Summe:** Pro ausgewähltem Geschäft werden die offenen Artikel addiert; erledigte Artikel zählen nicht mit. Fehlende oder nicht umrechenbare Preise werden ausdrücklich als fehlend genannt. Bei aktivem Angebot zählt der eingetragene Angebotspreis; ohne Angebotspreis der normale Preis. Es wird kein zusätzlicher pauschaler Rabatt abgezogen.
 - **Beispielmodus:** Die neuen Beispielpreise sind frei erfunden. Sie werden nur bei einem frischen Beispielmodus geladen. Bereits vorhandene Browserdaten und eure private Datendatei werden niemals durch neue Beispiele ersetzt.
 
-**Bestehende App aktualisieren:** Die neuen App-Dateien (siehe Dateiliste in Abschnitt 3, ab Version 1.3 zusätzlich `recipe-import.js`, `page-source.js`, `ocr.js`, die Symbole `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` und der Ordner `vendor`) im öffentlichen App-Repository ersetzen bzw. hinzufügen. Beim ersten Öffnen nach einem Update zeigt die App „Neue Version bereit“; auf **Neu laden** tippen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
+**Bestehende App aktualisieren:** Die neuen App-Dateien (siehe Dateiliste in Abschnitt 3, ab Version 1.3 zusätzlich `recipe-import.js`, `page-source.js`, `ocr.js`, ab Version 1.4 `categories.js`, `plan.js`, `photos.js`, die Symbole `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` und der Ordner `vendor`) im öffentlichen App-Repository ersetzen bzw. hinzufügen. Beim ersten Öffnen nach einem Update zeigt die App „Neue Version bereit“; auf **Neu laden** tippen. Die private `daten.json` unverändert lassen. Nach erfolgreicher Pages-Veröffentlichung die App online öffnen und einmal neu laden, damit das neue Offline-Paket aktiv wird. Namen, Verbindungseinstellungen und noch nicht gesendete Änderungen bleiben im selben Browserspeicher erhalten; Browserdaten dafür nicht löschen. Neue und alte v1-Datendateien sind kompatibel. Geräte mit älterer App sollten ebenfalls aktualisiert werden, damit beide Personen Preise und Angebotslinks bearbeiten können.
 
 ## 2. Zuerst verstehen: zwei Repositories
 
@@ -108,7 +134,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -193,13 +219,14 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | Bereich | Inhalt |
 | --- | --- |
 | `stores` | `id`, `name`, Zeitstempel und Löschmarkierung |
-| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `salePrice`, `onSale` |
-| `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions`; optional `sourceUrl` (Quelle eines importierten Rezepts) |
+| `items` | zusätzlich `storeId`, `name`, `quantity`, `unit`, `checked`, `createdBy`; optional `price`, `salePrice`, `onSale`, `category` (Gang im Laden, z. B. `obst`; `null` oder fehlend = automatisch) |
+| `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions`; optional `sourceUrl` (Quelle eines importierten Rezepts), `favorite` (Wahrheitswert), `lastCookedAt` (Datum `JJJJ-MM-TT`), `photoId` (Kennung der Datei `photos/<photoId>.jpg` im Daten-Repo; `null` = kein Foto) |
+| `meals` (optional) | Wochenplan: `date` (`JJJJ-MM-TT`), `servings`, entweder `recipeId` oder `title` (eigenes Gericht), optional `done` |
 | `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit`; die Einheit `nach Bedarf` (Menge 1) steht für Zutaten ohne Mengenangabe |
 | `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung |
 
-Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden. Auch `recipes.sourceUrl` (Version 1.3) ist optional; ältere App-Versionen auf einem zweiten Gerät ignorieren das Feld, löschen es aber nicht.
+Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden. Auch `recipes.sourceUrl` (Version 1.3) sowie `items.category`, `recipes.favorite`, `recipes.lastCookedAt`, `recipes.photoId` und die ganze Liste `meals` (Version 1.4) sind optional; ältere App-Versionen auf einem zweiten Gerät ignorieren diese Felder, löschen sie aber nicht. Wer zwischen den Versionen wechselt, sieht dort lediglich Wochenplan, Kategorien und Fotos nicht.
 
 Jeder Datensatz hat `createdAt`, `updatedAt`, `deletedAt` und `_clock`. `deletedAt: null` bedeutet nicht gelöscht. `_clock` speichert je geändertem Feld dessen Zeitstempel und Operations-ID. Eine Operation enthält `id`, `collection`, `entityId`, `patch`, `actor` und `at`.
 
@@ -231,6 +258,14 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
 
+Weitere Testpunkte für Version 1.4 (auf beiden Geräten):
+
+- [ ] Einkaufsliste: ein paar Artikel hinzufügen („Butter“, „Äpfel“, „Spülmittel“). Sie stehen unter den richtigen Gängen; unter „Kategorie, Preis & Angebot“ steht der Vorschlag. Einen falsch einsortierten Artikel im Stift-Dialog korrigieren und denselben Namen noch einmal hinzufügen: er landet im korrigierten Gang, auch auf dem zweiten Gerät.
+- [ ] Wochenplan: ein Rezept über das Kalender-Symbol einplanen, ein eigenes Gericht eintragen, zwei Rezepte mit gleicher Zutat planen: „Einkauf für die Woche“ zählt die Zutat zusammen. Auf dem zweiten Gerät erscheint der Plan nach dem Abgleich.
+- [ ] Gericht abhaken: das Rezept zeigt „gekocht heute“. „Lange nicht gekocht“ sortiert es nach hinten.
+- [ ] Rezept mit Foto speichern. Auf dem zweiten Gerät erscheint das Foto kurz nach dem Abgleich. Im privaten Daten-Repo liegt es unter `photos/`.
+- [ ] Foto im Flugmodus hinzufügen, Flugmodus aus: Das Foto wird beim nächsten Abgleich hochgeladen.
+
 Weitere Testpunkte für Version 1.3 (auf dem iPhone):
 
 - [ ] Ins Feld „Was brauchst du?“ tippen: die Seite zoomt **nicht** heran, die Leiste unten bleibt, solange die Tastatur zu ist, am unteren Rand; bei offener Tastatur ist sie ausgeblendet und kommt danach zurück. Auch im Querformat und nach Wechsel zwischen Safari und Homescreen-App prüfen.
@@ -257,7 +292,8 @@ npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright
 - `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
 - `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
 - `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).
-- `tests/browser.test.mjs`: mobile Ansicht mit 390 und 320 px (kein seitlicher Überlauf, Schrift mindestens 16 px, Leiste am unteren Rand), Tastatur-Verhalten, alle Import-Wege einschließlich echter Texterkennung, `?import=`, simulierter GitHub-Server mit 304-Antworten und Fehlern, Offline-Start, Dunkelmodus. Echte Konten und ein echtes iPhone ersetzt das nicht: Den abschließenden Zwei-Geräte-Test führt ihr anhand der Checkliste aus.
+- `tests/categories.test.mjs`: rund 230 typische Einkäufe müssen im richtigen Gang landen (dort steht auch, was bewusst anders ist: „Kokosmilch“ ist Vorrat, „Preiselbeeren“ kein Reis), gelernte Kategorien, Gruppierung. `tests/plan.test.mjs`: Wochen, Kalenderwochen, Zeitumstellung, Zutaten zusammenzählen. `tests/photos.test.mjs`: Foto-Kennungen und Dateipfade, JPEG-Prüfung, Upload-Warteschlange.
+- `tests/browser.test.mjs`: mobile Ansicht mit 390 und 320 px (kein seitlicher Überlauf, Schrift mindestens 16 px, Leiste am unteren Rand), Tastatur-Verhalten, alle Import-Wege einschließlich echter Texterkennung, `?import=`, simulierter GitHub-Server mit 304-Antworten und Fehlern, Offline-Start, Dunkelmodus, Kategorien, Favoriten, Wochenplan und Rezeptfotos zwischen zwei simulierten Geräten (Upload, Nachladen, Warteschlange ohne Verbindung). Echte Konten und ein echtes iPhone ersetzt das nicht: Den abschließenden Zwei-Geräte-Test führt ihr anhand der Checkliste aus.
 
 Nicht getestet werden konnten: echte Rezeptseiten und die öffentlichen Hilfsdienste (in der Entwicklungsumgebung gesperrt; stattdessen realistische Beispiel-Seiten), echte GitHub-Abfragen sowie Safari/iOS. Die Hinweise zu iOS beruhen auf dem bekannten Verhalten von Safari.
 

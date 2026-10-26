@@ -64,13 +64,23 @@ const sheetOpen = page => page.waitForSelector('dialog[open]');
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const stats = { gets: 0, puts: 0, notModified: 0 };
+  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0 }, behavior = { failPhotoPuts: false };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,OPTIONS', 'access-control-expose-headers': 'ETag' };
   return {
-    stats, get content() { return content; },
+    stats, photos, behavior, get content() { return content; },
     async handler(route) {
-      const request = route.request();
+      const request = route.request(), path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1] || '');
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      if (path.startsWith('photos/')) {
+        if (request.method() === 'GET') {
+          stats.photoGets++;
+          return photos.has(path) ? route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/vnd.github.raw+json' }, body: photos.get(path) }) : route.fulfill({ status: 404, headers: cors, body: '{}' });
+        }
+        if (behavior.failPhotoPuts) return route.fulfill({ status: 500, headers: cors, body: '{}' });
+        if (photos.has(path)) return route.fulfill({ status: 422, headers: cors, body: JSON.stringify({ message: 'Invalid request.\n\n"sha" wasn\'t supplied.' }) });
+        stats.photoPuts++; photos.set(path, Buffer.from(JSON.parse(request.postData()).content, 'base64'));
+        return route.fulfill({ status: 201, headers: { ...cors, 'content-type': 'application/json' }, body: '{}' });
+      }
       if (request.method() === 'GET') {
         stats.gets++;
         if (request.headers()['if-none-match'] === etag) { stats.notModified++; return route.fulfill({ status: 304, headers: { ...cors, etag } }); }
@@ -94,7 +104,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const { ctx, page, problems } = await context({ context: viewport ? { viewport } : {} });
       await open(page);
       const sizes = async () => page.evaluate(() => [...document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=file]),select,textarea')].map(node => parseFloat(getComputedStyle(node).fontSize)));
-      for (const name of ['shopping', 'recipes', 'settings']) {
+      for (const name of ['shopping', 'recipes', 'plan', 'settings']) {
         await page.click(`[data-tab=${name}]`);
         assert.equal(await horizontalOverflow(page), 0, `Überlauf im Bereich ${name}`);
         assert.ok((await sizes()).every(size => size >= 16), `Schrift unter 16 px im Bereich ${name}`);
@@ -107,7 +117,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         ['Rezept', async () => { await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); }],
         ['Import Link', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); }],
         ['Import Screenshot', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=image]'); }],
-        ['Import Text', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=text]'); }]]) {
+        ['Import Text', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=text]'); }],
+        ['Gericht planen', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); }],
+        ['Einkauf für die Woche', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); await page.selectOption('#meal-form select[name=recipeId]', { index: 1 }); await page.click('#meal-form button[type=submit]'); await page.click('#plan-shopping'); }]]) {
         await setup();
         await sheetOpen(page);
         assert.ok(await fits(), `Überlauf im Dialog ${label}`);
@@ -402,6 +414,178 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#update-banner').isVisible());
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
+  });
+
+  test('Kategorien: nach Gängen gruppiert, Schätzung sichtbar, ändern und lernen, abschaltbar', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const heads = () => page.locator('#items .group-head span:first-child').allTextContents();
+    const add = async name => { await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); };
+    await page.fill('#item-form input[name=name]', 'Butter');
+    assert.equal(await page.locator('#item-form select[name=category] option').first().textContent(), 'Automatisch (Milch, Käse & Eier)');
+    await add('Butter'); await add('Spülmittel'); await add('Xyzzy');
+    assert.deepEqual(await heads(), ['Obst & Gemüse', 'Milch, Käse & Eier', 'Vorrat & Konserven', 'Haushalt & Drogerie', 'Sonstiges']);
+    // Kategorie von Hand ändern ...
+    await page.evaluate(() => document.activeElement.blur());
+    await page.locator('.item', { hasText: 'Xyzzy' }).getByRole('button', { name: /bearbeiten/ }).click();
+    await page.selectOption('#edit-item-form select[name=category]', 'getraenke');
+    await page.click('#edit-item-form button[type=submit]');
+    await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.ok((await heads()).includes('Getränke'));
+    // ... und die App lernt es für denselben Namen.
+    await add('Xyzzy');
+    assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').textContent(), '2');
+    assert.ok(!(await heads()).includes('Sonstiges'));
+    // Erledigt steht unten.
+    await page.locator('.item', { hasText: 'Butter' }).locator('.check').click();
+    const all = await heads(); assert.equal(all.at(-1), 'Erledigt');
+    // Abschalten.
+    await page.click('[data-tab=settings]'); await page.uncheck('#group-items'); await page.click('[data-tab=shopping]');
+    assert.equal(await page.locator('#items .group-head').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Favoriten, „Heute gekocht“ und „Lange nicht gekocht“', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    const titles = () => page.locator('.recipe-card h3').allTextContents();
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
+    await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').click();
+    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry'], 'Favoriten stehen zuerst');
+    assert.equal(await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: '★ Favoriten' }).click();
+    assert.deepEqual(await titles(), ['Tomaten-Pasta']);
+    await page.getByRole('button', { name: '★ Favoriten' }).click();
+    const curry = page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' });
+    await curry.locator('summary').click(); await curry.getByRole('button', { name: 'Heute gekocht' }).click();
+    assert.match(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-meta').textContent(), /gekocht heute/);
+    assert.equal(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-details').evaluate(node => node.open), true, 'Rezept bleibt nach dem Eintragen aufgeklappt');
+    await page.getByRole('button', { name: 'Lange nicht gekocht' }).click();
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Tomaten-Pasta', 'Kichererbsen-Curry'], 'Nie Gekochtes zuerst, gerade Gekochtes zuletzt');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Wochenplan: planen, abhaken, Wochen-Einkaufsliste, eigenes Gericht, Rückgängig', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click();
+    await sheetOpen(page);
+    assert.equal(await page.inputValue('#meal-form select[name=recipeId]') !== '', true, 'Rezept ist vorausgewählt');
+    assert.equal(await page.inputValue('#meal-form input[name=servings]'), '2');
+    await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#plan:not([hidden])');
+    const today = page.locator('.day.today');
+    assert.match(await today.textContent(), /Tomaten-Pasta[\s\S]*2 Portionen/);
+    // zweites Gericht und ein eigenes
+    await today.locator('.day-head .icon-button').click();
+    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Kichererbsen-Curry' });
+    await page.fill('#meal-form input[name=servings]', '4'); await page.click('#meal-form button[type=submit]');
+    await today.locator('.day-head .icon-button').click();
+    await page.selectOption('#meal-form select[name=recipeId]', '__custom');
+    assert.ok(await page.locator('#meal-form [data-custom]').isVisible());
+    await page.fill('#meal-form input[name=title]', 'Pizza bestellen'); await page.click('#meal-form button[type=submit]');
+    assert.equal(await today.locator('.meal').count(), 3);
+    // Wochen-Einkaufsliste
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    const rows = await page.locator('#week-ingredients .transfer-row').allTextContents();
+    assert.ok(rows.some(row => /Tomaten/.test(row)) && rows.some(row => /Kichererbsen/.test(row)), rows.join('|'));
+    assert.ok(!rows.some(row => /Pizza/.test(row)), 'Eigene Gerichte haben keine Zutaten');
+    await page.selectOption('#week-form select[name=storeId]', { label: 'Lidl' });
+    await page.click('#week-form button[type=submit]');
+    await page.waitForSelector('#shopping:not([hidden])');
+    assert.match(await page.textContent('#items'), /Tomaten/);
+    assert.equal(await page.locator('#store-chips [aria-selected=true]').textContent().then(text => text.replace(/\d+$/, '')), 'Lidl');
+    // abhaken setzt das Kochdatum des Rezepts
+    await page.click('[data-tab=plan]');
+    await today.locator('.meal', { hasText: 'Tomaten-Pasta' }).locator('.check').click();
+    await page.click('[data-tab=recipes]');
+    assert.match(await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.recipe-meta').textContent(), /gekocht heute/);
+    // Schon Gekochtes bleibt in der Wochenliste außen vor
+    await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page);
+    assert.ok(!(await page.locator('#week-ingredients').textContent()).includes('Nudeln'));
+    await page.uncheck('#week-form input[name=skipDone]');
+    assert.ok((await page.locator('#week-ingredients').textContent()).includes('Nudeln'));
+    await page.click('#week-dialog [data-close]');
+    // Wochen blättern, löschen, Rückgängig
+    await page.click('#week-next'); assert.equal(await page.locator('.meal').count(), 0);
+    await page.click('#week-today'); assert.equal(await today.locator('.meal').count(), 3);
+    await today.locator('.meal', { hasText: 'Pizza bestellen' }).getByRole('button', { name: /entfernen/ }).click();
+    assert.equal(await today.locator('.meal').count(), 2);
+    await page.click('#undo'); assert.equal(await today.locator('.meal').count(), 3);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  const makePhoto = page => page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = 1600; canvas.height = 1000;
+    const c = canvas.getContext('2d'); c.fillStyle = '#c06030'; c.fillRect(0, 0, 1600, 1000); c.fillStyle = '#fff'; c.fillRect(300, 200, 900, 500);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const addPhotoRecipe = async (page, name, png) => {
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe');
+    await page.fill('#recipe-form input[name=name]', name);
+    await page.fill('#ingredient-editor [data-field=name]', 'Mehl'); await page.fill('#ingredient-editor [data-field=quantity]', '200'); await page.fill('#ingredient-editor [data-field=unit]', 'g');
+    await page.setInputFiles('#recipe-form input[type=file]', { name: 'kuchen.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.waitForFunction(() => !document.querySelector('#photo-preview').hidden);
+    await page.click('#recipe-form button[type=submit]');
+    await page.waitForSelector('#recipe-dialog', { state: 'hidden' });
+  };
+  const loadedPhoto = (page, name) => page.waitForFunction(title => { const card = [...document.querySelectorAll('.recipe-card')].find(node => node.textContent.includes(title)); const image = card?.querySelector('img[data-photo-id]'); return image && image.dataset.loaded && image.naturalWidth > 0; }, name, { timeout: 15000 });
+
+  test('Rezeptfoto: verkleinert, als eigene Datei hochgeladen, auf dem zweiten Gerät sichtbar', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [a, b]) await device.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(a.page); await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await addPhotoRecipe(a.page, 'Foto-Kuchen', await makePhoto(a.page));
+    await loadedPhoto(a.page, 'Foto-Kuchen');
+    await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.stats.photoPuts, 1);
+    const [[path, bytes]] = [...remote.photos];
+    assert.match(path, /^photos\/[0-9a-f-]{36}\.jpg$/);
+    assert.deepEqual([...bytes.subarray(0, 3)], [0xff, 0xd8, 0xff], 'Datei ist ein JPEG');
+    assert.ok(bytes.length < 400_000);
+    const recipe = remote.content.recipes.find(row => row.name === 'Foto-Kuchen');
+    assert.equal(`photos/${recipe.photoId}.jpg`, path, 'Rezeptdaten enthalten nur die Kennung, kein Bild');
+    assert.ok(JSON.stringify(remote.content).length < 100_000);
+    // Zweites Gerät
+    await open(b.page); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await b.page.click('[data-tab=recipes]');
+    await loadedPhoto(b.page, 'Foto-Kuchen');
+    assert.ok(remote.stats.photoGets >= 1);
+    // Foto entfernen
+    await a.page.locator('.recipe-card', { hasText: 'Foto-Kuchen' }).locator('summary').click();
+    await a.page.locator('.recipe-card', { hasText: 'Foto-Kuchen' }).getByRole('button', { name: 'Bearbeiten' }).click();
+    await a.page.waitForFunction(() => !document.querySelector('#photo-preview').hidden);
+    await a.page.click('#photo-remove'); await a.page.click('#recipe-form button[type=submit]');
+    await a.page.waitForSelector('#recipe-dialog', { state: 'hidden' });
+    assert.equal(await a.page.locator('.recipe-card', { hasText: 'Foto-Kuchen' }).locator('img').count(), 0);
+    assert.deepEqual([...a.problems, ...b.problems], []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('Rezeptfoto ohne Verbindung: bleibt in der Warteschlange und wird später hochgeladen', async () => {
+    const remote = github(demo); remote.behavior.failPhotoPuts = true;
+    const a = await context({ config: connectedConfig });
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(a.page); await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await addPhotoRecipe(a.page, 'Spät-Kuchen', await makePhoto(a.page));
+    await loadedPhoto(a.page, 'Spät-Kuchen');
+    await a.page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('einkauf-photo-queue:') && JSON.parse(localStorage.getItem(key)).length === 1));
+    assert.equal(remote.photos.size, 0);
+    assert.ok(remote.content.recipes.some(row => row.name === 'Spät-Kuchen'), 'Das Rezept selbst wird trotzdem abgeglichen');
+    remote.behavior.failPhotoPuts = false;
+    // Läuft gerade ein Abgleich, verpufft ein einzelner Klick; deshalb wiederholen, bis die Warteschlange leer ist.
+    const emptyQueue = () => a.page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('einkauf-photo-queue:')).every(key => JSON.parse(localStorage.getItem(key)).length === 0));
+    for (let attempt = 0; attempt < 25 && !(await emptyQueue()); attempt++) { await a.page.evaluate(() => document.querySelector('#refresh').click()); await a.page.waitForTimeout(1000); }
+    assert.equal(await emptyQueue(), true);
+    assert.equal(remote.photos.size, 1);
+    assert.deepEqual(a.problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await a.ctx.close();
   });
 
   test('Neuer Name und Backup', async () => {

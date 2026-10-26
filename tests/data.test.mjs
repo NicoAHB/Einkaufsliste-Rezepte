@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { active, emptyData, ingredientItems, merge, operation, positive, suggestItemNames, validate } from '../data.js';
+import { active, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, validate } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
@@ -92,3 +92,39 @@ test('Artikelvorschläge: Wortanfang zuerst, häufig vor selten, ohne Doppelte',
 });
 
 test('Leere Daten sind gültig', () => assert.doesNotThrow(() => validate(emptyData())));
+
+test('Wochenplan, Kategorie, Favorit, Kochdatum und Foto sind optionale Erweiterungen von v1', () => {
+  const data = structuredClone(demo);
+  assert.equal(data.meals, undefined, 'ältere Dateien haben keinen Wochenplan');
+  assert.doesNotThrow(() => validate(data));
+  const stamp = { createdAt: at(1), updatedAt: at(1), deletedAt: null, _clock: {} };
+  data.meals = [{ id: 'm1', date: '2026-10-26', recipeId: 'recipe-pasta', servings: 2, done: false, ...stamp }, { id: 'm2', date: '2026-10-27', title: 'Pizza bestellen', servings: 1, ...stamp }];
+  data.items[0].category = 'obst';
+  Object.assign(data.recipes[0], { favorite: true, lastCookedAt: '2026-10-20', photoId: '0f8fad5b-d9cb-469f-a165-70867728950e' });
+  assert.doesNotThrow(() => validate(data));
+  const bad = patch => { const copy = structuredClone(data); patch(copy); return () => validate(copy); };
+  assert.throws(bad(copy => { copy.meals[0].date = '2026-02-30'; }), /Wochenplan/);
+  assert.throws(bad(copy => { copy.meals[0].servings = 0; }), /Wochenplan/);
+  assert.throws(bad(copy => { copy.meals[1].title = ''; }), /Wochenplan/);
+  assert.throws(bad(copy => { copy.meals[0].done = 'ja'; }), /Wochenplan/);
+  assert.throws(bad(copy => { copy.items[0].category = 5; }), /Kategorie/);
+  assert.throws(bad(copy => { copy.recipes[0].favorite = 'ja'; }), /Favorit/);
+  assert.throws(bad(copy => { copy.recipes[0].lastCookedAt = 'gestern'; }), /Kochdatum/);
+  assert.throws(bad(copy => { copy.recipes[0].photoId = '../../etc/passwd'; }), /Foto-Kennung/);
+});
+
+test('Wochenplan-Änderungen werden wie alle anderen zusammengeführt (auch ohne vorhandene Liste)', () => {
+  const merged = merge(demo, [op('meals', 'm1', { date: '2026-10-26', recipeId: 'recipe-pasta', servings: 2, done: false }, 3),
+    op('meals', 'm1', { done: true }, 5, 'Partnerin'), op('meals', 'm1', { servings: 4 }, 4)]);
+  const meal = merged.meals.find(row => row.id === 'm1');
+  assert.deepEqual([meal.done, meal.servings, meal.date], [true, 4, '2026-10-26']);
+  assert.equal(active(merged.meals).length, 1);
+});
+
+test('Neue Artikel: Kategorie wird aus früheren Artikeln gelernt, sonst geschätzt, sonst weggelassen', () => {
+  const known = [{ name: 'Kefir', category: 'getraenke', updatedAt: at(1) }];
+  const ops = newItems([{ name: 'kefir', quantity: 1, unit: 'l' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }, { name: 'Xyzzy', quantity: 1, unit: 'Stück' }], 'store-1', 'Nico', at(5), [], known);
+  assert.deepEqual(ops.map(row => row.patch.category), ['getraenke', 'obst', undefined]);
+  assert.ok(!('category' in ops[2].patch));
+  assert.ok(ops.every(row => row.collection === 'items' && row.patch.createdBy === 'Nico' && row.patch.checked === false));
+});
