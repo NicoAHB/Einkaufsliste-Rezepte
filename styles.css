@@ -1783,7 +1783,7 @@ body.in-store main {
 #settings[data-connected=yes]>#settings-form {
   order:5
 }
-#connection-details>summary {
+.fold>summary {
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -1792,13 +1792,34 @@ body.in-store main {
   cursor:pointer;
   list-style:none
 }
-#connection-details>summary::-webkit-details-marker {
+.fold>summary::-webkit-details-marker {
   display:none
 }
-#connection-details>summary h3 {
+.fold>summary h3 {
   margin:0
 }
-#connection-details[open]>summary {
+.fold>summary::after {
+  content:"";
+  flex:none;
+  width:10px;
+  height:10px;
+  margin:0 4px;
+  border:solid var(--muted);
+  border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+  transition:transform .15s
+}
+.fold[open]>summary::after {
+  transform:rotate(-135deg)
+}
+.fold>summary .hint {
+  margin:0 0 0 auto;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
+.fold[open]>summary {
   margin-bottom:12px
 }
 #edit-item-form #delete-item {

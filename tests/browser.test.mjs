@@ -63,6 +63,8 @@ const horizontalOverflow = page => page.evaluate(() => document.documentElement.
 const sheetOpen = page => page.waitForSelector('dialog[open]');
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const expandForm = page => page.focus('#item-form input[name=name]');
+// Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
+const openSettings = async page => { await page.click('[data-tab=settings]'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
 const pickStore = async (page, name) => { await expandForm(page); await page.locator('#store-pick button', { hasText: name }).click(); };
 
 function github(initial) {
@@ -430,7 +432,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page } = await context({ context: { colorScheme: 'light' } });
     await open(page);
     assert.equal(await page.getAttribute('#theme-color', 'content'), '#ecf0f9', 'hell: Pastellblau');
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     await page.selectOption('#theme', 'dark');
     assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f182e', 'dunkel: Dunkelblau, nicht mehr Dunkelgrün');
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 24, 46)');
@@ -450,7 +452,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ context: { colorScheme: 'dark' } });
     await open(page);
     assert.equal(await page.getAttribute('html', 'data-palette'), 'blau');
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.equal(await page.locator('#palette button').count(), 6);
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'blau');
     const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -465,7 +467,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Nach dem Neuladen steht die Farbe schon vor dem Start der App (theme.js im Kopf der Seite)
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
     // Hell wird es ein Pastellton; Darstellung und Farbe sind unabhängig
     await page.selectOption('#theme', 'light');
@@ -576,7 +578,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('.item', { hasText: 'Butter' }).locator('.check').click();
     const all = await heads(); assert.equal(all.at(-1), 'Erledigt');
     // Abschalten.
-    await page.click('[data-tab=settings]'); await page.uncheck('#group-items'); await page.click('[data-tab=shopping]');
+    await openSettings(page); await page.uncheck('#group-items'); await page.click('[data-tab=shopping]');
     assert.equal(await page.locator('#items .group-head').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -623,7 +625,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Vorrat: in den Einstellungen pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     for (const name of ['Nudeln', 'olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
     await page.fill('#pantry-form input[name=name]', 'NUDELN'); await page.click('#pantry-form button');   // Doppelte werden nicht angelegt
     assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['Nudeln', 'olivenöl']);
@@ -643,7 +645,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /in den Vorrat/);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.ok((await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'));
     // Entfernen
     await page.getByRole('button', { name: 'Tomaten aus dem Vorrat entfernen' }).click();
@@ -973,6 +975,34 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
     assert.ok(text.includes('Tomaten') && text.includes('Äpfel'), 'offene bleiben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Einstellungen: jeder Bereich lässt sich auf- und zuklappen, verbunden stehen sie eingeklappt', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.click('[data-tab=settings]');
+    const ids = ['display-details', 'pantry-details', 'storage-details', 'import-details', 'connection-details'];
+    for (const id of ids) assert.equal(await page.locator(`#${id}`).evaluate(node => node.open), false, `${id} startet eingeklappt`);
+    for (const id of ids) {
+      const summary = page.locator(`#${id} > summary`);
+      assert.ok((await summary.boundingBox()).height >= 44, `${id}: Titel ist gut antippbar`);
+      await summary.click();
+      assert.equal(await page.locator(`#${id}`).evaluate(node => node.open), true, `${id} klappt auf`);
+      await summary.click();
+      assert.equal(await page.locator(`#${id}`).evaluate(node => node.open), false, `${id} klappt zu`);
+    }
+    // Aufgeklappt sind Inhalte bedienbar, zugeklappt nicht sichtbar
+    assert.equal(await page.locator('#pantry-form input').isVisible(), false);
+    await page.click('#pantry-details > summary');
+    assert.equal(await page.locator('#pantry-form input').isVisible(), true);
+    await page.click('#display-details > summary');
+    await page.click('#palette button[data-palette=rose]');
+    assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -1573,7 +1603,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ config: connectedConfig });
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.match(await page.textContent('#storage-text'), /KB von 879 KB belegt/);
     assert.match(await page.textContent('#storage-hint'), /Aufräumbar: 40 Einträge/);
     const before = JSON.stringify(remote.content).length, puts = remote.stats.puts;
@@ -1617,7 +1647,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Datenumfang im Beispielmodus: Aufräumen lokal, keine Foto-Bereinigung', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.equal(await page.locator('#clean-photos').isHidden(), true);
     await page.click('#compact-now');
     await page.waitForFunction(() => /nichts aufzuräumen/.test(document.querySelector('#storage-note').textContent));
@@ -1634,7 +1664,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await page.evaluate(async ([url]) => { await (await caches.open('einkauf-photos-v1')).put(new Request(url), new Response('x')); }, [`${base}/photo/${lost}`]);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     assert.equal(await page.locator('#clean-photos').isVisible(), true);
     page.once('dialog', dialog => { assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/); void dialog.accept(); });
     await page.click('#clean-photos');
@@ -1661,7 +1691,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form input[name=name]', 'Milch');
     await page.click('#item-form button[type=submit]');
     assert.match(await page.textContent('#items'), /Anna/);
-    await page.click('[data-tab=settings]');
+    await openSettings(page);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
     const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
     assert.ok(backup.items.some(item => item.name === 'Milch'));

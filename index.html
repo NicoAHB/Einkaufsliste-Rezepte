@@ -121,7 +121,7 @@
     <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
       <div class="section-head"><h2 id="settings-title">Einstellungen</h2></div>
       <form id="settings-form" class="card">
-        <details id="connection-details"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
+        <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
         <label>Eigentümer des Daten-Repos (eure Organisation)<input name="owner" placeholder="z. B. eure-kueche" autocomplete="off" autocapitalize="off" required maxlength="100"></label>
@@ -136,29 +136,32 @@
         </details>
       </form>
       <form id="import-settings-form" class="card stack">
-        <h3>Rezepte aus Links laden</h3>
+        <details id="import-details" class="fold"><summary><h3>Rezepte aus Links laden</h3></summary><div class="stack">
         <p class="hint">Browser dürfen fremde Webseiten nicht direkt lesen. Für Links braucht die App deshalb einen Hilfsdienst. Screenshots und eingefügter Text brauchen nichts davon und bleiben auf dem Gerät.</p>
         <label>Eigener Hilfsdienst (empfohlen)<input name="importProxy" type="url" inputmode="url" placeholder="https://rezepte.dein-name.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200"></label>
         <label class="checkbox-label"><input name="publicProxy" type="checkbox"> Öffentliche Hilfsdienste erlauben (allorigins.win, codetabs.com)</label>
         <p class="hint">Dann wird nur der Link der Rezeptseite an diese Dienste gesendet, nie Token oder Listen. Öffentliche Dienste fallen manchmal aus oder werden von Rezeptseiten blockiert.</p>
         <button type="submit">Import-Einstellungen speichern</button>
         <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
+      </div></details>
       </form>
-      <div id="pantry-card" class="card stack"><h3>Vorrat</h3>
+      <div id="pantry-card" class="card stack"><details id="pantry-details" class="fold"><summary><h3>Vorrat</h3></summary><div class="stack">
         <p class="hint">Was ihr immer zu Hause habt, zum Beispiel Salz, Mehl oder Öl. Diese Zutaten sind beim Übernehmen von Rezepten und beim Wocheneinkauf vorab abgewählt und mit „Vorrat“ gekennzeichnet.</p>
         <form id="pantry-form" class="inline-form"><label><span class="visually-hidden">Zutat für den Vorrat</span><input name="name" placeholder="z. B. Salz" maxlength="80" required autocomplete="off"></label><button type="submit">Hinzufügen</button></form>
-        <ul id="pantry-list" class="pantry-list"></ul>
+        <ul id="pantry-list" class="pantry-list"></ul></div></details>
+      
       </div>
-      <div id="storage-card" class="card stack"><h3>Datenumfang</h3>
+      <div id="storage-card" class="card stack"><details id="storage-details" class="fold"><summary><h3>Datenumfang</h3></summary><div class="stack">
         <progress id="storage-bar" max="100" value="0"></progress>
         <p id="storage-text"></p>
         <p id="storage-hint" class="hint"></p>
         <button id="compact-now" class="secondary" type="button">Jetzt aufräumen</button>
         <button id="clean-photos" class="secondary" type="button">Nicht mehr genutzte Fotos löschen</button>
         <p id="storage-note" class="hint" role="status"></p>
-        <p class="hint">Die App räumt automatisch auf, sobald die Datei 250 KB überschreitet. Entfernt wird nur, was seit mehr als zwei Wochen gelöscht oder seit drei Wochen erledigt ist, sowie überholte Preise und Zeitstempel. Vorschläge und gelernte Kategorien bleiben erhalten. Alte Stände bleiben im Verlauf des privaten Daten-Repositorys auf GitHub.</p>
+        <p class="hint">Die App räumt automatisch auf, sobald die Datei 250 KB überschreitet. Entfernt wird nur, was seit mehr als zwei Wochen gelöscht oder seit drei Wochen erledigt ist, sowie überholte Preise und Zeitstempel. Vorschläge und gelernte Kategorien bleiben erhalten. Alte Stände bleiben im Verlauf des privaten Daten-Repositorys auf GitHub.</p></div></details>
+      
       </div>
-      <div class="card stack display-card"><h3>Darstellung & Sicherung</h3>
+      <div class="card stack display-card"><details id="display-details" class="fold"><summary><h3>Darstellung & Sicherung</h3></summary><div class="stack">
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
         <div class="palette-field"><span id="palette-label">Farbe</span><div id="palette" class="palette" role="radiogroup" aria-labelledby="palette-label">
@@ -172,7 +175,8 @@
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.3 · Schlanker Kopf · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p>
+        <p class="hint">Version 2.4 · Einstellungen zum Aufklappen · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+      
       </div>
     </section>
   </main>

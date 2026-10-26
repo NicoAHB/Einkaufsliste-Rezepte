@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.3
+# Einkauf & Rezepte – Version 2.4
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,10 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.4: Einstellungen zum Auf- und Zuklappen
+
+Jeder Bereich der Einstellungen (Gemeinsame Liste, Rezepte aus Links laden, Vorrat, Datenumfang, Darstellung & Sicherung) ist ein Abschnitt, den man mit einem Tipp auf die Überschrift (Pfeil rechts) auf- und zuklappt. Sie stehen zunächst zu; nur „Gemeinsame Liste“ ist offen, solange noch nicht verbunden ist. Wie lange sie offen bleiben, merkt sich die App nicht: Beim nächsten Besuch sind sie wieder zu.
 
 ## Neu in Version 2.3: weniger Platz oben, Geschäfte zuerst im Laden
 
