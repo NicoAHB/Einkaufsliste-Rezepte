@@ -1,8 +1,8 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v9';
+const CACHE = 'einkauf-shell-v10';
 // Die Texterkennung ist groß (ca. 5 MB) und ändert sich selten: eigener Speicher, der App-Updates übersteht.
 const VENDOR = 'einkauf-vendor-v1';
-const FILES = ['./', './index.html', './styles.css', './app.js', './data.js', './prices.js', './recipe-import.js', './page-source.js', './ocr.js', './categories.js', './plan.js', './photos.js', './compact.js', './receipt.js', './cook.js', './news.js',
+const FILES = ['./', './index.html', './styles.css', './app.js', './data.js', './prices.js', './recipe-import.js', './page-source.js', './ocr.js', './categories.js', './plan.js', './photos.js', './compact.js', './receipt.js', './cook.js', './news.js', './shop.js',
   './manifest.webmanifest', './icon.svg', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './beispieldaten.json', './README.md'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES.map(file => new Request(new URL(file, self.location.href), { cache: 'reload' })))).then(() => self.skipWaiting()));
