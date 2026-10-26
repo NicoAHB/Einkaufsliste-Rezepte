@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.7
+# Einkauf & Rezepte – Version 2.8
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,16 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.8: Rezepte des Tages zum Durchklicken
+
+**Wichtig vorab:** Diese Funktion wurde **nicht gegen die echte Chefkoch-Seite getestet**. Aus der Entwicklungsumgebung war chefkoch.de nicht erreichbar, und ich konnte nicht bestätigen, welche Seite genau „Rezepte des Tages“ zeigt oder wie sie aufgebaut ist. Getestet ist der Ablauf mit einer nachgebauten Seite. Ob es bei Chefkoch klappt, zeigt sich bei dir: Siehe „Wenn nichts gefunden wird“.
+
+- **Einrichten:** Öffne im Browser die Seite, auf der du die Tagesrezepte siehst, und kopiere ihren Link. In der App: **Einstellungen → Rezepte aus Links laden → „Rezepte des Tages: Link zur Seite“**, einfügen, **Import-Einstellungen speichern**. Du brauchst dafür wie beim Link-Import einen **Hilfsdienst** (eigener Cloudflare-Worker oder die erlaubten öffentlichen Dienste).
+- **Benutzen:** Im Bereich **Rezepte** steht oben **„Rezepte des Tages · 10 offen“**. Ein Tipp öffnet die Karten: Name, Zeit, Portionen, die ersten Zutaten, ein Stück der Zubereitung und ein Link zur Originalseite. **Hinzufügen** legt das Rezept samt Zutaten in deinen Rezepten an (mit Quelle), **Überspringen** geht weiter. Du kannst **0 bis alle 10** hinzufügen; beim Schließen merkt sich die App, wo du warst.
+- **Täglich neu:** Die Seite wird einmal am Tag geladen (still beim ersten Öffnen des Rezepte-Bereichs). Es kommen die ersten **zehn noch nicht entschiedenen** Rezepte: Was du schon hinzugefügt, übersprungen oder anderweitig in deinen Rezepten hast (gleiche Quelle), erscheint nicht wieder. Der Merkzettel liegt nur auf diesem Gerät.
+- **Wenn nichts gefunden wird:** Die App sucht auf der Seite nach Rezept-Links der Form `…/rezepte/<Nummer>/<Name>` (Chefkoch) und nach einer strukturierten Liste (`ItemList`). Meldet sie „keine Rezept-Links gefunden“, lädt die Seite ihre Rezepte vermutlich erst per JavaScript nach (das kann der Hilfsdienst nicht lesen) oder der Link zeigt auf eine andere Seite. Probiere dann einen anderen Link, z. B. eine Rezepte-Übersicht, die die Rezepte schon im Seitentext enthält, oder schick mir einen Screenshot der Meldung.
+- **Fairer Umgang:** Die App ruft die Seite höchstens einmal am Tag ab und die Rezepte nur, wenn du sie ansiehst. Beachte die Nutzungsbedingungen der jeweiligen Seite; Rezepte bleiben mit Quelle gekennzeichnet.
 
 ## Neu in Version 2.7: Speichern-Knöpfe und Fehlerbehebungen nach gründlicher Prüfung
 
@@ -314,7 +324,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -441,6 +451,11 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.8:
+
+- [ ] Link der Tagesrezepte-Seite in den Einstellungen eintragen und speichern. Rezepte → „Rezepte des Tages“: Karten erscheinen, **Hinzufügen** legt ein Rezept an, **Überspringen** geht weiter. (Wenn „keine Rezept-Links gefunden“ erscheint: siehe README, 2.8.)
+- [ ] Am nächsten Tag erscheinen andere Rezepte; schon entschiedene kommen nicht wieder.
 
 Weitere Testpunkte für Version 2.7:
 
