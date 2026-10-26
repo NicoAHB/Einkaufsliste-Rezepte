@@ -146,8 +146,8 @@
         <label>Eigener Hilfsdienst (empfohlen)<input name="importProxy" type="url" inputmode="url" placeholder="https://rezepte.dein-name.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200"></label>
         <label class="checkbox-label"><input name="publicProxy" type="checkbox"> Öffentliche Hilfsdienste erlauben (allorigins.win, codetabs.com)</label>
         <p class="hint">Dann wird nur der Link der Rezeptseite an diese Dienste gesendet, nie Token oder Listen. Öffentliche Dienste fallen manchmal aus oder werden von Rezeptseiten blockiert.</p>
-        <label>Rezepte des Tages: Link zur Seite (optional)<input name="dailySource" type="url" inputmode="url" placeholder="https://www.chefkoch.de/…" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="300"></label>
-        <p class="hint">Öffne im Browser die Seite, auf der du die Tagesrezepte siehst, und kopiere ihren Link hierher. Die App lädt sie einmal am Tag über deinen Hilfsdienst und zeigt bis zu zehn Rezepte einzeln zum Durchklicken (Rezepte-Bereich). Seiten, die ihre Rezepte erst per JavaScript nachladen, kann sie nicht lesen.</p>
+        <label>Rezepte des Tages: eigene Seite (optional)<input name="dailySource" type="url" inputmode="url" placeholder="leer lassen: eingebaute Rezepte" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="300"></label>
+        <p class="hint">Ohne Eintrag zeigt die App jeden Tag drei Rezepte aus ihrer eingebauten Sammlung, ganz ohne Hilfsdienst. Mit dem Link einer Seite voller Rezepte (z. B. Tagesrezepte) lädt sie stattdessen diese Seite einmal am Tag über deinen Hilfsdienst und zeigt bis zu zehn.</p>
         <button type="submit">Import-Einstellungen speichern</button>
         <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
       </div></details>
@@ -183,7 +183,7 @@
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
         <p><a href="README.md" target="_blank" rel="noopener">Anleitung & Testcheckliste</a></p>
-        <p class="hint">Version 2.8 · Rezepte des Tages · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.9 · Rezepte ohne Hilfsdienst · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -233,7 +233,7 @@
     <p id="daily-progress" class="hint" role="status"></p>
     <div id="daily-card" class="daily-card" aria-live="polite"></div>
     <p id="daily-note" class="hint" role="status"></p>
-    <div class="daily-actions"><button id="daily-skip" class="secondary" type="button">Überspringen</button><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button></div></div></dialog>
+    <div class="daily-actions"><button id="daily-skip" class="secondary" type="button">Überspringen</button><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button><button id="daily-reset" class="secondary" type="button" hidden>Von vorn beginnen</button></div></div></dialog>
   <dialog id="finish-dialog"><div class="stack"><div class="sheet-head"><h2>Einkauf beenden</h2><button type="button" data-close="finish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="finish-text"></p>
     <button id="finish-receipt" type="button">Beenden und Kassenbon einfügen</button>

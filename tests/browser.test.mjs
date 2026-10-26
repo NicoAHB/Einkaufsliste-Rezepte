@@ -1400,16 +1400,73 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Rezepte des Tages: ohne Link führt der Knopf zur Einstellung; Fehler lassen sich wiederholen; Link prüfen und speichern', async () => {
+  test('Rezepte des Tages ohne Hilfsdienst: drei eingebaute Rezepte pro Tag, hinzufügen/überspringen, am nächsten Tag neue, Neustart der Runde', async () => {
+    const { ctx, page, problems } = await context();   // kein Hilfsdienst, kein Link
+    const external = [];
+    page.on('request', request => { if (!request.url().startsWith(base)) external.push(request.url()); });
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent));
+    const recipeCount = () => page.locator('#recipe-list .recipe-card').count();
+    const before = await recipeCount();
+    await page.click('#daily-open'); await sheetOpen(page);
+    assert.match(await page.textContent('#daily-progress'), /Rezept 1 von 3/);
+    const title = async () => (await page.textContent('#daily-card h3')).trim();
+    const first = [];
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    first.push(await title());
+    assert.match(await page.textContent('#daily-card'), /Min\..*Portionen.*Zutaten/s);
+    assert.match(await page.textContent('#daily-card'), /Aus der eingebauten Sammlung/);
+    assert.equal(await page.locator('#daily-card a.daily-link').count(), 0, 'keine fremde Seite');
+    await page.click('#daily-add');                                        // 1: hinzufügen
+    await page.waitForFunction(text => document.querySelector('#daily-card h3')?.textContent.trim() !== text, first[0]);
+    first.push(await title()); await page.click('#daily-skip');           // 2: überspringen
+    await page.waitForFunction(text => document.querySelector('#daily-card h3')?.textContent.trim() !== text, first[1]);
+    first.push(await title()); await page.click('#daily-add');            // 3: hinzufügen
+    await page.waitForSelector('#daily-card h3:has-text("Für heute geschafft")');
+    assert.match(await page.textContent('#daily-card'), /2 von 3 Rezepten hinzugefügt, 1 übersprungen/);
+    assert.equal(new Set(first).size, 3);
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await recipeCount(), before + 2);
+    for (const name of [first[0], first[2]]) assert.equal(await page.locator('#recipe-list .recipe-card', { hasText: name }).count(), 1, name);
+    assert.equal(await page.locator('#recipe-list .recipe-card', { hasText: first[1] }).count(), 0, 'das übersprungene wurde nicht hinzugefügt');
+    // Das hinzugefügte Rezept ist vollständig und benutzbar (Zutaten, Schritte, Portionen)
+    const card = page.locator('#recipe-list .recipe-card', { hasText: first[0] });
+    assert.match(await card.textContent(), /Zutaten/);
+    assert.match(await card.textContent(), /Zubereitung/);
+    assert.match(await page.textContent('#daily-label'), /alles gesehen/);
+    // Nächster Tag: drei andere Rezepte
+    await page.evaluate(() => { const key = 'einkauf-daily:einkauf-demo-v1'; const data = JSON.parse(localStorage.getItem(key)); data.day = '2020-01-01'; localStorage.setItem(key, JSON.stringify(data)); });
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]');
+    await page.waitForFunction(() => /3 offen/.test(document.querySelector('#daily-label').textContent));
+    await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.ok(!first.includes(await title()), 'ein neues Rezept');
+    // Alles entschieden: „Von vorn beginnen“
+    await page.evaluate(async () => {
+      const key = 'einkauf-daily:einkauf-demo-v1', data = JSON.parse(localStorage.getItem(key)), all = await (await fetch('./rezepte-des-tages.json')).json();
+      data.decided = all.map(entry => `eigene:${entry.n.toLowerCase()}`); data.day = '2020-01-01'; localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.keyboard.press('Escape'); await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]'); await page.click('#daily-open'); await sheetOpen(page);
+    await page.waitForSelector('#daily-reset:not([hidden])');
+    assert.match(await page.textContent('#daily-card'), /alle \d+ Rezepte der Sammlung gesehen/);
+    await page.click('#daily-reset');
+    await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.match(await page.textContent('#daily-progress'), /Rezept 1 von \d/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(external, [], 'es wurde keine fremde Adresse abgerufen (kein Hilfsdienst, kein Netz nötig)');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Rezepte des Tages mit eigener Seite: Fehler lassen sich wiederholen, Link prüfen und speichern, Stand wird gemerkt', async () => {
     const behavior = { fail: true };
     const { ctx, page, problems } = await context({ config: { importProxy: PROXY } });
     await ctx.route(`${PROXY}/**`, dailySite(3, behavior));
     await open(page);
-    await page.click('[data-tab=recipes]');
-    assert.match(await page.textContent('#daily-label'), /einrichten/);
-    await page.click('#daily-open');
-    assert.equal(await page.locator('#settings').isVisible(), true);
-    assert.equal(await page.evaluate(() => document.activeElement?.name), 'dailySource', 'das Feld ist bereit');
+    await openSettings(page);
     // Ungültiger Link wird abgelehnt, gültiger gespeichert
     await page.fill('#import-settings-form input[name=dailySource]', 'ftp://beispiel.de/rezepte');
     await page.click('#import-settings-form button[type=submit]');
@@ -1427,11 +1484,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#daily-retry');
     await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 1")');
     assert.equal(await page.locator('#daily-note').textContent(), '');
-    // „Später“: Schließen merkt den Stand
     await page.click('#daily-add');
     await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-    assert.match(await page.textContent('#daily-label'), /2 offen/);
+    assert.match(await page.textContent('#daily-label'), /2 offen/, 'Schließen merkt den Stand');
     await page.click('#daily-open'); await sheetOpen(page);
     await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 2")');
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
@@ -1463,6 +1519,28 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
   });
+
+  for (const width of [280, 314, 390]) {
+    test(`Einstellungen: nichts lässt sich seitlich verschieben (${width} px), auch wenn <summary> kein Flex kann (ältere iOS-Versionen)`, async () => {
+      const day = new Date(Date.now() + 2 * 86400000), stamp = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 700 } },
+        config: { ...connectedConfig, owner: 'haushalt-mueller-schmidt', repo: 'einkaufsliste-daten-privat', tokenExpires: stamp, dailySource: 'https://www.chefkoch.de/rezepte/tagesrezepte/mit-sehr-langem-pfad/und-noch-mehr-pfad/' } });
+      await ctx.route('https://api.github.com/**', route => route.abort());
+      await open(page);
+      await page.click('[data-tab=settings]');
+      const widths = () => page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.body.scrollWidth]);
+      for (const [label, prepare] of [['Bereiche zu', () => {}], ['Bereiche offen', () => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })],
+        ['ohne Flex in <summary>, Bereiche zu', () => { document.styleSheets[0].insertRule('summary { display: block !important }'); document.querySelectorAll('#settings details.fold').forEach(node => { node.open = false; }); }],
+        ['ohne Flex in <summary>, Bereiche offen', () => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })]]) {
+        await page.evaluate(prepare);
+        const [scroll, client, body] = await widths();
+        assert.ok(scroll <= client && body <= client, `${label}: Seite ist ${Math.max(scroll, body)} px breit statt ${client} px`);
+      }
+      assert.match(await page.textContent('#connection-state'), /haushalt-mueller-schmidt.*Token läuft in 2 Tagen ab/, 'der lange Hinweis steht vollständig da (bricht um statt abzuschneiden)');
+      assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+      await ctx.close();
+    });
+  }
 
   test('Kopfbereich: kein Beispielmodus-Banner, eine schmale Statuszeile, die zum Verbinden führt', async () => {
     const { ctx, page, problems } = await context();

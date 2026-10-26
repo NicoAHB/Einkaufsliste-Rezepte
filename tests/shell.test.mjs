@@ -38,5 +38,5 @@ test('Elementkennungen in der Seite sind eindeutig, und die App sucht keine, die
 test('die README nennt jede Skriptdatei der App in der Liste zum Hochladen', () => {
   const upload = readme.slice(readme.indexOf('Im Repo **Code → Add file → Upload files**'), readme.indexOf('Unten **Commit changes**'));
   assert.ok(upload.length > 100, 'Abschnitt zum Hochladen nicht gefunden');
-  for (const file of [...scripts, 'sw.js']) assert.ok(upload.includes(`\`${file}\``), `${file} fehlt in der Upload-Liste der README`);
+  for (const file of [...scripts, 'sw.js', ...files.filter(file => file.endsWith('.json') && file !== 'manifest.webmanifest')]) assert.ok(upload.includes(`\`${file}\``), `${file} fehlt in der Upload-Liste der README`);
 });

@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.8
+# Einkauf & Rezepte – Version 2.9
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,13 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.9: Rezepte des Tages ohne Hilfsdienst, Einstellungen wackeln nicht mehr
+
+- **Rezepte des Tages brauchen keinen Hilfsdienst mehr.** Browser dürfen fremde Webseiten (z. B. Chefkoch) nicht direkt lesen. Ohne Hilfsdienst geht das nicht, und von hier aus konnte ich keine solche Seite prüfen. Deshalb bringt die App jetzt **ihre eigene Sammlung mit**: `rezepte-des-tages.json` mit **69 klassischen Hausrezepten** (Suppen, Pasta, Fleisch, Aufläufe, Kuchen, vegetarisch und vegan, jeweils mit Zutaten und Zubereitung). Sie sind eigene Texte, kein Auszug von einer fremden Seite, und funktionieren auch offline.
+- **Drei neue Rezepte pro Tag.** Im Bereich Rezepte steht oben **„Rezepte des Tages · 3 offen“**. Karten wie bisher: **Hinzufügen** legt das Rezept samt Zutaten in deinen Rezepten an, **Überspringen** geht weiter; 0 bis alle 3 sind möglich. **Beide Geräte sehen am selben Tag dieselben drei Rezepte** (feste Reihenfolge, der Tag bestimmt die Stelle). Was du hinzugefügt oder übersprungen hast, kommt nicht wieder; ebenso nichts, was schon unter demselben Namen in deinen Rezepten steht. Sind alle 69 durch, bietet die App **„Von vorn beginnen“** an.
+- **Eigene Seite bleibt möglich:** Unter Einstellungen → „Rezepte aus Links laden“ → **„Rezepte des Tages: eigene Seite (optional)“** lässt sich wie in Version 2.8 der Link einer Seite eintragen (braucht dann den Hilfsdienst, bis zu zehn Rezepte, nicht gegen die echte Chefkoch-Seite getestet). Leer lassen = eingebaute Sammlung.
+- **Einstellungen ließen sich seitlich verschieben** (auf manchen iPhones): Der lange Hinweis in der Überschrift eines Bereichs („✓ haushalt/daten · Nico · Token läuft …“) durfte nicht umbrechen; ältere iOS-Versionen können `<summary>` nicht als Flex-Zeile darstellen und machten die Seite dadurch breiter als den Bildschirm. Der Hinweis bricht jetzt um, und die Seite lässt sich grundsätzlich nicht mehr seitlich verschieben. Ein Test erzwingt das alte Verhalten (kein Flex in `<summary>`) und prüft bei 280, 314 und 390 px, dass nichts überhängt.
 
 ## Neu in Version 2.8: Rezepte des Tages zum Durchklicken
 
@@ -324,7 +331,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -451,6 +458,11 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
+
+Weitere Testpunkte für Version 2.9:
+
+- [ ] Rezepte → „Rezepte des Tages · 3 offen“: ohne weitere Einstellung erscheinen drei Rezepte; **Hinzufügen** übernimmt eins mit Zutaten, am zweiten Handy stehen am selben Tag dieselben drei.
+- [ ] Einstellungen: Die Seite lässt sich nicht nach links oder rechts schieben (auch mit verbundener Liste und eingeklappten oder offenen Bereichen).
 
 Weitere Testpunkte für Version 2.8:
 
