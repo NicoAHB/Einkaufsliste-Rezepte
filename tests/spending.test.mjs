@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { compareTotals, dayLabel, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, compareTotals, dayLabel, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -185,5 +185,40 @@ describe('Aufräumen', () => {
     const result = compact(bare, now);
     assert.equal(result.removed.purchases, 0);
     assert.equal(result.data.purchases, undefined);
+  });
+});
+
+describe('Notiz-Vorschläge', () => {
+  const note = (text, date = '2026-05-10', createdAt = `${date}T10:00:00.000Z`) => ({ note: text, date, createdAt });
+  test('ohne Verlauf: „Wocheneinkauf“ zuerst, dann feste Ideen, höchstens acht, keine Doppelten', () => {
+    const list = noteSuggestions([]);
+    assert.equal(DEFAULT_NOTE, 'Wocheneinkauf');
+    assert.deepEqual(list.slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
+    assert.equal(list.length, 8);
+    assert.equal(new Set(list.map(text => text.toLocaleLowerCase('de'))).size, list.length);
+  });
+  test('Drogerien bekommen „Drogerie“ gleich nach dem Standard, andere Geschäfte nicht', () => {
+    assert.deepEqual(noteSuggestions([], 'Rossmann').slice(0, 2), ['Wocheneinkauf', 'Drogerie']);
+    assert.deepEqual(noteSuggestions([], 'dm').slice(0, 2), ['Wocheneinkauf', 'Drogerie']);
+    assert.equal(noteSuggestions([], 'Edeka')[1], 'Großeinkauf');
+    assert.equal(noteSuggestions([], '')[1], 'Großeinkauf');
+    assert.equal(noteSuggestions([], 'Rossmann').filter(text => text === 'Drogerie').length, 1);
+  });
+  test('eigene Notizen: häufigste zuerst, bei Gleichstand die zuletzt benutzte; Schreibweisen werden zusammengefasst', () => {
+    const rows = [note('Grillabend'), note('grillabend', '2026-05-12'), note('Grillabend', '2026-05-14'), note('Geburtstag', '2026-04-01'), note('Kuchen', '2026-05-20'),
+      note('Wocheneinkauf'), note('wocheneinkauf'), note(''), note('   '), { date: '2026-05-01' }, note('x'.repeat(31))];
+    const list = noteSuggestions(rows);
+    assert.deepEqual(list.slice(0, 5), ['Wocheneinkauf', 'Grillabend', 'Kuchen', 'Geburtstag', 'Großeinkauf']);
+    assert.ok(!list.some(text => text.length > 30));
+    assert.equal(list.filter(text => text.toLocaleLowerCase('de') === 'wocheneinkauf').length, 1);
+    assert.equal(list.length, 8);
+    assert.ok(list.includes('Grillabend') && !list.includes('grillabend'), 'die jüngste Schreibweise gilt');
+  });
+  test('nur die vier häufigsten eigenen Notizen, der Rest bleibt bei den festen Ideen; das Limit gilt', () => {
+    const rows = ['A', 'B', 'C', 'D', 'E', 'F'].flatMap((text, index) => Array.from({ length: 6 - index }, () => note(text)));
+    assert.deepEqual(noteSuggestions(rows, '', 8).slice(0, 5), ['Wocheneinkauf', 'A', 'B', 'C', 'D']);
+    assert.ok(!noteSuggestions(rows).includes('E'));
+    assert.equal(noteSuggestions(rows, '', 3).length, 3);
+    assert.deepEqual(noteSuggestions(rows, '', 1), ['Wocheneinkauf']);
   });
 });

@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.15
+# Einkauf & Rezepte – Version 2.16
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,21 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.16: Ausgaben schneller bedienen
+
+- **Grünes „+“ im Betragsfeld:** Sobald ein Betrag im Feld steht, erscheint rechts im Feld ein **+** (wie im Namensfeld der Einkaufsliste; rein per CSS über `:placeholder-shown`, es nutzt dieselbe Formatierung `.name-field`/`.add-button`). Ein Tipp darauf **fügt den Einkauf hinzu und schließt die Tastatur**. Fehlt etwas (z. B. Betrag 0), wird die Tastatur trotzdem geschlossen, damit die Meldung nicht verdeckt wird. Das ausdrückliche Schließen ist nötig, weil iOS-Safari Knöpfen beim Antippen keinen Fokus gibt (das Feld und die Tastatur blieben sonst offen). Die Eingabetaste speichert weiterhin.
+- **Löschen per Ziehen:** Einträge in der Liste lassen sich wie Artikel **lange halten (etwa eine halbe Sekunde) und nach rechts in den roten Mülleimer ziehen**; Loslassen dort löscht („22,22 € gelöscht“), Loslassen daneben, Escape oder ein früheres Bewegen (Scrollen) löschen nichts, ein kurzer Tipp öffnet weiter das Ändern. Gelöscht wird wie sonst mit einer Löschmarkierung, sie kommt auf dem zweiten Gerät an. Es gibt dafür keine Rückfrage (wie bei Artikeln).
+- **Notiz mit Vorschlägen:** Neue Einträge beginnen mit **Wocheneinkauf** in der Notiz. Ein **Tipp ins Feld** wählt den Text aus (Tippen ersetzt ihn) und zeigt **Vorschläge zum Antippen**: zuerst Wocheneinkauf, bei Drogerien (Rossmann, dm, Müller, Douglas, Budni) gleich danach **Drogerie**, dann die bisher **am häufigsten benutzten eigenen Notizen** (bis zu vier, bei Gleichstand die zuletzt benutzte; Schreibweisen wie „grillabend“ und „Grillabend“ zählen zusammen), zuletzt feste Ideen (Großeinkauf, Zwischendurch, Getränke, Drogerie, Obst & Gemüse, Grillen, Besuch); höchstens acht, keine Doppelten, keine Notizen über 30 Zeichen. Ein Tipp auf einen Vorschlag übernimmt ihn und schließt die Tastatur; ein Tipp daneben blendet die Vorschläge aus. **Beim Ändern** eines Eintrags bleibt die Notiz, wie sie ist (leer bleibt leer, es gibt keinen Standard). Einträge, die aus einem Kassenbon-Text entstehen, bekommen keine Notiz.
+
+Weitere Testpunkte für Version 2.16:
+
+- [ ] Ausgaben → **Einkauf** → Betrag tippen: Rechts im Feld erscheint ein **+**. Ein Tipp darauf speichert den Einkauf, die Tastatur ist zu. Mit leerem Feld ist kein **+** zu sehen.
+- [ ] Betrag `0` tippen und auf das **+** tippen: Meldung erscheint, die Tastatur ist zu; ein Tipp ins Feld öffnet sie wieder.
+- [ ] Die Notiz steht auf **Wocheneinkauf**. Ein Tipp ins Feld zeigt die Vorschläge; ein Tipp auf „Getränke“ übernimmt ihn, die Tastatur schließt sich.
+- [ ] Eine eigene Notiz („Grillabend“) zweimal verwenden: Sie erscheint beim nächsten Mal gleich nach „Wocheneinkauf“.
+- [ ] Einen Eintrag **lange halten** und nach **rechts in den roten Mülleimer** ziehen: Er ist weg, die Summe stimmt. Auf dem zweiten Gerät verschwindet er nach dem Abgleich.
+- [ ] Einen Eintrag halten, aber nicht in den Mülleimer ziehen: nichts wird gelöscht. Ein kurzer Tipp öffnet das Ändern.
 
 ## Neu in Version 2.15: Ausgaben (neuer Bereich in der Leiste unten)
 
