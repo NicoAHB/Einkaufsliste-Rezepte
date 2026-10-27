@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.25
+# Einkauf & Rezepte – Version 2.26
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,19 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.26: weniger Text im Laden, gesperrt per Gedrückthalten abhaken und Geschäft wechseln
+
+- **Weniger Erklärtext.** Im Laden stehen die Einkaufsliste und der Beenden-Knopf im Mittelpunkt: Die Erklärabsätze zu Sperre, Beenden und „Bildschirm anlassen“ sind weg (die Hinweise erscheinen bei Bedarf als kurze Meldung, z. B. nach einem kurzen Tipp auf „Einkauf beenden“). „Automatisch sperren“ steht in **einer Zeile** (Name links, Auswahl rechts). Eine Fehlermeldung zu „Bildschirm anlassen“ bleibt sichtbar, wenn die Funktion auf dem Gerät nicht geht.
+- **Gesperrt: Kreis gedrückt halten (0,5 s) hakt ab.** Der Kreis füllt sich beim Halten. Ein kurzer Tipp bewirkt weiter nichts (Hinweis „Gesperrt · Kreis gedrückt halten zum Abhaken“); wer beim Halten wegzieht (Scrollen), hakt nichts ab. Die Ansicht bleibt gesperrt. **Rückgängig** in der Meldung geht auch gesperrt.
+- **Gesperrt: Geschäft gedrückt halten (0,5 s) wechselt das Geschäft** (auch „Alle“).
+- Alles andere bleibt gesperrt: Reiter unten, „Planen“, „Einkauf beenden“, Schloss, Meldungen außer „Rückgängig“.
+
+Weitere Testpunkte für Version 2.26:
+
+- [ ] Im Laden sperren (Schloss): Den **Kreis** eines Artikels etwa eine halbe Sekunde halten: Er füllt sich und der Artikel ist abgehakt, die Ansicht bleibt gesperrt. Kurzer Tipp: nichts.
+- [ ] Gesperrt ein **Geschäft** in der Leiste oben halten: Das Geschäft wechselt.
+- [ ] Unter der Liste stehen nur noch „Bildschirm anlassen“, „Automatisch sperren“ (eine Zeile) und „Einkauf beenden“, ohne Erklärabsätze.
 
 ## Neu in Version 2.25: Schutz vor versehentlichen Berührungen im Laden
 

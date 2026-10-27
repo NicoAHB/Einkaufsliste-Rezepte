@@ -2016,7 +2016,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   const inShop = async (page, store = 'Edeka') => { await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: store }).click(); };
   const itemState = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.name === wanted && !row.deletedAt)?.checked ?? null, name);
   const pressAndHold = async (page, selector, ms) => {
-    const box = await page.locator(selector).boundingBox();
+    const box = await page.locator(selector).first().boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(ms);
   };
 
@@ -2138,6 +2138,58 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await shopTap(page, 'Tomaten').click();
     assert.equal(await itemState(page, 'Tomaten'), true, 'wieder bedienbar');
     // Verlässt man „Im Laden“ (auf anderem Weg), ist nichts mehr gesperrt
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: Kreis gedrückt halten hakt ab, Geschäft gedrückt halten wechselt – ein Tipp oder Wegziehen nicht; kein Erklärtext in der Ansicht', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await inShop(page);
+    // Die Liste steht im Mittelpunkt: keine Erklärabsätze unter den Einstellungen und dem Beenden-Knopf
+    assert.equal(await page.locator('#shop-view p.hint:visible').count(), 0, 'kein Erklärtext sichtbar');
+    assert.equal(await page.locator('#shop-awake-hint').isVisible(), false);
+    const row = await page.locator('#shop-autolock').evaluate(node => { const r = node.getBoundingClientRect(), l = node.closest('label').getBoundingClientRect(); return { sameLine: Math.abs((r.top + r.height / 2) - (l.top + l.height / 2)) < 4, height: l.height }; });
+    assert.ok(row.sameLine && row.height < 70, 'Bezeichnung und Auswahl stehen in einer Zeile');
+    await page.click('#shop-lock');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    const state = name => itemState(page, name);
+    const circle = shopTap(page, 'Tomaten'), chip = page.locator('#shop-chips .chip', { hasText: 'Lidl' });
+    // Tipp: nichts, nur ein Hinweis, der das Gedrückthalten nennt
+    await circle.click();
+    assert.equal(await state('Tomaten'), false);
+    assert.match(await page.textContent('#notice-text'), /Kreis gedrückt halten zum Abhaken/);
+    await page.waitForTimeout(3100);
+    await chip.click();
+    assert.match(await page.textContent('#notice-text'), /Geschäft gedrückt halten zum Wechseln/);
+    assert.equal(await page.locator('#shop-chips .chip[aria-selected=true]').textContent().then(text => /Edeka/.test(text)), true, 'Geschäft nicht gewechselt');
+    // Zu früh loslassen und Wegziehen: nichts
+    await pressAndHold(page, '#shop-list .shop-tap', 200);
+    assert.equal(await page.locator('#shop-list .shop-tap.holding').count(), 1, 'der Kreis füllt sich');
+    await page.mouse.up();
+    assert.equal(await state('Tomaten'), false);
+    const box = await circle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 4 });
+    await page.waitForTimeout(700); await page.mouse.up();
+    assert.equal(await state('Tomaten'), false, 'wer beim Halten wegzieht (Scrollen), hakt nichts ab');
+    // Gedrückt halten: abgehakt, bleibt gesperrt
+    await pressAndHold(page, '#shop-list .shop-tap', 650); await page.mouse.up();
+    assert.equal(await state('Tomaten'), true, 'durch Halten abgehakt');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
+    assert.equal(await page.textContent('#notice-text'), '„Tomaten“ abgehakt');
+    // Rückgängig geht auch gesperrt (es ist Teil der Meldung)
+    await page.click('#notice-undo');
+    assert.equal(await state('Tomaten'), false);
+    // Geschäft halten wechselt
+    await pressAndHold(page, '#shop-chips .chip:nth-child(3)', 650); await page.mouse.up();
+    assert.match(await page.locator('#shop-chips .chip[aria-selected=true]').textContent(), /Lidl/, 'Geschäft durch Halten gewechselt');
+    assert.deepEqual(await page.locator('#shop-list .shop-name').allTextContents(), ['Milch']);
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    // Alles andere bleibt gesperrt: Reiter, Planen, Beenden
+    await page.click('[data-tab=recipes]'); await page.click('#shop-back');
+    assert.equal(await page.locator('#shop-view').isVisible(), true);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();

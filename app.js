@@ -1,7 +1,7 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
-import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
@@ -1576,12 +1576,32 @@ function armLock() {
 }
 // Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
 for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
-// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“.
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Zwei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
+// den Kreis eines Artikels (abhaken) und ein Geschäft (wechseln).
+let lockBypass = false, lockHold = null;
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip';
 document.addEventListener('click', event => {
-  if (!isLocked() || event.target.closest?.('#shop-lockbar')) return;
+  if (!isLocked() || lockBypass || event.target.closest?.('#shop-lockbar, #notice-undo')) return;   // „Rückgängig“ nach dem Abhaken geht auch gesperrt
   event.preventDefault(); event.stopPropagation();
-  if (Date.now() - lockHint > 3000) { lockHint = Date.now(); showNotice('Gesperrt · unten gedrückt halten zum Entsperren'); }
+  if (Date.now() - lockHint > 3000) {
+    lockHint = Date.now();
+    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln' : 'Gesperrt · unten gedrückt halten zum Entsperren');
+  }
 }, true);
+function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
+document.addEventListener('pointerdown', event => {
+  if (!isLocked() || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  const node = event.target.closest?.(LOCK_HOLD);
+  if (!node) return;
+  endLockHold();
+  node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
+  lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
+    const target = node; endLockHold(); navigator.vibrate?.(15);
+    lockBypass = true; try { target.click(); } finally { lockBypass = false; }
+  }, HOLD_ITEM_MS) };
+}, true);
+document.addEventListener('pointermove', event => { if (lockHold && Math.hypot(event.clientX - lockHold.x, event.clientY - lockHold.y) > 16) endLockHold(); }, true);
+for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, endLockHold, true);
 // Aus dem Hintergrund (Bildschirm aus, Hosentasche, andere App) kommt man gesperrt zurück.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && shopOn() && !$('#shopping').hidden && lockSeconds(config.shopLock) > 0) setLocked(true);
@@ -1728,10 +1748,10 @@ async function keepAwake(name, on) {
   try {
     const lock = await navigator.wakeLock.request('screen');
     entry.lock = lock; lock.addEventListener('release', () => { if (entry.lock === lock) entry.lock = null; });
-    hint.textContent = 'Der Bildschirm bleibt an, solange diese Ansicht offen ist.';
+    hint.textContent = name === 'shop' ? '' : 'Der Bildschirm bleibt an, solange diese Ansicht offen ist.';   // im Laden steht die Liste im Mittelpunkt, kein Erklärtext
   } catch {
     entry.lock = null; entry.failed = true; $(entry.box).checked = false; entry.wanted = false;
-    hint.textContent = 'Das lässt sich auf diesem Gerät gerade nicht einschalten. Du kannst unter Einstellungen → Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
+    hint.textContent = 'Geht gerade nicht. Stattdessen am Handy unter Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
   }
 }
 function openCook(id, servings) {

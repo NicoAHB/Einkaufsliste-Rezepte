@@ -3269,3 +3269,33 @@ body.shop-locked .toast {
   backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
   border:1px solid var(--glass-line)
 }
+
+/* Gesperrt: Kreis und Geschäft füllen sich beim Gedrückthalten */
+.shop-tap.holding .shop-mark {
+  background:var(--accent);
+  border-color:var(--accent);
+  transform:scale(1.12);
+  transition:background-color var(--hold,500ms) linear,transform var(--hold,500ms) linear
+}
+.shop-chips .chip.holding {
+  background:var(--accent);
+  border-color:var(--accent);
+  color:var(--on-accent);
+  transition:background-color var(--hold,500ms) linear,color var(--hold,500ms) linear
+}
+/* Eine Einstellung in einer Zeile: Name links, Auswahl rechts */
+.inline-field {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 10px
+}
+.inline-field select {
+  flex:0 1 190px;
+  width:auto;
+  margin:0
+}
+.hint:empty {
+  display:none
+}
