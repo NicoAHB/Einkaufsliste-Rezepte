@@ -226,7 +226,8 @@
     <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
   </nav>
   <div id="trash-zone" class="trash-zone" aria-hidden="true"><svg class="icon"><use href="#i-trash"/></svg></div>
-  <div id="drag-hint" class="drag-hint" aria-hidden="true">Loslassen: verschieben · nach rechts schieben: löschen</div>
+  <div id="move-bar" class="move-bar" aria-hidden="true" hidden></div>
+  <div id="drag-hint" class="drag-hint" aria-hidden="true">Auf ein Geschäft ziehen: verschieben · ganz nach rechts: löschen</div>
   <dialog id="move-dialog"><div class="stack"><div class="sheet-head"><h2>Verschieben nach</h2><button type="button" data-close="move-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div></div></dialog>
   <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span></aside>

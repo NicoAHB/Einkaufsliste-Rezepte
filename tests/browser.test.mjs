@@ -1949,6 +1949,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#drag-hint.show').count(), 1, 'Hinweis beim Abheben');
     assert.match(await page.textContent('#drag-hint'), /verschieben/);
     assert.equal(await page.locator('#trash-zone.show').count(), 1, 'Löschen bleibt möglich');
+    assert.equal(await page.locator('#move-bar').isVisible(), true, 'oben die Leiste mit den Geschäften');
     await page.mouse.up();
     await page.waitForSelector('#move-dialog[open]');
     assert.equal(await page.locator('#drag-hint.show').count(), 0);
@@ -1956,7 +1957,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#item-dialog[open]').count(), 0, 'nicht die Bearbeitung');
     assert.equal(await page.locator('#items .item.drag-origin').count(), 0);
     assert.match(await page.textContent('#move-text'), /„Nudeln“ \(500 g\) steht bei Edeka/);
-    assert.deepEqual(await choices(), [['Kein Geschäft', false], ['Edeka, hier steht er jetzt', true], ['Lidl', false], ['Rewe', false]]);
+    assert.deepEqual(await choices(), [['Ohne Geschäft', false], ['Edeka, hier steht er jetzt', true], ['Lidl', false], ['Rewe', false]]);
     assert.ok(await page.locator('#move-choices button').first().evaluate(node => node.getBoundingClientRect().height >= 48), 'große Tippflächen');
     // Schließen ändert nichts
     await page.click('[data-close=move-dialog]');
@@ -1985,11 +1986,130 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Kein Geschäft
     await holdRow(page, 'Milch'); await page.waitForSelector('.drag-ghost'); await page.mouse.up();
     await page.waitForSelector('#move-dialog[open]');
-    await page.locator('#move-choices button', { hasText: 'Kein Geschäft' }).click();
+    await page.locator('#move-choices button', { hasText: 'Ohne Geschäft' }).click();
     await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
-    assert.equal(await page.textContent('#notice-text'), '„Milch“ → kein Geschäft');
+    assert.equal(await page.textContent('#notice-text'), '„Milch“ → ohne Geschäft');
     assert.equal((await find('Milch'))[0].storeId, '');
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Verschieben per Ziehen: Zeile über den Bildschirm auf ein Geschäft in der Leiste oben oder auf einen sichtbaren Abschnitt ziehen und loslassen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const items = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt));
+    const storeOf = async name => (await items()).find(row => row.name === name).storeId;
+    // 1. Leiste oben: alle Geschäfte und „Ohne Geschäft“, das jetzige ist blass
+    await holdRow(page, 'Nudeln'); await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#move-bar').isVisible(), true);
+    assert.deepEqual(await page.locator('#move-bar .move-target').allTextContents(), ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe']);
+    assert.equal(await page.locator('#move-bar .move-target.current').textContent(), 'Edeka');
+    assert.match(await page.textContent('#drag-hint'), /Auf ein Geschäft ziehen/);
+    assert.ok((await page.locator('#move-bar').boundingBox()).y < 24, 'ganz oben');
+    // Über das eigene Geschäft oder zwischen die Felder: kein Ziel
+    const own = await center(page.locator('#move-bar .move-target.current'));
+    await page.mouse.move(own.x, own.y, { steps: 6 });
+    assert.equal(await page.locator('#move-bar .move-target.hot').count(), 0, 'das eigene Geschäft ist kein Ziel');
+    // Auf Lidl ziehen: Feld leuchtet, die rote Fläche nicht
+    const lidl = await center(page.locator('#move-bar .move-target[data-store=store-lidl]'));
+    await page.mouse.move(lidl.x, lidl.y, { steps: 8 });
+    await page.waitForSelector('#move-bar .move-target.hot');
+    assert.equal(await page.locator('#move-bar .move-target.hot').textContent(), 'Lidl');
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0);
+    assert.equal(await page.locator('.drag-ghost').evaluate(node => getComputedStyle(node).transform !== 'none'), true, 'die Zeile folgt dem Finger');
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await page.textContent('#notice-text'), '„Nudeln“ → Lidl');
+    assert.equal(await storeOf('Nudeln'), 'store-lidl');
+    assert.equal(await page.locator('#move-bar').isVisible(), false, 'die Leiste verschwindet wieder');
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    assert.equal(await page.locator('#items .drop-over').count(), 0);
+    // 2. Sichtbarer Abschnitt der Gesamtliste: Milch (Lidl) auf einen anderen Abschnitt ziehen, der auf dem Bildschirm zu sehen ist
+    await holdRow(page, 'Milch'); await page.waitForSelector('.drag-ghost');
+    const visible = await page.locator('#items .store-head').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { store: node.dataset.store, x: r.left + r.width / 2, y: r.top + r.height / 2, shown: r.top >= 90 && r.bottom <= innerHeight - 90 }; }));
+    const goal = visible.find(entry => entry.shown && entry.store !== 'store-lidl');
+    assert.ok(goal, `ein anderer Abschnitt ist sichtbar ${JSON.stringify(visible)}`);
+    await page.mouse.move(goal.x, goal.y, { steps: 10 });
+    await page.waitForSelector('#items .drop-over');
+    assert.equal(await page.locator('#items .store-head.drop-over').getAttribute('data-store'), goal.store, 'der Abschnitt leuchtet');
+    assert.equal(await page.locator('#move-bar .move-target.hot').getAttribute('data-store'), goal.store, 'und das Feld oben ebenfalls');
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await storeOf('Milch'), goal.store);
+    assert.match(await page.textContent('#notice-text'), /^„Milch“ → (Edeka|Rewe)$/);
+    // 3. Ohne Geschäft über die Leiste
+    await holdRow(page, 'Äpfel'); await page.waitForSelector('.drag-ghost');
+    const none = await center(page.locator('#move-bar .move-target[data-store=""]'));
+    await page.mouse.move(none.x, none.y, { steps: 8 });
+    await page.waitForSelector('#move-bar .move-target.hot');
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await storeOf('Äpfel'), '');
+    assert.equal(await page.textContent('#notice-text'), '„Äpfel“ → ohne Geschäft');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Verschieben per Touch: Seite scrollt beim Ziehen zur Leiste oben nicht mit, der Artikel landet im Geschäft', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; });
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const row = page.locator('#items .item', { hasText: 'Äpfel' });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const scrolled = await page.evaluate(() => scrollY);
+    const at = await center(row.locator('.item-copy'));
+    await touch('touchStart', at.x, at.y);
+    await page.waitForSelector('.drag-ghost');
+    const goal = await center(page.locator('#move-bar .move-target[data-store=store-edeka]'));
+    for (let step = 1; step <= 10; step++) await touch('touchMove', at.x + (goal.x - at.x) * step / 10, at.y + (goal.y - at.y) * step / 10);
+    await page.waitForSelector('#move-bar .move-target.hot');
+    assert.equal(await page.evaluate(() => scrollY), scrolled, 'die Seite hat nicht mitgescrollt');
+    await touch('touchEnd');
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.name === 'Äpfel').storeId);
+    assert.equal(stored, 'store-edeka');
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Verschieben per Ziehen: Abbrechen, daneben loslassen und der Weg zum Rand löschen nichts', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const width = await page.evaluate(() => innerWidth);
+    const items = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt).map(row => [row.name, row.storeId]));
+    const before = await items();
+    // Escape über einem Ziel: abgebrochen
+    let { at } = await holdRow(page, 'Milch'); await page.waitForSelector('.drag-ghost');
+    const edeka = await center(page.locator('#move-bar .move-target[data-store=store-edeka]'));
+    await page.mouse.move(edeka.x, edeka.y, { steps: 6 }); await page.waitForSelector('#move-bar .move-target.hot');
+    await page.keyboard.press('Escape'); await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.deepEqual(await items(), before, 'Escape: nichts geändert');
+    assert.equal(await page.locator('#move-bar').isVisible(), false);
+    // Loslassen irgendwo ohne Ziel (zwischen den Zeilen, weit weg von der Ausgangsstelle): nichts
+    ({ at } = await holdRow(page, 'Milch')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 10, at.y - 30, { steps: 4 });   // knapp über der Zeile, im eigenen Abschnitt: kein Ziel, und zu weit für „Halten und Loslassen“
+    assert.equal(await page.locator('#move-bar .move-target.hot').count(), 0);
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.deepEqual(await items(), before);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'kein Verschieben-Fenster nach größerer Bewegung');
+    // Zum rechten Rand, aber weit über der roten Fläche (bei der Leiste): löscht nicht, die Fläche leuchtet nicht
+    ({ at } = await holdRow(page, 'Milch')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, 10, { steps: 8 });
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0, 'nur in der Höhe der roten Fläche');
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.deepEqual(await items(), before, 'nichts gelöscht');
+    // Die rote Fläche selbst löscht weiterhin, auch wenn der Finger vorher woanders war
+    ({ at } = await holdRow(page, 'Milch')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 20, at.y - 60, { steps: 4 });
+    await page.mouse.move(width - 30, at.y, { steps: 8 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Milch'));
     assert.deepEqual(problems, []);
     await ctx.close();
   });

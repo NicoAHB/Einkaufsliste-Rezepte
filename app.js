@@ -296,8 +296,8 @@ function storeLabel(name) {
   const key = config.storeStyle === 'logo' ? brandOf(name) : '';
   return key ? element('span', name, `brand brand-${key}`) : document.createTextNode(name);
 }
-function storeHead(label, count, none) {
-  const row = element('li', undefined, `store-head${none ? ' none' : ''}`), name = element('span');
+function storeHead(label, count, none, id = '') {
+  const row = element('li', undefined, `store-head${none ? ' none' : ''}`), name = element('span'); row.dataset.store = id;   // `data-store`: Ziel beim Verschieben per Ziehen
   name.append(none ? document.createTextNode(label) : storeLabel(label));
   row.append(icon('store'), name, element('span', String(count), 'count'));
   return row;
@@ -378,7 +378,7 @@ function renderItems() {
     for (const section of sections) {
       const items = open.filter(item => (item.storeId || '') === section.id);
       if (!items.length) continue;
-      list.append(storeHead(section.label, items.length, !section.id)); addOpen(items, true);
+      list.append(storeHead(section.label, items.length, !section.id, section.id)); addOpen(items, true);
     }
   } else addOpen(open, false);
   if (done.length) {
@@ -2222,18 +2222,59 @@ $('#delete-item').addEventListener('click', () => guard(() => {
   if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
   removeRows('items', [id]); $('#item-dialog').close();
 }));
+// Zeile lange halten und über den Bildschirm auf ein Geschäft ziehen: oben erscheint eine Leiste mit allen Geschäften (und „Ohne Geschäft“); außerdem zählt jeder
+// sichtbare Abschnitt der Gesamtliste unter „Planen“ als Ziel. Beim Loslassen über einem Ziel landet der Artikel dort (siehe moveItem).
+const moveBar = {
+  show(id) {
+    const item = state.items.find(row => row.id === id && !row.deletedAt), bar = $('#move-bar');
+    if (!item) return 0;
+    bar.replaceChildren();
+    const add = (storeId, label) => {
+      const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
+    };
+    add('', document.createTextNode('Ohne Geschäft'));
+    for (const store of active(state.stores)) add(store.id, storeLabel(store.name));
+    bar.hidden = false;
+    return bar.getBoundingClientRect().bottom;
+  },
+  // Ziel unter dem Finger: ein Feld der Leiste oder der Abschnitt der Gesamtliste, über dem der Finger steht; das eigene Geschäft zählt nicht
+  at(x, y, id) {
+    const item = state.items.find(row => row.id === id && !row.deletedAt), own = item?.storeId || '', bar = $('#move-bar');
+    const inside = node => { const box = node.getBoundingClientRect(); return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom; };   // die Leiste selbst fängt keine Zeigerereignisse ab
+    let key = null;
+    if (!bar.hidden && inside(bar)) key = [...bar.children].find(inside)?.dataset.store ?? null;   // über der Leiste zählen nur ihre Felder
+    else {
+      const list = $('#items');
+      for (let node = document.elementsFromPoint(x, y).find(entry => entry.parentElement === list); node; node = node.previousElementSibling) {
+        if (node.classList.contains('store-head')) { key = node.dataset.store ?? null; break; }
+      }
+    }
+    return key === null || key === own ? null : key;
+  },
+  mark(key) {
+    const bar = $('#move-bar'), list = $('#items');
+    bar.querySelectorAll('.hot').forEach(node => node.classList.remove('hot'));
+    list.querySelectorAll('.drop-over').forEach(node => node.classList.remove('drop-over'));
+    if (key === null) return;
+    [...bar.children].find(node => node.dataset.store === key)?.classList.add('hot');
+    const head = [...list.querySelectorAll('.store-head')].find(node => node.dataset.store === key);
+    for (let node = head; node && (node === head || !node.classList.contains('store-head')); node = node.nextElementSibling) node.classList.add('drop-over');
+  },
+  hide() { this.mark(null); $('#move-bar').hidden = true; },
+  drop(id, key) { guard(() => moveItem(id, key)); }
+};
 // Zeile lange halten und nach rechts in den roten Mülleimer schieben löscht den Artikel (nur in der Planungsansicht, nicht „Im Laden“).
 dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) return;
   removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
-}), '.item[data-id]', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint') });
-// Lange halten und loslassen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
+}), '.item[data-id]', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint'), target: moveBar });
+// Lange halten und loslassen, ohne zu ziehen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
 function openMove(id) {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) return;
   $('#move-dialog').dataset.id = id;
-  $('#move-text').textContent = `„${item.name}“ (${format(item.quantity)} ${item.unit}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'bei keinem Geschäft'}. Wohin soll er?`;
+  $('#move-text').textContent = `„${item.name}“ (${format(item.quantity)} ${item.unit}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'ohne Geschäft'}. Wohin soll er?`;
   const box = $('#move-choices'); box.replaceChildren();
   const choice = (storeId, label, name) => {
     const entry = element('button', undefined, 'secondary move-choice'); entry.type = 'button';
@@ -2242,7 +2283,7 @@ function openMove(id) {
     else entry.addEventListener('click', () => guard(() => moveItem(id, storeId)));
     box.append(entry);
   };
-  choice('', document.createTextNode('Kein Geschäft'), 'Kein Geschäft');
+  choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
   for (const store of active(state.stores)) choice(store.id, storeLabel(store.name), store.name);
   message(); $('#move-dialog').showModal();
 }
@@ -2251,7 +2292,7 @@ function moveItem(id, storeId) {
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const target = currentStore(storeId);
   if ((item.storeId || '') === target) { $('#move-dialog').close(); return; }
-  const label = target ? storeName(target) : 'kein Geschäft';
+  const label = target ? storeName(target) : 'ohne Geschäft';
   // Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt (wie beim Hinzufügen); sonst wechselt nur das Geschäft.
   const same = !item.checked && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, state.items).counted[0] : null;
   if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${format(same.after.quantity)} ${same.after.unit}`);

@@ -2114,6 +2114,7 @@ body.in-store main {
   left:50%;
   bottom:calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom));
   z-index:30;
+  width:max-content;
   max-width:calc(100vw - 24px);
   padding:8px 14px;
   border-radius:18px;
@@ -2132,6 +2133,68 @@ body.in-store main {
 .drag-hint.show {
   opacity:1;
   transform:translateX(-50%) translateY(0)
+}
+/* Ablage beim Ziehen: oben eine Leiste mit allen Geschäften; Abschnitte der Liste, über denen der Finger steht, leuchten auf */
+.move-bar {
+  position:fixed;
+  top:calc(env(safe-area-inset-top) + 8px);
+  left:8px;
+  right:8px;
+  z-index:32;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  max-width:560px;
+  margin:0 auto;
+  padding:6px;
+  border-radius:20px;
+  background:var(--card);
+  box-shadow:0 10px 30px rgba(0,0,0,.3);
+  pointer-events:none;
+  animation:rise .18s ease-out
+}
+.move-target {
+  display:grid;
+  place-items:center;
+  flex:1 1 76px;
+  min-width:0;
+  min-height:44px;
+  padding:4px 8px;
+  border:2px dashed var(--line-strong);
+  border-radius:14px;
+  background:var(--card);
+  color:var(--text);
+  font-size:.86rem;
+  font-weight:650;
+  line-height:1.2;
+  text-align:center;
+  overflow-wrap:break-word;
+  transition:transform .12s ease-out,background-color .12s
+}
+@media(max-width:360px) {
+  .move-target {
+    flex-basis:64px;
+    padding:4px;
+    font-size:.78rem
+  }
+}
+.move-target.current {
+  opacity:.45;
+  border-style:solid
+}
+.move-target.hot {
+  border-color:var(--accent);
+  background:var(--accent);
+  color:var(--on-accent);
+  transform:scale(1.05)
+}
+.item.drop-over,.group-head.drop-over {
+  background:var(--accent-soft)
+}
+.store-head.drop-over {
+  outline:3px solid var(--accent);
+  outline-offset:-3px;
+  filter:brightness(1.15)
 }
 /* „Verschieben nach“ */
 .move-choices {
@@ -3066,6 +3129,16 @@ output {
 }
 :root[data-glass] .sheet-head {
   background:transparent
+}
+
+:root[data-glass] .move-bar {
+  background:var(--glass-strong);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  border:1px solid var(--glass-line)
+}
+:root[data-glass] .move-target:not(.hot) {
+  background:var(--glass)
 }
 
 /* Ohne Unterstützung für Unschärfe oder bei „Transparenz reduzieren“ (iOS) bleibt alles deckend */
