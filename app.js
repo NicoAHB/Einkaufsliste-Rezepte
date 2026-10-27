@@ -223,7 +223,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderStorage(); applyMode(); syncForm();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#cookable-dialog').open) renderCookable();
   renderDailyButton();
@@ -543,12 +543,28 @@ function showComparison(item) {
   for (const row of rows) {
     const line = element('li');
     const sale = row.expired ? ` · Angebot abgelaufen${row.saleUntil ? ` (${dayLabel(row.saleUntil)})` : ''}, es gilt der Normalpreis` : row.onSale ? (row.saleUntil ? ` · Angebot bis ${dayLabel(row.saleUntil)}` : ' · damals im Angebot') : '';
-    line.append(element('strong', `${row.storeName}: ${euros(row.rate)}/${row.unit}`),
+    const text = element('div'); text.append(element('strong', `${row.storeName}: ${euros(row.rate)}/${row.unit}`),
       element('small', `${quoteLabel(row.quote)} · zuletzt eingetragen am ${shortDate(row.at)}${row.old ? ' (über zwei Monate her)' : ''}${sale}`, row.old || row.expired ? 'stale' : undefined));
+    const forget = button('Vergessen', () => guard(() => forgetPrice(item, row)), 'text-button small');
+    forget.setAttribute('aria-label', `Notierten Preis von ${row.storeName} für ${item.name} vergessen`);
+    line.append(text, forget);
     list.append(line);
   }
   const storeCount = active(state.stores).length;
   box.append(list, element('p', `Für ${rows.length} von ${storeCount} Geschäften liegt ein passender Preis vor. Vergleich nur bei gleichem Artikelnamen und passender Einheit. Keine aktuellen Händlerpreise; Marke und Qualität bitte selbst berücksichtigen.`, 'hint'));
+}
+// Falsch notierter Preis (z. B. dem falschen Artikel zugeordnet): alle Notizen dieses Geschäfts zu diesem Namen vergessen. Der Artikel zeigt dann keinen gemerkten Preis mehr.
+function forgetPrice(item, row) {
+  const rows = state.prices.filter(entry => !entry.deletedAt && entry.storeId === row.storeId && productKey(entry.name) === productKey(item.name));
+  if (!confirm(`Den notierten Preis von ${row.storeName} für „${item.name}“ vergessen?`)) return;
+  const form = $('#edit-item-form'), own = state.items.find(entry => entry.id === item.id && !entry.deletedAt), ops = deleteOps('prices', rows.map(entry => entry.id));
+  // Hat der Artikel den Preis als eigenen Preis übernommen (beim Anlegen aus dem Gedächtnis), wird auch der entfernt; ein anderer, selbst eingegebener Preis bleibt.
+  const same = quote => quote && own?.price && quote.cents === own.price.cents && quote.quantity === own.price.quantity && productKey(quote.unit) === productKey(own.price.unit);
+  if (rows.some(entry => same(entry.regularQuote === undefined ? entry.quote : entry.regularQuote))) ops.push(nextOp('items', own.id, { price: null }));
+  commit(ops);
+  const left = own ? itemQuote(state.items.find(entry => entry.id === own.id), state.prices) : null;
+  setQuoteFields(form, left, item.unit); itemBaseline.price = left;   // das Preisfeld zeigte den vergessenen Preis
+  showComparison(item);
 }
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
@@ -1700,12 +1716,14 @@ function receiptQuote(line) {
 function refreshReceiptLine(line) {
   const note = line.note; note.className = 'receipt-note hint'; note.textContent = '';
   const parts = [];
-  if (line.how) parts.push(line.how === 'gemerkt' ? 'Zuordnung gemerkt' : 'Vorschlag, bitte prüfen');
+  if (line.how) parts.push(line.how === 'gemerkt' ? 'Zuordnung gemerkt (unter Einstellungen → Gemerkte Namen änderbar)' : 'Vorschlag aus deiner Liste, bitte prüfen');
   try {
     const form = $('#receipt-form'), storeId = form.elements.storeId.value, name = line.inputs.name.value.trim();
     const quote = receiptQuote(line);
     if (line.item.onSale) parts.push(`Aktion: bezahlt ${euros(line.item.quote.cents)} ${perLabel(line.item.quote)}`);
-    if (name) {
+    // Bei einem Vorschlag ist die App unsicher: Es wird kein früherer Preis gezeigt, bis der Name bestätigt („Name passt“) oder geändert ist.
+    if (name && line.how === 'Vorschlag') parts.push('früherer Preis erst nach Bestätigung');
+    else if (name) {
       const at = receiptTime(form), fresh = { storeId, name, quote: line.item.onSale ? line.item.quote : quote, regularQuote: quote, onSale: line.item.onSale };
       const trend = trendFor(state.prices, fresh, at);
       const before = trend && activeTrend({ storeId, name, unit: quote.unit }, [{ ...fresh, id: 'vorschau', createdAt: at, trend }], new Date(at));
@@ -1714,6 +1732,7 @@ function refreshReceiptLine(line) {
     }
   } catch (error) { parts.push(error.message); }
   note.textContent = parts.join(' · ');
+  if (line.how === 'Vorschlag') note.append(' ', button('Name passt', () => { line.how = ''; refreshReceiptLine(line); }, 'text-button small'));
 }
 function receiptTime(form) {
   const day = form.elements.date.value;
@@ -2007,6 +2026,17 @@ function savePurchase() {
 const hasPurchase = (date, storeId, cents) => purchaseRows().some(row => row.date === date && (row.storeId || '') === storeId && row.cents === cents);
 
 /* ---------- Vorrat ---------- */
+// Gemerkte Namen (Sammlung `aliases`): Zuordnungen von Kassenbon-Text oder anderer Schreibweise zu einem Namen der App; falsche lassen sich hier entfernen.
+function renderAliases() {
+  const list = $('#alias-list'); list.replaceChildren();
+  const rows = active(state.aliases || []).sort((a, b) => a.from.localeCompare(b.from, 'de'));
+  $('#alias-count').textContent = rows.length ? ` (${rows.length})` : '';
+  if (!rows.length) list.append(element('li', 'Noch nichts gemerkt.', 'empty'));
+  for (const row of rows) {
+    const entry = element('li'); entry.append(element('span', `${row.from} → ${row.name}`), iconButton('x', `Zuordnung ${row.from} zu ${row.name} entfernen`, () => removeRows('aliases', [row.id])));
+    list.append(entry);
+  }
+}
 function renderPantry() {
   const list = $('#pantry-list'); list.replaceChildren();
   const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
