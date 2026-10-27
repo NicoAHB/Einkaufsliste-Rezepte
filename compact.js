@@ -20,7 +20,8 @@ export const POLICY = {
   keepApplied: 600,      // Liste bereits angewendeter Änderungen (nur gegen doppeltes Senden nötig)
   keepPrices: 2,         // gemerkte Preise je Geschäft, Produkt und Einheitengruppe
   maxNames: 300,         // Namensgedächtnis für Vorschläge
-  maxAliases: 400        // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
+  maxAliases: 400,       // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
+  purchaseMonths: 36     // Ausgaben (Einkaufsbeträge) bleiben so viele Monate in der Datei; ältere liegen weiter im Git-Verlauf
 };
 const DAY = 86400000;
 
@@ -46,13 +47,13 @@ function remember(names, rows, max) {
    ist `changed` false (dann wird auch nichts geschrieben). */
 export function compact(input, now = new Date(), policy = POLICY) {
   const next = clone(input);
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= [];
-  const before = sizeOf(input), removed = { items: 0, recipes: 0, ingredients: 0, stores: 0, prices: 0, meals: 0, pantry: 0, aliases: 0, templates: 0, clocks: 0, adds: 0, applied: 0 };
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= [];
+  const before = sizeOf(input), removed = { items: 0, recipes: 0, ingredients: 0, stores: 0, prices: 0, meals: 0, pantry: 0, aliases: 0, templates: 0, purchases: 0, clocks: 0, adds: 0, applied: 0 };
   const olderThan = (stamp, days) => Number.isFinite(Date.parse(stamp)) && Date.parse(stamp) < now.getTime() - days * DAY;
   const gone = [];   // entfernte Artikel für das Namensgedächtnis
 
   // 1. Gelöschtes endgültig entfernen, erledigte Artikel nach langer Zeit ebenfalls.
-  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'pantry', 'aliases', 'templates']) {
+  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'pantry', 'aliases', 'templates', 'purchases']) {
     next[key] = next[key].filter(row => {
       const drop = (row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
         (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays));
@@ -68,6 +69,9 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // 3. Vergangene Gerichte (das Kochdatum steht am Rezept).
   const mealCutoff = new Date(now.getTime() - policy.mealDays * DAY).toISOString().slice(0, 10);
   next.meals = next.meals.filter(row => { const drop = row.date < mealCutoff; if (drop) removed.meals++; return !drop; });
+  // 3b. Ausgaben: nach 36 Monaten aus der Datei (Auswertung und Diagramm brauchen nur die letzten Monate).
+  const purchaseCutoff = new Date(now.getFullYear(), now.getMonth() - (policy.purchaseMonths ?? POLICY.purchaseMonths), 1, 12).toISOString().slice(0, 10);
+  next.purchases = next.purchases.filter(row => { const drop = row.date < purchaseCutoff; if (drop) removed.purchases++; return !drop; });
   // 4. Gemerkte Preise: je Geschäft, Produkt und Einheitengruppe nur die neuesten (Vergleich und Vorschläge nutzen nur die neuesten).
   const groups = new Map();
   for (const row of next.prices) {
@@ -81,7 +85,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
   }
   next.prices = next.prices.filter(row => { const drop = doomed.has(row.id); if (drop) removed.prices++; return !drop; });
   // 5. Zeitstempel je Feld sind nur für gleichzeitige Änderungen nötig. Bei lange unveränderten Datensätzen genügt eine Sammelmarke.
-  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates']) {
+  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases']) {
     for (const row of next[key]) {
       if (key === 'items') removed.adds += foldOldAdds(row, new Date(now.getTime() - policy.settledDays * DAY).toISOString());
       const fields = Object.keys(row._clock || {}).filter(field => field !== '*');
@@ -102,7 +106,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
   if (gone.length) next.names = remember(next.names || [], gone, policy.maxNames);
 
   // Leere Hilfslisten nicht erst anlegen, sonst gilt die Datei nach jedem Lauf als geändert.
-  for (const key of ['prices', 'meals', 'pantry', 'aliases', 'templates']) if (!next[key].length && !input[key]?.length) delete next[key];
+  for (const key of ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases']) if (!next[key].length && !input[key]?.length) delete next[key];
   const changed = Object.values(removed).some(Boolean);
   if (changed) next.sync.compactedAt = now.toISOString();
   validate(next);

@@ -1,6 +1,6 @@
-# Einkauf & Rezepte – Version 2.14
+# Einkauf & Rezepte – Version 2.15
 
-Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
@@ -15,6 +15,29 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.15: Ausgaben (neuer Bereich in der Leiste unten)
+
+**Wozu:** Du siehst, wie viel ihr **im aktuellen oder im letzten Monat** eingekauft habt, und kannst die Beträge entweder **von Hand eingeben** oder **aus einem Foto oder Screenshot des Kassenbons** lesen lassen.
+
+- **Neuer Bereich „Ausgaben“** (fünfter Reiter, Säulen-Symbol). Oben der Monat mit Pfeilen (zurück bis zum ersten Eintrag, vor bis zum aktuellen Monat) und **Dieser Monat**. Darunter: die **Summe** („Bisher ausgegeben“ im laufenden Monat), die Zahl der Einkäufe mit Durchschnitt und der **Vergleich mit dem Vormonat** (▲ rot = mehr, ▼ grün = weniger, mit Prozent). Danach ein Säulendiagramm der **letzten sechs Monate** (Tipp auf eine Säule öffnet den Monat), die **Aufteilung nach Geschäft** (erscheint, sobald mindestens zwei Geschäfte oder „Ohne Geschäft“ Einträge haben) und die Liste der Einträge des Monats, neueste zuerst.
+- **Einkauf eintragen** (Knopf oben rechts): Betrag (z. B. `23,45`, `1.234,56` oder `€ 12`), Datum (heute), Geschäft (zuletzt benutztes) und optionale Notiz. Ungültiges wird verständlich abgelehnt: kein Betrag, 0, negativ, zu groß (über 99.999,99 €), mehr als zwei Nachkommastellen, Datum in der Zukunft (morgen ist erlaubt). `12,345` wird bewusst **nicht** geraten, sondern abgelehnt. Ein Eintrag lässt sich antippen, **ändern** und **löschen**.
+- **Foto oder Screenshot des Kassenbons:** im selben Fenster **Kassenbon fotografieren oder Screenshot wählen**. Die Texterkennung (`ocr.js`, wie beim Rezept-Import) läuft **auf dem Gerät**, das Bild wird nirgends hochgeladen. Aus dem erkannten Text liest `receipt.js` die **Summe** (sonst die Summe der erkannten Zeilen), das **Datum** und, falls der Markt erkannt wird, das **Geschäft**. Alles steht nur als **Vorschlag in den Feldern**; gespeichert wird erst mit **Speichern**, nachdem du den Betrag geprüft hast. **Ehrlich:** Fotos von Thermo-Kassenzetteln werden oft ungenau gelesen (Falten, Schatten, verblasste Schrift). Screenshots digitaler Bons aus der Markt-App sind viel zuverlässiger. Wird kein Betrag gefunden, sagt die App das und du gibst ihn von Hand ein.
+- **Artikelpreise gleich mit übernehmen:** Hat die App im Foto Artikelzeilen erkannt, erscheint **Danach die Artikelpreise prüfen und übernehmen**. Nach dem Speichern öffnet sich der bekannte Kassenbon-Dialog mit diesen Zeilen (Preise, Namen, Preisentwicklung).
+- **Kassenbon-Dialog (Einkauf → Kassenbon):** Neu ist **Gesamtbetrag unter Ausgaben speichern** (vorab angehakt). Ein Betrag, der für **denselben Tag, dasselbe Geschäft und dieselbe Summe** schon eingetragen ist, wird nicht doppelt gezählt (das Häkchen ist dann nicht gesetzt, und beim Speichern wird ebenfalls nichts doppelt angelegt). Auch „Einkauf beenden → Beenden und Kassenbon einfügen“ nutzt das.
+- **Beide sehen dasselbe:** Die Einträge liegen in der gemeinsamen Datei (Sammlung `purchases`, siehe Abschnitt 9). Wer ohne GitHub arbeitet (Beispielmodus), speichert sie nur auf dem Gerät. Einträge, die **älter als 36 Monate** sind, räumt die App beim Aufräumen aus der Datei (sie bleiben im Verlauf des privaten Repos); „Jetzt aufräumen“ zählt sie mit.
+- **Ältere App-Fassung auf dem zweiten Gerät:** Sie ignoriert die Ausgaben, löscht sie aber nicht (unbekannte Felder bleiben erhalten); sie sieht den neuen Bereich erst nach dem Update.
+- **Leiste unten:** Mit fünf Reitern ist sie auf kleinen Telefonen enger; Schrift und Symbole werden unter 421 und unter 361 Pixel Breite etwas kleiner. Beschriftungen werden nicht abgeschnitten.
+
+Weitere Testpunkte für Version 2.15:
+
+- [ ] Reiter **Ausgaben** erscheint als fünfter Reiter, die Beschriftungen passen auf dem iPhone (auch kleinem) ohne Abschneiden, keine seitliche Scrollleiste.
+- [ ] **Einkauf** → `23,45` → Speichern: Summe zeigt 23,45 €, der Eintrag steht in der Liste, auf dem zweiten Gerät erscheint er nach dem Abgleich.
+- [ ] Ungültige Eingaben (leer, `0`, `abc`, `12,345`, Datum in der Zukunft) zeigen eine verständliche Meldung und speichern nichts.
+- [ ] Mit den Pfeilen zum letzten Monat: Summe, Vergleich (▲/▼ mit Prozent) und Säulendiagramm stimmen; **Dieser Monat** springt zurück.
+- [ ] Eintrag antippen: ändern (Betrag, Geschäft entfernen) und **Eintrag löschen** funktionieren.
+- [ ] **Screenshot** eines digitalen Kassenbons wählen: Fortschritt, dann stehen Summe, Datum und Geschäft als Vorschlag in den Feldern. Foto eines Papier-Kassenbons: Der Betrag wird gegebenenfalls korrigiert (das ist normal).
+- [ ] Kassenbon-Text einfügen → **Gesamtbetrag unter Ausgaben speichern** angehakt → Speichern: Der Betrag steht unter Ausgaben. Denselben Bon noch einmal: Das Häkchen ist nicht gesetzt, nichts wird doppelt gezählt.
 
 ## Neu in Version 2.14: farbige Symbole statt Internet-Fotos
 
@@ -376,7 +399,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -469,6 +492,7 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | `pantry` (optional) | Vorrat (Version 1.6): `name` und die üblichen Zeitstempel |
 | `names` (optional) | Namensgedächtnis aus aufgeräumten Artikeln (Version 1.6): `name`, `count`, `at`, optional `category`, `unit` |
 | `templates` (optional) | Einkaufsvorlagen (Version 2.5): `name` (höchstens 60 Zeichen) und `items`: bis zu 80 Artikel `{ name, quantity, unit, storeId? }`; die ganze Artikelliste wird als ein Feld zusammengeführt (die neuere Fassung gewinnt) |
+| `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Beim Aufräumen entfallen Einträge, die älter als 36 Monate sind |
 | `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), z. B. aus Kassenbons und Schreibweisen: `from` (normalisierter Text, z. B. `tom cherry`), `name` (Name in der App) |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung (wird beim Aufräumen auf die letzten 600 gekürzt); `sync.compactedAt` nennt den Zeitpunkt des letzten Aufräumens |
 

@@ -73,9 +73,9 @@ async function prepare(file) {
 }
 
 /* Liest den Text aus einem oder mehreren Bildern. `progress(0…1, Text)` meldet den Fortschritt.
-   Mehrere Bilder werden hintereinander gelesen und mit einer Leerzeile verbunden. */
-export async function recognizeImages(files, progress = () => {}, signal) {
-  if (!('WebAssembly' in window) || !window.Worker) throw userError('Dieser Browser kann keine Texterkennung ausführen. Bitte den Rezepttext stattdessen einfügen.');
+   Mehrere Bilder werden hintereinander gelesen und mit einer Leerzeile verbunden. `instead`: was der Nutzer bei einem Fehler stattdessen tun kann. */
+export async function recognizeImages(files, progress = () => {}, signal, instead = 'den Rezepttext einfügen') {
+  if (!('WebAssembly' in window) || !window.Worker) throw userError(`Dieser Browser kann keine Texterkennung ausführen. Bitte ${instead}.`);
   const aborted = () => { if (signal?.aborted) throw new DOMException('Abgebrochen', 'AbortError'); };
   let worker, current = 0, total = 1;
   try {
@@ -106,6 +106,6 @@ export async function recognizeImages(files, progress = () => {}, signal) {
     return texts.join('\n\n').replace(/\r/g, '').trim();
   } catch (error) {
     if (error?.name === 'AbortError' || error?.user) throw error;
-    throw userError('Die Texterkennung konnte nicht gestartet werden. Bitte die App einmal online öffnen und neu laden oder den Rezepttext einfügen.');
+    throw userError(`Die Texterkennung konnte nicht gestartet werden. Bitte die App einmal online öffnen und neu laden oder ${instead}.`);
   } finally { try { await worker?.terminate(); } catch { /* bereits beendet */ } }
 }

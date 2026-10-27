@@ -123,7 +123,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const { ctx, page, problems } = await context({ context: viewport ? { viewport } : {} });
       await open(page);
       const sizes = async () => page.evaluate(() => [...document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=file]),select,textarea')].map(node => parseFloat(getComputedStyle(node).fontSize)));
-      for (const name of ['shopping', 'recipes', 'plan', 'settings']) {
+      for (const name of ['shopping', 'recipes', 'plan', 'spending', 'settings']) {
         await page.click(`[data-tab=${name}]`);
         assert.equal(await horizontalOverflow(page), 0, `Überlauf im Bereich ${name}`);
         assert.ok((await sizes()).every(size => size >= 16), `Schrift unter 16 px im Bereich ${name}`);
@@ -139,6 +139,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         ['Import Text', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=text]'); }],
         ['Kochmodus', async () => { await page.click('[data-tab=recipes]'); await page.locator('.recipe-card').first().getByRole('button', { name: 'Kochen' }).click(); }],
         ['Kassenbon', () => page.click('#open-receipt')],
+        ['Einkauf eintragen', async () => { await page.click('[data-tab=spending]'); await page.click('#add-purchase'); }],
         ['Gericht planen', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); }],
         ['Einkauf für die Woche', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); await page.selectOption('#meal-form select[name=recipeId]', { index: 1 }); await page.click('#meal-form button[type=submit]'); await page.click('#plan-shopping'); }]]) {
         await setup();
@@ -735,6 +736,325 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.locator('#receipt-lines .receipt-note').first().textContent(), /Schon eingetragen/);
     await page.click('#receipt-save');
     assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /mindestens eine Zeile/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- Ausgaben (Version 2.15) ----
+  const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const monthsAgo = (count, day = 15) => new Date(new Date().getFullYear(), new Date().getMonth() - count, day, 12);
+  const monthWord = date => new Intl.DateTimeFormat('de-DE', { month: 'long' }).format(date);
+  const addPurchase = async (page, { amount, date, store = '', note = '' }) => {
+    await page.click('#add-purchase'); await sheetOpen(page);
+    await page.fill('#purchase-form input[name=amount]', amount);
+    if (date) await page.fill('#purchase-form input[name=date]', date);
+    await page.selectOption('#purchase-form select[name=storeId]', store ? { label: store } : '');
+    if (note) await page.fill('#purchase-form input[name=note]', note);
+    await page.click('#purchase-save');
+  };
+
+  test('Ausgaben: von Hand eintragen, Monate vergleichen, Diagramm, nach Geschäft, ändern und löschen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const today = isoDay(new Date()), before = monthsAgo(1);
+    await page.click('[data-tab=spending]');
+    assert.match(await page.textContent('#spending-summary'), /0,00\s€[\s\S]*noch nichts eingetragen/);
+    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.ok(await page.locator('#month-prev').isDisabled() && await page.locator('#month-next').isDisabled(), 'ohne Einträge gibt es keinen anderen Monat');
+    assert.ok(await page.locator('#month-today').isHidden());
+    assert.equal(await page.locator('#spending-chart button').count(), 6);
+    // 1. Ein Betrag von Hand, Datum ist heute
+    await page.click('#add-purchase'); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form input[name=date]'), today);
+    assert.equal(await page.locator('#purchase-delete').isHidden(), true);
+    await page.fill('#purchase-form input[name=amount]', '23,45'); await page.fill('#purchase-form input[name=note]', 'Wocheneinkauf');
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /23,45\s€ unter Ausgaben gespeichert/);
+    assert.match(await page.textContent('#spending-summary'), /Bisher ausgegeben[\s\S]*23,45\s€[\s\S]*1 Einkauf · Ø 23,45\s€/);
+    assert.match(await page.textContent('#purchase-list'), /Ohne Geschäft · Wocheneinkauf[\s\S]*23,45\s€/);
+    // 2. Letzter Monat: Die Ansicht wechselt dorthin, „Dieser Monat“ führt zurück, Vergleich mit dem Vormonat
+    await addPurchase(page, { amount: '1.000,00', date: isoDay(before), store: 'Lidl' });
+    assert.match(await page.textContent('#month-label'), new RegExp(monthWord(before)));
+    assert.match(await page.textContent('#spending-summary'), /1\.000,00\s€/);
+    assert.ok(await page.locator('#month-today').isVisible());
+    await page.click('#month-today');
+    assert.match(await page.textContent('#spending-summary'), /23,45\s€/);
+    assert.match(await page.textContent('#spending-summary'), new RegExp(`▼ 976,55\\s€ weniger als im ${monthWord(before)} \\(−98\\s%\\)`));
+    assert.ok(await page.locator('#spending-summary .trend.down').count() === 1);
+    // 3. Säulendiagramm: sechs Monate, der gewählte ist markiert, ein Tipp wechselt den Monat
+    const bars = page.locator('#spending-chart button');
+    assert.equal(await bars.count(), 6);
+    assert.equal(await page.locator('#spending-chart [aria-current=true]').count(), 1);
+    const heights = await page.locator('#spending-chart .bar').evaluateAll(nodes => nodes.map(node => parseFloat(node.style.height)));
+    assert.ok(heights[4] > heights[5] && heights[5] >= 3 && heights.slice(0, 4).every(height => height === 2), `Säulenhöhen: ${heights}`);
+    assert.match(await bars.nth(4).getAttribute('aria-label'), /1\.000,00\s€/);
+    await bars.nth(4).click();
+    assert.match(await page.textContent('#month-label'), new RegExp(monthWord(before)));
+    assert.match(await page.textContent('#spending-summary'), /Ausgegeben[\s\S]*1\.000,00/);
+    assert.ok(await page.locator('#month-next').isEnabled() && await page.locator('#month-prev').isDisabled(), 'vor dem ersten Eintrag geht es nicht weiter zurück');
+    await page.click('#month-next');
+    // 4. Aufteilung nach Geschäft erst ab zwei Gruppen
+    assert.ok(await page.locator('#spending-stores-card').isHidden());
+    await addPurchase(page, { amount: '10', store: 'Lidl' });
+    assert.ok(await page.locator('#month-today').isHidden(), 'der neue Eintrag liegt im aktuellen Monat, die Ansicht bleibt dort');
+    assert.ok(await page.locator('#spending-stores-card').isVisible());
+    assert.deepEqual(await page.locator('#spending-stores .spend-store-head').evaluateAll(nodes => nodes.map(node => [...node.children].map(child => child.textContent.replace(/\s+/g, ' ').trim()).join(' | '))), ['Ohne Geschäft | 23,45 €', 'Lidl | 10,00 €']);
+    // 5. Ändern: Betrag und Geschäft, dann löschen
+    await page.locator('#purchase-list .spend-row', { hasText: 'Wocheneinkauf' }).click(); await sheetOpen(page);
+    assert.equal(await page.textContent('#purchase-title'), 'Einkauf ändern');
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '23,45');
+    assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
+    await page.fill('#purchase-form input[name=amount]', '30'); await page.selectOption('#purchase-form select[name=storeId]', { label: 'Edeka' }); await page.fill('#purchase-form input[name=note]', '');
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe · Ø 20,00\s€/);
+    assert.match(await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).textContent(), /Edeka[\s\S]*30,00\s€/);
+    assert.ok(!/Wocheneinkauf/.test(await page.textContent('#purchase-list')));
+    await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).click(); await sheetOpen(page);
+    await page.selectOption('#purchase-form select[name=storeId]', ''); await page.click('#purchase-save');
+    assert.match(await page.textContent('#purchase-list'), /Ohne Geschäft[\s\S]*30,00\s€/);
+    await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).click(); await sheetOpen(page);
+    await page.click('#purchase-delete'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#spending-summary'), /10,00\s€[\s\S]*1 Einkauf/);
+    // 6. Nach dem Neuladen noch da (Beispielmodus speichert auf dem Gerät)
+    await open(page); await page.click('[data-tab=spending]');
+    assert.match(await page.textContent('#spending-summary'), /10,00\s€/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: ungültige Eingaben werden mit verständlicher Meldung abgelehnt und nichts wird gespeichert', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    const farFuture = isoDay(new Date(Date.now() + 5 * 86400000));
+    const attempts = [['', null, /Betrag in Euro eingeben/], ['0', null, /größer als 0/], ['abc', null, /Betrag in Euro eingeben/], ['12,345', null, /Betrag in Euro eingeben/], ['-5', null, /Betrag in Euro eingeben/],
+      ['100.000,00', null, /zu groß/], ['5', '', /gültiges Datum/], ['5', farFuture, /Zukunft/]];
+    await page.click('#add-purchase'); await sheetOpen(page);
+    for (const [amount, date, pattern] of attempts) {
+      await page.fill('#purchase-form input[name=amount]', amount);
+      if (date !== null) await page.fill('#purchase-form input[name=date]', date);
+      await page.click('#purchase-save');
+      assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), pattern, `Eingabe ${amount} / ${date}`);
+      assert.ok(await page.locator('#purchase-dialog').evaluate(node => node.open), 'das Fenster bleibt offen');
+      if (date !== null) await page.fill('#purchase-form input[name=date]', isoDay(new Date()));
+    }
+    await page.keyboard.press('Escape');
+    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.match(await page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases || [])), /^\[\]$/);
+    // Morgen ist erlaubt (Zeitunterschiede), auch 1.234,56 und „€ 12“
+    await addPurchase(page, { amount: '€ 12', date: isoDay(new Date(Date.now() + 86400000)) });
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Layout bei 280, 320, 375 und 390 px, fünf Reiter ohne abgeschnittene Beschriftung', async () => {
+    for (const viewport of [{ width: 280, height: 560 }, { width: 320, height: 568 }, { width: 375, height: 667 }, { width: 390, height: 844 }]) {
+      const { ctx, page, problems } = await context({ context: { viewport } });
+      await open(page);
+      await page.click('[data-tab=spending]');
+      for (const [amount, date, store] of [['1234,56', isoDay(monthsAgo(2)), 'Edeka'], ['987,65', isoDay(monthsAgo(1)), 'Lidl'], ['456,78', isoDay(new Date()), 'Rewe'], ['54,32', isoDay(new Date()), 'Lidl'], ['9999,99', isoDay(new Date()), '']]) {
+        await addPurchase(page, { amount, date, store, note: 'Ein langer Hinweis zum Einkauf, der umbrechen muss, ohne etwas zu sprengen' });
+      }
+      assert.ok(await page.locator('#month-today').isHidden(), 'die zuletzt erfassten Einträge liegen im aktuellen Monat');
+      assert.equal(await horizontalOverflow(page), 0, `Überlauf ${viewport.width}`);
+      const tabs = await page.evaluate(() => [...document.querySelectorAll('.tabs button')].map(button => {
+        const box = button.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(button.querySelector('.tab-label'));
+        const text = range.getBoundingClientRect();
+        return { name: button.textContent, fits: text.left >= box.left - 0.5 && text.right <= box.right + 0.5, left: box.left, right: box.right, textLeft: text.left, textRight: text.right };
+      }));
+      assert.equal(tabs.length, 5);
+      assert.ok(tabs.every(tab => tab.fits), `Beschriftung ragt über den Reiter hinaus: ${JSON.stringify(tabs)}`);
+      assert.ok(tabs.every(tab => tab.left >= 0 && tab.right <= viewport.width), 'Reiter ragen aus dem Bild');
+      assert.ok(tabs.every((tab, index) => index === 0 || (tab.left >= tabs[index - 1].right - 0.5 && tab.textLeft >= tabs[index - 1].textRight)), 'Reiter oder Beschriftungen überlappen sich');
+      const chart = await page.evaluate(() => [...document.querySelectorAll('#spending-chart .value')].map(node => node.scrollWidth <= node.clientWidth + 0.5));
+      assert.ok(chart.every(Boolean), 'Zahlen über den Säulen werden abgeschnitten');
+      const box = await page.locator('#spending-summary .spend-total').boundingBox();
+      assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, 'Summe ragt aus dem Bild');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
+  test('Ausgaben: Kassenbon-Text speichert den Gesamtbetrag mit, derselbe Bon wird nicht doppelt gezählt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const day = new Date(Date.now() - 86400000), stamp = `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`;
+    const bon = `Lidl\nGurke 0,79 A\nButter 1,99 A\nSUMME 2,78\nDatum ${stamp}`;
+    const parse = async () => {
+      await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
+      await page.fill('#receipt-form textarea[name=text]', bon); await page.click('#receipt-parse'); await page.waitForSelector('#receipt-review:not([hidden])');
+    };
+    await parse();
+    assert.ok(await page.locator('#receipt-spend-label').isVisible());
+    assert.match(await page.textContent('#receipt-spend-text'), /Gesamtbetrag 2,78\s€ unter Ausgaben speichern/);
+    assert.ok(await page.locator('#receipt-form input[name=spend]').isChecked(), 'vorab angehakt');
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /2 Preise gemerkt · 2,78\s€ unter Ausgaben/);
+    await page.click('[data-tab=spending]');
+    if (!(await page.locator('#purchase-list .spend-row').count())) await page.click('#month-prev');
+    const rows = page.locator('#purchase-list .spend-row');
+    assert.equal(await rows.count(), 1);
+    assert.match(await rows.first().textContent(), /Lidl · vom Kassenbon[\s\S]*2,78\s€/);
+    // Derselbe Bon noch einmal: nicht noch einmal angehakt, Preise lassen sich nicht erneut wählen (schon eingetragen), nichts doppelt
+    await parse();
+    assert.equal(await page.locator('#receipt-form input[name=spend]').isChecked(), false, 'schon unter Ausgaben');
+    await page.locator('#receipt-lines input[type=checkbox]').first().check();
+    await page.locator('#receipt-form input[name=spend]').check();
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    const purchases = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt));
+    assert.equal(purchases.length, 1, 'der Betrag wird auch bei gesetztem Häkchen nicht doppelt angelegt');
+    assert.equal(purchases[0].cents, 278);
+    assert.equal(purchases[0].source, 'bon');
+    // Ohne Summe im Text: Summe der Zeilen
+    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
+    await page.fill('#receipt-form textarea[name=text]', `Rewe\nMilch 1,29 A\nBrot 2,49 A\nDatum ${stamp}`); await page.click('#receipt-parse');
+    assert.match(await page.textContent('#receipt-spend-text'), /3,78\s€ unter Ausgaben speichern \(Summe der erkannten Zeilen\)/);
+    await page.keyboard.press('Escape');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Foto oder Screenshot eines Kassenbons liest Summe, Datum und Geschäft als Vorschlag; Preise lassen sich gleich übernehmen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const day = new Date(Date.now() - 2 * 86400000), stamp = `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`;
+    const png = await page.evaluate(lines => {
+      const canvas = document.createElement('canvas'); canvas.width = 1170; canvas.height = 900;
+      const c = canvas.getContext('2d'); c.fillStyle = '#ffffff'; c.fillRect(0, 0, 1170, 900); c.fillStyle = '#000000'; c.font = '48px sans-serif';
+      lines.forEach((line, index) => c.fillText(line, 60, 90 + index * 74));
+      return canvas.toDataURL('image/png').split(',')[1];
+    }, ['REWE Markt GmbH', 'HAFERDRINK BIO 1L  1,29 B', 'KIRSCHTOMATEN 250G  1,99 B', 'SUMME EUR  3,28', `Datum: ${stamp}`]);
+    await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
+    assert.ok(await page.locator('#purchase-prices-label').isHidden());
+    await page.setInputFiles('#purchase-form input[type=file]', { name: 'bon.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.waitForFunction(() => /Erkannt/.test(document.querySelector('#purchase-status').textContent), null, { timeout: 90000 });
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '3,28');
+    assert.equal(await page.inputValue('#purchase-form input[name=date]'), isoDay(day));
+    assert.equal(await page.inputValue('#purchase-form select[name=storeId]'), 'store-rewe');
+    assert.match(await page.textContent('#purchase-status'), /Summe 3,28\s€[\s\S]*vergleichen/);
+    assert.ok(await page.locator('#purchase-progress').isHidden());
+    assert.ok(await page.locator('#purchase-prices-label').isVisible());
+    // Noch nichts gespeichert, bis „Speichern“
+    assert.equal(await page.evaluate(() => (JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases || []).length), 0);
+    // Von Hand korrigieren (Foto war ungenau) und die Artikelpreise gleich mitnehmen
+    await page.fill('#purchase-form input[name=amount]', '3,29');
+    await page.locator('#purchase-form input[name=prices]').check();
+    await page.click('#purchase-save');
+    await page.waitForSelector('#receipt-dialog[open]');
+    await page.waitForSelector('#receipt-review:not([hidden])');
+    assert.equal(await page.locator('#receipt-lines .receipt-line').count(), 2);
+    assert.equal(await page.locator('#receipt-form input[name=spend]').isChecked(), false, 'der Gesamtbetrag ist schon gespeichert');
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const purchases = stored.purchases.filter(row => !row.deletedAt);
+    assert.equal(purchases.length, 1);
+    assert.deepEqual([purchases[0].cents, purchases[0].storeId, purchases[0].storeName, purchases[0].source, purchases[0].date], [329, 'store-rewe', 'Rewe', 'hand', isoDay(day)], 'von Hand geändert: Herkunft „hand“');
+    assert.ok(stored.prices.some(row => row.name === 'Haferdrink Bio' && row.createdAt.slice(0, 10) === isoDay(day)), 'Artikelpreis aus dem Bon');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Foto ohne erkennbaren Betrag meldet das klar, das Fenster bleibt benutzbar', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 1170; canvas.height = 500;
+      const c = canvas.getContext('2d'); c.fillStyle = '#ffffff'; c.fillRect(0, 0, 1170, 500); c.fillStyle = '#000000'; c.font = '52px sans-serif';
+      c.fillText('Ein Foto ohne jede Zahl', 60, 120); c.fillText('nur ein paar Worte', 60, 220);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
+    await page.fill('#purchase-form input[name=amount]', '5');
+    await page.setInputFiles('#purchase-form input[type=file]', { name: 'leer.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.waitForFunction(() => document.querySelector('#purchase-dialog [data-dialog-error]:not([hidden])'), null, { timeout: 90000 });
+    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /kein Betrag gefunden[\s\S]*von Hand/);
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '5', 'der eingetippte Betrag bleibt stehen');
+    assert.equal(await page.locator('#purchase-prices-label').isHidden(), true);
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#spending-summary'), /5,00\s€/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Dialog schließen bricht die Texterkennung ab, ohne Fehler und ohne dass etwas gespeichert wird', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 1170; canvas.height = 5200;
+      const c = canvas.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, 1170, 5200); c.fillStyle = '#000'; c.font = '44px sans-serif';
+      for (let i = 0; i < 80; i++) c.fillText(`Artikel ${i + 1}   ${i + 1},99 A`, 60, 80 + i * 62);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
+    await page.setInputFiles('#purchase-form input[type=file]', { name: 'lang.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.waitForFunction(() => /erkannt|geladen/.test(document.querySelector('#purchase-status').textContent), null, { timeout: 30000 });
+    await page.click('#purchase-dialog [data-close]');
+    await page.waitForTimeout(2500);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 0);
+    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.deepEqual(problems, []);
+    // Danach geht ein neuer Eintrag
+    await addPurchase(page, { amount: '7,50' });
+    assert.match(await page.textContent('#spending-summary'), /7,50\s€/);
+    await ctx.close();
+  });
+
+  test('Ausgaben auf zwei Geräten: beide sehen dieselben Einträge, gleichzeitig Erfasstes bleibt, Löschen kommt an', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    let offline = false;
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => offline ? route.abort('connectionfailed') : remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); await device.page.click('[data-tab=spending]'); }
+    await addPurchase(a.page, { amount: '40,00', store: 'Edeka', note: 'von Nico' });
+    await synced(a.page);
+    assert.equal(remote.content.purchases.length, 1);
+    assert.deepEqual([remote.content.purchases[0].cents, remote.content.purchases[0].storeId, remote.content.purchases[0].date], [4000, 'store-edeka', isoDay(new Date())]);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /40,00/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
+    assert.match(await b.page.textContent('#purchase-list'), /Edeka · von Nico/);
+    // B ist offline und erfasst, A erfasst gleichzeitig: nichts geht verloren
+    offline = true;
+    await addPurchase(b.page, { amount: '15,50', store: 'Lidl' });
+    assert.match(await b.page.textContent('#spending-summary'), /55,50\s€/, 'lokal sofort sichtbar');
+    await addPurchase(a.page, { amount: '2', note: 'Kleinigkeit' }); await synced(a.page);
+    offline = false;
+    await b.page.click('#refresh');
+    await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok' && /57,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
+    await pollNow(a.page);
+    await a.page.waitForFunction(() => /57,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
+    assert.equal(remote.content.purchases.filter(row => !row.deletedAt).length, 3);
+    // A löscht einen Eintrag, B sieht das
+    await a.page.locator('#purchase-list .spend-row', { hasText: 'Kleinigkeit' }).click(); await sheetOpen(a.page);
+    await a.page.click('#purchase-delete'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /55,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('Ausgaben: Dialogfenster und Einstellungen laufen bei 320 px nicht über; „Jetzt aufräumen“ zählt alte Ausgaben mit', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
+    await open(page);
+    await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
+    const fits = await page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return document.documentElement.scrollWidth <= document.documentElement.clientWidth && dialog.scrollWidth <= dialog.clientWidth; });
+    assert.ok(fits, 'Überlauf im Dialog Einkauf eintragen');
+    await page.keyboard.press('Escape');
+    // Ein Eintrag von vor vier Jahren wird beim Aufräumen entfernt
+    const old = isoDay(new Date(new Date().getFullYear() - 4, 0, 10, 12));
+    await page.evaluate(async old2 => {
+      const key = 'einkauf-demo-v1', stored = JSON.parse(localStorage.getItem(key));
+      stored.base.purchases = [{ id: 'alt-eintrag', date: old2, cents: 1234, source: 'hand', note: '', createdAt: '2020-01-10T10:00:00.000Z', updatedAt: '2020-01-10T10:00:00.000Z', deletedAt: null, _clock: {} }];
+      localStorage.setItem(key, JSON.stringify(stored));
+    }, old);
+    await open(page);
+    await openSettings(page);
+    assert.match(await page.textContent('#storage-hint'), /Aufräumbar: 1 Einträge/);
+    await page.click('#compact-now');
+    assert.match(await page.textContent('#storage-note'), /Aufgeräumt: 1 Einträge entfernt/);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases?.length ?? 0), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
