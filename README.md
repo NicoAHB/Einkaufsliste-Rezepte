@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.17
+# Einkauf & Rezepte – Version 2.18
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,14 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.18: nach dem Betrag zurück zu „Planen“
+
+- Wer im Fenster „Einkauf beenden“ den bezahlten Betrag eingibt und auf das **+** tippt, landet danach wieder in der Ansicht **Planen** (statt in „Im Laden“ zu bleiben): Der Einkauf ist beendet, der Betrag steht unter Ausgaben, die Einkaufsliste ist wieder die Planungsliste. Die Einstellung „Im Laden“ wird dabei wie beim Tipp auf „Planen“ auf diesem Gerät zurückgesetzt. Bei einem ungültigen Betrag bleibt alles, wie es ist (auch die Ansicht). „Nur beenden“ und „Beenden und Kassenbon einfügen“ bleiben in „Im Laden“, wie bisher.
+
+Weiterer Testpunkt für Version 2.18:
+
+- [ ] Im Laden → **Einkauf beenden** → Betrag → **+**: Die Ansicht wechselt zu **Planen** (Einkaufsliste mit Eingabefeld, nicht die große Laden-Ansicht), der Hinweis „… unter Ausgaben gespeichert“ erscheint.
 
 ## Neu in Version 2.17: Betrag beim Einkauf beenden, „Was kann ich kochen?“
 

@@ -1516,12 +1516,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Eingabetaste ohne Betrag: Hinweis, nichts passiert
     await amount.focus(); await page.keyboard.press('Enter');
     assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Betrag eingeben oder „Nur beenden“/);
-    // Ungültiger Betrag: Meldung, Tastatur zu, Fenster offen, Milch bleibt abgehakt und auf der Liste
+    // Ungültiger Betrag: Meldung, Tastatur zu, Fenster offen, Milch bleibt abgehakt und auf der Liste, die Ansicht bleibt „Im Laden“
     await amount.fill('abc'); assert.equal(await plus.isVisible(), true);
     await page.touchscreen.tap(...await center(plus));
     await page.waitForFunction(() => /Betrag in Euro eingeben/.test(document.querySelector('#finish-dialog [data-dialog-error]')?.textContent || ''));
     assert.equal(await typing(), false, 'Tastatur zu');
     assert.ok(await page.locator('#finish-dialog').evaluate(node => node.open));
+    assert.equal(await page.locator('#shop-view').isVisible(), true, 'bei einem Fehler bleibt es „Im Laden“');
     let data = await stored();
     assert.ok(!data.items.find(row => row.name === 'Milch').deletedAt, 'Milch noch nicht entfernt');
     assert.equal((data.purchases || []).length, 0);
@@ -1530,6 +1531,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.touchscreen.tap(...await center(plus));
     await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /12,50\s€ unter Ausgaben gespeichert/);
+    // Danach ist die App wieder in „Planen“ (nicht mehr „Im Laden“), auch nach dem Neuladen
+    assert.equal(await page.locator('#plan-view').isVisible(), true, 'zurück zu Planen');
+    assert.equal(await page.locator('#shop-view').isHidden(), true);
+    assert.equal(await page.locator('#mode-plan').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).shopMode), false);
     data = await stored();
     assert.ok(data.items.find(row => row.name === 'Milch').deletedAt, 'Milch ist von der Liste entfernt');
     const purchases = data.purchases.filter(row => !row.deletedAt);
@@ -1540,11 +1546,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#purchase-list'), /Lidl · Wocheneinkauf[\s\S]*12,50\s€/);
     // „Nur beenden“ ignoriert das Feld und speichert nichts
     await page.click('[data-tab=shopping]');
-    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click(); await page.locator('.shop-tap', { hasText: 'Tomaten' }).click();
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click(); await page.locator('.shop-tap', { hasText: 'Tomaten' }).click();
     await page.click('#shop-finish'); await sheetOpen(page);
     assert.equal(await amount.inputValue(), '', 'das Feld ist bei jedem Öffnen leer');
     await amount.fill('99'); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.equal((await stored()).purchases.filter(row => !row.deletedAt).length, 1);
+    assert.equal(await page.locator('#shop-view').isVisible(), true, '„Nur beenden“ bleibt „Im Laden“');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

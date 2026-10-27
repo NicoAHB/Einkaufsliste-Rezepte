@@ -1555,7 +1555,8 @@ function openFinish() {
   $('#finish-form').reset(); message();
   $('#finish-dialog').showModal();
 }
-// Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute.
+// Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
+// und die App springt zurück zu „Planen“.
 function finishShopping(withReceipt, amount = '') {
   const ids = visibleItems().filter(item => item.checked).map(item => item.id), typed = amount.trim();
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist.
@@ -1565,6 +1566,7 @@ function finishShopping(withReceipt, amount = '') {
   $('#finish-dialog').close();
   if (fields) spendMonth = monthOf(fields.date);
   if (ops.length) commit(ops, fields ? `${euros(fields.cents)} unter Ausgaben gespeichert` : ''); else render();
+  if (fields) setShopMode(false);   // Einkauf mit Betrag abgeschlossen: zurück zu „Planen“
   if (withReceipt) openReceipt(shopStore);
 }
 
