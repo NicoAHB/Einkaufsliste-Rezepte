@@ -1302,6 +1302,47 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Artikelvorschläge beim Eintippen: „ap“ → Äpfel, „ba“ → Bananen, eigene vor eingebauten, direkt unter dem Feld (auch bei kleinem Bildschirm mit Tastatur)', async () => {
+    // Höhe 380 px: so viel bleibt auf dem iPhone sichtbar, wenn die Tastatur offen ist
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 380 } } });
+    await open(page);
+    const field = page.locator('#item-form input[name=name]'), box = page.locator('#item-suggestions');
+    const picks = () => box.locator('button').allTextContents();
+    await field.focus(); await field.fill('ap');
+    await page.waitForSelector('#item-suggestions:not([hidden])');
+    // „ap“: der eigene Artikel (Äpfel, Umlaut egal) zuerst, danach eingebaute Namen
+    const ap = await picks();
+    assert.equal(ap[0], 'Äpfel');
+    assert.ok(ap.includes('Aprikosen'), ap.join('|'));
+    assert.ok(ap.length <= 6);
+    // Direkt unter dem Namensfeld, vor der Geschäftsauswahl, und im sichtbaren Bereich (nicht hinter der Tastatur)
+    const fieldBox = await field.boundingBox(), suggestBox = await box.boundingBox(), storeBox = await page.locator('#store-pick').boundingBox();
+    assert.ok(suggestBox.y >= fieldBox.y + fieldBox.height - 2 && suggestBox.y - (fieldBox.y + fieldBox.height) < 20, 'direkt unter dem Feld');
+    assert.ok(suggestBox.y + suggestBox.height <= storeBox.y + 1, 'vor der Geschäftsauswahl');
+    assert.ok(suggestBox.y + suggestBox.height < 380, 'im sichtbaren Bereich');
+    assert.equal(await horizontalOverflow(page), 0, 'die Zeile wischt für sich, die Seite läuft nicht über');
+    // „ba“: Bananen (häufigster eingebauter Name mit diesem Anfang) zuerst
+    await field.fill('ba'); assert.equal((await picks())[0], 'Bananen');
+    // Ein Tipp übernimmt den Vorschlag, die Vorschläge verschwinden, die Menge ist dran
+    await box.locator('button', { hasText: 'Bananen' }).click();
+    assert.equal(await field.inputValue(), 'Bananen');
+    assert.equal(await box.isHidden(), true);
+    assert.equal(await page.evaluate(() => document.activeElement.name), 'quantity');
+    await page.click('#item-form button[type=submit]');
+    assert.match(await page.locator('#items .item', { hasText: 'Bananen' }).first().textContent(), /Bananen/);
+    // Jetzt kennt die App „Bananen“ als eigenen Artikel; ein ganz neuer eigener Name steht vor den eingebauten
+    await field.focus(); await field.fill('Basmatireis'); await page.click('#item-form button[type=submit]');
+    await field.focus(); await field.fill('ba');
+    const own = await picks();
+    assert.deepEqual(own.slice(0, 2), ['Bananen', 'Basmatireis'].sort((a, b) => own.indexOf(a) - own.indexOf(b)), 'eigene Artikel zuerst');
+    assert.ok(own.indexOf('Basmatireis') < own.indexOf('Basilikum') && own.indexOf('Bananen') < own.indexOf('Basilikum'), 'eigene Artikel stehen vor Eingebautem');
+    // Zutaten der Rezepte zählen auch („Kichererbsen, abgetropft“ → „Kichererbsen“), ohne Treffer bleibt es zu
+    await field.fill('kich'); assert.equal((await picks())[0], 'Kichererbsen');
+    await field.fill('xqzv'); assert.equal(await box.isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Schreibweisen: nur vorgeschlagen, erst bestätigt dann gemerkt und angewendet; Schnellwahl häufiger Artikel', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

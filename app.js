@@ -11,6 +11,7 @@ import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngre
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, suggestCategory } from './categories.js';
 import { emojiFor } from './emoji.js';
+import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
@@ -54,6 +55,16 @@ function itemHistory() {
     historyMemo = { for: state, rows: [...state.items, ...(state.names || []).map(entry => ({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))].map(named) };
   }
   return historyMemo.rows;
+}
+// Wortschatz für die Vorschläge beim Eintippen: eigene Artikel (itemHistory) vor Rezeptzutaten, Namen aus Kassenbons und bestätigten Zuordnungen, davor fest eingebaute häufige Artikel.
+let vocabMemo = { for: null, rows: [] };
+function suggestionHistory() {
+  if (vocabMemo.for !== state) {
+    const recipes = new Set(active(state.recipes).map(recipe => recipe.id)), plainName = name => String(name).replace(/\([^)]*\)/g, ' ').split(',')[0].trim().replace(/\s+/g, ' ');
+    const extra = [...active(state.ingredients).filter(row => recipes.has(row.recipeId)).map(row => plainName(row.name)), ...active(state.prices).map(row => row.name), ...active(state.aliases || []).map(row => row.name)];
+    vocabMemo = { for: state, rows: [...itemHistory(), ...extra.filter(Boolean).map(name => ({ name, weight: 0.5 })), ...GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 }))] };
+  }
+  return vocabMemo.rows;
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -390,7 +401,7 @@ function renderItemSuggestions() {
   // Andere Schreibweise eines bekannten Namens („Zwiebel“ statt „Zwiebeln“): nur vorschlagen, erst die Bestätigung wird gemerkt.
   const confirmed = active(state.aliases || []).some(alias => alias.from === aliasKey(typed));
   const variants = typed && !confirmed ? spellingVariants(typed, [...new Set(history.map(row => row.name))]).slice(0, 3) : [];
-  const names = suggestItemNames(history, typed).filter(name => !variants.includes(name));
+  const names = suggestItemNames(suggestionHistory(), typed).filter(name => !variants.includes(name));
   box.replaceChildren(); box.hidden = !names.length && !variants.length;
   if (box.hidden) return;
   if (variants.length) {
@@ -404,7 +415,6 @@ function renderItemSuggestions() {
     box.append(same);
   }
   if (names.length) {
-    box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
     const choices = element('div', undefined, 'suggestion-choices');
     for (const name of names) choices.append(button(name, () => {
       form.elements.name.value = name; box.hidden = true;

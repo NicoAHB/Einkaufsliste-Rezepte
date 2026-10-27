@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { active, emptyData, ingredientItems, merge, newItems, operation, positive, suggestItemNames, validate } from '../data.js';
+import { active, emptyData, ingredientItems, merge, newItems, operation, positive, spellingStem, suggestItemNames, validate } from '../data.js';
+import { GROCERY_NAMES } from '../grocery-names.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
@@ -89,6 +90,34 @@ test('Artikelvorschläge: Wortanfang zuerst, häufig vor selten, ohne Doppelte',
   assert.deepEqual(suggestItemNames(items, 'zwie'), ['Zwiebeln', 'Rote Zwiebeln']);
   assert.deepEqual(suggestItemNames(items, ''), []);
   assert.equal(suggestItemNames(items, 'o', 2).length, 2);
+});
+
+test('Artikelvorschläge: „ap“ findet Apfel und Äpfel (Umlaut egal, nur einmal), „ba“ auch „Bio Bananen“; Wortanfang vor Mitte, eigene vor eingebauten', () => {
+  const own = names => names.map((name, index) => ({ name, createdAt: at(index), updatedAt: at(index) }));
+  assert.deepEqual(suggestItemNames(own(['Äpfel', 'Birnen', 'Zahnpasta']), 'ap'), ['Äpfel'], 'Umlaut zählt wie sein Grundbuchstabe');
+  assert.deepEqual(suggestItemNames(own(['Apfel', 'Äpfel', 'Apfel']), 'ap'), ['Apfel'], 'Apfel und Äpfel nur einmal, die häufigere Schreibweise');
+  assert.deepEqual(suggestItemNames(own(['Banane', 'Bananen']), 'ba'), ['Bananen'], 'gleiche Wortstämme nur einmal, die neuere Schreibweise');
+  const ranked = suggestItemNames(own(['Zahnpasta', 'Bio Bananen', 'Bananenchips', 'Basilikum']), 'ba');
+  assert.deepEqual(ranked, ['Basilikum', 'Bananenchips', 'Bio Bananen'], 'zuerst Namen, die mit „ba“ beginnen (die zuletzt benutzte zuerst), dann ein späteres Wort; „Zahnpasta“ enthält kein „ba“');
+  assert.deepEqual(suggestItemNames(own(['Fußmatte']), 'fuss'), ['Fußmatte'], 'ß zählt als ss');
+  // Gewicht: eigene Artikel (Standard 1) vor Zutaten (0,5) vor eingebauten Namen (kleiner)
+  const mixed = [{ name: 'Basilikum', weight: 0.4 }, { name: 'Bananen', weight: 0.5 }, { name: 'Basmati-Reis', weight: 1 }];
+  assert.deepEqual(suggestItemNames(mixed, 'ba'), ['Basmati-Reis', 'Bananen', 'Basilikum']);
+});
+
+test('Eingebaute Artikelnamen: ohne Doppelte (auch nicht in anderer Schreibweise), mit den wichtigsten Anfängen', () => {
+  assert.ok(GROCERY_NAMES.length >= 150);
+  assert.equal(new Set(GROCERY_NAMES.map(name => spellingStem(name))).size, GROCERY_NAMES.length, 'keine zwei Namen mit demselben Wortstamm');
+  assert.ok(GROCERY_NAMES.every(name => typeof name === 'string' && name.trim() === name && name.length >= 2 && name.length <= 30));
+  const rows = GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 }));
+  assert.ok(rows.every(row => row.weight > 0), 'alle Gewichte bleiben positiv');
+  assert.equal(suggestItemNames(rows, 'ba')[0], 'Bananen', 'ba → Bananen zuerst');
+  assert.equal(suggestItemNames(rows, 'ap')[0], 'Äpfel');
+  assert.ok(suggestItemNames(rows, 'ap').includes('Aprikosen'));
+  assert.equal(suggestItemNames(rows, 'mi')[0], 'Milch');
+  assert.equal(suggestItemNames(rows, 'to')[0], 'Tomaten');
+  assert.equal(suggestItemNames(rows, 'zw')[0], 'Zwiebeln');
+  assert.equal(suggestItemNames(rows, 'but')[0], 'Butter');
 });
 
 test('Leere Daten sind gültig', () => assert.doesNotThrow(() => validate(emptyData())));

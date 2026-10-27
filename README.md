@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.19
+# Einkauf & Rezepte – Version 2.20
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,21 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.20: klügere Artikelvorschläge beim Eintippen
+
+**Warum:** Beim Eintippen von „Ap“ erschien kein Vorschlag, obwohl „Apfel“ schon einmal auf der Liste stand. Die Vorschläge standen unter Menge und Einheit und lagen damit hinter der Tastatur; außerdem fand „ap“ keine „Äpfel“.
+
+- **Direkt unter dem Namensfeld:** Die Vorschläge stehen jetzt in **einer Zeile gleich unter dem Feld**, über der Geschäftsauswahl (also oberhalb der Tastatur), und lassen sich seitlich wischen. Die Überschrift „Vorschläge aus euren Artikeln“ entfällt; „Meinst du dasselbe wie …?“ bleibt. Ein Tipp übernimmt den Vorschlag und springt zur Menge.
+- **Passender gefunden** (`suggestItemNames` in `data.js`): Der Name beginnt mit dem Getippten („ap“ → Apfel), danach beginnt ein späteres Wort so („ba“ → Bio Bananen), zuletzt steht es irgendwo im Namen. **Umlaute zählen wie ihr Grundbuchstabe** („ap“ findet „Äpfel“, „fuss“ findet „Fußmatte“). Innerhalb davon kommt vor, was häufiger oder zuletzt benutzt wurde. **Schreibweisen desselben Wortes** („Apfel“/„Äpfel“, „Banane“/„Bananen“) erscheinen nur einmal. Höchstens sechs Vorschläge.
+- **Woher die Namen kommen, in dieser Reihenfolge:** (1) eure eigenen Artikel einschließlich Gelöschter und dem Namensgedächtnis aus dem Aufräumen, (2) Zutaten eurer Rezepte („Kichererbsen, abgetropft“ → „Kichererbsen“), Namen aus Kassenbons und bestätigte Zuordnungen, (3) rund 160 **fest eingebaute häufige Artikel** (`grocery-names.js`: Milch, Brot, Bananen, Basilikum …), damit „ba“ auch ohne eigenen Verlauf „Bananen“ vorschlägt. Bei gleichem Anfang steht Häufigeres weiter vorn. Nichts davon verlässt das Gerät.
+- **Ehrlich dazu:** Die eingebaute Liste ist eine Auswahl, kein vollständiger Lebensmittel-Katalog. Eigene Artikel stehen immer davor und sind damit nach kurzer Zeit die wichtigsten Vorschläge. Die Vorschläge der iPhone-Tastatur („Ap“, „So“, „App“ über den Tasten) kommen vom Betriebssystem und lassen sich von der App nicht beeinflussen.
+
+Weitere Testpunkte für Version 2.20:
+
+- [ ] In das Namensfeld **ap** tippen: Gleich unter dem Feld (über der Tastatur) stehen die Vorschläge, ein früherer Artikel wie „Apfel“ oder „Äpfel“ zuerst. Ein Tipp übernimmt ihn und springt zur Menge.
+- [ ] **ba** tippen: „Bananen“ erscheint, auch wenn du nie Bananen eingegeben hast.
+- [ ] Die Zeile der Vorschläge lässt sich seitlich wischen, die Seite selbst wackelt nicht.
 
 ## Neu in Version 2.19: Notiz mit Aufklapp-Knopf
 
@@ -451,7 +466,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

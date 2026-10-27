@@ -74,13 +74,13 @@
       </div>
       <form id="item-form" class="card add-form">
         <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
+        <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
         <input name="storeId" type="hidden" value="">
         <div id="store-pick" class="chips store-pick wide" role="group" aria-label="Geschäft für den neuen Artikel"></div>
         <div id="quick-pick" class="chips quick-pick wide" role="group" aria-label="Häufig gekauft: antippen zum Hinzufügen" hidden></div>
         <button id="open-templates" class="chip-button template-open wide" type="button"><svg class="icon"><use href="#i-bookmark"/></svg>Vorlagen</button>
         <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
-        <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
         <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>
           <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
@@ -200,7 +200,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.19 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.20 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
