@@ -14,6 +14,7 @@ import { emojiFor } from './emoji.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
+import { compareTotals, dayLabel as spendDay, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -136,13 +137,14 @@ function commit(ops, notice = '') {
 }
 
 function tab(name) {
-  for (const id of ['shopping', 'recipes', 'plan', 'settings']) $(`#${id}`).hidden = name !== id;
+  for (const id of ['shopping', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
   if (name === 'settings') renderStorage();
+  if (name === 'spending') renderSpending();
   if (name === 'recipes') prefetchDaily();
   syncShopAwake(); syncChrome();
 }
@@ -209,13 +211,14 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderPantry(); renderStorage(); applyMode(); syncForm();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
+  $('#add-purchase').disabled = !ready;
 }
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
@@ -1579,14 +1582,16 @@ function knownNames() {
   }
   return [...names.values()];
 }
-let receiptStore = '';
-function openReceipt(storeId = '') {
-  receiptStore = typeof storeId === 'string' ? storeId : '';
+let receiptStore = '', receiptSpend = true;
+// `text`: bereits erkannter Bontext (aus dem Ausgaben-Fenster), wird sofort ausgewertet. `spend`: ob der Gesamtbetrag vorab für „Ausgaben“ angehakt ist.
+function openReceipt(storeId = '', text = '', spend = true) {
+  receiptStore = typeof storeId === 'string' ? storeId : ''; receiptSpend = spend;
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (!active(state.stores).length) throw new Error('Bitte zuerst ein Geschäft anlegen.');
   const form = $('#receipt-form'); form.reset();
   $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message();
-  $('#receipt-dialog').showModal(); form.elements.text.focus();
+  $('#receipt-dialog').showModal();
+  if (text) { form.elements.text.value = text; parseReceiptText(); } else form.elements.text.focus();
 }
 const receiptCents = text => parseCents(String(text).replace(/\s*(?:€|EUR)\s*$/i, ''));
 function receiptQuote(line) {
@@ -1661,6 +1666,13 @@ function parseReceiptText() {
   skipped.querySelector('ul').replaceChildren(...parsed.skipped.map(entry => element('li', `${entry.text} · ${entry.why}`)));
   $('#receipt-input').hidden = true; $('#receipt-review').hidden = false;
   form.elements.storeId.onchange = form.elements.date.onchange = () => receiptLines.forEach(refreshReceiptLine);
+  // Gesamtbetrag für „Ausgaben“: vorab angehakt, außer er steht dort schon (oder kommt gerade von dort).
+  const found = receiptAmount(parsed);
+  $('#receipt-spend-label').hidden = !found;
+  if (found) {
+    form.elements.spend.checked = receiptSpend && !hasPurchase(form.elements.date.value, form.elements.storeId.value, found.cents);
+    $('#receipt-spend-text').textContent = `Gesamtbetrag ${euros(found.cents)} unter Ausgaben speichern${found.how === 'zeilen' ? ' (Summe der erkannten Zeilen)' : ''}`;
+  }
 }
 function saveReceipt() {
   const form = $('#receipt-form'), storeId = currentStore(form.elements.storeId.value);
@@ -1695,10 +1707,147 @@ function saveReceipt() {
       else if (known.name !== entry.name) ops.push(operation('aliases', known.id, { name: entry.name }, actor, entry.at));
     }
   }
-  const parts = [`${entries.length} Preise gemerkt`, up && `${up} teurer`, down && `${down} günstiger`].filter(Boolean);
+  // Gesamtbetrag unter „Ausgaben“, wenn gewünscht und dort noch nicht vorhanden.
+  const found = receiptAmount(receiptParsed), day = form.elements.date.value || isoDate();
+  let spent = 0;
+  if (found && form.elements.spend.checked && !hasPurchase(day, storeId, found.cents)) {
+    const storeName = active(state.stores).find(store => store.id === storeId)?.name || '';
+    ops.push(nextOp('purchases', uid(), purchaseFields({ amount: formatAmount(found.cents), date: day, storeId, storeName, source: 'bon' }, isoDate()))); spent = found.cents;
+  }
+  const parts = [`${entries.length} Preise gemerkt`, up && `${up} teurer`, down && `${down} günstiger`, spent && `${euros(spent)} unter Ausgaben`].filter(Boolean);
   commit(ops, parts.join(' · '));
   $('#receipt-dialog').close();
 }
+
+/* ---------- Ausgaben ---------- */
+// Wie viel ihr eingekauft habt: Beträge von Hand oder aus einem Kassenbon-Foto/-Screenshot (Texterkennung auf dem Gerät, immer zur Kontrolle im Feld).
+// Die Einträge liegen in der gemeinsamen Datei (Sammlung `purchases`) und sind für beide Personen sichtbar.
+let spendMonth = monthOf(isoDate()), purchaseAbort = null, purchaseSource = 'hand', purchaseRaw = '', purchaseParsed = null, purchaseEditing = null;
+const purchaseRows = () => active(state.purchases || []);
+const countLabel = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+// Kurze Zahl über einer Säule: ganze Euro, ab 10.000 € in Tausendern („12k“), damit sie auch auf schmalen Telefonen in die Spalte passt.
+const compactEuros = cents => cents >= 1000000 ? `${Math.round(cents / 100000)}k` : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(cents / 100));
+function renderSpending() {
+  if ($('#spending').hidden) return;
+  const rows = purchaseRows(), stores = active(state.stores), now = monthOf(isoDate());
+  if (!validMonth(spendMonth)) spendMonth = now;
+  const before = shiftMonth(spendMonth, -1), current = summarize(rows, spendMonth, stores), last = summarize(rows, before, stores);
+  $('#month-label').textContent = monthLabel(spendMonth);
+  $('#month-today').hidden = spendMonth === now;
+  $('#month-prev').disabled = spendMonth <= firstMonth(rows, now);
+  $('#month-next').disabled = spendMonth >= latestMonth(rows, now);
+
+  const summary = $('#spending-summary'); summary.replaceChildren();
+  summary.append(element('span', spendMonth === now ? 'Bisher ausgegeben' : 'Ausgegeben', 'spend-label'), element('strong', euros(current.total), 'spend-total'),
+    element('small', current.count ? `${countLabel(current.count, 'Einkauf', 'Einkäufe')} · Ø ${euros(current.average)}` : 'In diesem Monat ist noch nichts eingetragen.'));
+  if (last.count) {
+    const name = monthName(before), diff = compareTotals(current.total, last.total), more = diff.diff > 0;
+    if (!current.count) summary.append(element('small', `Im ${name}: ${euros(last.total)}`));
+    else if (!diff.diff) summary.append(element('small', `Genau so viel wie im ${name}`));
+    else summary.append(element('small', `${more ? '▲' : '▼'} ${euros(Math.abs(diff.diff))} ${more ? 'mehr' : 'weniger'} als im ${name}${diff.percent === null ? '' : ` (${more ? '+' : '−'}${Math.abs(diff.percent)}\u00a0%)`}`, `trend ${more ? 'up' : 'down'}`));
+  } else if (current.count) summary.append(element('small', `Im ${monthName(before)} wurde nichts eingetragen.`));
+
+  const months = recentMonths(rows, spendMonth, 6), top = Math.max(1, ...months.map(entry => entry.total)), chart = $('#spending-chart'); chart.replaceChildren();
+  for (const entry of months) {
+    const item = element('li'), column = element('button'), track = element('span', undefined, 'track'), bar = element('span', undefined, 'bar');
+    column.type = 'button'; column.title = `${monthLabel(entry.month)}: ${euros(entry.total)}`; column.setAttribute('aria-label', column.title);
+    if (entry.month === spendMonth) column.setAttribute('aria-current', 'true');
+    bar.style.height = `${entry.total ? Math.max(3, Math.round(entry.total / top * 80)) : 2}px`; track.append(bar);
+    column.append(element('span', entry.total ? compactEuros(entry.total) : '', 'value'), track, element('span', entry.label));
+    column.addEventListener('click', () => { spendMonth = entry.month; renderSpending(); });
+    item.append(column); chart.append(item);
+  }
+
+  $('#spending-stores-card').hidden = current.byStore.length < 2;
+  const groups = $('#spending-stores'); groups.replaceChildren();
+  for (const group of current.byStore) {
+    const item = element('li', undefined, 'spend-store'), head = element('div', undefined, 'spend-store-head'), share = element('div', undefined, 'spend-share'), fill = element('span');
+    head.append(element('strong', group.name), element('span', euros(group.total)));
+    fill.style.width = `${Math.max(2, Math.round(group.share * 100))}%`; share.append(fill);
+    item.append(head, share, element('small', `${countLabel(group.count, 'Einkauf', 'Einkäufe')} · ${Math.round(group.share * 100)} %`));
+    groups.append(item);
+  }
+
+  const list = $('#purchase-list'); list.replaceChildren();
+  $('#purchase-count').textContent = current.count ? countLabel(current.count, 'Eintrag', 'Einträge') : '';
+  if (!current.count) list.append(element('li', 'Noch nichts eingetragen. Tippe oben auf „Einkauf“: Betrag eingeben oder einen Kassenbon lesen lassen.', 'empty'));
+  for (const row of current.list) {
+    const item = element('li'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores);
+    open.type = 'button';
+    copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : ''].filter(Boolean).join(' · ')));
+    open.append(copy, element('span', euros(row.cents), 'spend-amount'));
+    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}: ändern`);
+    open.addEventListener('click', () => guard(() => openPurchase(row.id)));
+    item.append(open); list.append(item);
+  }
+}
+function purchaseStatus(text, fraction) {
+  $('#purchase-status').textContent = text;
+  $('#purchase-progress').hidden = fraction === undefined; if (fraction !== undefined) $('#purchase-progress').value = Math.round(fraction * 100);
+}
+function openPurchase(id = '') {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const row = id ? purchaseRows().find(entry => entry.id === id) : null;
+  if (id && !row) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  const form = $('#purchase-form'), select = form.elements.storeId;
+  form.reset(); message(); purchaseStatus('');
+  purchaseEditing = row; purchaseSource = row?.source || 'hand'; purchaseRaw = ''; purchaseParsed = null;
+  // Neue Einträge: zuletzt benutztes Geschäft, sonst das der Einkaufsansicht.
+  const latest = purchaseRows().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  storeOptions(select, row ? row.storeId || '' : latest?.storeId || viewStore()?.id || '', true);
+  // Geschäft inzwischen gelöscht: der gemerkte Name bleibt wählbar, damit er beim Ändern nicht verloren geht.
+  if (row?.storeId && row.storeName && ![...select.options].some(option => option.value === row.storeId)) { select.add(new Option(`${row.storeName} (gelöscht)`, row.storeId)); select.value = row.storeId; }
+  form.elements.id.value = row?.id || '';
+  form.elements.amount.value = row ? formatAmount(row.cents) : '';
+  form.elements.date.value = row?.date || (spendMonth === monthOf(isoDate()) ? isoDate() : lastDay(spendMonth));
+  form.elements.note.value = row?.note || '';
+  $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
+  $('#purchase-delete').hidden = !row; $('#purchase-prices-label').hidden = true;
+  $('#purchase-dialog').showModal();
+  if (!row) form.elements.amount.focus();
+}
+// Foto oder Screenshot eines Kassenbons: Text erkennen, Summe/Datum/Geschäft als Vorschlag in die Felder eintragen. Gespeichert wird erst mit „Speichern“.
+async function readPurchasePhoto(files) {
+  if (!files.length || purchaseAbort) return;
+  const form = $('#purchase-form'); message();
+  purchaseAbort = new AbortController();
+  try {
+    const { recognizeImages } = await import('./ocr.js');
+    const raw = await recognizeImages(files, (fraction, label) => purchaseStatus(label, fraction), purchaseAbort.signal, 'den Betrag von Hand eingeben');
+    if (!raw) throw new Error('Im Bild wurde kein Text erkannt. Bitte einen schärferen Ausschnitt wählen oder den Betrag von Hand eingeben.');
+    const parsed = parseReceipt(raw), found = receiptAmount(parsed);
+    if (!found) throw new Error('Im Bild wurde kein Betrag gefunden. Bitte einen Ausschnitt mit der Summe wählen oder den Betrag von Hand eingeben.');
+    purchaseRaw = raw; purchaseParsed = parsed; purchaseSource = 'bon';
+    form.elements.amount.value = formatAmount(found.cents);
+    if (parsed.date) form.elements.date.value = parsed.date;
+    const chainStore = storeForChain(parsed.chain, active(state.stores));
+    if (chainStore) form.elements.storeId.value = chainStore;
+    const lines = parsed.items.length && active(state.stores).length;
+    $('#purchase-prices-label').hidden = !lines;
+    purchaseStatus(found.how === 'bon' ? `Erkannt: Summe ${euros(found.cents)}. Bitte mit dem Kassenbon vergleichen.` :
+      `Keine Summe gefunden. Die erkannten Zeilen ergeben ${euros(found.cents)} (vielleicht fehlen Zeilen). Bitte prüfen und korrigieren.`);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    purchaseStatus(''); message(error.message);
+  } finally { purchaseAbort = null; $('#purchase-progress').hidden = true; form.elements.images.value = ''; }
+}
+function savePurchase() {
+  const form = $('#purchase-form'), id = form.elements.id.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
+  if (purchaseAbort) throw new Error('Die Texterkennung läuft noch. Bitte kurz warten.');
+  const storeName = active(state.stores).find(store => store.id === storeId)?.name || (editing?.storeId === storeId ? editing.storeName || '' : '');
+  const fields = purchaseFields({ amount: form.elements.amount.value, date: form.elements.date.value, storeId, storeName, note: form.elements.note.value, source: purchaseSource }, isoDate());
+  if (id && !purchaseRows().some(row => row.id === id)) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  // Beim Ändern auch leer gewordene Felder überschreiben (Geschäft entfernt, Notiz gelöscht).
+  const op = id ? nextOp('purchases', id, { storeId: '', storeName: '', ...fields }) : nextOp('purchases', uid(), fields);
+  const priceText = !id && form.elements.prices.checked && purchaseParsed?.items.length ? purchaseRaw : '';
+  spendMonth = monthOf(fields.date);
+  $('#purchase-dialog').close();
+  commit([op], `${euros(fields.cents)} unter Ausgaben gespeichert`);
+  // Auf Wunsch gleich die Artikelpreise des Bons prüfen; der Gesamtbetrag ist dann schon gespeichert.
+  if (priceText) openReceipt(fields.storeId || '', priceText, false);
+}
+// Schon unter Ausgaben? (gleicher Tag, gleiches Geschäft, gleicher Betrag: derselbe Einkauf, z. B. erst vom Foto, dann vom Kassenbon-Text)
+const hasPurchase = (date, storeId, cents) => purchaseRows().some(row => row.date === date && (row.storeId || '') === storeId && row.cents === cents);
 
 /* ---------- Vorrat ---------- */
 function renderPantry() {
@@ -1771,7 +1920,7 @@ $('#template-form').addEventListener('submit', event => { event.preventDefault()
 
 /* ---------- Datenumfang ---------- */
 const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
-const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry + removed.aliases + removed.templates;
+const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry + removed.aliases + removed.templates + removed.purchases;
 function noteCompaction(result) {
   $('#storage-note').textContent = !result?.changed ? 'Es gab nichts aufzuräumen.' :
     `Aufgeräumt: ${entries(result.removed)} Einträge entfernt, ${kb(result.before - result.after)} gespart.`;
@@ -2056,6 +2205,19 @@ $('#finish-receipt').addEventListener('click', () => guard(() => finishShopping(
 $('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
 $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
 $('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });
+$('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
+$('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });
+$('#month-next').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, 1); renderSpending(); });
+$('#month-today').addEventListener('click', () => { spendMonth = monthOf(isoDate()); renderSpending(); });
+$('#purchase-form').addEventListener('submit', event => { event.preventDefault(); guard(savePurchase); });
+$('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
+$('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
+$('#purchase-delete').addEventListener('click', () => guard(() => {
+  const id = $('#purchase-form').elements.id.value;
+  if (id) removeRows('purchases', [id]);
+  $('#purchase-dialog').close();
+}));
+$('#purchase-dialog').addEventListener('close', () => purchaseAbort?.abort());
 $('#compact-now').addEventListener('click', () => guard(compactNow));
 $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());

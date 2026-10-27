@@ -47,6 +47,7 @@
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
     <symbol id="i-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
     <symbol id="i-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
     <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
   </svg>
 
@@ -120,6 +121,21 @@
       <div id="plan-days" class="plan-days"></div>
     </section>
 
+    <section id="spending" hidden aria-labelledby="spending-title">
+      <div class="section-head"><h2 id="spending-title">Ausgaben</h2><button id="add-purchase" type="button"><svg class="icon"><use href="#i-plus"/></svg>Einkauf</button></div>
+      <div class="week-nav">
+        <button id="month-prev" class="icon-button round" type="button" aria-label="Vorheriger Monat"><svg class="icon"><use href="#i-left"/></svg></button>
+        <div class="week-title"><strong id="month-label"></strong><button id="month-today" class="text-button" type="button">Dieser Monat</button></div>
+        <button id="month-next" class="icon-button round" type="button" aria-label="Nächster Monat"><svg class="icon"><use href="#i-right"/></svg></button>
+      </div>
+      <div id="spending-summary" class="card spend-summary" aria-live="polite"></div>
+      <div id="spending-chart-card" class="card"><h3>Letzte Monate</h3><ol id="spending-chart" class="spend-chart"></ol></div>
+      <div id="spending-stores-card" class="card" hidden><h3>Nach Geschäft</h3><ul id="spending-stores" class="spend-stores"></ul></div>
+      <div class="section-head list-head"><p id="purchase-count"></p></div>
+      <ul id="purchase-list" class="item-list spend-list"></ul>
+      <p class="hint spend-hint">Hier siehst du, wie viel ihr eingekauft habt. Beträge sehen beide Personen. Einträge nach drei Jahren räumt die App von selbst auf.</p>
+    </section>
+
     <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
       <div class="section-head"><h2 id="settings-title">Einstellungen</h2><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <form id="settings-form" class="card">
@@ -183,7 +199,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.14 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.15 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -193,6 +209,7 @@
     <button type="button" data-tab="shopping" aria-current="page"><span class="tab-icon"><svg class="icon"><use href="#i-cart"/></svg></span><span class="tab-label">Einkauf</span></button>
     <button type="button" data-tab="recipes"><span class="tab-icon"><svg class="icon"><use href="#i-book"/></svg></span><span class="tab-label">Rezepte</span></button>
     <button type="button" data-tab="plan"><span class="tab-icon"><svg class="icon"><use href="#i-calendar"/></svg></span><span class="tab-label">Plan</span></button>
+    <button type="button" data-tab="spending"><span class="tab-icon"><svg class="icon"><use href="#i-chart"/></svg></span><span class="tab-label">Ausgaben</span></button>
     <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
   </nav>
   <div id="trash-zone" class="trash-zone" aria-hidden="true"><svg class="icon"><use href="#i-trash"/></svg></div>
@@ -262,6 +279,7 @@
       <p id="receipt-check" class="hint" role="status"></p>
       <div id="receipt-lines"></div>
       <details id="receipt-skipped" class="hint"><summary></summary><ul></ul></details>
+      <label id="receipt-spend-label" class="checkbox-label" hidden><input name="spend" type="checkbox"><span id="receipt-spend-text">Gesamtbetrag unter Ausgaben speichern</span></label>
       <button type="submit" id="receipt-save">Preise speichern</button>
       <button type="button" id="receipt-back" class="secondary">Anderen Text einfügen</button>
     </div>
@@ -290,6 +308,19 @@
     <p id="import-status" class="hint" role="status"></p>
     <button id="import-run" type="submit">Rezept laden</button>
     <p class="hint">Importierte Rezepte sind Vorschläge: Du prüfst und korrigierst alles, bevor es gespeichert wird.</p>
+  </form></dialog>
+  <dialog id="purchase-dialog"><form id="purchase-form" class="stack" novalidate><div class="sheet-head"><h2 id="purchase-title">Einkauf eintragen</h2><button type="button" data-close="purchase-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <input name="id" type="hidden">
+    <label class="file-drop compact"><input name="images" type="file" accept="image/*" multiple class="visually-hidden"><svg class="icon"><use href="#i-camera"/></svg><span>Kassenbon fotografieren oder Screenshot wählen</span></label>
+    <progress id="purchase-progress" max="100" value="0" hidden></progress>
+    <p id="purchase-status" class="hint" role="status"></p>
+    <label>Betrag (€)<input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off"></label>
+    <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
+    <label>Notiz (optional)<input name="note" maxlength="120" placeholder="z. B. Wocheneinkauf" autocomplete="off"></label>
+    <label id="purchase-prices-label" class="checkbox-label" hidden><input name="prices" type="checkbox"><span>Danach die Artikelpreise prüfen und übernehmen</span></label>
+    <button type="submit" id="purchase-save">Speichern</button>
+    <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>
+    <p class="hint">Die Texterkennung läuft auf deinem Gerät, das Bild wird nirgends hochgeladen. Fotos von Kassenzetteln werden oft ungenau gelesen, deshalb steht der erkannte Betrag nur als Vorschlag im Feld: Bitte vor dem Speichern prüfen. Digitale Bons und Screenshots klappen besser.</p>
   </form></dialog>
   <dialog id="meal-dialog"><form id="meal-form" class="stack"><div class="sheet-head"><h2 id="meal-title">Gericht planen</h2><button type="button" data-close="meal-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">
