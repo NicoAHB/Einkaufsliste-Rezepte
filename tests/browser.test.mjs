@@ -767,7 +767,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#add-purchase'); await sheetOpen(page);
     assert.equal(await page.inputValue('#purchase-form input[name=date]'), today);
     assert.equal(await page.locator('#purchase-delete').isHidden(), true);
-    await page.fill('#purchase-form input[name=amount]', '23,45'); await page.fill('#purchase-form input[name=note]', 'Wocheneinkauf');
+    assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf', 'neue Einträge beginnen mit „Wocheneinkauf“');
+    await page.fill('#purchase-form input[name=amount]', '23,45');
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /23,45\s€ unter Ausgaben gespeichert/);
     assert.match(await page.textContent('#spending-summary'), /Bisher ausgegeben[\s\S]*23,45\s€[\s\S]*1 Einkauf · Ø 23,45\s€/);
@@ -800,7 +801,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#spending-stores-card').isVisible());
     assert.deepEqual(await page.locator('#spending-stores .spend-store-head').evaluateAll(nodes => nodes.map(node => [...node.children].map(child => child.textContent.replace(/\s+/g, ' ').trim()).join(' | '))), ['Ohne Geschäft | 23,45 €', 'Lidl | 10,00 €']);
     // 5. Ändern: Betrag und Geschäft, dann löschen
-    await page.locator('#purchase-list .spend-row', { hasText: 'Wocheneinkauf' }).click(); await sheetOpen(page);
+    await page.locator('#purchase-list .spend-row', { hasText: '23,45' }).click(); await sheetOpen(page);
     assert.equal(await page.textContent('#purchase-title'), 'Einkauf ändern');
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '23,45');
     assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
@@ -808,7 +809,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe · Ø 20,00\s€/);
     assert.match(await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).textContent(), /Edeka[\s\S]*30,00\s€/);
-    assert.ok(!/Wocheneinkauf/.test(await page.textContent('#purchase-list')));
+    assert.ok(!/Wocheneinkauf/.test(await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).textContent()), 'die geleerte Notiz bleibt leer (kein Standard beim Ändern)');
     await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).click(); await sheetOpen(page);
     await page.selectOption('#purchase-form select[name=storeId]', ''); await page.click('#purchase-save');
     assert.match(await page.textContent('#purchase-list'), /Ohne Geschäft[\s\S]*30,00\s€/);
@@ -845,6 +846,202 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Morgen ist erlaubt (Zeitunterschiede), auch 1.234,56 und „€ 12“
     await addPurchase(page, { amount: '€ 12', date: isoDay(new Date(Date.now() + 86400000)) });
     assert.equal(await page.locator('#purchase-dialog[open]').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  const spendCenter = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
+  const spendHold = async (page, text) => {
+    const row = page.locator('#purchase-list .spend-row', { hasText: text });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const box = await row.boundingBox(), at = { x: box.x + 40, y: box.y + box.height / 2 };
+    await page.mouse.move(at.x, at.y); await page.mouse.down();
+    return { row, at };
+  };
+
+  for (const width of [280, 320, 390]) {
+    test(`Ausgaben: grünes „+“ im Betragsfeld sobald ein Betrag steht; Tipp darauf fügt hinzu und schließt die Tastatur (${width} px)`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
+      await open(page);
+      await page.click('[data-tab=spending]');
+      await page.click('#add-purchase'); await sheetOpen(page);
+      const amount = page.locator('#purchase-form input[name=amount]'), plus = page.locator('#purchase-plus');
+      const typing = () => page.evaluate(() => document.activeElement.matches('input,textarea,select'));
+      // Leeres Feld: kein „+“; mit Betrag erscheint es rechts im Feld, der Text endet davor
+      assert.equal(await plus.isVisible(), false, 'leeres Feld: kein „+“');
+      await amount.fill('1234,56');
+      assert.equal(await plus.isVisible(), true);
+      const box = await plus.boundingBox(), field = await amount.boundingBox();
+      assert.ok(box.x >= field.x && box.x + box.width <= field.x + field.width && box.y >= field.y && box.y + box.height <= field.y + field.height, 'das „+“ liegt im Feld');
+      assert.ok(field.x + field.width - (box.x + box.width) < 10, 'ganz rechts');
+      assert.ok(await amount.evaluate(node => parseFloat(getComputedStyle(node).paddingRight)) >= box.width + 6, 'der Text endet vor dem „+“');
+      assert.ok(box.width >= 40 && box.height >= 36, 'groß genug zum Tippen');
+      assert.ok(await plus.evaluate(node => getComputedStyle(node).backgroundColor !== 'rgba(0, 0, 0, 0)'), 'farbig (Akzentfarbe) gefüllt');
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.ok(await page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return dialog.scrollWidth <= dialog.clientWidth; }), 'Dialog läuft nicht über');
+      await amount.fill('');
+      assert.equal(await plus.isVisible(), false, 'Betrag gelöscht: „+“ weg');
+      // Tipp auf das „+“: gespeichert, Fenster zu, nichts mehr im Fokus (Tastatur zu)
+      await amount.focus(); await amount.fill('23,45');
+      await page.touchscreen.tap(...Object.values(await spendCenter(plus)));
+      await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+      assert.match(await page.textContent('#spending-summary'), /23,45\s€/);
+      assert.equal(await typing(), false, 'kein Feld mehr im Fokus');
+      // Fehlt etwas, schließt der Tipp auf das „+“ trotzdem die Tastatur und die Meldung bleibt sichtbar.
+      // iOS-Safari gibt Knöpfen beim Antippen keinen Fokus: Das Eingabefeld behielte ihn (und die Tastatur) ohne ausdrückliches Schließen.
+      await page.evaluate(() => document.addEventListener('mousedown', event => { if (event.target.closest('button')) event.preventDefault(); }, true));
+      await page.click('#add-purchase'); await sheetOpen(page);
+      await amount.focus(); await amount.fill('0');
+      await page.touchscreen.tap(...Object.values(await spendCenter(plus)));
+      await page.waitForSelector('#purchase-dialog [data-dialog-error]:not([hidden])');
+      assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /größer als 0/);
+      assert.equal(await typing(), false, 'Tastatur zu, obwohl nichts gespeichert wurde');
+      assert.ok(await page.locator('#purchase-dialog').evaluate(node => node.open));
+      // Ein Tipp ins Feld öffnet die Tastatur wieder; die Eingabetaste speichert weiterhin
+      await page.touchscreen.tap(...Object.values(await spendCenter(amount)));
+      assert.equal(await page.evaluate(() => document.activeElement.name), 'amount');
+      await amount.fill('7,50'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+      assert.match(await page.textContent('#spending-summary'), /30,95\s€/);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
+  test('Ausgaben: Notiz beginnt mit „Wocheneinkauf“, ein Tipp ins Feld zeigt Vorschläge, ein Tipp darauf übernimmt sie; eigene Notizen werden mitgelernt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    const note = page.locator('#purchase-form input[name=note]'), picks = page.locator('#purchase-note-picks'), chips = () => picks.locator('.chip').allTextContents();
+    const focusedName = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName);
+    await page.click('#add-purchase'); await sheetOpen(page);
+    assert.equal(await note.inputValue(), 'Wocheneinkauf');
+    assert.equal(await picks.isVisible(), false, 'ohne Tipp ins Feld keine Vorschläge');
+    // Tipp ins Feld: Vorschläge erscheinen, der Standard ist markiert und der Text ausgewählt (Tippen ersetzt ihn)
+    await page.touchscreen.tap(...Object.values(await spendCenter(note)));
+    await page.waitForSelector('#purchase-note-picks:not([hidden])');
+    assert.equal(await focusedName(), 'note');
+    assert.deepEqual((await chips()).slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
+    assert.equal(await picks.locator('.chip[aria-pressed=true]').textContent(), 'Wocheneinkauf');
+    assert.equal(await note.evaluate(node => node.selectionEnd - node.selectionStart), 'Wocheneinkauf'.length);
+    // Ein Tipp auf einen Vorschlag übernimmt ihn, schließt die Tastatur und blendet die Vorschläge aus
+    await picks.locator('.chip', { hasText: 'Getränke' }).tap();
+    assert.equal(await note.inputValue(), 'Getränke');
+    assert.equal(await picks.isVisible(), false);
+    assert.notEqual(await focusedName(), 'note', 'Tastatur zu');
+    await page.fill('#purchase-form input[name=amount]', '5'); await page.click('#purchase-save');
+    assert.match(await page.textContent('#purchase-list'), /Getränke[\s\S]*5,00\s€/);
+    // Eigene Notiz tippen: wird beim nächsten Mal vorgeschlagen (häufigste zuerst, nach dem Standard)
+    for (const amount of ['6', '7']) {
+      await page.click('#add-purchase'); await sheetOpen(page);
+      assert.equal(await note.inputValue(), 'Wocheneinkauf', 'jeder neue Eintrag beginnt wieder mit dem Standard');
+      await note.fill('Grillabend'); await page.fill('#purchase-form input[name=amount]', amount); await page.click('#purchase-save');
+    }
+    await page.click('#add-purchase'); await sheetOpen(page);
+    await note.focus();
+    assert.deepEqual((await chips()).slice(0, 4), ['Wocheneinkauf', 'Grillabend', 'Getränke', 'Großeinkauf']);
+    assert.equal(new Set(await chips()).size, (await chips()).length, 'keine doppelten Vorschläge');
+    assert.ok((await chips()).length <= 8);
+    // Ein Tipp auf „Wocheneinkauf“ setzt den Standard zurück; Tippen im Feld zeigt weiter alle Vorschläge
+    await note.fill('Gri'); assert.ok((await chips()).includes('Grillabend'));
+    await picks.locator('.chip', { hasText: 'Wocheneinkauf' }).click();
+    assert.equal(await note.inputValue(), 'Wocheneinkauf');
+    // Ein Tipp daneben blendet die Vorschläge wieder aus
+    await note.focus(); await page.waitForSelector('#purchase-note-picks:not([hidden])');
+    await page.click('#purchase-title'); await page.waitForSelector('#purchase-note-picks', { state: 'hidden' });
+    await page.keyboard.press('Escape');
+    // Beim Ändern bleibt die Notiz, wie sie ist: leer bleibt leer, es gibt keinen Standard
+    await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
+    assert.equal(await note.inputValue(), 'Getränke');
+    await note.fill(''); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
+    assert.equal(await note.inputValue(), '', 'geleerte Notiz bleibt leer');
+    assert.equal(await picks.isVisible(), false);
+    await note.focus(); assert.ok((await chips()).includes('Wocheneinkauf'), 'auch beim Ändern gibt es Vorschläge');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Eintrag lange halten und in den roten Mülleimer ziehen löscht ihn; kurzer Tipp ändert weiter, Loslassen daneben und Escape löschen nichts', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    for (const amount of ['11,11', '22,22', '33,33']) await addPurchase(page, { amount, note: `Notiz ${amount.slice(0, 2)}` });
+    const amounts = () => page.locator('#purchase-list .spend-amount').allTextContents().then(list => list.map(text => text.replace(/\s/g, ' ')));
+    assert.equal((await amounts()).length, 3);
+    const width = await page.evaluate(() => innerWidth);
+    // Halten und neben der Fläche loslassen: nichts gelöscht, nichts geöffnet
+    let { at } = await spendHold(page, '22,22');
+    await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#trash-zone.show').count(), 1, 'rote Fläche erscheint');
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0);
+    await page.mouse.move(at.x + 60, at.y, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal((await amounts()).length, 3, 'nicht in der Fläche losgelassen: nichts gelöscht');
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'das Loslassen nach langem Halten öffnet die Bearbeitung nicht');
+    assert.equal(await page.locator('#purchase-list .spend-item.drag-origin').count(), 0);
+    // Wer sich vor Ablauf der Haltezeit bewegt, scrollt nur
+    ({ at } = await spendHold(page, '22,22'));
+    await page.mouse.move(4, at.y + 40, { steps: 3 }); await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    await page.mouse.up();
+    // Escape bricht ab
+    ({ at } = await spendHold(page, '22,22'));
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 5 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.keyboard.press('Escape'); await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal((await amounts()).length, 3, 'abgebrochen: nichts gelöscht');
+    // Kurzer Tipp öffnet weiterhin die Bearbeitung
+    await page.locator('#purchase-list .spend-row', { hasText: '22,22' }).click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '22,22');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // In die Fläche ziehen und loslassen löscht
+    ({ at } = await spendHold(page, '22,22'));
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 80, at.y, { steps: 4 });
+    assert.equal(await page.locator('#trash-zone.hot').count(), 0, 'noch nicht an der Fläche');
+    await page.mouse.move(width - 40, at.y, { steps: 6 });
+    await page.waitForSelector('#trash-zone.hot');
+    await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#purchase-list .spend-amount')].some(node => /22,22/.test(node.textContent)));
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    assert.equal(await page.locator('#trash-zone.show').count(), 0, 'Fläche verschwindet wieder');
+    assert.match(await page.textContent('#notice-text'), /22,22\s€ gelöscht/);
+    assert.match(await page.textContent('#spending-summary'), /44,44\s€[\s\S]*2 Einkäufe/);
+    assert.equal((await amounts()).length, 2, 'die anderen Einträge bleiben');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben: Löschen per Ziehen mit dem Finger (Touch) kommt auf GitHub an; die Seite scrollt dabei nicht mit', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await page.click('[data-tab=spending]');
+    for (const amount of ['11,11', '22,22']) await addPurchase(page, { amount });
+    await synced(page);
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; });
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const row = page.locator('#purchase-list .spend-row', { hasText: '22,22' });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const scrolled = await page.evaluate(() => scrollY), at = await spendCenter(row), width = await page.evaluate(() => innerWidth);
+    await touch('touchStart', at.x - 60, at.y);
+    await page.waitForSelector('.drag-ghost');
+    for (let step = 1; step <= 8; step++) await touch('touchMove', at.x - 60 + (width - 30 - at.x + 60) * step / 8, at.y + step * 6);
+    await page.waitForSelector('#trash-zone.hot');
+    assert.equal(await page.evaluate(() => scrollY), scrolled, 'die Seite hat nicht mitgescrollt');
+    await touch('touchEnd');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#purchase-list .spend-amount')].some(node => /22,22/.test(node.textContent)));
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    const byCents = cents => remote.content.purchases.find(entry => entry.cents === cents);
+    assert.ok(byCents(2222).deletedAt, 'Löschmarkierung liegt auf GitHub');
+    assert.ok(!byCents(1111).deletedAt, 'der andere Eintrag bleibt');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

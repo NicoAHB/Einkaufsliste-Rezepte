@@ -14,7 +14,7 @@ import { emojiFor } from './emoji.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
-import { compareTotals, dayLabel as spendDay, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
+import { DEFAULT_NOTE, compareTotals, dayLabel as spendDay, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -1772,8 +1772,8 @@ function renderSpending() {
   $('#purchase-count').textContent = current.count ? countLabel(current.count, 'Eintrag', 'Einträge') : '';
   if (!current.count) list.append(element('li', 'Noch nichts eingetragen. Tippe oben auf „Einkauf“: Betrag eingeben oder einen Kassenbon lesen lassen.', 'empty'));
   for (const row of current.list) {
-    const item = element('li'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores);
-    open.type = 'button';
+    const item = element('li', undefined, 'spend-item'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores);
+    open.type = 'button'; item.dataset.id = row.id;
     copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : ''].filter(Boolean).join(' · ')));
     open.append(copy, element('span', euros(row.cents), 'spend-amount'));
     open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}: ändern`);
@@ -1800,12 +1800,27 @@ function openPurchase(id = '') {
   form.elements.id.value = row?.id || '';
   form.elements.amount.value = row ? formatAmount(row.cents) : '';
   form.elements.date.value = row?.date || (spendMonth === monthOf(isoDate()) ? isoDate() : lastDay(spendMonth));
-  form.elements.note.value = row?.note || '';
+  // Neue Einträge beginnen mit „Wocheneinkauf“ (Vorschläge zum Austauschen erscheinen beim Tippen ins Feld); beim Ändern bleibt die Notiz, wie sie ist.
+  form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; hideNotePicks();
   $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
   $('#purchase-delete').hidden = !row; $('#purchase-prices-label').hidden = true;
   $('#purchase-dialog').showModal();
   if (!row) form.elements.amount.focus();
 }
+// Vorschläge für die Notiz: erscheinen, sobald man ins Feld tippt; ein Tipp übernimmt den Vorschlag und schließt die Tastatur.
+let notePicksTimer = 0;
+function renderNotePicks() {
+  const form = $('#purchase-form'), box = $('#purchase-note-picks'), storeId = form.elements.storeId.value;
+  const store = active(state.stores).find(entry => entry.id === storeId)?.name || (purchaseEditing?.storeId === storeId ? purchaseEditing.storeName || '' : '');
+  box.replaceChildren();
+  for (const text of noteSuggestions(purchaseRows(), store)) {
+    const chip = element('button', text, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(text === form.elements.note.value.trim()));
+    chip.addEventListener('click', () => { form.elements.note.value = text; hideNotePicks(); form.elements.note.blur(); });
+    box.append(chip);
+  }
+  box.hidden = false;
+}
+function hideNotePicks() { clearTimeout(notePicksTimer); $('#purchase-note-picks').hidden = true; }
 // Foto oder Screenshot eines Kassenbons: Text erkennen, Summe/Datum/Geschäft als Vorschlag in die Felder eintragen. Gespeichert wird erst mit „Speichern“.
 async function readPurchasePhoto(files) {
   if (!files.length || purchaseAbort) return;
@@ -2209,7 +2224,28 @@ $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
 $('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });
 $('#month-next').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, 1); renderSpending(); });
 $('#month-today').addEventListener('click', () => { spendMonth = monthOf(isoDate()); renderSpending(); });
-$('#purchase-form').addEventListener('submit', event => { event.preventDefault(); guard(savePurchase); });
+// Das „+“ im Betragsfeld: Ein Tipp darauf fügt den Einkauf hinzu und schließt die Tastatur (auch wenn etwas fehlt, damit die Meldung nicht verdeckt wird).
+let purchasePlus = 0;
+$('#purchase-plus').addEventListener('pointerdown', () => { purchasePlus = Date.now(); });
+$('#purchase-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (Date.now() - purchasePlus < 1500) document.activeElement?.blur?.();
+  purchasePlus = 0; guard(savePurchase);
+});
+{
+  const note = $('#purchase-form').elements.note;
+  note.addEventListener('focus', () => { clearTimeout(notePicksTimer); renderNotePicks(); setTimeout(() => { if (document.activeElement === note) note.select(); }, 0); });
+  // Kurz verzögert, damit ein Tipp auf einen Vorschlag noch ankommt, wenn das Feld dabei den Fokus verliert.
+  note.addEventListener('blur', () => { clearTimeout(notePicksTimer); notePicksTimer = setTimeout(hideNotePicks, 250); });
+  note.addEventListener('input', () => { renderNotePicks(); });
+  $('#purchase-form').elements.storeId.addEventListener('change', () => { if (!$('#purchase-note-picks').hidden) renderNotePicks(); });
+}
+// Einträge wie Artikel löschen: Zeile lange halten und nach rechts in den roten Mülleimer schieben (statt nachträglich zu bearbeiten).
+dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
+  const row = purchaseRows().find(entry => entry.id === id);
+  if (!row) return;
+  removeRows('purchases', [id]); showNotice(`${euros(row.cents)} gelöscht`);
+}), '.spend-item[data-id]');
 $('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
 $('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
 $('#purchase-delete').addEventListener('click', () => guard(() => {

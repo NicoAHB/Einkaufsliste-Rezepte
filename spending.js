@@ -1,6 +1,7 @@
 /* Ausgaben: Einkaufsbeträge erfassen und je Monat auswerten. Reine Logik ohne DOM. Beträge sind ganze Cent; Tage haben die Form JJJJ-MM-TT,
    Monate JJJJ-MM. Ein Eintrag (Sammlung `purchases`): { date, cents, storeId?, storeName?, note?, source? }. */
 import { validDay } from './data.js';
+import { chainOf } from './brand.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
 export const SOURCES = ['bon', 'hand'];     // aus einem Kassenbon-Foto/-Screenshot erkannt oder von Hand eingegeben
@@ -95,3 +96,27 @@ export function recentMonths(rows, month, count = 6) {
 // Der früheste und der späteste Monat mit Einträgen (zum Begrenzen der Pfeile), sonst der angegebene.
 export const firstMonth = (rows, fallback) => rows.reduce((first, row) => (monthOf(row.date) < first ? monthOf(row.date) : first), fallback);
 export const latestMonth = (rows, fallback) => rows.reduce((last, row) => (monthOf(row.date) > last ? monthOf(row.date) : last), fallback);
+
+/* ---------- Notiz ---------- */
+export const DEFAULT_NOTE = 'Wocheneinkauf';
+const NOTE_IDEAS = ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke', 'Drogerie', 'Obst & Gemüse', 'Grillen', 'Besuch'];
+/* Vorschläge für die Notiz eines Einkaufs, höchstens `limit`: zuerst „Wocheneinkauf“ (der Standard), danach „Drogerie“, wenn das Geschäft eine Drogerie ist,
+   danach die bisher am häufigsten benutzten eigenen Notizen (bei gleicher Häufigkeit die zuletzt benutzte), zuletzt feste Ideen. Doppelte (auch in anderer
+   Groß-/Kleinschreibung) erscheinen einmal; zu lange Notizen (über 30 Zeichen) sind keine Vorschläge. */
+export function noteSuggestions(rows, storeName = '', limit = 8) {
+  const used = new Map();
+  for (const row of rows) {
+    const text = String(row.note ?? '').trim().replace(/\s+/g, ' ');
+    if (!text || text.length > 30) continue;
+    const key = text.toLocaleLowerCase('de'), entry = used.get(key) || { text, count: 0, last: '' };
+    entry.count += 1; if (`${row.date}|${row.createdAt ?? ''}` > entry.last) { entry.last = `${row.date}|${row.createdAt ?? ''}`; entry.text = text; }
+    used.set(key, entry);
+  }
+  const own = [...used.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).map(entry => entry.text);
+  const result = [], seen = new Set();
+  for (const text of [DEFAULT_NOTE, ...(chainOf(storeName)?.drugstore ? ['Drogerie'] : []), ...own.slice(0, 4), ...NOTE_IDEAS]) {
+    const key = text.toLocaleLowerCase('de');
+    if (!seen.has(key)) { seen.add(key); result.push(text); }
+  }
+  return result.slice(0, limit);
+}

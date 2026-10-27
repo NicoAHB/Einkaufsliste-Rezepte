@@ -498,6 +498,7 @@ main {
 }
 /* Das „+“ sitzt im Namensfeld, rechts, und erscheint erst, wenn etwas getippt ist. */
 .name-field {
+  display:block;
   position:relative
 }
 .name-field input {
@@ -2528,4 +2529,28 @@ details,summary,.card {
   .spend-chart button {
     font-size:.6rem
   }
+}
+
+/* Ausgaben: Einträge wie Artikel in den Mülleimer ziehen; Notiz-Vorschläge unter dem Feld */
+.spend-item {
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
+}
+.spend-item.drag-origin {
+  opacity:.3
+}
+.drag-ghost.spend-item {
+  list-style:none
+}
+.note-picks {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:-4px 0 12px
+}
+.note-picks .chip {
+  min-height:38px;
+  padding:0 14px;
+  font-size:.92rem
 }
