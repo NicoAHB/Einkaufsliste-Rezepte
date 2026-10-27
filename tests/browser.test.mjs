@@ -139,6 +139,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         ['Import Text', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=text]'); }],
         ['Kochmodus', async () => { await page.click('[data-tab=recipes]'); await page.locator('.recipe-card').first().getByRole('button', { name: 'Kochen' }).click(); }],
         ['Kassenbon', () => page.click('#open-receipt')],
+        ['Was kann ich kochen?', async () => { await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); }],
         ['Einkauf eintragen', async () => { await page.click('[data-tab=spending]'); await page.click('#add-purchase'); }],
         ['Gericht planen', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); }],
         ['Einkauf für die Woche', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); await page.selectOption('#meal-form select[name=recipeId]', { index: 1 }); await page.click('#meal-form button[type=submit]'); await page.click('#plan-shopping'); }]]) {
@@ -1495,6 +1496,123 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
     assert.ok(text.includes('Tomaten') && text.includes('Äpfel'), 'offene bleiben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Einkauf beenden: Betrag mit dem „+“ direkt unter Ausgaben speichern; Fehler lassen alles unverändert, die Tastatur schließt sich', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const typing = () => page.evaluate(() => document.activeElement.matches('input,textarea,select'));
+    const center = async locator => { const box = await locator.boundingBox(); return [box.x + box.width / 2, box.y + box.height / 2]; };
+    // iOS-Safari gibt Knöpfen beim Antippen keinen Fokus
+    await page.evaluate(() => document.addEventListener('mousedown', event => { if (event.target.closest('button')) event.preventDefault(); }, true));
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
+    await page.locator('.shop-tap', { hasText: 'Milch' }).click();
+    await page.click('#shop-finish'); await sheetOpen(page);
+    const amount = page.locator('#finish-form input[name=amount]'), plus = page.locator('#finish-form .add-button');
+    assert.equal(await plus.isVisible(), false, 'leeres Feld: kein „+“');
+    // Eingabetaste ohne Betrag: Hinweis, nichts passiert
+    await amount.focus(); await page.keyboard.press('Enter');
+    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Betrag eingeben oder „Nur beenden“/);
+    // Ungültiger Betrag: Meldung, Tastatur zu, Fenster offen, Milch bleibt abgehakt und auf der Liste
+    await amount.fill('abc'); assert.equal(await plus.isVisible(), true);
+    await page.touchscreen.tap(...await center(plus));
+    await page.waitForFunction(() => /Betrag in Euro eingeben/.test(document.querySelector('#finish-dialog [data-dialog-error]')?.textContent || ''));
+    assert.equal(await typing(), false, 'Tastatur zu');
+    assert.ok(await page.locator('#finish-dialog').evaluate(node => node.open));
+    let data = await stored();
+    assert.ok(!data.items.find(row => row.name === 'Milch').deletedAt, 'Milch noch nicht entfernt');
+    assert.equal((data.purchases || []).length, 0);
+    // Gültiger Betrag: Einkauf beendet, Betrag gespeichert (Geschäft, heute, Notiz „Wocheneinkauf“)
+    await amount.fill('12,50');
+    await page.touchscreen.tap(...await center(plus));
+    await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /12,50\s€ unter Ausgaben gespeichert/);
+    data = await stored();
+    assert.ok(data.items.find(row => row.name === 'Milch').deletedAt, 'Milch ist von der Liste entfernt');
+    const purchases = data.purchases.filter(row => !row.deletedAt);
+    assert.equal(purchases.length, 1);
+    assert.deepEqual([purchases[0].cents, purchases[0].storeId, purchases[0].storeName, purchases[0].note, purchases[0].source, purchases[0].date], [1250, 'store-lidl', 'Lidl', 'Wocheneinkauf', 'hand', isoDay(new Date())]);
+    await page.click('[data-tab=spending]');
+    assert.match(await page.textContent('#spending-summary'), /12,50\s€/);
+    assert.match(await page.textContent('#purchase-list'), /Lidl · Wocheneinkauf[\s\S]*12,50\s€/);
+    // „Nur beenden“ ignoriert das Feld und speichert nichts
+    await page.click('[data-tab=shopping]');
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click(); await page.locator('.shop-tap', { hasText: 'Tomaten' }).click();
+    await page.click('#shop-finish'); await sheetOpen(page);
+    assert.equal(await amount.inputValue(), '', 'das Feld ist bei jedem Öffnen leer');
+    await amount.fill('99'); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.equal((await stored()).purchases.filter(row => !row.deletedAt).length, 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Was kann ich kochen?: Vorschläge aus Vorrat und Einkaufsliste, Fehlendes auf die Liste, Eingekauftes zählt auch nach „Einkauf beenden“', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const cards = () => page.locator('#cookable-list .cookable-card');
+    const status = name => cards().filter({ hasText: name }).locator('.cookable-status').textContent();
+    const openList = async () => { await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page); };
+    // 1. Die Beispielliste hat Nudeln und Tomaten (offen): Tomaten-Pasta fehlen Zwiebel und Olivenöl; Curry und Pfannkuchen passen kaum
+    await openList();
+    assert.deepEqual(await cards().locator('h3').allTextContents(), ['Tomaten-Pasta']);
+    assert.match(await status('Tomaten-Pasta'), /Es fehlen 2 von 4 Zutaten/);
+    assert.match(await cards().first().locator('.cookable-lines').textContent(), /Kommt noch: Nudeln, Tomaten[\s\S]*Fehlt: Zwiebel, Olivenöl/);
+    // 2. „Fehlendes auf die Liste“: nur Zwiebel und Olivenöl sind vorausgewählt
+    await cards().first().getByRole('button', { name: 'Fehlendes auf die Liste' }).click();
+    await page.waitForSelector('#transfer-dialog[open]');
+    assert.equal(await page.locator('#cookable-dialog[open]').count(), 0, 'das Vorschlagsfenster ist zu');
+    const picked = await page.locator('#transfer-ingredients label').evaluateAll(nodes => nodes.map(node => [node.querySelector('span').textContent.replace(/\s+/g, ' '), node.querySelector('input').checked]));
+    assert.deepEqual(picked.map(entry => entry[1]), [false, false, true, true], JSON.stringify(picked));
+    await page.keyboard.press('Escape');
+    // 3. Zwiebel und Olivenöl im Vorrat: alles da, sobald ihr einkauft
+    await openSettings(page);
+    for (const name of ['Zwiebeln', 'Olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button[type=submit]'); }
+    await openList();
+    assert.match(await status('Tomaten-Pasta'), /Alles da, sobald ihr einkauft \(2 von der Liste\)/);
+    assert.match(await cards().first().locator('.cookable-lines').textContent(), /Da: Zwiebel, Olivenöl[\s\S]*Kommt noch: Nudeln, Tomaten/);
+    assert.equal(await cards().first().getByRole('button', { name: 'Fehlendes auf die Liste' }).count(), 0, 'nichts fehlt');
+    assert.match(await page.textContent('#cookable-count'), /1 nach dem Einkauf/);
+    await page.keyboard.press('Escape');
+    // 4. Nudeln und Tomaten eingekauft (abgehakt), Einkauf beendet: sie sind von der Liste weg, zählen aber noch als da
+    await page.click('[data-tab=shopping]');
+    await page.getByRole('button', { name: 'Nudeln: abhaken' }).click(); await page.getByRole('button', { name: 'Tomaten: abhaken' }).click();
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await page.click('#shop-finish'); await sheetOpen(page); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    await page.click('#shop-back');
+    assert.ok(!(await page.textContent('#items')).includes('Nudeln'), 'von der Liste entfernt');
+    await openList();
+    assert.equal(await status('Tomaten-Pasta'), 'Alles da');
+    assert.match(await page.textContent('#cookable-count'), /1 Rezept könnt ihr sofort kochen/);
+    // 5. Kochen öffnet den Kochmodus, das Vorschlagsfenster schließt sich
+    await cards().first().getByRole('button', { name: 'Kochen' }).click();
+    await page.waitForSelector('#cook-dialog[open]');
+    assert.equal(await page.locator('#cookable-dialog[open]').count(), 0);
+    assert.match(await page.textContent('#cook-title'), /Tomaten-Pasta/);
+    await page.keyboard.press('Escape');
+    // 6. Einplanen öffnet den Wochenplan-Dialog mit dem Rezept
+    await openList();
+    await cards().first().getByRole('button', { name: /im Wochenplan einplanen/ }).click();
+    await page.waitForSelector('#meal-dialog[open]');
+    assert.equal(await page.inputValue('#meal-form select[name=recipeId]'), 'recipe-pasta');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Was kann ich kochen?: ohne Treffer ein Hinweis; entfernte, nicht abgehakte Artikel zählen nicht als eingekauft', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    // Liste leeren (Artikel ohne Abhaken löschen): nichts ist da, nichts kommt noch
+    await page.click('[data-tab=shopping]');
+    for (const name of ['Tomaten', 'Nudeln', 'Milch', 'Äpfel']) { await page.locator('#items .item', { hasText: name }).locator('.item-copy').click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('dialog[open]', { state: 'detached' }); }
+    await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page);
+    assert.match(await page.textContent('#cookable-count'), /Noch passt kein Rezept/);
+    assert.match(await page.textContent('#cookable-list'), /Einstellungen → Vorrat/);
+    assert.equal(await page.locator('#cookable-list .cookable-card').count(), 0, 'gelöschte, nicht abgehakte Artikel gelten nicht als eingekauft');
+    await page.keyboard.press('Escape');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

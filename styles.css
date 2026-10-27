@@ -2554,3 +2554,62 @@ details,summary,.card {
   padding:0 14px;
   font-size:.92rem
 }
+
+/* Was kann ich kochen? */
+.cookable-list {
+  display:grid;
+  gap:10px
+}
+.cookable-card {
+  margin:0;
+  padding:14px
+}
+.cookable-card h3 {
+  margin:0 0 2px;
+  font-size:1.08rem;
+  line-height:1.3;
+  overflow-wrap:anywhere
+}
+.cookable-status {
+  margin:0 0 6px;
+  font-size:.92rem;
+  font-weight:700
+}
+.cookable-status.tier0,.cookable-status.tier1 {
+  color:var(--accent)
+}
+.cookable-status.tier2 {
+  color:var(--muted)
+}
+.cookable-lines {
+  margin:0 0 10px;
+  padding:0;
+  list-style:none;
+  font-size:.9rem;
+  line-height:1.4;
+  overflow-wrap:anywhere
+}
+.cookable-lines li+li {
+  margin-top:2px
+}
+.cookable-lines strong {
+  color:var(--muted)
+}
+.cookable-card .actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center
+}
+.cookable-card .actions button:not(.icon-button) {
+  min-height:44px;
+  padding:0 14px
+}
+.cookable-how {
+  margin-top:12px
+}
+.cookable-how summary {
+  cursor:pointer;
+  color:var(--accent);
+  font-weight:650
+}
