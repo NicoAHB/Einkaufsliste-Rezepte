@@ -48,6 +48,7 @@
     <symbol id="i-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
     <symbol id="i-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
     <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
   </svg>
 
@@ -94,11 +95,15 @@
       </div>
       <div id="shop-view" hidden>
         <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div><button id="shop-back" class="chip-button" type="button" aria-label="Zurück zu Planen">Planen</button></div>
-        <p id="shop-status" class="shop-status" aria-live="polite"></p>
+        <div class="shop-statusrow"><p id="shop-status" class="shop-status" aria-live="polite"></p>
+          <button id="shop-lock" class="icon-button round" type="button" aria-label="Sperren" title="Sperren: Tippen bewirkt nichts, bis du entsperrst"><svg class="icon"><use href="#i-lock"/></svg></button></div>
         <ul id="shop-list" class="item-list shop-list"></ul>
         <label id="shop-awake-label" class="checkbox-label" hidden><input id="shop-awake" type="checkbox"> Bildschirm anlassen</label>
         <p id="shop-awake-hint" class="hint" role="status"></p>
-        <button id="shop-finish" type="button" class="secondary">Einkauf beenden</button>
+        <label id="shop-autolock-label">Automatisch sperren<select id="shop-autolock"><option value="0">Nie</option><option value="10">Nach 10 Sekunden ohne Berührung</option><option value="20">Nach 20 Sekunden</option><option value="30">Nach 30 Sekunden</option><option value="60">Nach 1 Minute</option><option value="120">Nach 2 Minuten</option></select></label>
+        <p class="hint">Gesperrt bewirkt Tippen nichts (auch nicht im Handy in der Tasche), Scrollen geht weiter. Zum Entsperren den Knopf unten gedrückt halten. Auch beim Zurückkehren zur App ist sie gesperrt.</p>
+        <button id="shop-finish" type="button" class="secondary hold-button"><span>Einkauf beenden</span></button>
+        <p class="hint">Zum Beenden den Knopf gedrückt halten, damit es nicht aus Versehen passiert.</p>
       </div>
     </section>
 
@@ -216,7 +221,7 @@
         </div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.24 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.25 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -230,11 +235,12 @@
     <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
   </nav>
   <div id="trash-zone" class="trash-zone" aria-hidden="true"><svg class="icon"><use href="#i-trash"/></svg></div>
+  <div id="shop-lockbar" class="lockbar" hidden><svg class="icon"><use href="#i-lock"/></svg><span>Gesperrt</span><button id="shop-unlock" type="button" class="hold-button"><span>Zum Entsperren gedrückt halten</span></button></div>
   <div id="move-bar" class="move-bar" aria-hidden="true" hidden></div>
   <div id="drag-hint" class="drag-hint" aria-hidden="true">Auf ein Geschäft ziehen: verschieben · ganz nach rechts: löschen</div>
   <dialog id="move-dialog"><div class="stack"><div class="sheet-head"><h2>Verschieben nach</h2><button type="button" data-close="move-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div></div></dialog>
-  <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span></aside>
+  <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>
   <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button>Geschäft hinzufügen</button></form></dialog>

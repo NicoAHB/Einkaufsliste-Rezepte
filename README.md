@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.24
+# Einkauf & Rezepte – Version 2.25
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,25 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.25: Schutz vor versehentlichen Berührungen im Laden
+
+Anlass: Das Handy mit eingeschaltetem Bildschirm in der Hosentasche löst leicht „Einkauf beenden“ aus oder hakt Artikel ab. Alles gilt nur in der Ansicht **Im Laden**.
+
+- **Abhaken nur über den Kreis.** In der Zeile ist nur noch der **Kreis links** antippbar (Tippfläche 76 × 68 px, der Kreis selbst 42 px). Tippen auf Name, Menge oder den Rest der Zeile bewirkt nichts. Das gilt auch zum Wieder-Öffnen unter „Erledigt“.
+- **Rückgängig.** Nach dem Abhaken steht unten sechs Sekunden lang „„Tomaten“ abgehakt · **Rückgängig**“. Ein versehentlich abgehakter Artikel verschwindet sonst aus der offenen Liste und wird leicht vergessen.
+- **„Einkauf beenden“ gedrückt halten (0,7 s).** Der Knopf füllt sich beim Halten. Ein kurzer Tipp zeigt nur den Hinweis „Zum Beenden gedrückt halten“; Loslassen oder Wegziehen vor der Zeit bricht ab. Mit Tastatur und Bedienhilfen (VoiceOver) geht es weiter mit einem normalen Aktivieren. Das Beenden-Fenster selbst hat wie bisher seine eigenen Knöpfe.
+- **Sperre.** Das **Schloss** rechts neben „Noch … offen“ sperrt die Ansicht: Tippen auf Artikel, Geschäfte, „Planen“, die Reiter unten und „Einkauf beenden“ bewirkt **nichts** (ein kurzer Hinweis „Gesperrt · unten gedrückt halten zum Entsperren“ erscheint). **Scrollen geht weiter**, damit man die Liste trotzdem lesen kann. Zum **Entsperren** den Knopf **„Zum Entsperren gedrückt halten“** (0,6 s, 56 px hoch) unten halten.
+- **Automatisch sperren.** Unten in der Ansicht steht **Automatisch sperren** (Nie, 10, 20, **30 Sekunden (Standard)**, 1 oder 2 Minuten ohne Berührung). Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Zeit zurück. Mitten in einem offenen Fenster (z. B. Beenden) wird nicht gesperrt. Außerdem ist die App **gesperrt, wenn man aus dem Hintergrund zurückkommt** (Bildschirm aus, andere App), solange die Einstellung nicht „Nie“ ist.
+- **Gemerkt pro Gerät** (`shopLock` in Sekunden, `shopLocked` für den Zustand): Nach einem Neuladen bleibt es gesperrt; außerhalb von „Im Laden“ gibt es keine Sperre.
+- **Was es nicht gibt:** Ob das Handy in der Tasche steckt, kann eine Web-App nicht erkennen (kein Zugriff auf den Näherungssensor). Deshalb hilft die Zeit bis zur Sperre; die ersten Sekunden nach der letzten Berührung sind nicht geschützt. Wer das stört, stellt eine kürzere Zeit ein.
+
+Weitere Testpunkte für Version 2.25:
+
+- [ ] Im Laden: Auf den **Namen** eines Artikels tippen: nichts. Auf den **Kreis** tippen: abgehakt, unten steht **Rückgängig** (antippen nimmt es zurück).
+- [ ] **Einkauf beenden** kurz antippen: nur der Hinweis. **Gedrückt halten**: Der Knopf füllt sich, nach etwa einer Dreiviertelsekunde öffnet sich das Fenster; Loslassen ändert nichts.
+- [ ] **Schloss** tippen: Alles ist gesperrt. Tippen auf Artikel, „Planen“, Reiter: nichts. Entsperren-Knopf gedrückt halten: wieder bedienbar.
+- [ ] Im Laden eine Weile nichts berühren (30 Sekunden): Die Ansicht sperrt sich. Bildschirm sperren, wieder einschalten: gesperrt. Mit **Nie** passiert das nicht.
 
 ## Neu in Version 2.24: Kassenbon-Namen vorsichtiger, falsche Preise und Zuordnungen entfernbar
 

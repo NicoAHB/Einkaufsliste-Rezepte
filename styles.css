@@ -1419,6 +1419,13 @@ button.link-button {
   animation:rise .2s ease-out;
   pointer-events:none
 }
+.toast button {
+  pointer-events:auto;
+  flex:none;
+  color:inherit;
+  text-decoration:underline;
+  font-weight:700
+}
 [hidden] {
   display:none!important
 }
@@ -1646,11 +1653,23 @@ dialog.cook {
   font-size:1.08rem;
   font-weight:650
 }
+.shop-statusrow {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:0 0 8px
+}
+.shop-statusrow .icon-button {
+  flex:none
+}
 .shop-status {
   display:flex;
   align-items:center;
+  flex:1;
+  min-width:0;
   gap:8px;
-  margin:0 0 8px;
+  margin:0;
   font-size:1rem;
   font-weight:650
 }
@@ -1690,6 +1709,8 @@ body.in-store main {
   list-style:none
 }
 .shop-item {
+  display:flex;
+  align-items:stretch;
   border-bottom:1px solid var(--line)
 }
 .shop-item:last-child {
@@ -1698,25 +1719,35 @@ body.in-store main {
 .shop-tap {
   display:flex;
   align-items:center;
-  justify-content:flex-start;
-  gap:16px;
-  width:100%;
+  justify-content:center;
+  flex:none;
+  width:76px;
   min-height:68px;
-  padding:12px 16px;
+  padding:0;
   border:0;
   border-radius:0;
   background:transparent;
-  color:var(--text);
+  color:var(--text)
+}
+.shop-text {
+  display:flex;
+  align-items:center;
+  flex:1;
+  min-width:0;
+  gap:16px;
+  padding:12px 16px 12px 0;
   font-size:1.3rem;
-  text-align:left
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
 }
 .shop-mark {
   display:grid;
   place-items:center;
   flex:none;
-  width:38px;
-  height:38px;
-  border:2px solid var(--line-strong);
+  width:42px;
+  height:42px;
+  border:3px solid var(--line-strong);
   border-radius:50%;
   color:var(--on-accent)
 }
@@ -3163,4 +3194,78 @@ output {
     -webkit-backdrop-filter:none;
     backdrop-filter:none
   }
+}
+
+/* Schutz vor versehentlichen Berührungen: Knöpfe, die man gedrückt halten muss, und die Sperre im Laden */
+.hold-button {
+  position:relative;
+  overflow:hidden;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
+}
+.hold-button>* {
+  position:relative;
+  pointer-events:none
+}
+.hold-button::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:var(--accent);
+  opacity:.28;
+  transform:scaleX(0);
+  transform-origin:left;
+  pointer-events:none
+}
+.hold-button.holding::after {
+  transform:scaleX(1);
+  transition:transform var(--hold,700ms) linear
+}
+.lockbar {
+  position:fixed;
+  left:12px;
+  right:12px;
+  bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-bottom));
+  z-index:24;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  max-width:560px;
+  margin:0 auto;
+  padding:10px 10px 10px 16px;
+  border:1px solid var(--line-strong);
+  border-radius:20px;
+  background:var(--card);
+  color:var(--text);
+  font-weight:700;
+  box-shadow:0 10px 30px rgba(0,0,0,.3)
+}
+.lockbar .icon {
+  flex:none;
+  width:24px;
+  height:24px
+}
+.lockbar button {
+  flex:1;
+  min-height:56px;
+  min-width:0;
+  line-height:1.2
+}
+body.shop-locked #shop-view {
+  padding-bottom:96px
+}
+body.shop-locked .toast {
+  bottom:calc(var(--tabs-h) + 100px + env(safe-area-inset-bottom))
+}
+@media(max-width:360px) {
+  .lockbar>span {
+    display:none
+  }
+}
+:root[data-glass] .lockbar {
+  background:var(--glass-strong);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  border:1px solid var(--glass-line)
 }

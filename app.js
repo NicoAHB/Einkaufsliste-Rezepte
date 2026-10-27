@@ -1,7 +1,7 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
-import { ALL_STORES, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
@@ -131,11 +131,14 @@ function nextOp(collection, id, patch) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   return operation(collection, id, patch, config.actor || 'Unbekannt', new Date(lastTime).toISOString());
 }
-// Kurzer Hinweis ohne Knopf; verschwindet von selbst.
-function showNotice(text) {
+// Kurzer Hinweis; verschwindet von selbst. Mit `undo` steht ein Knopf „Rückgängig“ dabei (etwas länger sichtbar).
+let noticeUndo = null;
+function showNotice(text, undo = null) {
   $('#notice-text').textContent = text; $('#notice').hidden = false;
-  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; }, 4000);
+  noticeUndo = undo; $('#notice-undo').hidden = !undo;
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; noticeUndo = null; }, undo ? 6000 : 4000);
 }
+$('#notice-undo').addEventListener('click', () => { const undo = noticeUndo; noticeUndo = null; $('#notice').hidden = true; clearTimeout(noticeTimer); if (undo) guard(undo); });
 function commit(ops, notice = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (!ops.length) return;
@@ -1512,21 +1515,89 @@ function applyMode() {
   $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
   $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
   if (on) renderShop();
-  syncShopAwake(); syncChrome();
+  syncShopAwake(); syncChrome(); syncShopLock();
 }
 // Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
-function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); }
+function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); armLock(); }
 function syncShopAwake() {
   const supported = 'wakeLock' in navigator;
   $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && config.shopAwake === true && !awake.shop.failed;
   const want = supported && config.shopAwake === true && shopOn() && !$('#shopping').hidden && !document.hidden;
   void keepAwake('shop', want);
 }
+/* ---------- Schutz vor versehentlichen Berührungen ---------- */
+// Gedrückt halten statt Tippen: Der Knopf füllt sich, nach `ms` wird `action` ausgeführt. Ein kurzer Tipp tut nichts (nur ein Hinweis).
+// Tastatur und Bedienhilfen (kein Zeigerereignis, nur „click“) lösen die Aktion sofort aus.
+function holdToConfirm(node, ms, action, hint = '') {
+  let timer = null, startX = 0, startY = 0, pointer = false, reset = 0;
+  node.style.setProperty('--hold', `${ms}ms`);
+  const stop = () => { clearTimeout(timer); timer = null; node.classList.remove('holding'); };
+  const settle = () => { clearTimeout(reset); reset = setTimeout(() => { pointer = false; }, 800); };   // das „click“ nach dem Loslassen gehört noch zum Zeiger
+  node.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    pointer = true; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
+    stop(); node.classList.add('holding');
+    timer = setTimeout(() => { stop(); settle(); navigator.vibrate?.(15); guard(action); }, ms);
+  });
+  node.addEventListener('pointermove', event => { if (timer !== null && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) stop(); });
+  node.addEventListener('pointerleave', stop);
+  for (const type of ['pointerup', 'pointercancel']) node.addEventListener(type, event => {
+    const early = timer !== null; stop(); settle();
+    if (early && type === 'pointerup' && hint && !isLocked()) showNotice(hint);
+  });
+  node.addEventListener('click', event => { event.preventDefault(); if (!pointer) guard(action); });
+  node.addEventListener('contextmenu', event => event.preventDefault());
+}
+// Sperre: Gesperrt bewirkt Tippen nichts (Scrollen geht weiter). Zum Entsperren den Knopf unten gedrückt halten. Sie greift von selbst nach einiger Zeit ohne
+// Berührung (einstellbar) und wenn die App aus dem Hintergrund zurückkommt; der Zustand wird gemerkt (auch nach einem Neuladen noch gesperrt).
+let lockTimer = null, lockHint = 0;
+const isLocked = () => config.shopLocked === true && shopOn();   // die gemerkte Einstellung ist die Quelle der Wahrheit (die Einstellungen werden erst beim Start geladen)
+function setLocked(on) {
+  const next = on && shopOn();
+  if ((config.shopLocked === true) !== next) saveConfig({ ...config, shopLocked: next });
+  syncShopLock();
+}
+function syncShopLock() {
+  if (!shopOn() && config.shopLocked === true) saveConfig({ ...config, shopLocked: false });   // außerhalb von „Im Laden“ gibt es keine Sperre
+  const locked = isLocked();
+  document.body.classList.toggle('shop-locked', locked);
+  $('#shop-lockbar').hidden = !locked; $('#shop-lock').hidden = locked;
+  $('#shop-autolock').value = String(lockSeconds(config.shopLock));
+  armLock();
+}
+function armLock() {
+  clearTimeout(lockTimer); lockTimer = null;
+  const seconds = lockSeconds(config.shopLock);
+  if (!seconds || isLocked() || !shopOn() || $('#shopping').hidden || document.hidden) return;
+  lockTimer = setTimeout(() => {
+    if (document.querySelector('dialog[open]')) { armLock(); return; }   // mitten in einem Fenster (z. B. Beenden) wird nicht gesperrt
+    setLocked(true);
+  }, seconds * 1000);
+}
+// Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
+for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“.
+document.addEventListener('click', event => {
+  if (!isLocked() || event.target.closest?.('#shop-lockbar')) return;
+  event.preventDefault(); event.stopPropagation();
+  if (Date.now() - lockHint > 3000) { lockHint = Date.now(); showNotice('Gesperrt · unten gedrückt halten zum Entsperren'); }
+}, true);
+// Aus dem Hintergrund (Bildschirm aus, Hosentasche, andere App) kommt man gesperrt zurück.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && shopOn() && !$('#shopping').hidden && lockSeconds(config.shopLock) > 0) setLocked(true);
+  else armLock();
+});
+$('#shop-lock').addEventListener('click', () => guard(() => setLocked(true)));
+$('#shop-autolock').addEventListener('change', () => guard(() => { saveConfig({ ...config, shopLock: Number($('#shop-autolock').value) }); armLock(); }));
+holdToConfirm($('#shop-unlock'), HOLD_UNLOCK_MS, () => setLocked(false));
+
+// Abgehakt wird nur über den Kreis links (große Tippfläche); Tippen auf den Namen bewirkt nichts. So hakt man nicht aus Versehen etwas ab, wenn man das Handy anfasst.
 function shopRow(item) {
   const row = element('li', undefined, `shop-item${item.checked ? ' checked' : ''}`);
   const tap = element('button', undefined, 'shop-tap'); tap.type = 'button';
   const mark = element('span', undefined, 'shop-mark'); if (item.checked) mark.append(icon('check'));
-  tap.append(mark, element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
+  tap.append(mark);
+  const text = element('div', undefined, 'shop-text'); text.append(element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
   tap.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   tap.addEventListener('click', () => guard(() => {
@@ -1535,8 +1606,14 @@ function shopRow(item) {
     // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
     if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
     commit([nextOp('items', item.id, { checked: !latest.checked })]);
+    // Ein versehentliches Abhaken lässt sich gleich zurücknehmen (der Artikel verschwindet sonst aus der offenen Liste).
+    if (!latest.checked) showNotice(`„${latest.name}“ abgehakt`, () => {
+      const now = state.items.find(entry => entry.id === item.id);
+      if (!now || now.deletedAt || !now.checked) return;
+      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false })]);
+    });
   }));
-  row.append(tap);
+  row.append(tap, text);
   return row;
 }
 function shopNewsRow(entry) {
@@ -2465,7 +2542,7 @@ $('#mode-plan').addEventListener('click', () => guard(() => setShopMode(false)))
 $('#shop-back').addEventListener('click', () => guard(() => setShopMode(false)));
 $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
 $('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopAwake: event.target.checked }); syncShopAwake(); }));
-$('#shop-finish').addEventListener('click', () => guard(openFinish));
+holdToConfirm($('#shop-finish'), HOLD_FINISH_MS, () => { if (!isLocked()) openFinish(); }, 'Zum Beenden gedrückt halten');
 $('#finish-only').addEventListener('click', () => guard(() => finishShopping(false)));
 // Das „+“ im Feld „Was hast du bezahlt?“: beendet den Einkauf und speichert den Betrag; die Tastatur schließt sich (auch bei einem Fehler, damit die Meldung sichtbar bleibt).
 let finishPlus = 0;
