@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.13
+# Einkauf & Rezepte – Version 2.14
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,17 +16,25 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
 
+## Neu in Version 2.14: farbige Symbole statt Internet-Fotos
+
+**Warum:** In Version 2.13 holte die App Produktfotos von Open Food Facts. Der erste Treffer der Suche war oft falsch (für „Birne“ ein Foto von Birnensaft, für „Reis“ Reiswaffeln). Du wolltest stattdessen die farbigen Symbole, und echte Bilder auch nicht als Option. Deshalb ist die Foto-Suche **vollständig entfernt**:
+
+- **Rechts in jeder Artikelzeile steht ein farbiges Symbol (Emoji) passend zum Artikel**, sofort da und ohne Internet (`emoji.js`): „Birne“ 🍐, „Reis“ 🍚, „Milch“ 🥛, „Eier“ 🥚, „Spülmittel“ 🧼 usw. Rund 100 Stichwörter sind hinterlegt (auch Mehrzahl und Zusammensetzungen: „Cocktailtomaten“ 🍅). Ohne Treffer zeigt die Kachel das Symbol der Kategorie (Obst 🍎, Brot 🍞, Fleisch 🥩, Milch 🥛, Tiefkühl 🧊, Vorrat 🥫, Gewürze 🧂, Süßes 🍪, Getränke 🥤, Haushalt 🧼), sonst ein Paket 📦. Verwechslungen sind ausgeschlossen: „Birnensaft“ 🧃 ist kein Obst, „Reiswaffeln“ 🍘 kein Reis, „Kokosmilch“ 🥥 keine Milch, „Zahnpasta“ 🪥 keine Pasta, „Alkohol“ kein Kohl.
+- **Aussehen:** abgerundete Kachel (56 px, unter 341 px Breite 44 px) rechts in der Zeile mit hellem Hintergrund und dünnem Rahmen, auch im Dunkelmodus. Name und Menge bleiben links, lange Namen brechen um und werden nicht gequetscht. Die Kachel ist rein dekorativ: nicht antippbar, nicht fokussierbar, für Bildschirmleser versteckt. Auch die Zeilen unter „Neu von …“ haben sie; dort rutscht „Übernehmen“ in eine zweite Zeile. Die Ansicht „Im Laden“ ist unverändert.
+- **Schalter: Einstellungen → Darstellung & Sicherung → „Produktbilder anzeigen“** (Standard an). Er gilt sofort ohne Neuladen und ist wie die anderen Schalter in den Geräteeinstellungen gespeichert (`productImages`). Aus = keine Kacheln, die Zeile sieht aus wie früher.
+- **Keine Verbindung zu fremden Diensten mehr:** Die App sendet keine Artikelnamen irgendwohin. Die Sicherheitsrichtlinie in `index.html` erlaubt keine Adressen von Open Food Facts oder Wikipedia mehr. Der Bild-Speicher aus Version 2.13 (`einkauf-images-v1`) wird beim Start gelöscht.
+- **Ehrlich dazu:** Emoji kommen vom Gerät und sehen auf iPhone und Android etwas verschieden aus. Auf sehr alten Geräten können neuere Emoji (z. B. 🧈 🫑 🫘) als Kästchen erscheinen. Die Zuordnung ist eine feste Stichwortliste: Für sehr seltene Artikel zeigt die Kachel das Symbol der Kategorie. Neue Stichwörter lassen sich in `emoji.js` ergänzen.
+
+Weitere Testpunkte für Version 2.14:
+
+- [ ] Einkauf: Jede Zeile zeigt rechts ein farbiges Symbol passend zum Artikel (Birne 🍐, Milch 🥛, Reis 🍚), sofort und ohne Wartezeit. Unbekannte Namen zeigen das Symbol der Kategorie oder 📦.
+- [ ] Ein langer Name („Domol Feinwaschmittel …“) bricht um, die Kachel bleibt rechts und ganz.
+- [ ] Einstellungen → Darstellung & Sicherung → „Produktbilder anzeigen“ ausschalten: Die Kacheln verschwinden sofort, die Zeile sieht aus wie früher. Wieder einschalten: sofort wieder da.
+
 ## Neu in Version 2.13: Produktbilder in der Einkaufsliste
 
-- **Rechts in jeder Artikelzeile** der Einkaufsliste (Ansicht „Planen“) steht jetzt eine kleine, abgerundete **Kachel (56 × 56 px)** mit einem Beispielbild des Produkts. Name, Menge und Preise bleiben links, lange Namen („Domol Feinwaschmittel …“) brechen weiter um und werden nicht von der Kachel gequetscht (unter 341 px Breite ist die Kachel 44 px). Die Kachel ist rein dekorativ: nicht antippbar, nicht fokussierbar, für Bildschirmleser versteckt. Die Ansicht „Im Laden“ ist unverändert.
-- **Alles vollautomatisch.** Es gibt keine Bildauswahl, kein Hochladen und kein Antippen zum Wechseln.
-- **Quelle: Open Food Facts** (kostenlos, ohne Schlüssel, direkt aus dem Browser). Die App sucht mit dem Artikelnamen, **zuerst unter Produkten aus Deutschland**, findet sich dort nichts, **einmal weltweit**. Genommen wird der erste Treffer mit einem brauchbaren Vorderseiten-Bild (kleine Größe). Nur Bilder von `images.openfoodfacts.org` bzw. `static.openfoodfacts.org` werden angezeigt.
-- **Gemerkt wird auf dem Gerät** (`einkauf-images-v1`, nicht in der gemeinsamen Datei): die Bild-Adresse oder „kein Treffer“. Ein Name wird nur **einmal** gesucht; „kein Treffer“ wird erst nach **7 Tagen** erneut versucht. Gleiche Namen (Groß-/Kleinschreibung und Leerzeichen egal) **teilen sich ein Bild**. Ein Netzfehler wird nicht gemerkt, sondern beim nächsten Öffnen (frühestens nach zehn Minuten) neu versucht. Lässt sich ein gemerktes Bild nicht mehr laden, gilt es als „kein Treffer“.
-- **Rücksicht auf die Schnittstelle:** Open Food Facts erlaubt rund 10 Suchen pro Minute. Die App fragt deshalb **nacheinander im Abstand von 6,5 Sekunden** ab (bei „Zu viele Abfragen“ eine Minute Pause). Eine lange Liste füllt sich beim ersten Mal also **nach und nach** (rund 10 Artikel pro Minute); bis dahin zeigt die Kachel einen ruhigen Platzhalter. Danach kommen die Bilder sofort aus dem Speicher.
-- **Ersatzsymbol:** Ohne Treffer oder bei einem Fehler zeigt die Kachel ein Symbol zur **Kategorie** des Artikels (Obst & Gemüse, Brot, Fleisch & Fisch, Milch & Käse, Tiefkühl, Vorrat, Gewürze & Öl, Süßes, Getränke, Haushalt), sonst ein neutrales Paket. Alle Zeilen bleiben so gleich hoch, mit oder ohne Bild.
-- **Schalter: Einstellungen → Darstellung & Sicherung → „Produktbilder anzeigen“**, Standard **an**, mit dem Hinweis „Zeigt zu jedem Artikel automatisch ein Beispielbild.“ Er gilt **sofort** (ohne Neuladen) und wird wie die anderen Schalter in den Geräteeinstellungen gespeichert (`productImages`). **Aus** heißt: keine Kacheln, **keine Abfragen** (Wartendes entfällt, Laufendes wird abgebrochen), die Zeile sieht aus wie vorher.
-- **Datenschutz:** Solange die Bilder an sind, wird der **Artikelname** an `world.openfoodfacts.org` gesendet und die Bilder werden von `images.openfoodfacts.org` geladen. Es werden keine Namen von Personen, kein Token und keine Preise gesendet. Dafür wurde die Sicherheitsrichtlinie in `index.html` um genau diese Adressen erweitert (`connect-src` und `img-src`).
-- **Ehrlich dazu:** Die echte Schnittstelle ist aus der Entwicklungsumgebung **nicht erreichbar**; die Tests laufen gegen **simulierte Antworten** im Format der Open-Food-Facts-Suche (`/cgi/search.pl`). Ob die Suche mit deinen Artikelnamen gute Treffer liefert, zeigt erst der Alltag. Der erste Treffer ist nicht immer das typischste Produkt (es wird nach Beliebtheit sortiert), und **Haushaltswaren** (z. B. Waschmittel) sind bei Open Food Facts selten, dort erscheint dann das Symbol. Falsche Bilder lassen sich bewusst nicht von Hand korrigieren.
+> **Überholt durch Version 2.14:** Die Internet-Fotos (Open Food Facts) gab es nur in dieser Fassung; sie waren zu ungenau und sind entfernt. Geblieben sind die Kachel rechts in jeder Zeile und der Schalter „Produktbilder anzeigen“, jetzt mit farbigen Symbolen (siehe oben).
 
 ## Neu in Version 2.12: grünes „+“ im Namensfeld
 
@@ -368,7 +376,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `images.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -495,14 +503,6 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Vorübergehend einen ungültigen Token eingeben. Verständliche Meldung muss erscheinen; danach korrekten eigenen Token einsetzen, ohne die Datenadresse zu ändern. Wartende Änderungen dürfen nicht verschwinden.
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
-
-Weitere Testpunkte für Version 2.13:
-
-- [ ] Einkauf (Planen): Rechts in jeder Zeile steht eine Kachel. Erst ein Platzhalter, nach und nach (etwa alle 6 Sekunden eine Zeile) Bild oder Symbol. Name und Menge stehen links, ein langer Name bricht um.
-- [ ] Ein bekannter Artikel („Milch“, „Nudeln“) zeigt ein Produktbild; ein Haushaltsartikel („Domol Feinwaschmittel“) zeigt ein Symbol.
-- [ ] Die App schließen und neu öffnen: Die Bilder sind sofort da, es wird nicht neu gesucht.
-- [ ] Hell und Dunkel: Die Kachel ist hell, Bild und Symbol gut zu erkennen.
-- [ ] Einstellungen → Darstellung & Sicherung → „Produktbilder anzeigen“ ausschalten: Die Kacheln verschwinden sofort, die Liste sieht aus wie vorher. Wieder einschalten: Sie sind sofort wieder da.
 
 Weitere Testpunkte für Version 2.12:
 
