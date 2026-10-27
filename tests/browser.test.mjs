@@ -1092,6 +1092,149 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; Betrag mit dem „+“ speichert die geschätzte Summe, der kleine Punkt zeigt grün oder rot', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const backToList = async () => { assert.equal(await page.locator('#plan-view').isVisible(), true, 'zurück zu Planen'); assert.equal(await page.locator('#shop-view').isHidden(), true); };
+    const finish = async (store, items, how) => {
+      await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: store }).click();
+      for (const name of items) await page.locator('.shop-tap', { hasText: name }).click();
+      await page.click('#shop-finish'); await sheetOpen(page); await how();
+    };
+    // 1. „Nur beenden“
+    await finish('Lidl', ['Milch'], () => page.click('#finish-only')); await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
+    // 2. mit Betrag (Tomaten und Nudeln haben im Beispiel einen Preis: geschätzte Summe merkt sich der Eintrag), bezahlt viel mehr: rot
+    await finish('Edeka', ['Tomaten', 'Nudeln'], async () => { await page.fill('#finish-form input[name=amount]', '99'); await page.click('#finish-form .add-button'); });
+    await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
+    const purchase = (await stored()).purchases.filter(row => !row.deletedAt).at(-1);
+    assert.equal(purchase.cents, 9900);
+    assert.ok(Number.isSafeInteger(purchase.estimate) && purchase.estimate > 0 && purchase.estimate < 9900, `geschätzte Summe gemerkt: ${purchase.estimate}`);
+    // 3. Ein günstiger Einkauf: grün (Beispiel: Äpfel bei Rewe, dort 1,00 € bezahlt)
+    await finish('Rewe', ['Äpfel'], async () => { await page.fill('#finish-form input[name=amount]', '1'); await page.click('#finish-form .add-button'); });
+    await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
+    // Ausgaben: ein Eintrag von Hand ohne Schätzung hat keinen Punkt
+    await page.click('[data-tab=spending]');
+    await page.click('#add-purchase'); await sheetOpen(page);
+    await page.fill('#purchase-form input[name=amount]', '7'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    const rows = page.locator('#purchase-list .spend-row');
+    assert.equal(await rows.count(), 3);
+    assert.equal(await page.locator('#purchase-list .spend-dot.over').count(), 1, 'ein roter Punkt (99 € gegen die Schätzung)');
+    assert.equal(await page.locator('#purchase-list .spend-dot.ok').count(), 1, 'ein grüner Punkt (Äpfel: 1 € ist günstiger)');
+    assert.equal(await rows.filter({ hasText: '7,00' }).locator('.spend-dot').count(), 0, 'ohne Schätzung kein Punkt');
+    const red = rows.filter({ hasText: '99,00' });
+    assert.match(await red.getAttribute('aria-label'), /geschätzt [\d,.]+\s€, [\d,.]+\s€ mehr bezahlt/);
+    const dot = await red.locator('.spend-dot').evaluate(node => { const r = node.getBoundingClientRect(); return { w: r.width, h: r.height, color: getComputedStyle(node).backgroundColor }; });
+    assert.ok(dot.w <= 10 && dot.h <= 10, 'ganz unauffällig: ein kleiner Punkt');
+    assert.notEqual(dot.color, 'rgba(0, 0, 0, 0)');
+    // Beim Ändern steht der Vergleich in Worten
+    await red.click(); await sheetOpen(page);
+    assert.match(await page.textContent('#purchase-estimate'), /Zum Vergleich: geschätzt [\d,.]+\s€, [\d,.]+\s€ mehr bezahlt/);
+    await page.keyboard.press('Escape');
+    await rows.filter({ hasText: '7,00' }).click(); await sheetOpen(page);
+    assert.equal(await page.locator('#purchase-estimate').isHidden(), true);
+    await page.keyboard.press('Escape');
+    // Ohne genug Preise keine Schätzung: ein Artikel ohne Preis, abgehakt, beendet mit Betrag
+    await page.click('[data-tab=shopping]'); await page.fill('#item-form input[name=name]', 'Gartenschlauch'); await page.click('#item-form button[type=submit]');
+    await finish('Rewe', ['Gartenschlauch'], async () => { await page.fill('#finish-form input[name=amount]', '15'); await page.click('#finish-form .add-button'); });
+    await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.ok(!('estimate' in (await stored()).purchases.filter(row => !row.deletedAt).at(-1)), 'zu wenige Preise: keine Schätzung gespeichert');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Monatsbudget: festlegen, Fortschritt grün/gelb/rot, Warnung beim Speichern, ändern und entfernen; bleibt nach dem Neuladen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    const card = page.locator('#spending-budget');
+    const add = async amount => { await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', amount); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' }); };
+    // Ohne Budget: nur der Knopf
+    assert.equal(await card.getByRole('button', { name: 'Monatsbudget festlegen' }).count(), 1);
+    assert.equal(await card.locator('.spend-share').count(), 0);
+    // Ungültige Eingaben
+    await card.getByRole('button', { name: 'Monatsbudget festlegen' }).click(); await sheetOpen(page);
+    assert.equal(await page.locator('#budget-remove').isHidden(), true, 'noch nichts zu entfernen');
+    for (const [value, pattern] of [['', /Betrag in Euro eingeben/], ['0', /größer als 0/], ['abc', /Betrag in Euro eingeben/], ['100.000,00', /zu groß/]]) {
+      await page.fill('#budget-form input[name=amount]', value); await page.click('#budget-form button[type=submit]');
+      assert.match(await page.textContent('#budget-dialog [data-dialog-error]'), pattern, value);
+    }
+    assert.equal(await page.evaluate(() => (JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets || []).length), 0);
+    await page.fill('#budget-form input[name=amount]', '100'); await page.click('#budget-form button[type=submit]');
+    await page.waitForSelector('#budget-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /Monatsbudget 100,00\s€ gespeichert/);
+    assert.match(await card.textContent(), /Budget 100,00\s€[\s\S]*0 % verbraucht · noch 100,00\s€/);
+    const fill = () => card.locator('.budget-fill');
+    // 70 %: grün/normal, keine Warnung in der Meldung
+    await add('70');
+    assert.match(await card.textContent(), /70 % verbraucht · noch 30,00\s€/);
+    assert.ok(await fill().evaluate(node => node.className.trim() === 'budget-fill ok'));
+    assert.equal(await fill().evaluate(node => node.style.width), '70%');
+    assert.ok(!/Budget/.test(await page.textContent('#notice-text')), 'unter 80 % keine Warnung');
+    assert.equal(await card.locator('[role=progressbar]').getAttribute('aria-valuenow'), '70');
+    // 85 %: Warnung (gelb) und Hinweis beim Speichern
+    await add('15');
+    assert.match(await page.textContent('#notice-text'), /15,00\s€ unter Ausgaben gespeichert · 85 % des Budgets verbraucht/);
+    assert.ok(await fill().evaluate(node => node.classList.contains('warn')));
+    assert.ok(await card.locator('small.budget-warn').count() === 1);
+    // 115 %: überschritten (rot), Balken ist voll
+    await add('30');
+    assert.match(await page.textContent('#notice-text'), /Budget um 15,00\s€ überschritten/);
+    assert.match(await card.textContent(), /15,00\s€ über dem Budget \(115 %\)/);
+    assert.ok(await fill().evaluate(node => node.classList.contains('over')));
+    assert.equal(await fill().evaluate(node => node.style.width), '100%');
+    assert.equal(await card.locator('small.budget-over').count(), 1);
+    // Ändern: 500 → wieder normal; das Fenster zeigt den bisherigen Wert
+    await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#budget-form input[name=amount]'), '100');
+    assert.equal(await page.locator('#budget-remove').isVisible(), true);
+    await page.fill('#budget-form input[name=amount]', '500,50'); await page.click('#budget-form button[type=submit]');
+    await page.waitForSelector('#budget-dialog', { state: 'hidden' });
+    assert.match(await card.textContent(), /Budget 500,50\s€[\s\S]*23 % verbraucht/);
+    // Der Vormonat bekommt dasselbe Budget (gilt für jeden Monat)
+    await add('1');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=spending]');
+    assert.match(await card.textContent(), /Budget 500,50\s€/, 'bleibt nach dem Neuladen');
+    // Entfernen
+    await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+    await page.click('#budget-remove'); await page.waitForSelector('#budget-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /Monatsbudget entfernt/);
+    assert.equal(await card.getByRole('button', { name: 'Monatsbudget festlegen' }).count(), 1);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets[0].cents), 0);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Monatsbudget auf zwei Geräten: beide sehen dasselbe, der spätere Wert gilt; Layout bei 280 px ohne Überlauf', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig, context: { viewport: { width: 280, height: 560 } } }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); await device.page.click('[data-tab=spending]'); }
+    await a.page.getByRole('button', { name: 'Monatsbudget festlegen' }).click(); await sheetOpen(a.page);
+    await a.page.fill('#budget-form input[name=amount]', '400'); await a.page.click('#budget-form button[type=submit]');
+    await synced(a.page);
+    assert.equal(remote.content.budgets.length, 1);
+    assert.deepEqual([remote.content.budgets[0].id, remote.content.budgets[0].cents], ['monthly', 40000]);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Budget 400,00/.test(document.querySelector('#spending-budget').textContent), null, { timeout: 20000 });
+    // B ändert, A sieht es
+    await b.page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(b.page);
+    await b.page.fill('#budget-form input[name=amount]', '650'); await b.page.click('#budget-form button[type=submit]'); await synced(b.page);
+    await pollNow(a.page);
+    await a.page.waitForFunction(() => /Budget 650,00/.test(document.querySelector('#spending-budget').textContent), null, { timeout: 20000 });
+    assert.equal(remote.content.budgets.length, 1, 'es bleibt bei einer Zeile');
+    for (const [label, setup] of [['Fenster', () => a.page.getByRole('button', { name: 'Monatsbudget ändern' }).click()]]) {
+      await setup(); await sheetOpen(a.page);
+      assert.ok(await a.page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return document.documentElement.scrollWidth <= document.documentElement.clientWidth && dialog.scrollWidth <= dialog.clientWidth; }), `Überlauf im ${label}`);
+      await a.page.keyboard.press('Escape');
+    }
+    assert.equal(await horizontalOverflow(a.page), 0);
+    assert.deepEqual([...a.problems, ...b.problems], []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
   test('Ausgaben: Layout bei 280, 320, 375 und 390 px, fünf Reiter ohne abgeschnittene Beschriftung', async () => {
     for (const viewport of [{ width: 280, height: 560 }, { width: 320, height: 568 }, { width: 375, height: 667 }, { width: 390, height: 844 }]) {
       const { ctx, page, problems } = await context({ context: { viewport } });
@@ -1576,8 +1719,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#receipt-form textarea[name=text]', 'Kassenbon\nBrot 1,99 A\nSUMME 1,99');
     await page.click('#receipt-parse');
     assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe', 'das Geschäft, in dem man zuletzt war');
+    // Auch nach „Kassenbon einfügen“ ist die App schon zurück in „Planen“ (die Liste steht hinter dem Kassenbon-Fenster)
+    assert.equal(await page.locator('#plan-view').isVisible(), true);
+    assert.equal(await page.locator('#shop-view').isHidden(), true);
     await page.keyboard.press('Escape');
-    await page.click('#shop-back');
     assert.equal(await page.locator('#plan-view').isVisible(), true);
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
@@ -1637,7 +1782,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await amount.inputValue(), '', 'das Feld ist bei jedem Öffnen leer');
     await amount.fill('99'); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.equal((await stored()).purchases.filter(row => !row.deletedAt).length, 1);
-    assert.equal(await page.locator('#shop-view').isVisible(), true, '„Nur beenden“ bleibt „Im Laden“');
+    assert.equal(await page.locator('#plan-view').isVisible(), true, 'auch „Nur beenden“ führt zurück zu „Planen“');
+    assert.equal(await page.locator('#shop-view').isHidden(), true);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -1674,7 +1820,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('button', { name: 'Nudeln: abhaken' }).click(); await page.getByRole('button', { name: 'Tomaten: abhaken' }).click();
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
     await page.click('#shop-finish'); await sheetOpen(page); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
-    await page.click('#shop-back');
     assert.ok(!(await page.textContent('#items')).includes('Nudeln'), 'von der Liste entfernt');
     await openList();
     assert.equal(await status('Tomaten-Pasta'), 'Alles da');

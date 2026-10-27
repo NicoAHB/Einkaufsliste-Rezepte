@@ -2,16 +2,16 @@
 import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory } from './categories.js';
-// `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases'];
+// `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -76,7 +76,10 @@ export function validateRow(key, row) {
   // Ausgabe (Version 2.15): Tag, Betrag in Cent, optional Geschäft (Kennung und gemerkter Name), Notiz und Herkunft („bon“ = aus Kassenbon-Foto/-Screenshot, „hand“).
   if (key === 'purchases' && (!validDay(row.date) || !Number.isSafeInteger(row.cents) || row.cents < 1 || row.cents > 99999999 ||
       (row.storeId !== undefined && typeof row.storeId !== 'string') || (row.storeName !== undefined && (typeof row.storeName !== 'string' || row.storeName.length > 80)) ||
-      (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 200)) || (row.source !== undefined && !['bon', 'hand'].includes(row.source)))) throw new Error('Ungültiger Einkaufsbetrag.');
+      (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 200)) || (row.source !== undefined && !['bon', 'hand'].includes(row.source)) ||
+      (row.estimate !== undefined && (!Number.isSafeInteger(row.estimate) || row.estimate < 1 || row.estimate > 99999999)))) throw new Error('Ungültiger Einkaufsbetrag.');
+  // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
+  if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
 }
 
@@ -148,7 +151,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   const next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= [];
   const applied = new Set(next.sync.applied), created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;

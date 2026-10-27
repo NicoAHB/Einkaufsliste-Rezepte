@@ -2,6 +2,7 @@
    Monate JJJJ-MM. Ein Eintrag (Sammlung `purchases`): { date, cents, storeId?, storeName?, note?, source? }. */
 import { validDay } from './data.js';
 import { chainOf } from './brand.js';
+import { itemCost } from './prices.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
 export const SOURCES = ['bon', 'hand'];     // aus einem Kassenbon-Foto/-Screenshot erkannt oder von Hand eingegeben
@@ -28,7 +29,7 @@ export function parseAmount(input) {
 export const formatAmount = cents => (cents / 100).toFixed(2).replace('.', ',');
 
 // Prüft die Eingaben für einen Eintrag und gibt die Felder zum Speichern zurück (`today` = JJJJ-MM-TT, Heute und morgen sind erlaubt).
-export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand' }, today) {
+export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand', estimate = 0 }, today) {
   const cents = parseAmount(amount);
   if (!validDay(date)) throw new Error('Bitte ein gültiges Datum angeben.');
   const limit = new Date(`${today}T12:00:00Z`); limit.setUTCDate(limit.getUTCDate() + 1);
@@ -37,6 +38,7 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
   if (storeId) fields.storeId = String(storeId);
   if (storeName.trim()) fields.storeName = storeName.trim().replace(/\s+/g, ' ').slice(0, 80);
   fields.note = String(note).trim().replace(/\s+/g, ' ').slice(0, 120);
+  if (Number.isSafeInteger(estimate) && estimate > 0 && estimate <= MAX_CENTS) fields.estimate = estimate;   // geschätzte Summe der abgehakten Artikel zum Vergleich
   return fields;
 }
 
@@ -119,4 +121,25 @@ export function noteSuggestions(rows, storeName = '', limit = 12) {
     if (!seen.has(key)) { seen.add(key); result.push(text); }
   }
   return result.slice(0, limit);
+}
+
+/* ---------- Geschätzt gegen bezahlt ---------- */
+// Geschätzte Summe der Artikel (ihr gemerkter Preis), aber nur, wenn für mindestens 70 % ein Preis bekannt ist; sonst 0 (keine brauchbare Schätzung).
+export function estimateOf(items, history = []) {
+  let cents = 0, priced = 0;
+  for (const item of items) { const cost = itemCost(item, history); if (cost !== null) { cents += cost; priced += 1; } }
+  return items.length && priced / items.length >= 0.7 ? cents : 0;
+}
+// Bezahlt gegen geschätzt: null ohne Schätzung; 'over' (rot), wenn mehr als 5 % (mindestens 0,50 €) darüber, sonst 'ok' (grün). `diff` = bezahlt − geschätzt in Cent.
+export function estimateVerdict(cents, estimate) {
+  if (!Number.isSafeInteger(estimate) || estimate <= 0) return null;
+  const diff = cents - estimate;
+  return { diff, level: diff > Math.max(50, Math.round(estimate * 0.05)) ? 'over' : 'ok' };
+}
+
+/* ---------- Monatsbudget ---------- */
+// Stand gegen das Budget (Cent): null ohne Budget; `percent` ganze Prozent, `left` (negativ = überschritten), `level`: 'ok', 'warn' ab 80 %, 'over' über 100 %.
+export function budgetStatus(spent, budget) {
+  if (!Number.isSafeInteger(budget) || budget <= 0) return null;
+  return { percent: Math.round(spent / budget * 100), left: budget - spent, level: spent > budget ? 'over' : spent / budget >= 0.8 ? 'warn' : 'ok' };
 }

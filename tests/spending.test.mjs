@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, compareTotals, dayLabel, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, estimateOf, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -221,5 +221,77 @@ describe('Notiz-Vorschläge', () => {
     assert.ok(!noteSuggestions(rows).includes('E'));
     assert.equal(noteSuggestions(rows, '', 3).length, 3);
     assert.deepEqual(noteSuggestions(rows, '', 1), ['Wocheneinkauf']);
+  });
+});
+
+describe('Geschätzt gegen bezahlt', () => {
+  test('die Schätzung wird nur mit einer gültigen Zahl gespeichert', () => {
+    const base = { amount: '23,45', date: '2026-05-10' };
+    assert.equal(purchaseFields({ ...base, estimate: 2000 }, '2026-05-10').estimate, 2000);
+    for (const bad of [0, -5, 1.5, NaN, '20', null, undefined, 100000000]) assert.ok(!('estimate' in purchaseFields({ ...base, estimate: bad }, '2026-05-10')), String(bad));
+  });
+  test('Punkt: grün im Rahmen oder günstiger, rot ab mehr als 5 % (mindestens 0,50 €) darüber, nichts ohne Schätzung', () => {
+    assert.equal(estimateVerdict(2345, undefined), null);
+    assert.equal(estimateVerdict(2345, 0), null);
+    assert.deepEqual(estimateVerdict(1500, 2000), { diff: -500, level: 'ok' }, 'günstiger');
+    assert.deepEqual(estimateVerdict(2000, 2000), { diff: 0, level: 'ok' });
+    assert.deepEqual(estimateVerdict(2100, 2000), { diff: 100, level: 'ok' }, '5 % darüber: noch im Rahmen');
+    assert.equal(estimateVerdict(2101, 2000).level, 'over', 'mehr als 5 % darüber');
+    assert.equal(estimateVerdict(2050, 500).level, 'over');
+    assert.equal(estimateVerdict(540, 500).level, 'ok', 'bei kleinen Beträgen zählen erst 0,50 € mehr');
+    assert.equal(estimateVerdict(551, 500).level, 'over');
+  });
+  test('Schätzung der Artikel: nur mit Preisen für mindestens 70 %', () => {
+    const item = (name, price) => ({ name, quantity: 2, unit: 'Stück', price, onSale: false });
+    const priced = price => ({ cents: price, quantity: 1, unit: 'Stück' });
+    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(250))]), 700);
+    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(100)), item('C', undefined)]), 0, '2 von 3 (67 %): zu wenig');
+    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(100)), item('C', priced(100)), item('D', undefined)]), 600, '3 von 4 (75 %)');
+    assert.equal(estimateOf([]), 0);
+    assert.equal(estimateOf([item('A', undefined)]), 0);
+  });
+  test('Schätzung ist im Datenmodell nur als ganze positive Zahl gültig und überlebt das Zusammenführen', () => {
+    for (const bad of [0, -1, 1.5, '20', 100000000]) assert.equal(merge(emptyData(), [make('p', { date: '2026-05-02', cents: 100, estimate: bad })]).purchases.length, 0, String(bad));
+    const data = merge(emptyData(), [make('p', { date: '2026-05-02', cents: 100, estimate: 90 }), make('p', { cents: 120 }, '2026-05-03T00:00:00.000Z')]);
+    assert.deepEqual([data.purchases[0].cents, data.purchases[0].estimate], [120, 90], 'Betrag ändern lässt die Schätzung stehen');
+  });
+});
+
+describe('Monatsbudget', () => {
+  test('Stand: ohne Budget null, ok unter 80 %, Warnung ab 80 %, überschritten über 100 %', () => {
+    assert.equal(budgetStatus(5000, 0), null);
+    assert.equal(budgetStatus(5000, undefined), null);
+    assert.equal(budgetStatus(5000, -1), null);
+    assert.deepEqual(budgetStatus(0, 40000), { percent: 0, left: 40000, level: 'ok' });
+    assert.deepEqual(budgetStatus(31999, 40000), { percent: 80, left: 8001, level: 'ok' }, 'knapp unter 80 %');
+    assert.equal(budgetStatus(32000, 40000).level, 'warn');
+    assert.equal(budgetStatus(40000, 40000).level, 'warn', 'genau 100 % ist noch nicht überschritten');
+    assert.deepEqual(budgetStatus(41230, 40000), { percent: 103, left: -1230, level: 'over' });
+  });
+  test('das Budget liegt als Zeile „monthly“ in der gemeinsamen Datei: anlegen, ändern, entfernen (0), ungültiges wird abgelehnt', () => {
+    const old = emptyData(); delete old.budgets;
+    assert.doesNotThrow(() => validate(old));
+    const budget = (patch, at) => operation('budgets', 'monthly', patch, 'Nico', at);
+    let data = merge(old, [budget({ cents: 40000 }, '2026-05-01T10:00:00.000Z')]);
+    assert.equal(data.budgets.length, 1);
+    assert.equal(data.budgets[0].cents, 40000);
+    data = merge(data, [budget({ cents: 50000 }, '2026-05-02T10:00:00.000Z'), budget({ cents: 10000 }, '2026-05-01T12:00:00.000Z')]);
+    assert.equal(data.budgets[0].cents, 50000, 'die jüngere Fassung gewinnt, eine ältere überschreibt nichts');
+    data = merge(data, [budget({ cents: 0 }, '2026-05-03T10:00:00.000Z')]);
+    assert.equal(data.budgets[0].cents, 0, '0 heißt: kein Budget');
+    for (const bad of [-1, 1.5, '400', 100000000, null]) assert.equal(merge(emptyData(), [budget({ cents: bad }, '2026-05-01T10:00:00.000Z')]).budgets.length, 0, String(bad));
+    assert.throws(() => merge(data, [budget({ cents: -5 }, '2026-06-01T00:00:00.000Z')]), /Ungültiges Budget/);
+  });
+  test('zwei Geräte setzen gleichzeitig ein Budget: es gibt nur eine Zeile, der spätere Wert gilt, in jeder Reihenfolge', () => {
+    const a = operation('budgets', 'monthly', { cents: 30000 }, 'Nico', '2026-05-01T10:00:00.000Z'), b = operation('budgets', 'monthly', { cents: 45000 }, 'Anna', '2026-05-01T10:00:05.000Z');
+    for (const order of [[a, b], [b, a]]) { const data = merge(emptyData(), order); assert.equal(data.budgets.length, 1); assert.equal(data.budgets[0].cents, 45000); }
+  });
+  test('Aufräumen behält das Budget und führt die neue Sammlung in removed auf', () => {
+    const data = merge(emptyData(), [operation('budgets', 'monthly', { cents: 40000 }, 'Nico', '2026-01-01T10:00:00.000Z')]);
+    const result = compact(data, new Date('2026-06-01T00:00:00.000Z'));
+    assert.equal(result.removed.budgets, 0);
+    assert.deepEqual(result.data.budgets.map(row => row.cents), [40000]);
+    const bare = emptyData(); delete bare.budgets; bare.sync.applied = Array.from({ length: 700 }, (_, index) => `op-${index}`);
+    assert.equal(compact(bare, new Date('2026-06-01T00:00:00.000Z')).data.budgets, undefined, 'ohne Budget entsteht keine leere Sammlung');
   });
 });

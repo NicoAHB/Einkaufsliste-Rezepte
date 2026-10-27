@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.20
+# Einkauf & Rezepte – Version 2.21
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -14,7 +14,21 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - Beispielmodus ohne GitHub, drei Beispielrezepte und eine über drei Geschäfte verteilte Beispielliste.
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
-**Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+**Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.21: nach jedem Beenden zur Liste, Punkt „geschätzt gegen bezahlt“, Monatsbudget
+
+Dies sind die Wünsche nach der Abschlussprüfung (Version 2.20). Abgelehnt hast du: Papierkorb, Backup-Import und Umbenennung von „Plan/Planen“.
+
+- **Nach jedem Beenden zurück zur Liste:** „Nur beenden“, „Beenden und Kassenbon einfügen“ und das **+** im Betragsfeld führen alle zurück in die Ansicht **Planen** (die Liste mit dem Eingabefeld). Beim Kassenbon steht die Liste schon hinter dem Kassenbon-Fenster. Bei einem ungültigen Betrag bleibt alles, wie es ist.
+- **Kleiner Punkt „geschätzt gegen bezahlt“:** Beim Beenden mit Betrag merkt sich der Eintrag die **geschätzte Summe der abgehakten Artikel** (ihre gemerkten Preise, Feld `estimate`), aber nur, wenn für mindestens **70 %** der Artikel ein Preis bekannt war (sonst wäre der Vergleich unfair). In der Liste der Ausgaben steht hinter dem Betrag ein **8-Pixel-Punkt**: **grün** = im Rahmen oder günstiger, **rot** = mehr als 5 % und mindestens 0,50 € darüber. Er ist bewusst unauffällig; was er bedeutet, steht unter der Liste, im Änderungsfenster („Zum Vergleich: geschätzt 20,00 €, 3,45 € mehr bezahlt“) und für Bildschirmleser im Eintrag. Einträge von Hand, aus dem Kassenbon oder mit zu wenigen Preisen haben keinen Punkt.
+- **Monatsbudget:** Unter der Summe steht **Monatsbudget festlegen** (Betrag, z. B. `400`). Danach zeigt eine Karte **Budget 400,00 €**, wie viel davon verbraucht ist („87 % verbraucht · noch 52,00 €“) und einen **Balken**: normal bis 79 %, **gelb ab 80 %**, **rot über 100 %** („15,00 € über dem Budget (115 %)“). Das Budget gilt für **jeden Monat**, auch beim Blättern in andere Monate. Beim Speichern eines Betrags (Einkauf eintragen, Einkauf beenden, Kassenbon) steht ab 80 % ein Hinweis in der Meldung („… · 85 % des Budgets verbraucht“, „… · Budget um 15,00 € überschritten“). Der Stift ändert das Budget, **Budget entfernen** nimmt es zurück. Es liegt in der gemeinsamen Datei (`budgets`, Zeile `monthly`), beide Personen sehen und ändern dasselbe.
+
+Weitere Testpunkte für Version 2.21:
+
+- [ ] Im Laden etwas abhaken → **Einkauf beenden** → **Nur beenden**: Die App ist danach wieder in der Liste (nicht mehr in der großen Laden-Ansicht). Dasselbe nach dem **+** und nach „Kassenbon einfügen“.
+- [ ] **Einkauf beenden** mit Betrag, der deutlich über der Schätzung liegt: unter Ausgaben steht hinter dem Betrag ein kleiner **roter** Punkt, bei einem günstigeren Einkauf ein **grüner**.
+- [ ] Ausgaben → **Monatsbudget festlegen** → `100`: Balken erscheint; mit Einträgen über 80 % wird er gelb, über 100 % rot. Auf dem zweiten Gerät erscheint dasselbe Budget nach dem Abgleich.
 
 ## Neu in Version 2.20: klügere Artikelvorschläge beim Eintippen
 
@@ -559,7 +573,8 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | `pantry` (optional) | Vorrat (Version 1.6): `name` und die üblichen Zeitstempel |
 | `names` (optional) | Namensgedächtnis aus aufgeräumten Artikeln (Version 1.6): `name`, `count`, `at`, optional `category`, `unit` |
 | `templates` (optional) | Einkaufsvorlagen (Version 2.5): `name` (höchstens 60 Zeichen) und `items`: bis zu 80 Artikel `{ name, quantity, unit, storeId? }`; die ganze Artikelliste wird als ein Feld zusammengeführt (die neuere Fassung gewinnt) |
-| `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Beim Aufräumen entfallen Einträge, die älter als 36 Monate sind |
+| `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`), `estimate` (Version 2.21: geschätzte Summe der abgehakten Artikel in Cent, nur bei „Einkauf beenden“ mit Betrag); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Beim Aufräumen entfallen Einträge, die älter als 36 Monate sind |
+| `budgets` (optional) | Monatsbudget (Version 2.21): eine Zeile mit der festen Kennung `monthly` und `cents` (ganze Cent, 0 = kein Budget); beide Geräte setzen dieselbe Zeile, der jüngere Wert gewinnt |
 | `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), z. B. aus Kassenbons und Schreibweisen: `from` (normalisierter Text, z. B. `tom cherry`), `name` (Name in der App) |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung (wird beim Aufräumen auf die letzten 600 gekürzt); `sync.compactedAt` nennt den Zeitpunkt des letzten Aufräumens |
 
@@ -581,7 +596,7 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 
 ## 11. Kurze Testcheckliste für euch
 
-- [ ] App auf iPhone in Hochformat öffnen: alle drei Bereiche erreichbar, keine seitliche Scrollleiste; hellen und dunklen Modus testen.
+- [ ] App auf iPhone in Hochformat öffnen: alle fünf Bereiche erreichbar, keine seitliche Scrollleiste; hellen und dunklen Modus testen.
 - [ ] Als Nico und Partnerin verbinden. Auf beiden Geräten muss der gemeinsame GitHub-Status erscheinen.
 - [ ] In Edeka einen Artikel mit `1,5 kg` hinzufügen; im zweiten Gerät aktualisieren und Namen/Menge/Person prüfen.
 - [ ] Beide Geräte fügen gleichzeitig unterschiedliche Artikel hinzu: nach Abgleich müssen beide Artikel vorhanden sein.
