@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { HOLD_MS, SLOP, ZONE_REACH, ZONE_WIDTH, moved, overZone, shift } from '../dragdelete.js';
+import { HOLD_MS, HOLD_RELEASE, SLOP, ZONE_REACH, ZONE_WIDTH, heldStill, moved, overZone, shift } from '../dragdelete.js';
 
 describe('Zum Löschen ziehen', () => {
   test('die rote Fläche sitzt am rechten Rand; etwas davor zählt schon als getroffen', () => {
@@ -23,5 +23,13 @@ describe('Zum Löschen ziehen', () => {
   });
   test('Haltezeit ist spürbar länger als ein Tipp, aber nicht lästig', () => {
     assert.ok(HOLD_MS >= 350 && HOLD_MS <= 600);
+  });
+  test('Halten und fast ohne Bewegung loslassen gilt als „Halten“ (verschieben), weiteres Ziehen nicht', () => {
+    assert.equal(heldStill(0), true);
+    assert.equal(heldStill(HOLD_RELEASE), true);
+    assert.equal(heldStill(HOLD_RELEASE + 1), false);
+    assert.equal(heldStill(-HOLD_RELEASE), true);
+    assert.ok(HOLD_RELEASE > SLOP, 'das Zittern des Fingers beim Halten zählt noch als still');
+    assert.ok(HOLD_RELEASE < ZONE_WIDTH, 'die rote Fläche liegt weit außerhalb');
   });
 });

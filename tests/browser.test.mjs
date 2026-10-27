@@ -1805,7 +1805,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#plan-view').isHidden(), true);
     assert.equal(await page.locator('#item-form').isHidden(), true, 'kein Eingabeformular im Laden');
     const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.querySelector('.count')?.textContent ?? '', node.getAttribute('aria-selected')]));
-    assert.deepEqual(await chips(), [['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'nichts vorgewählt; Brot zählt in jedem Geschäft mit');
+    assert.deepEqual(await chips(), [['Alle', '5', 'false'], ['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'nichts vorgewählt; „Alle“ zählt alles Offene; Brot zählt in jedem Geschäft mit');
     assert.match(await page.textContent('#shop-list'), /Tippe oben auf das Geschäft/);
     const names = () => page.locator('#shop-list .shop-item .shop-name').allTextContents();
     const chip = name => page.locator('#shop-chips .chip', { hasText: name });
@@ -1820,7 +1820,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('.shop-tap', { hasText: 'Brot' }).click();
     assert.match(await page.textContent('#shop-status'), /Noch 2 offen/);
     assert.match(await page.textContent('#shop-list .shop-done'), /Erledigt \(1\)[\s\S]*Brot/);
-    assert.deepEqual(await chips(), [['Edeka', '2', 'true'], ['Lidl', '1', 'false'], ['Rewe', '1', 'false']]);
+    assert.deepEqual(await chips(), [['Alle', '4', 'false'], ['Edeka', '2', 'true'], ['Lidl', '1', 'false'], ['Rewe', '1', 'false']]);
     // Danach bei Lidl: Brot steht dort nicht mehr (weder offen noch erledigt)
     await chip('Lidl').click();
     assert.deepEqual(await names(), ['Milch']);
@@ -1859,6 +1859,175 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
     assert.ok(text.includes('Tomaten') && text.includes('Äpfel'), 'offene bleiben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: „Alle“ zeigt alle Geschäfte und Artikel ohne Geschäft; Abhaken, Erledigt und Beenden ohne Geschäft', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    await page.fill('#item-form input[name=name]', 'Brot'); await page.click('#item-form button[type=submit]');   // ohne Geschäft
+    await page.click('#mode-shop');
+    const all = page.locator('#shop-chips .chip').first();
+    assert.equal(await all.evaluate(node => node.firstChild.textContent), 'Alle', '„Alle“ steht ganz vorn, neben den Geschäften');
+    assert.equal(await all.locator('.count').textContent(), '5');
+    assert.equal(await page.locator('#shop-chips .chip').count(), 4);
+    await all.click();
+    assert.equal(await all.getAttribute('aria-selected'), 'true');
+    const heads = () => page.locator('#shop-list .store-head > span:nth-of-type(1)').allTextContents();
+    const names = () => page.locator('#shop-list .shop-item .shop-name').allTextContents();
+    assert.deepEqual(await heads(), ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe'], 'zuerst ohne Geschäft, dann ein Abschnitt je Geschäft');
+    // Die Überschrift „Ohne Geschäft“ bleibt auch mit Glas-Design lesbar (kein Farbverlauf in der Textfarbe)
+    assert.equal(await page.locator('#shop-list .store-head.none').first().evaluate(node => getComputedStyle(node).backgroundImage), 'none');
+    assert.deepEqual((await names()).sort(), ['Brot', 'Milch', 'Nudeln', 'Tomaten', 'Äpfel'].sort(), 'alles, auch das ohne Geschäft');
+    assert.match(await page.textContent('#shop-status'), /Noch 5 offen/);
+    assert.equal(await horizontalOverflow(page), 0);
+    // Abhaken wie sonst; abgehakt steht unter „Erledigt“, egal bei welchem Geschäft
+    await page.locator('.shop-tap', { hasText: 'Brot' }).click();
+    await page.locator('.shop-tap', { hasText: 'Milch' }).click();
+    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.match(await page.textContent('#shop-list .shop-done'), /Erledigt \(2\)[\s\S]*Brot[\s\S]*Milch/);
+    assert.equal(await all.locator('.count').textContent(), '3');
+    assert.deepEqual(await heads(), ['Edeka', 'Rewe'], 'Abschnitte ohne offene Artikel verschwinden');
+    // In einem einzelnen Geschäft bleibt alles wie gehabt: Brot (abgehakt in „Alle“) taucht dort nicht mehr auf
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    assert.deepEqual((await names()).sort(), ['Nudeln', 'Tomaten']);
+    await all.click();
+    // Einkauf beenden mit Betrag: gespeichert ohne Geschäft, Abgehaktes ist weg, zurück bei „Planen“
+    await page.click('#shop-finish'); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /2 abgehakte Artikel werden von der Liste entfernt/);
+    await page.fill('#finish-form input[name=amount]', '12,50'); await page.press('#finish-form input[name=amount]', 'Enter');
+    await page.waitForSelector('#finish-dialog[open]', { state: 'detached' });
+    const data = await stored();
+    assert.deepEqual(data.purchases.map(row => [row.cents, row.storeId || '', row.storeName || '']), [[1250, '', '']], 'ohne Geschäft gespeichert');
+    assert.deepEqual(data.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Nudeln', 'Tomaten', 'Äpfel']);
+    assert.equal(await page.locator('#plan-view').isVisible(), true);
+    // Kassenbon-Weg aus „Alle“: das Geschäft im Dialog ist leer statt „Alle“
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip').first().click();
+    await page.locator('.shop-tap', { hasText: 'Äpfel' }).click();
+    await page.click('#shop-finish'); await sheetOpen(page);
+    await page.click('#finish-receipt');
+    await page.waitForSelector('#receipt-dialog[open]');
+    await page.fill('#receipt-form textarea[name=text]', 'Kassenbon\nÄpfel 1,99 A\nSUMME 1,99'); await page.click('#receipt-parse');
+    assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-edeka', 'kein „Alle“ als Geschäft: der Dialog wählt ein echtes (das erste) Geschäft');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: wird das gewählte Geschäft gelöscht, geht die Auswahl zurück; „Alle“ zeigt dann nur noch vorhandene Geschäfte', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    assert.deepEqual(await page.locator('#shop-list .shop-name').allTextContents(), ['Äpfel']);
+    await page.click('#shop-back');
+    await page.click('#manage-stores'); await sheetOpen(page);
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('[aria-label="Rewe löschen"]');
+    await page.keyboard.press('Escape');
+    await page.click('#mode-shop');
+    const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.getAttribute('aria-selected')]));
+    assert.deepEqual(await chips(), [['Alle', 'false'], ['Edeka', 'false'], ['Lidl', 'false']], 'Rewe ist weg, nichts ist mehr gewählt');
+    assert.match(await page.textContent('#shop-list'), /Tippe oben auf das Geschäft/);
+    await page.locator('#shop-chips .chip').first().click();
+    assert.deepEqual(await page.locator('#shop-list .store-head > span:nth-of-type(1)').allTextContents(), ['Edeka', 'Lidl']);
+    assert.ok(!(await page.textContent('#shop-list')).includes('Äpfel'), 'Artikel eines gelöschten Geschäfts bleiben verborgen');
+    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Verschieben: lange halten und loslassen öffnet „Verschieben nach“; Geschäft wechseln, gleiche Artikel werden zusammengezählt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const items = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt));
+    const find = async name => (await items()).filter(row => row.name === name);
+    const choices = () => page.locator('#move-choices button').evaluateAll(nodes => nodes.map(node => [node.getAttribute('aria-label') || node.textContent, node.disabled]));
+    // Halten: Hinweis erscheint, die rote Fläche auch; Loslassen ohne Bewegung öffnet „Verschieben nach“ (nicht die Bearbeitung, nichts wird gelöscht)
+    await holdRow(page, 'Nudeln');
+    await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#drag-hint.show').count(), 1, 'Hinweis beim Abheben');
+    assert.match(await page.textContent('#drag-hint'), /verschieben/);
+    assert.equal(await page.locator('#trash-zone.show').count(), 1, 'Löschen bleibt möglich');
+    await page.mouse.up();
+    await page.waitForSelector('#move-dialog[open]');
+    assert.equal(await page.locator('#drag-hint.show').count(), 0);
+    assert.equal(await page.locator('.drag-ghost').count(), 0);
+    assert.equal(await page.locator('#item-dialog[open]').count(), 0, 'nicht die Bearbeitung');
+    assert.equal(await page.locator('#items .item.drag-origin').count(), 0);
+    assert.match(await page.textContent('#move-text'), /„Nudeln“ \(500 g\) steht bei Edeka/);
+    assert.deepEqual(await choices(), [['Kein Geschäft', false], ['Edeka, hier steht er jetzt', true], ['Lidl', false], ['Rewe', false]]);
+    assert.ok(await page.locator('#move-choices button').first().evaluate(node => node.getBoundingClientRect().height >= 48), 'große Tippflächen');
+    // Schließen ändert nichts
+    await page.click('[data-close=move-dialog]');
+    await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    assert.equal((await find('Nudeln'))[0].storeId, 'store-edeka');
+    // Zu Lidl verschieben
+    await holdRow(page, 'Nudeln'); await page.waitForSelector('.drag-ghost'); await page.mouse.up();
+    await page.waitForSelector('#move-dialog[open]');
+    await page.locator('#move-choices button', { hasText: 'Lidl' }).click();
+    await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    assert.equal(await page.textContent('#notice-text'), '„Nudeln“ → Lidl');
+    assert.equal((await find('Nudeln'))[0].storeId, 'store-lidl');
+    assert.equal((await find('Nudeln')).length, 1, 'kein Doppel');
+    // Gleicher Artikel im Ziel: Äpfel (Rewe, 4 Stück) + 2 Äpfel bei Lidl → verschoben nach Rewe sind es 6 Stück in einem Eintrag
+    await pickStore(page, 'Lidl');
+    await page.fill('#item-form input[name=name]', 'Äpfel'); await page.fill('#item-form input[name=quantity]', '2'); await page.click('#item-form button[type=submit]');
+    assert.equal((await find('Äpfel')).length, 2);
+    await page.locator('#store-chips .chip', { hasText: 'Lidl' }).click();
+    await holdRow(page, 'Äpfel'); await page.waitForSelector('.drag-ghost'); await page.mouse.up();
+    await page.waitForSelector('#move-dialog[open]');
+    await page.locator('#move-choices button', { hasText: 'Rewe' }).click();
+    await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    assert.equal(await page.textContent('#notice-text'), '„Äpfel“ → Rewe: jetzt 6 Stück');
+    const apples = await find('Äpfel');
+    assert.deepEqual(apples.map(row => [row.storeId, row.quantity]), [['store-rewe', 6]], 'zusammengezählt, das Doppel ist weg');
+    // Kein Geschäft
+    await holdRow(page, 'Milch'); await page.waitForSelector('.drag-ghost'); await page.mouse.up();
+    await page.waitForSelector('#move-dialog[open]');
+    await page.locator('#move-choices button', { hasText: 'Kein Geschäft' }).click();
+    await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    assert.equal(await page.textContent('#notice-text'), '„Milch“ → kein Geschäft');
+    assert.equal((await find('Milch'))[0].storeId, '');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Verschieben: erst bewegen oder in die rote Fläche ziehen verschiebt nicht; ein kurzer Tipp öffnet weiter die Bearbeitung; in den Ausgaben und im Laden gibt es kein Verschieben', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const width = await page.evaluate(() => innerWidth);
+    // Nach rechts ziehen und außerhalb der Fläche loslassen: nichts passiert (kein Dialog)
+    let { at } = await holdRow(page, 'Tomaten');
+    await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 70, at.y, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    // Escape beim Halten
+    ({ at } = await holdRow(page, 'Tomaten')); await page.waitForSelector('.drag-ghost');
+    await page.keyboard.press('Escape'); await page.mouse.up();
+    await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'Escape bricht ab');
+    assert.equal(await page.locator('#drag-hint.show').count(), 0);
+    // In die rote Fläche: löscht weiterhin
+    ({ at } = await holdRow(page, 'Tomaten')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(width - 30, at.y, { steps: 6 }); await page.waitForSelector('#trash-zone.hot'); await page.mouse.up();
+    await page.waitForFunction(() => ![...document.querySelectorAll('#items .item strong')].some(node => node.textContent === 'Tomaten'));
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    // Kurzer Tipp: Bearbeiten
+    await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page);
+    assert.equal(await page.locator('#item-dialog[open]').count(), 1);
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // Im Laden gibt es das nicht
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    const box = await page.locator('.shop-tap').first().boundingBox();
+    await page.mouse.move(box.x + 40, box.y + 20); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
+    assert.equal(await page.locator('#move-dialog[open]').count(), 0);
+    // Ausgaben: Halten und Loslassen öffnet kein Verschieben
+    await page.click('[data-tab=spending]');
+    assert.equal(await page.locator('#move-dialog[open]').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2769,7 +2938,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.locator('#mode-row').isHidden(), true);
       const chips = await box('#shop-chips .chip');
       assert.ok(chips.y < 24, `Geschäfte beginnen bei ${chips.y} px`);
-      await page.locator('#shop-chips .chip').first().click();
+      await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
       assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
       assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
       assert.equal(await horizontalOverflow(page), 0);

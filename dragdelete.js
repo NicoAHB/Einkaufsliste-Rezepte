@@ -4,10 +4,15 @@ export const HOLD_MS = 450;     // so lange gedrückt halten, bis die Zeile „a
 export const SLOP = 10;         // so weit darf sich der Finger beim Halten bewegen (px)
 export const ZONE_WIDTH = 96;   // Breite der roten Fläche am rechten Rand (px)
 export const ZONE_REACH = 16;   // so weit vor der Fläche zählt sie schon als getroffen (px)
+export const HOLD_RELEASE = 24; // wer die lange gedrückte Zeile kaum bewegt und loslässt, will sie „halten“ (z. B. verschieben), nicht löschen (px)
 
 // Liegt der Finger (x) über der roten Fläche am rechten Rand?
 export function overZone(x, width, zoneWidth = ZONE_WIDTH, reach = ZONE_REACH) {
   return x >= width - zoneWidth - reach;
+}
+// Wurde die abgehobene Zeile beim Loslassen kaum bewegt? Dann gilt das Loslassen als „Halten und Loslassen“.
+export function heldStill(dx, limit = HOLD_RELEASE) {
+  return Math.abs(dx) <= limit;
 }
 // Hat sich der Finger beim Halten so weit bewegt, dass es ein Scrollen ist?
 export function moved(dx, dy, slop = SLOP) {
@@ -23,8 +28,10 @@ export function shift(dx, left, width, keep = 40) {
  * @param zone      die rote Fläche (wird ein- und ausgeblendet)
  * @param onDelete  wird mit dem Wert von `data-id` der Zeile aufgerufen, wenn sie in der Fläche losgelassen wurde
  * @param selector  Zeilen, die gezogen werden dürfen
+ * @param options   `onHold(id)`: wird aufgerufen, wenn die Zeile lange gehalten und fast ohne Bewegung losgelassen wird (z. B. „Verschieben“ öffnen);
+ *                  `hint`: Hinweisfläche, die beim Abheben ein- und beim Loslassen ausgeblendet wird
  */
-export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
+export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', options = {}) {
   let hold = null, drag = null, swallow = false, armed = false;
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cancelHold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } if (!drag) disarm(); };
@@ -43,7 +50,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
     row.classList.add('drag-origin');
     const middle = Math.min(Math.max(box.top + box.height / 2, 60), innerHeight - 60);
     zone.style.top = `${middle - zone.offsetHeight / 2}px`;
-    zone.classList.add('show');
+    zone.classList.add('show'); options.hint?.classList.add('show');
     navigator.vibrate?.(12);
     drag = { row, ghost, id: row.dataset.id, startX: point.x, left: box.left, dx: 0, hot: false };
     swallow = true;
@@ -56,9 +63,10 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]') {
   }
   function finish(drop) {
     const { row, ghost, id, hot, dx } = drag; drag = null;
-    zone.classList.remove('show', 'hot');
+    zone.classList.remove('show', 'hot'); options.hint?.classList.remove('show');
     const done = () => { ghost.remove(); row.classList.remove('drag-origin'); };
-    if (drop && hot) {
+    if (drop && !hot && options.onHold && heldStill(dx)) { done(); options.onHold(id); }
+    else if (drop && hot) {
       if (still()) { done(); onDelete(id); } else {
         ghost.classList.add('away'); ghost.style.transform = `translateX(${dx + 40}px) scale(.2)`;
         setTimeout(() => { done(); onDelete(id); }, 190);

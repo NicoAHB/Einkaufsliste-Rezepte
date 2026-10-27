@@ -1,7 +1,7 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
-import { shopCount, shopView, takesAnywhere } from './shop.js';
+import { ALL_STORES, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
 import { brandOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
@@ -1517,7 +1517,7 @@ function shopRow(item) {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
     // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
-    if (!latest.checked && !latest.storeId) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
+    if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
     commit([nextOp('items', item.id, { checked: !latest.checked })]);
   }));
   row.append(tap);
@@ -1532,8 +1532,16 @@ function shopNewsRow(entry) {
 }
 function renderShop() {
   const stores = active(state.stores), items = visibleItems();
-  if (shopStore && !stores.some(store => store.id === shopStore)) shopStore = '';
+  if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = '';
   const chips = $('#shop-chips'); chips.replaceChildren();
+  // „Alle“ steht vor den Geschäften (wie unter „Planen“): alles Offene aus allen Geschäften und ohne Geschäft
+  if (stores.length) {
+    const all = element('button', 'Alle', 'chip'); all.type = 'button';
+    all.setAttribute('role', 'tab'); all.setAttribute('aria-selected', String(shopStore === ALL_STORES));
+    const open = items.filter(item => !item.checked).length; if (open) all.append(element('span', String(open), 'count'));
+    all.addEventListener('click', () => { shopStore = ALL_STORES; renderShop(); });
+    chips.append(all);
+  }
   for (const store of stores) {
     const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
@@ -1550,6 +1558,7 @@ function renderShop() {
     return;
   }
   ensureSeen();
+  if (shopStore === ALL_STORES) { renderShopAll(list, items, stores); return; }
   const shop = shopView(items, shopStore, shopChecked, takesAnywhere(stores.find(store => store.id === shopStore))), here = [...shop.open, ...shop.anywhere];
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory());
@@ -1564,13 +1573,29 @@ function renderShop() {
   }
   if (shop.elsewhere) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
   if (shop.hidden) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte“)`, 'shop-note'));
-  if (shop.done.length) {
-    const done = element('li', undefined, 'shop-done'), details = element('details'), inner = element('ul');
-    details.open = shopDoneOpen; details.addEventListener('toggle', () => { shopDoneOpen = details.open; });
-    details.append(element('summary', `Erledigt (${shop.done.length})`), inner);
-    shop.done.sort((a, b) => a.name.localeCompare(b.name, 'de')).forEach(item => inner.append(shopRow(item)));
-    done.append(details); list.append(done);
+  appendShopDone(list, shop.done);
+}
+function appendShopDone(list, rows) {
+  if (!rows.length) return;
+  const done = element('li', undefined, 'shop-done'), details = element('details'), inner = element('ul');
+  details.open = shopDoneOpen; details.addEventListener('toggle', () => { shopDoneOpen = details.open; });
+  details.append(element('summary', `Erledigt (${rows.length})`), inner);
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'de')).forEach(item => inner.append(shopRow(item)));
+  done.append(details); list.append(done);
+}
+// Auswahl „Alle“: ein Abschnitt je Geschäft (zuerst „Ohne Geschäft“), darin nach Gängen geordnet; Abhaken wie sonst.
+function renderShopAll(list, items, stores) {
+  const all = shopAllView(items, stores), here = all.sections.flatMap(section => section.open);
+  const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
+  const total = shoppingTotal(here, state.prices);
+  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : 'Alles erledigt.';
+  news.forEach(entry => list.append(shopNewsRow(entry)));
+  for (const section of all.sections) {
+    const open = section.open.filter(item => !newIds.has(item.id)); if (!open.length) continue;
+    list.append(storeHead(section.store ? section.store.name : 'Ohne Geschäft', open.length, !section.store));
+    for (const group of groupByCategory(open, itemHistory())) { const head = groupHead(group.label, group.items.length); head.classList.add('sub'); list.append(head); group.items.forEach(item => list.append(shopRow(item))); }
   }
+  appendShopDone(list, all.done);
 }
 function openFinish() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -1583,8 +1608,9 @@ function openFinish() {
 // und die App springt zurück zu „Planen“.
 function finishShopping(withReceipt, amount = '') {
   const checked = visibleItems().filter(item => item.checked), ids = checked.map(item => item.id), typed = amount.trim();
+  const storeId = shopStore === ALL_STORES ? '' : shopStore;   // „Alle“ ist kein Geschäft: der Betrag wird dann ohne Geschäft gespeichert
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
-  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId: shopStore, storeName: active(state.stores).find(store => store.id === shopStore)?.name || '', note: DEFAULT_NOTE,
+  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
     estimate: estimateOf(checked, state.prices) }, isoDate()) : null;
   const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   shopChecked.clear();
@@ -1593,7 +1619,7 @@ function finishShopping(withReceipt, amount = '') {
   if (fields) spendMonth = monthOf(fields.date);
   if (ops.length) commit(ops, notice); else render();
   setShopMode(false);   // auf jedem Weg, den Einkauf zu beenden: zurück zur Liste („Planen“)
-  if (withReceipt) openReceipt(shopStore);
+  if (withReceipt) openReceipt(storeId);
 }
 
 /* ---------- Kochmodus ---------- */
@@ -2201,7 +2227,37 @@ dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) return;
   removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
-}));
+}), '.item[data-id]', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint') });
+// Lange halten und loslassen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
+function openMove(id) {
+  const item = state.items.find(row => row.id === id && !row.deletedAt);
+  if (!item) return;
+  $('#move-dialog').dataset.id = id;
+  $('#move-text').textContent = `„${item.name}“ (${format(item.quantity)} ${item.unit}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'bei keinem Geschäft'}. Wohin soll er?`;
+  const box = $('#move-choices'); box.replaceChildren();
+  const choice = (storeId, label, name) => {
+    const entry = element('button', undefined, 'secondary move-choice'); entry.type = 'button';
+    entry.append(label);
+    if ((item.storeId || '') === storeId) { entry.disabled = true; entry.setAttribute('aria-label', `${name}, hier steht er jetzt`); entry.append(element('span', 'jetzt hier', 'move-current')); }
+    else entry.addEventListener('click', () => guard(() => moveItem(id, storeId)));
+    box.append(entry);
+  };
+  choice('', document.createTextNode('Kein Geschäft'), 'Kein Geschäft');
+  for (const store of active(state.stores)) choice(store.id, storeLabel(store.name), store.name);
+  message(); $('#move-dialog').showModal();
+}
+function moveItem(id, storeId) {
+  const item = state.items.find(row => row.id === id && !row.deletedAt);
+  if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
+  const target = currentStore(storeId);
+  if ((item.storeId || '') === target) { $('#move-dialog').close(); return; }
+  const label = target ? storeName(target) : 'kein Geschäft';
+  // Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt (wie beim Hinzufügen); sonst wechselt nur das Geschäft.
+  const same = !item.checked && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, state.items).counted[0] : null;
+  if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
+  else commit([nextOp('items', id, { storeId: target })], `„${item.name}“ → ${label}`);
+  $('#move-dialog').close();
+}
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');

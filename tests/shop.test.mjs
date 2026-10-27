@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { shopCount, shopView, takesAnywhere } from '../shop.js';
+import { ALL_STORES, shopAllView, shopCount, shopView, takesAnywhere } from '../shop.js';
 
 const item = (id, storeId, checked = false) => ({ id, storeId, checked, name: id });
 const items = [item('milch', 'edeka'), item('brot', ''), item('kaese', 'lidl'), item('nudeln', 'edeka', true), item('eier', '', true)];
@@ -56,4 +56,16 @@ test('Drogerien nehmen Artikel ohne Geschäft standardmäßig nicht, Supermärkt
   assert.equal(takesAnywhere({ name: 'Rossmann', anywhere: true }), true);
   assert.equal(takesAnywhere({ name: 'Edeka', anywhere: false }), false);
   assert.equal(takesAnywhere(undefined), true);
+});
+
+test('Auswahl „Alle“: erst Artikel ohne Geschäft, dann ein Abschnitt je Geschäft; Erledigtes aus allen Geschäften; leere Abschnitte fehlen', () => {
+  const stores = [{ id: 'edeka', name: 'Edeka' }, { id: 'lidl', name: 'Lidl' }, { id: 'rewe', name: 'Rewe' }];
+  const all = shopAllView(items, stores);
+  assert.deepEqual(all.sections.map(section => [section.store?.id ?? null, ids(section.open)]), [[null, ['brot']], ['edeka', ['milch']], ['lidl', ['kaese']]], 'Rewe hat nichts offen und fehlt');
+  assert.deepEqual(ids(all.done), ['nudeln', 'eier'], 'abgehakt, egal für welches Geschäft');
+  assert.equal(all.count, 3);
+  assert.deepEqual(shopAllView([], stores), { sections: [], done: [], count: 0 });
+  assert.deepEqual(shopAllView(items, []).sections.map(section => section.store), [null], 'ohne Geschäfte bleiben nur die Artikel ohne Geschäft');
+  assert.notEqual(ALL_STORES, '', 'die Kennung unterscheidet sich von „kein Geschäft“');
+  assert.ok(!stores.some(store => store.id === ALL_STORES));
 });

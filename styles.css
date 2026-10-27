@@ -2108,6 +2108,53 @@ body.in-store main {
   transform:translateX(0);
   opacity:1
 }
+/* Hinweis beim Abheben einer Zeile: Loslassen verschiebt, nach rechts schieben löscht */
+.drag-hint {
+  position:fixed;
+  left:50%;
+  bottom:calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom));
+  z-index:30;
+  max-width:calc(100vw - 24px);
+  padding:8px 14px;
+  border-radius:18px;
+  background:var(--text);
+  color:var(--bg);
+  font-size:.82rem;
+  font-weight:600;
+  line-height:1.3;
+  text-align:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+  opacity:0;
+  transform:translateX(-50%) translateY(8px);
+  pointer-events:none;
+  transition:opacity .18s ease-out,transform .18s ease-out
+}
+.drag-hint.show {
+  opacity:1;
+  transform:translateX(-50%) translateY(0)
+}
+/* „Verschieben nach“ */
+.move-choices {
+  display:grid;
+  gap:8px
+}
+.move-choice {
+  justify-content:flex-start;
+  min-height:52px;
+  text-align:left
+}
+.move-choice:disabled {
+  opacity:1;
+  border-style:dashed;
+  color:var(--muted);
+  cursor:default
+}
+.move-current {
+  margin-left:auto;
+  font-size:.8rem;
+  font-weight:500;
+  color:var(--muted)
+}
 .trash-zone.hot {
   background:#a50e0e;
   box-shadow:0 0 0 4px rgba(217,48,37,.35),0 8px 24px rgba(0,0,0,.35)
@@ -2812,7 +2859,7 @@ output {
   --scrim:hsl(var(--h) 50% 10% / .35)
 }
 :root[data-glass][data-theme=dark] {
-  --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .58));
+  --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .52));
   --glass-strong:hsl(var(--h) 45% 17% / calc(.98 - var(--gs) * .26));
   --glass-line:hsl(0 0% 100% / .16);
   --glass-hi:hsl(0 0% 100% / .14);
@@ -2840,7 +2887,7 @@ output {
 }
 @media(prefers-color-scheme:dark) {
   :root[data-glass]:not([data-theme=light]) {
-    --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .58));
+    --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .52));
     --glass-strong:hsl(var(--h) 45% 17% / calc(.98 - var(--gs) * .26));
     --glass-line:hsl(0 0% 100% / .16);
     --glass-hi:hsl(0 0% 100% / .14);
@@ -2919,8 +2966,11 @@ output {
 :root[data-glass] .item+.item {
   border-top-color:var(--glass-line)
 }
-:root[data-glass] .store-head {
+:root[data-glass] .store-head:not(.none) {
   background:linear-gradient(100deg,var(--accent),var(--head-end))
+}
+:root[data-glass] .store-head.none {
+  background:var(--glass-strong)
 }
 
 /* Umschalter */
