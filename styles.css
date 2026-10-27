@@ -486,14 +486,9 @@ main {
 .add-form label {
   margin:0
 }
-/* Zugeklapptes Formular: nur Namensfeld und „+“. Geschäft, Menge, Einheit und Schnellwahl erscheinen, sobald man hineintippt. */
-.add-form.compact>label.wide {
-  grid-column:1/3;
-  grid-row:1
-}
-.add-form.compact .add-button {
-  grid-column:3;
-  grid-row:1
+/* Zugeklapptes Formular: nur das Namensfeld. Geschäft, Menge, Einheit und Schnellwahl erscheinen, sobald man hineintippt. */
+.add-form .unit {
+  grid-column:2/-1
 }
 .add-form.compact>.template-open,.add-form.compact>.store-pick,.add-form.compact>.quick-pick,.add-form.compact>.qty,.add-form.compact>.unit,.add-form.compact>.item-suggestions,.add-form.compact>.price-fields {
   display:none
@@ -501,15 +496,29 @@ main {
 .wide {
   grid-column:1/-1
 }
+/* Das „+“ sitzt im Namensfeld, rechts, und erscheint erst, wenn etwas getippt ist. */
+.name-field {
+  position:relative
+}
+.name-field input {
+  padding-right:56px
+}
 .add-button {
-  width:52px;
-  min-height:48px;
+  position:absolute;
+  top:4px;
+  right:4px;
+  bottom:4px;
+  width:42px;
+  min-height:0;
   padding:0;
-  border-radius:14px
+  border-radius:11px
 }
 .add-button .icon {
-  width:24px;
-  height:24px
+  width:22px;
+  height:22px
+}
+.name-field input:placeholder-shown+.add-button {
+  display:none
 }
 .price-fields {
   margin-top:4px

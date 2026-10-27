@@ -1867,8 +1867,12 @@ function addRows(rows, storeId, unchecked = [], remember = false) {
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
   commit([...result.ops, ...pantryOps], `Übernommen: ${parts.join(', ')}`);
 }
+// Das „+“ im Namensfeld: Ein Tipp darauf fügt hinzu und schließt die Tastatur. Mit der Eingabetaste der Tastatur bleibt sie offen, für den nächsten Artikel.
+let plusTapped = 0;
+$('#item-form .add-button').addEventListener('pointerdown', () => { plusTapped = Date.now(); });
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
+  const form = event.currentTarget, closeKeyboard = Date.now() - plusTapped < 1500, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
+  plusTapped = 0;
   if (!typed || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const known = active(state.aliases || []).find(alias => alias.from === aliasKey(typed)), name = known?.name || typed;
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
@@ -1888,7 +1892,8 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick(); form.elements.name.focus();
+  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
+  if (closeKeyboard) document.activeElement?.blur?.(); else form.elements.name.focus();
 }); });
 $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.id.value;

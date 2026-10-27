@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.11
+# Einkauf & Rezepte – Version 2.12
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, vier Bereiche (Einkauf, Rezepte, Wochenplan, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,14 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.12: grünes „+“ im Namensfeld
+
+- **Das „+“ sitzt jetzt im Namensfeld**, ganz rechts, und erscheint erst, sobald etwas getippt ist. Vorher stand es als eigener Knopf neben Menge und Einheit, bei leerem Feld sinnlos sichtbar. Der Knopf ist in der Farbe der gewählten Palette gehalten (in der grünen Palette also grün).
+- **Ein Tipp auf das „+“ fügt den Artikel hinzu und schließt die Tastatur.** Ein Tipp ins Feld öffnet sie wieder. Das Formular klappt nach dem Hinzufügen wieder zu (nur das Namensfeld bleibt stehen), das gewählte Geschäft bleibt.
+- **Mit der Eingabetaste der Tastatur („Fertig“)** wird ebenfalls hinzugefügt, aber die Tastatur bleibt offen, damit man mehrere Artikel nacheinander eintippen kann. Wer die Tastatur nach jedem Artikel zu haben möchte, sagt Bescheid; das ist eine Zeile.
+- Der Text im Feld läuft nicht unter das „+“ (Platz rechts im Feld), und Einheit nutzt den frei gewordenen Platz in der Zeile.
+- Geprüft über 280, 314 und 390 px Breite mit Fingertipp: „+“ nur mit Text, liegt im Feld, fügt hinzu, das Feld verliert den Fokus (die Tastatur geht zu), ein Tipp ins Feld gibt ihn zurück. **Nicht geprüft:** das echte Verhalten der iPhone-Tastatur; getestet ist nur, dass das Feld den Fokus abgibt, was auf dem iPhone die Tastatur schließt.
 
 ## Neu in Version 2.11: Rezepte des Tages lassen sich nicht mehr zur Seite schieben, neue Rezepte nach der Sammlung
 
@@ -476,6 +484,12 @@ Es gibt in dieser Version noch keinen Import-Knopf. Für eine vollständige Wied
 - [ ] Backup herunterladen: `version`, Listen, Rezepte und Zutaten vorhanden; kein Token enthalten.
 - [ ] Homescreen-Symbol hinzufügen und darüber öffnen. Gegebenenfalls erneut verbinden, danach offline öffnen.
 
+Weitere Testpunkte für Version 2.12:
+
+- [ ] Einkauf: Etwas ins Namensfeld tippen → rechts im Feld erscheint ein „+“. Darauf tippen: Der Artikel steht auf der Liste, das Feld ist leer und **die Tastatur geht zu**. Wieder ins Feld tippen: Die Tastatur öffnet sich.
+- [ ] Mit der Taste „Fertig“ der Tastatur: Der Artikel wird hinzugefügt, die Tastatur bleibt offen.
+- [ ] Langer Text im Feld läuft nicht unter das „+“.
+
 Weitere Testpunkte für Version 2.11:
 
 - [ ] Rezepte → „Rezepte des Tages“ öffnen: Das Fenster lässt sich nicht nach links oder rechts schieben, auch nicht bei großer Schrift (Einstellungen des Handys) und auch nicht, wenn man mit dem Finger seitlich wischt.
@@ -526,7 +540,7 @@ Weitere Testpunkte für Version 2.1:
 
 Weitere Testpunkte für Version 2.0:
 
-- [ ] Einkauf → Planen: Es steht nur das Namensfeld mit „+“. Hineintippen klappt Geschäft, Menge und Einheit auf; ein Tipp daneben klappt wieder zu. Die erste Artikelzeile ist ohne Scrollen sichtbar.
+- [ ] Einkauf → Planen: Es steht nur das Namensfeld (das „+“ erscheint rechts im Feld, sobald etwas getippt ist). Hineintippen klappt Geschäft, Menge und Einheit auf; ein Tipp daneben klappt wieder zu. Die erste Artikelzeile ist ohne Scrollen sichtbar.
 - [ ] Einen Artikel antippen: „Artikel & Preis“ öffnet sich; unten „Artikel löschen“ entfernt ihn.
 - [ ] Einstellungen: Nach dem Verbinden steht „Gemeinsame Liste“ unten und eingeklappt; Vorrat und Darstellung stehen oben.
 - [ ] Optional: Siri-Kurzbefehl „Einkaufsliste“ (siehe oben): „Hey Siri, Einkaufsliste“, „Milch und Eier“. Danach sind beide in der App (in Safari und, falls dort verbunden, auch in GitHub).
