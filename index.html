@@ -74,13 +74,13 @@
       </div>
       <form id="item-form" class="card add-form">
         <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
+        <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
         <input name="storeId" type="hidden" value="">
         <div id="store-pick" class="chips store-pick wide" role="group" aria-label="Geschäft für den neuen Artikel"></div>
         <div id="quick-pick" class="chips quick-pick wide" role="group" aria-label="Häufig gekauft: antippen zum Hinzufügen" hidden></div>
         <button id="open-templates" class="chip-button template-open wide" type="button"><svg class="icon"><use href="#i-bookmark"/></svg>Vorlagen</button>
         <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
-        <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
         <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>
           <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
@@ -130,11 +130,12 @@
         <button id="month-next" class="icon-button round" type="button" aria-label="Nächster Monat"><svg class="icon"><use href="#i-right"/></svg></button>
       </div>
       <div id="spending-summary" class="card spend-summary" aria-live="polite"></div>
+      <div id="spending-budget" class="card spend-budget"></div>
       <div id="spending-chart-card" class="card"><h3>Letzte Monate</h3><ol id="spending-chart" class="spend-chart"></ol></div>
       <div id="spending-stores-card" class="card" hidden><h3>Nach Geschäft</h3><ul id="spending-stores" class="spend-stores"></ul></div>
       <div class="section-head list-head"><p id="purchase-count"></p></div>
       <ul id="purchase-list" class="item-list spend-list"></ul>
-      <p class="hint spend-hint">Hier siehst du, wie viel ihr eingekauft habt. Beträge sehen beide Personen. Einträge nach drei Jahren räumt die App von selbst auf.</p>
+      <p class="hint spend-hint">Hier siehst du, wie viel ihr eingekauft habt. Beträge und Budget sehen beide Personen. Einträge nach drei Jahren räumt die App von selbst auf. Der kleine Punkt hinter einem Betrag vergleicht ihn mit der geschätzten Summe der abgehakten Artikel: <span class="spend-dot ok"></span>grün = im Rahmen oder günstiger, <span class="spend-dot over"></span>rot = teurer.</p>
     </section>
 
     <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
@@ -200,7 +201,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.19 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.21 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -322,6 +323,7 @@
     <label class="file-drop compact"><input name="images" type="file" accept="image/*" multiple class="visually-hidden"><svg class="icon"><use href="#i-camera"/></svg><span>Kassenbon fotografieren oder Screenshot wählen</span></label>
     <progress id="purchase-progress" max="100" value="0" hidden></progress>
     <p id="purchase-status" class="hint" role="status"></p>
+    <p id="purchase-estimate" class="hint" hidden></p>
     <label>Betrag (€)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Betrag in Euro"><button id="purchase-plus" class="add-button" type="submit" aria-label="Einkauf hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
     <label>Notiz (optional)<span class="name-field"><input name="note" maxlength="120" placeholder="z. B. Getränke" autocomplete="off" aria-label="Notiz"><button id="purchase-note-toggle" class="field-button" type="button" aria-label="Vorschläge für die Notiz anzeigen" aria-expanded="false" aria-controls="purchase-note-picks"><svg class="icon"><use href="#i-chevron"/></svg></button></span></label>
@@ -330,6 +332,12 @@
     <button type="submit" id="purchase-save">Speichern</button>
     <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>
     <p class="hint">Die Texterkennung läuft auf deinem Gerät, das Bild wird nirgends hochgeladen. Fotos von Kassenzetteln werden oft ungenau gelesen, deshalb steht der erkannte Betrag nur als Vorschlag im Feld: Bitte vor dem Speichern prüfen. Digitale Bons und Screenshots klappen besser.</p>
+  </form></dialog>
+  <dialog id="budget-dialog"><form id="budget-form" class="stack" novalidate><div class="sheet-head"><h2>Monatsbudget</h2><button type="button" data-close="budget-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p class="hint">Wie viel dürft ihr im Monat einkaufen? Die Übersicht zeigt, wie viel davon verbraucht ist, und warnt ab 80 %. Das Budget gilt für jeden Monat, beide Personen sehen es.</p>
+    <label>Budget pro Monat (€)<input name="amount" inputmode="decimal" placeholder="z. B. 400" maxlength="14" autocomplete="off"></label>
+    <button type="submit">Speichern</button>
+    <button id="budget-remove" type="button" class="danger" hidden>Budget entfernen</button>
   </form></dialog>
   <dialog id="meal-dialog"><form id="meal-form" class="stack"><div class="sheet-head"><h2 id="meal-title">Gericht planen</h2><button type="button" data-close="meal-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">

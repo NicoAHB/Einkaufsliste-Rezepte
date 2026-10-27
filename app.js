@@ -11,11 +11,12 @@ import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngre
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, suggestCategory } from './categories.js';
 import { emojiFor } from './emoji.js';
+import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes } from './cookable.js';
-import { DEFAULT_NOTE, compareTotals, dayLabel as spendDay, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel as spendDay, estimateOf, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -54,6 +55,16 @@ function itemHistory() {
     historyMemo = { for: state, rows: [...state.items, ...(state.names || []).map(entry => ({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))].map(named) };
   }
   return historyMemo.rows;
+}
+// Wortschatz für die Vorschläge beim Eintippen: eigene Artikel (itemHistory) vor Rezeptzutaten, Namen aus Kassenbons und bestätigten Zuordnungen, davor fest eingebaute häufige Artikel.
+let vocabMemo = { for: null, rows: [] };
+function suggestionHistory() {
+  if (vocabMemo.for !== state) {
+    const recipes = new Set(active(state.recipes).map(recipe => recipe.id)), plainName = name => String(name).replace(/\([^)]*\)/g, ' ').split(',')[0].trim().replace(/\s+/g, ' ');
+    const extra = [...active(state.ingredients).filter(row => recipes.has(row.recipeId)).map(row => plainName(row.name)), ...active(state.prices).map(row => row.name), ...active(state.aliases || []).map(row => row.name)];
+    vocabMemo = { for: state, rows: [...itemHistory(), ...extra.filter(Boolean).map(name => ({ name, weight: 0.5 })), ...GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 }))] };
+  }
+  return vocabMemo.rows;
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -390,7 +401,7 @@ function renderItemSuggestions() {
   // Andere Schreibweise eines bekannten Namens („Zwiebel“ statt „Zwiebeln“): nur vorschlagen, erst die Bestätigung wird gemerkt.
   const confirmed = active(state.aliases || []).some(alias => alias.from === aliasKey(typed));
   const variants = typed && !confirmed ? spellingVariants(typed, [...new Set(history.map(row => row.name))]).slice(0, 3) : [];
-  const names = suggestItemNames(history, typed).filter(name => !variants.includes(name));
+  const names = suggestItemNames(suggestionHistory(), typed).filter(name => !variants.includes(name));
   box.replaceChildren(); box.hidden = !names.length && !variants.length;
   if (box.hidden) return;
   if (variants.length) {
@@ -404,7 +415,6 @@ function renderItemSuggestions() {
     box.append(same);
   }
   if (names.length) {
-    box.append(element('span', 'Vorschläge aus euren Artikeln', 'hint'));
     const choices = element('div', undefined, 'suggestion-choices');
     for (const name of names) choices.append(button(name, () => {
       form.elements.name.value = name; box.hidden = true;
@@ -1558,15 +1568,17 @@ function openFinish() {
 // Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
 // und die App springt zurück zu „Planen“.
 function finishShopping(withReceipt, amount = '') {
-  const ids = visibleItems().filter(item => item.checked).map(item => item.id), typed = amount.trim();
-  // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist.
-  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId: shopStore, storeName: active(state.stores).find(store => store.id === shopStore)?.name || '', note: DEFAULT_NOTE }, isoDate()) : null;
+  const checked = visibleItems().filter(item => item.checked), ids = checked.map(item => item.id), typed = amount.trim();
+  // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
+  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId: shopStore, storeName: active(state.stores).find(store => store.id === shopStore)?.name || '', note: DEFAULT_NOTE,
+    estimate: estimateOf(checked, state.prices) }, isoDate()) : null;
   const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   shopChecked.clear();
   $('#finish-dialog').close();
+  const notice = fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '';
   if (fields) spendMonth = monthOf(fields.date);
-  if (ops.length) commit(ops, fields ? `${euros(fields.cents)} unter Ausgaben gespeichert` : ''); else render();
-  if (fields) setShopMode(false);   // Einkauf mit Betrag abgeschlossen: zurück zu „Planen“
+  if (ops.length) commit(ops, notice); else render();
+  setShopMode(false);   // auf jedem Weg, den Einkauf zu beenden: zurück zur Liste („Planen“)
   if (withReceipt) openReceipt(shopStore);
 }
 
@@ -1760,7 +1772,7 @@ function saveReceipt() {
     ops.push(nextOp('purchases', uid(), purchaseFields({ amount: formatAmount(found.cents), date: day, storeId, storeName, source: 'bon' }, isoDate()))); spent = found.cents;
   }
   const parts = [`${entries.length} Preise gemerkt`, up && `${up} teurer`, down && `${down} günstiger`, spent && `${euros(spent)} unter Ausgaben`].filter(Boolean);
-  commit(ops, parts.join(' · '));
+  commit(ops, parts.join(' · ') + (spent ? budgetNote(monthTotalWith(monthOf(day), spent)) : ''));
   $('#receipt-dialog').close();
 }
 
@@ -1772,6 +1784,45 @@ const purchaseRows = () => active(state.purchases || []);
 const countLabel = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 // Kurze Zahl über einer Säule: ganze Euro, ab 10.000 € in Tausendern („12k“), damit sie auch auf schmalen Telefonen in die Spalte passt.
 const compactEuros = cents => cents >= 1000000 ? `${Math.round(cents / 100000)}k` : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(cents / 100));
+// „Geschätzt 20,00 €, bezahlt 3,45 € mehr“ für Bildschirmleser und das Änderungsfenster.
+function estimateWords(cents, estimate) {
+  const diff = cents - estimate;
+  return `geschätzt ${euros(estimate)}, ${!diff ? 'genau so viel bezahlt' : diff > 0 ? `${euros(diff)} mehr bezahlt` : `${euros(-diff)} weniger bezahlt`}`;
+}
+const budgetCents = () => active(state.budgets || []).find(row => row.id === 'monthly')?.cents || 0;
+// Kurzer Zusatz für die Meldung nach dem Speichern: ab 80 % des Budgets („85 % des Budgets verbraucht“, „Budget um 12,30 € überschritten“).
+function budgetNote(total) {
+  const status = budgetStatus(total, budgetCents());
+  return !status || status.level === 'ok' ? '' : status.level === 'over' ? ` · Budget um ${euros(-status.left)} überschritten` : ` · ${status.percent} % des Budgets verbraucht`;
+}
+// Summe des Monats nach dem Speichern eines Betrags (beim Ändern ohne den alten Betrag).
+const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter(row => monthOf(row.date) === month && row.id !== replacing?.id).reduce((sum, row) => sum + row.cents, 0) + cents;
+function renderBudget(spent) {
+  const box = $('#spending-budget'), budget = budgetCents(), status = budgetStatus(spent, budget);
+  box.replaceChildren();
+  if (!status) { box.append(button('Monatsbudget festlegen', openBudget, 'text-button')); box.classList.add('empty-budget'); return; }
+  box.classList.remove('empty-budget');
+  const head = element('div', undefined, 'spend-budget-head'), copy = element('div');
+  copy.append(element('strong', `Budget ${euros(budget)}`), element('small', status.left >= 0 ? `${status.percent} % verbraucht · noch ${euros(status.left)}` : `${euros(-status.left)} über dem Budget (${status.percent} %)`, `budget-${status.level}`));
+  head.append(copy, iconButton('edit', 'Monatsbudget ändern', openBudget));
+  const bar = element('div', undefined, 'spend-share'), fill = element('span', undefined, `budget-fill ${status.level}`);
+  fill.style.width = `${Math.min(100, Math.max(2, status.percent))}%`; bar.append(fill);
+  bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.min(100, status.percent)));
+  bar.setAttribute('aria-label', `Budget zu ${status.percent} Prozent verbraucht`);
+  box.append(head, bar);
+}
+function openBudget() {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const form = $('#budget-form'), budget = budgetCents();
+  form.reset(); message(); form.elements.amount.value = budget ? String(budget % 100 ? formatAmount(budget) : budget / 100) : '';
+  $('#budget-remove').hidden = !budget;
+  $('#budget-dialog').showModal(); form.elements.amount.focus();
+}
+function saveBudget() {
+  const cents = parseAmount($('#budget-form').elements.amount.value);
+  $('#budget-dialog').close();
+  commit([nextOp('budgets', 'monthly', { cents })], `Monatsbudget ${euros(cents)} gespeichert`);
+}
 function renderSpending() {
   if ($('#spending').hidden) return;
   const rows = purchaseRows(), stores = active(state.stores), now = monthOf(isoDate());
@@ -1791,6 +1842,8 @@ function renderSpending() {
     else if (!diff.diff) summary.append(element('small', `Genau so viel wie im ${name}`));
     else summary.append(element('small', `${more ? '▲' : '▼'} ${euros(Math.abs(diff.diff))} ${more ? 'mehr' : 'weniger'} als im ${name}${diff.percent === null ? '' : ` (${more ? '+' : '−'}${Math.abs(diff.percent)}\u00a0%)`}`, `trend ${more ? 'up' : 'down'}`));
   } else if (current.count) summary.append(element('small', `Im ${monthName(before)} wurde nichts eingetragen.`));
+
+  renderBudget(current.total);
 
   const months = recentMonths(rows, spendMonth, 6), top = Math.max(1, ...months.map(entry => entry.total)), chart = $('#spending-chart'); chart.replaceChildren();
   for (const entry of months) {
@@ -1820,8 +1873,11 @@ function renderSpending() {
     const item = element('li', undefined, 'spend-item'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores);
     open.type = 'button'; item.dataset.id = row.id;
     copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : ''].filter(Boolean).join(' · ')));
-    open.append(copy, element('span', euros(row.cents), 'spend-amount'));
-    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}: ändern`);
+    const verdict = estimateVerdict(row.cents, row.estimate), amount = element('span', euros(row.cents), 'spend-amount');
+    // Kleiner Punkt: bezahlt gegen die geschätzte Summe der abgehakten Artikel (grün: im Rahmen oder günstiger, rot: teurer)
+    if (verdict) { const dot = element('span', undefined, `spend-dot ${verdict.level}`); dot.setAttribute('aria-hidden', 'true'); amount.prepend(dot); }
+    open.append(copy, amount);
+    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}${verdict ? `, ${estimateWords(row.cents, row.estimate)}` : ''}: ändern`);
     open.addEventListener('click', () => guard(() => openPurchase(row.id)));
     item.append(open); list.append(item);
   }
@@ -1849,6 +1905,7 @@ function openPurchase(id = '') {
   form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
   $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
   $('#purchase-delete').hidden = !row; $('#purchase-prices-label').hidden = true;
+  $('#purchase-estimate').hidden = !row?.estimate; $('#purchase-estimate').textContent = row?.estimate ? `Zum Vergleich: ${estimateWords(row.cents, row.estimate)}.` : '';
   $('#purchase-dialog').showModal();
   if (!row) form.elements.amount.focus();
 }
@@ -1902,7 +1959,7 @@ function savePurchase() {
   const priceText = !id && form.elements.prices.checked && purchaseParsed?.items.length ? purchaseRaw : '';
   spendMonth = monthOf(fields.date);
   $('#purchase-dialog').close();
-  commit([op], `${euros(fields.cents)} unter Ausgaben gespeichert`);
+  commit([op], `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(spendMonth, fields.cents, editing))}`);
   // Auf Wunsch gleich die Artikelpreise des Bons prüfen; der Gesamtbetrag ist dann schon gespeichert.
   if (priceText) openReceipt(fields.storeId || '', priceText, false);
 }
@@ -1980,7 +2037,7 @@ $('#template-form').addEventListener('submit', event => { event.preventDefault()
 
 /* ---------- Datenumfang ---------- */
 const kb = bytes => `${Math.max(1, Math.round(bytes / 1024))} KB`;
-const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry + removed.aliases + removed.templates + removed.purchases;
+const entries = removed => removed.items + removed.recipes + removed.ingredients + removed.stores + removed.prices + removed.meals + removed.pantry + removed.aliases + removed.templates + removed.purchases + removed.budgets;
 function noteCompaction(result) {
   $('#storage-note').textContent = !result?.changed ? 'Es gab nichts aufzuräumen.' :
     `Aufgeräumt: ${entries(result.removed)} Einträge entfernt, ${kb(result.before - result.after)} gespart.`;
@@ -2279,6 +2336,8 @@ $('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
 $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
 $('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });
 $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
+$('#budget-form').addEventListener('submit', event => { event.preventDefault(); guard(saveBudget); });
+$('#budget-remove').addEventListener('click', () => guard(() => { $('#budget-dialog').close(); commit([nextOp('budgets', 'monthly', { cents: 0 })], 'Monatsbudget entfernt'); }));
 $('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });
 $('#month-next').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, 1); renderSpending(); });
 $('#month-today').addEventListener('click', () => { spendMonth = monthOf(isoDate()); renderSpending(); });

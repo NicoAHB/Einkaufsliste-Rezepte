@@ -674,25 +674,34 @@ details[open]>summary::after {
   padding:0 14px;
   font-size:.92rem
 }
+/* Vorschläge beim Eintippen: direkt unter dem Namensfeld (nicht hinter der Tastatur), in einer Zeile zum seitlichen Wischen */
 .item-suggestions {
-  margin:6px 0 2px
+  margin:-2px 0 0
 }
 .item-suggestions .hint {
   display:block;
-  margin-bottom:6px
+  margin-bottom:4px
 }
 .suggestion-choices {
   display:flex;
-  flex-wrap:wrap;
-  gap:8px
+  gap:8px;
+  margin:0 -16px;
+  padding:2px 16px 4px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch
+}
+.suggestion-choices::-webkit-scrollbar {
+  display:none
 }
 .suggestion-choices button {
+  flex:none;
   min-height:40px;
   padding:0 14px;
   border-radius:999px;
   font-size:.92rem;
-  overflow-wrap:anywhere;
-  text-align:left
+  text-align:left;
+  white-space:nowrap
 }
 
 /* Einkaufsliste */
@@ -2661,4 +2670,59 @@ details,summary,.card {
   cursor:pointer;
   color:var(--accent);
   font-weight:650
+}
+
+/* Monatsbudget und der kleine Punkt „geschätzt gegen bezahlt“ */
+.spend-budget {
+  padding:12px 16px
+}
+.spend-budget.empty-budget {
+  display:flex;
+  justify-content:center;
+  padding:2px 8px
+}
+.spend-budget-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px
+}
+.spend-budget-head strong,.spend-budget-head small {
+  display:block;
+  line-height:1.35
+}
+.spend-budget-head small {
+  font-size:.86rem;
+  color:var(--muted)
+}
+.spend-budget-head small.budget-warn {
+  color:var(--warn);
+  font-weight:650
+}
+.spend-budget-head small.budget-over {
+  color:var(--danger);
+  font-weight:650
+}
+.spend-budget .spend-share {
+  margin:6px 0 0
+}
+.spend-share .budget-fill.warn {
+  background:var(--warn)
+}
+.spend-share .budget-fill.over {
+  background:var(--danger)
+}
+.spend-dot {
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin-right:6px;
+  border-radius:50%;
+  vertical-align:middle
+}
+.spend-dot.ok {
+  background:var(--ok)
+}
+.spend-dot.over {
+  background:var(--danger)
 }

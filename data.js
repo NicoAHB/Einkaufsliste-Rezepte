@@ -2,16 +2,16 @@
 import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory } from './categories.js';
-// `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases'];
+// `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -76,7 +76,10 @@ export function validateRow(key, row) {
   // Ausgabe (Version 2.15): Tag, Betrag in Cent, optional Geschäft (Kennung und gemerkter Name), Notiz und Herkunft („bon“ = aus Kassenbon-Foto/-Screenshot, „hand“).
   if (key === 'purchases' && (!validDay(row.date) || !Number.isSafeInteger(row.cents) || row.cents < 1 || row.cents > 99999999 ||
       (row.storeId !== undefined && typeof row.storeId !== 'string') || (row.storeName !== undefined && (typeof row.storeName !== 'string' || row.storeName.length > 80)) ||
-      (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 200)) || (row.source !== undefined && !['bon', 'hand'].includes(row.source)))) throw new Error('Ungültiger Einkaufsbetrag.');
+      (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 200)) || (row.source !== undefined && !['bon', 'hand'].includes(row.source)) ||
+      (row.estimate !== undefined && (!Number.isSafeInteger(row.estimate) || row.estimate < 1 || row.estimate > 99999999)))) throw new Error('Ungültiger Einkaufsbetrag.');
+  // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
+  if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
 }
 
@@ -148,7 +151,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   const next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= [];
   const applied = new Set(next.sync.applied), created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
@@ -204,21 +207,31 @@ export function positive(value) {
 
 // Auch erledigte und gelöschte Artikel bleiben im gemeinsamen Datenbestand.
 // Daraus lernen die Vorschläge ohne zusätzliche Datenbank oder Onlinedienst.
+/* Vorschläge beim Eintippen: Ein Eintrag passt, wenn sein Name mit dem Getippten beginnt („ap“ → „Apfel“), danach wenn ein späteres Wort so beginnt
+   („ba“ → „Bio Bananen“), zuletzt wenn es irgendwo im Namen steht. Umlaute zählen wie ihr Grundbuchstabe („ap“ findet auch „Äpfel“). Innerhalb davon
+   kommt vor, was häufiger oder zuletzt vorkam; `weight` eines Eintrags (Standard 1) macht ihn mehr oder weniger wichtig, so stehen eigene Artikel vor
+   Zutaten und fest eingebauten Namen. Schreibweisen desselben Wortes („Apfel“/„Äpfel“, „Banane“/„Bananen“) erscheinen nur einmal. */
+const fold = text => productKey(text).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
 export function suggestItemNames(items, query, limit = 6) {
-  const search = productKey(query);
+  const search = fold(query);
   if (!search) return [];
   const names = new Map();
   for (const item of items) {
     if (typeof item.name !== 'string') continue;
-    const name = item.name.trim().replace(/\s+/g, ' '), key = productKey(name);
-    if (!key || !key.includes(search)) continue;
-    const previous = names.get(key), at = item.updatedAt || item.createdAt || '';
-    names.set(key, { key, name: !previous || at > previous.at ? name : previous.name,
-      count: (previous?.count || 0) + (Number(item.weight) || 1), at: !previous || at > previous.at ? at : previous.at });
+    const name = item.name.trim().replace(/\s+/g, ' '), key = productKey(name), folded = fold(name);
+    if (!key || !folded.includes(search)) continue;
+    const rank = folded.startsWith(search) ? 0 : folded.split(/[^\p{L}\p{N}]+/u).some(word => word.startsWith(search)) ? 1 : 2;
+    const previous = names.get(key), at = item.updatedAt || item.createdAt || '', weight = Number.isFinite(item.weight) ? item.weight : 1;
+    names.set(key, { key, rank, name: !previous || at > previous.at ? name : previous.name,
+      count: (previous?.count || 0) + weight, at: !previous || at > previous.at ? at : previous.at });
   }
-  return [...names.values()].sort((a, b) => Number(b.key.startsWith(search)) - Number(a.key.startsWith(search)) ||
-    b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de'))
-    .slice(0, limit).map(row => row.name);
+  const seen = new Set(), result = [];
+  for (const row of [...names.values()].sort((a, b) => a.rank - b.rank || b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de'))) {
+    const stem = spellingStem(row.name);
+    if (seen.has(stem)) continue;
+    seen.add(stem); result.push(row.name);
+  }
+  return result.slice(0, limit);
 }
 
 /* Schreibweisen: „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“, „Apfel“ und „Äpfel“ meinen denselben Artikel. Die App rät nie still: Sie
