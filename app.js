@@ -9,7 +9,8 @@ import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
-import { CATEGORIES, categoryLabel, groupByCategory, isCategory, suggestCategory } from './categories.js';
+import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, suggestCategory } from './categories.js';
+import { categoryIcon, createImages, imageKey } from './images.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
@@ -17,6 +18,10 @@ import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
+// Produktbilder (Open Food Facts, siehe images.js): Ergebnisse bleiben auf dem Gerät gespeichert; ausgeschaltet wird nichts abgefragt.
+const imagesOn = () => config.productImages !== false;
+const images = createImages({ onChange: key => { for (const box of document.querySelectorAll('.item-thumb')) if (box.dataset.imageKey === key) fillThumb(box); } });
+images.setEnabled(false);   // erst nach dem Laden der Einstellungen (fillSettings) freigeben
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
@@ -260,7 +265,9 @@ function newsRow(entry) {
   copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit}${view === 'all' ? ` · ${storeName(item.storeId)}` : ''} · ${notes.join(', ')}`));
   const actions = element('div', undefined, 'item-actions');
   actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
-  row.append(copy, actions);
+  row.append(copy);
+  if (imagesOn()) row.append(thumbFor(item));
+  row.append(actions);
   return row;
 }
 function groupHead(label, count) {
@@ -278,6 +285,26 @@ function storeHead(label, count, none) {
   name.append(none ? document.createTextNode(label) : storeLabel(label));
   row.append(icon('store'), name, element('span', String(count), 'count'));
   return row;
+}
+// Kachel rechts in der Zeile: Bild, Ersatzsymbol der Kategorie oder (beim Suchen und Laden) ein Platzhalter. Rein dekorativ, nicht antippbar.
+let thumbLearned = new Map();
+function fillThumb(box) {
+  const found = images.state(box.dataset.imageKey), symbol = () => icon(box.dataset.icon);
+  box.classList.toggle('pending', found.state === 'pending'); box.classList.remove('loading');
+  if (found.state === 'image') {
+    const picture = element('img'); picture.alt = ''; picture.loading = 'lazy'; picture.decoding = 'async'; picture.referrerPolicy = 'no-referrer';
+    box.classList.add('loading');
+    picture.addEventListener('load', () => box.classList.remove('loading'));
+    picture.addEventListener('error', () => { box.classList.remove('loading'); box.replaceChildren(symbol()); if (navigator.onLine !== false) images.broken(box.dataset.imageKey); });
+    picture.src = found.url;
+    box.replaceChildren(picture);
+  } else box.replaceChildren(...(found.state === 'pending' ? [] : [symbol()]));
+}
+function thumbFor(item) {
+  const box = element('span', undefined, 'item-thumb'); box.setAttribute('aria-hidden', 'true');
+  box.dataset.imageKey = imageKey(item.name); box.dataset.icon = categoryIcon(itemCategory(item, thumbLearned)).slice(2);
+  fillThumb(box); images.request(item.name);
+  return box;
 }
 function itemRow(item, withStore = false) {
   const row = element('li', undefined, `item${item.checked ? ' checked' : ''}`); row.dataset.id = item.id;
@@ -312,10 +339,12 @@ function itemRow(item, withStore = false) {
     copy.append(element('small', `${quotes.length === 1 ? 'Preis' : 'Am günstigsten'}: ${stores} ${euros(best.rate)}/${best.unit} · ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
   }
   row.append(check, copy);
+  if (imagesOn()) row.append(thumbFor(item));
   return row;
 }
 function renderItems() {
   renderShoppingInfo();
+  thumbLearned = learnCategories(state.items);
   const list = $('#items'); list.replaceChildren();
   const rows = visibleItems().filter(inView);
   ensureSeen();
@@ -1336,7 +1365,7 @@ function fillSettings() {
   }
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
-  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; applyTheme();
+  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); images.setEnabled(imagesOn()); applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
   applyFolds();
@@ -2012,6 +2041,8 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
+// Gilt sofort: Aus = keine Kacheln und keine Abfragen (Laufendes wird abgebrochen), An = die Kacheln erscheinen und suchen los.
+$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); images.setEnabled(imagesOn()); renderItems(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#palette').addEventListener('click', event => guard(() => {
