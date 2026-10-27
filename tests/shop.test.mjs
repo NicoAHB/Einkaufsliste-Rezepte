@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALL_STORES, shopAllView, shopCount, shopView, takesAnywhere } from '../shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, LOCK_CHOICES, LOCK_DEFAULT, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from '../shop.js';
 
 const item = (id, storeId, checked = false) => ({ id, storeId, checked, name: id });
 const items = [item('milch', 'edeka'), item('brot', ''), item('kaese', 'lidl'), item('nudeln', 'edeka', true), item('eier', '', true)];
@@ -68,4 +68,18 @@ test('Auswahl „Alle“: erst Artikel ohne Geschäft, dann ein Abschnitt je Ges
   assert.deepEqual(shopAllView(items, []).sections.map(section => section.store), [null], 'ohne Geschäfte bleiben nur die Artikel ohne Geschäft');
   assert.notEqual(ALL_STORES, '', 'die Kennung unterscheidet sich von „kein Geschäft“');
   assert.ok(!stores.some(store => store.id === ALL_STORES));
+});
+
+test('Sperre im Laden: gültige Wartezeit, Standard bei Unsinn, Haltezeiten spürbar aber nicht lästig', () => {
+  assert.equal(lockSeconds(undefined), LOCK_DEFAULT);
+  assert.equal(lockSeconds('abc'), LOCK_DEFAULT);
+  assert.equal(lockSeconds(-5), LOCK_DEFAULT);
+  assert.equal(lockSeconds(99999), LOCK_DEFAULT);
+  assert.equal(lockSeconds(NaN), LOCK_DEFAULT);
+  assert.equal(lockSeconds(0), 0, 'null heißt nie sperren');
+  assert.equal(lockSeconds(45.4), 45);
+  for (const seconds of LOCK_CHOICES) assert.equal(lockSeconds(seconds), seconds);
+  assert.ok(LOCK_CHOICES.includes(LOCK_DEFAULT));
+  assert.ok(HOLD_FINISH_MS >= 500 && HOLD_FINISH_MS <= 1200);
+  assert.ok(HOLD_UNLOCK_MS >= 400 && HOLD_UNLOCK_MS <= 1000);
 });

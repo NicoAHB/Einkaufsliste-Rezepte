@@ -32,3 +32,14 @@ export function shopAllView(items, stores) {
     .filter(section => section.open.length);
   return { sections, done: items.filter(item => item.checked), count: open.length };
 }
+
+/* Schutz vor versehentlichen Berührungen im Laden (Handy in der Hosentasche): „Einkauf beenden“ und „Entsperren“ muss man gedrückt halten,
+   und nach einiger Zeit ohne Berührung sperrt sich die Ansicht (Tippen bewirkt dann nichts, Scrollen geht weiter). */
+export const LOCK_CHOICES = [0, 10, 20, 30, 60, 120];   // Sekunden ohne Berührung bis zur Sperre; 0 = nie
+export const LOCK_DEFAULT = 30;
+export const HOLD_FINISH_MS = 700;   // „Einkauf beenden“ so lange gedrückt halten
+export const HOLD_UNLOCK_MS = 600;   // „Entsperren“ so lange gedrückt halten
+// Gemerkte Wartezeit (Sekunden) als gültige Zahl; ohne Angabe oder bei Unsinn gilt der Standard.
+export function lockSeconds(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 3600 ? Math.round(value) : LOCK_DEFAULT;
+}
