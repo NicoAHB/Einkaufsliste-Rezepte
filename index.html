@@ -199,9 +199,20 @@
           <button type="button" role="radio" aria-checked="false" data-palette="rose"><span class="swatch"></span>Rosé</button>
           <button type="button" role="radio" aria-checked="false" data-palette="pfirsich"><span class="swatch"></span>Pfirsich</button>
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
+        <label class="checkbox-label"><input id="glass-on" type="checkbox"> Glas-Design (durchscheinende Karten, weicher Hintergrund)</label>
+        <div id="glass-options" class="stack">
+          <div class="palette-field"><span id="glass-bg-label">Hintergrund</span><div id="glass-bg" class="segmented" role="radiogroup" aria-labelledby="glass-bg-label">
+            <button type="button" role="radio" aria-checked="true" data-bg="lichter">Lichter</button>
+            <button type="button" role="radio" aria-checked="false" data-bg="verlauf">Verlauf</button>
+            <button type="button" role="radio" aria-checked="false" data-bg="schlicht">Schlicht</button>
+          </div></div>
+          <label for="glass-level">Transparenz: <output id="glass-level-value" for="glass-level">50 %</output></label>
+          <input id="glass-level" type="range" min="0" max="100" step="5" value="50" aria-describedby="glass-hint">
+          <p class="hint" id="glass-hint">Weniger: Karten fast deckend wie bisher. Mehr: Karten scheinen stärker durch. Die Farben des Hintergrunds folgen der gewählten Farbe. Gilt nur auf diesem Gerät.</p>
+        </div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.21 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.22 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>

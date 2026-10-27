@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.21
+# Einkauf & Rezepte – Version 2.22
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,26 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.22: Glas-Design mit Schalter, Hintergrund und Transparenz
+
+Die App kann jetzt wie „Milchglas“ aussehen. Alles liegt unter **Einstellungen → Darstellung & Sicherung** und gilt, wie Farbe und Hell/Dunkel, **nur auf dem jeweiligen Gerät** (`einkauf-settings-v1`: `glass`, `glassBg`, `glassLevel`).
+
+- **Schalter „Glas-Design“** (Standard: an). Aus = die App sieht exakt so aus wie in Version 2.21: kein Attribut am `<html>`, keine Variable, volle Leiste, deckende Karten.
+- **Hintergrund:** **Lichter** (weiche Farbflecken in den Ecken, aus der gewählten Farbe abgeleitet), **Verlauf** (diagonal von der Farbe zur Grundfarbe) oder **Schlicht** (nur die Grundfarbe, die Karten sind dann sanft getönt).
+- **Transparenz** (Regler 0 bis 100, Standard 50): weniger = Karten fast deckend, mehr = Karten scheinen stärker durch, die Unschärfe wächst mit. Der Regler wirkt schon beim Ziehen, gemerkt wird beim Loslassen.
+- **Was sich ändert (nur mit Glas):** Karten, Listen, Wochentage und Umschalter sind milchig durchscheinend mit hellem Innenrand und **farbigem Verlaufsrahmen** (in den Farben der gewählten Farbe); die Tab-Leiste schwebt als **Glaspille** mit Abstand zum Rand; Dialoge sind Glas-Sheets, dahinter wird die Seite unscharf; Akzentknöpfe bekommen einen leichten Verlauf und Schein; Geschäftsüberschriften einen Farbverlauf; Eingabefelder einen Leuchtring beim Antippen. Texte, Anordnung und Größen der Tippflächen bleiben.
+- **Technik (Details für Eingeweihte):** `theme.js` setzt `data-glass`, `data-glass-bg` und `--gs` (Transparenz 0 bis 1) vor dem ersten Anzeigen, `applyTheme()` in `app.js` hält sie aktuell. Der Hintergrund ist ein fest stehendes `body::before` (funktioniert auch auf iOS, wo `background-attachment: fixed` ignoriert wird); der Körper selbst ist mit Glas durchsichtig, die Statusleistenfarbe wird deshalb von der Seite (`html`) gelesen. Der Verlaufsrahmen nutzt eine Maske und steht hinter `@supports`; ohne Unterstützung für Unschärfe oder mit der iOS-Einstellung **„Transparenz reduzieren“** bleiben alle Flächen deckend wie bisher. Mit eingeschalteter Tastatur (`body.typing`) fährt die schwebende Leiste ganz aus dem Bild.
+- **Lesbarkeit geprüft:** Für 1.968 Textstellen in sieben Ansichten (Einkauf, Rezepte, Plan, Ausgaben, Einstellungen, zwei Dialoge) wurde der Kontrast **pixelgenau** aus dem fertigen Bild gemessen, bei Transparenz 0, 50 und 100, mit Lichtern und Verlauf, hell und dunkel: durchgehend mindestens 4,5 : 1 (Großschrift 3 : 1). Dafür ist der Grautext im hellen Glas-Modus etwas dunkler als ohne Glas und die Karten bleiben im Dunkeln auch bei 100 nie ganz durchsichtig.
+- **Nicht getestet:** das Aussehen und die Flüssigkeit auf echten iPhones und Android-Geräten (nur Chromium mit iPhone-Emulation) und auf älteren Geräten mit schwacher Grafik. Wenn es ruckelt: Glas-Design ausschalten oder Transparenz auf 0 stellen.
+
+Weitere Testpunkte für Version 2.22:
+
+- [ ] Einstellungen → Darstellung & Sicherung → **Glas-Design** ausschalten: Die Karten sind sofort deckend, die Leiste unten füllt wieder die Breite, die Hintergrund-Auswahl und der Regler verschwinden. Wieder einschalten: Alles ist sofort zurück, mit den zuletzt gewählten Werten.
+- [ ] **Hintergrund** durchschalten (Lichter, Verlauf, Schlicht): Der Hintergrund ändert sich sofort; die Karten bleiben lesbar.
+- [ ] **Transparenz** auf 0 und auf 100 ziehen: Bei 0 sind die Karten fast deckend, bei 100 scheint der Hintergrund deutlich durch, die Schrift bleibt gut lesbar (hell und dunkel).
+- [ ] App schließen und neu öffnen: Die Wahl gilt schon beim Start (kein kurzes Aufblitzen der alten Darstellung).
+- [ ] Ins Namensfeld tippen: Die schwebende Leiste verschwindet mit der Tastatur und kommt danach zurück.
 
 ## Neu in Version 2.21: nach jedem Beenden zur Liste, Punkt „geschätzt gegen bezahlt“, Monatsbudget
 
