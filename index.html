@@ -212,7 +212,7 @@
         </div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.22 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.23 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -226,6 +226,10 @@
     <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
   </nav>
   <div id="trash-zone" class="trash-zone" aria-hidden="true"><svg class="icon"><use href="#i-trash"/></svg></div>
+  <div id="move-bar" class="move-bar" aria-hidden="true" hidden></div>
+  <div id="drag-hint" class="drag-hint" aria-hidden="true">Auf ein Geschäft ziehen: verschieben · ganz nach rechts: löschen</div>
+  <dialog id="move-dialog"><div class="stack"><div class="sheet-head"><h2>Verschieben nach</h2><button type="button" data-close="move-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div></div></dialog>
   <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span></aside>
 
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>

@@ -2108,6 +2108,116 @@ body.in-store main {
   transform:translateX(0);
   opacity:1
 }
+/* Hinweis beim Abheben einer Zeile: Loslassen verschiebt, nach rechts schieben löscht */
+.drag-hint {
+  position:fixed;
+  left:50%;
+  bottom:calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom));
+  z-index:30;
+  width:max-content;
+  max-width:calc(100vw - 24px);
+  padding:8px 14px;
+  border-radius:18px;
+  background:var(--text);
+  color:var(--bg);
+  font-size:.82rem;
+  font-weight:600;
+  line-height:1.3;
+  text-align:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+  opacity:0;
+  transform:translateX(-50%) translateY(8px);
+  pointer-events:none;
+  transition:opacity .18s ease-out,transform .18s ease-out
+}
+.drag-hint.show {
+  opacity:1;
+  transform:translateX(-50%) translateY(0)
+}
+/* Ablage beim Ziehen: oben eine Leiste mit allen Geschäften; Abschnitte der Liste, über denen der Finger steht, leuchten auf */
+.move-bar {
+  position:fixed;
+  top:calc(env(safe-area-inset-top) + 8px);
+  left:8px;
+  right:8px;
+  z-index:32;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  max-width:560px;
+  margin:0 auto;
+  padding:6px;
+  border-radius:20px;
+  background:var(--card);
+  box-shadow:0 10px 30px rgba(0,0,0,.3);
+  pointer-events:none;
+  animation:rise .18s ease-out
+}
+.move-target {
+  display:grid;
+  place-items:center;
+  flex:1 1 76px;
+  min-width:0;
+  min-height:44px;
+  padding:4px 8px;
+  border:2px dashed var(--line-strong);
+  border-radius:14px;
+  background:var(--card);
+  color:var(--text);
+  font-size:.86rem;
+  font-weight:650;
+  line-height:1.2;
+  text-align:center;
+  overflow-wrap:break-word;
+  transition:transform .12s ease-out,background-color .12s
+}
+@media(max-width:360px) {
+  .move-target {
+    flex-basis:64px;
+    padding:4px;
+    font-size:.78rem
+  }
+}
+.move-target.current {
+  opacity:.45;
+  border-style:solid
+}
+.move-target.hot {
+  border-color:var(--accent);
+  background:var(--accent);
+  color:var(--on-accent);
+  transform:scale(1.05)
+}
+.item.drop-over,.group-head.drop-over {
+  background:var(--accent-soft)
+}
+.store-head.drop-over {
+  outline:3px solid var(--accent);
+  outline-offset:-3px;
+  filter:brightness(1.15)
+}
+/* „Verschieben nach“ */
+.move-choices {
+  display:grid;
+  gap:8px
+}
+.move-choice {
+  justify-content:flex-start;
+  min-height:52px;
+  text-align:left
+}
+.move-choice:disabled {
+  opacity:1;
+  border-style:dashed;
+  color:var(--muted);
+  cursor:default
+}
+.move-current {
+  margin-left:auto;
+  font-size:.8rem;
+  font-weight:500;
+  color:var(--muted)
+}
 .trash-zone.hot {
   background:#a50e0e;
   box-shadow:0 0 0 4px rgba(217,48,37,.35),0 8px 24px rgba(0,0,0,.35)
@@ -2812,7 +2922,7 @@ output {
   --scrim:hsl(var(--h) 50% 10% / .35)
 }
 :root[data-glass][data-theme=dark] {
-  --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .58));
+  --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .52));
   --glass-strong:hsl(var(--h) 45% 17% / calc(.98 - var(--gs) * .26));
   --glass-line:hsl(0 0% 100% / .16);
   --glass-hi:hsl(0 0% 100% / .14);
@@ -2840,7 +2950,7 @@ output {
 }
 @media(prefers-color-scheme:dark) {
   :root[data-glass]:not([data-theme=light]) {
-    --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .58));
+    --glass:hsl(var(--h) 45% 22% / calc(.96 - var(--gs) * .52));
     --glass-strong:hsl(var(--h) 45% 17% / calc(.98 - var(--gs) * .26));
     --glass-line:hsl(0 0% 100% / .16);
     --glass-hi:hsl(0 0% 100% / .14);
@@ -2919,8 +3029,11 @@ output {
 :root[data-glass] .item+.item {
   border-top-color:var(--glass-line)
 }
-:root[data-glass] .store-head {
+:root[data-glass] .store-head:not(.none) {
   background:linear-gradient(100deg,var(--accent),var(--head-end))
+}
+:root[data-glass] .store-head.none {
+  background:var(--glass-strong)
 }
 
 /* Umschalter */
@@ -3016,6 +3129,16 @@ output {
 }
 :root[data-glass] .sheet-head {
   background:transparent
+}
+
+:root[data-glass] .move-bar {
+  background:var(--glass-strong);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  backdrop-filter:blur(var(--glass-blur)) saturate(1.8);
+  border:1px solid var(--glass-line)
+}
+:root[data-glass] .move-target:not(.hot) {
+  background:var(--glass)
 }
 
 /* Ohne Unterstützung für Unschärfe oder bei „Transparenz reduzieren“ (iOS) bleibt alles deckend */

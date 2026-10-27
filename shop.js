@@ -21,3 +21,14 @@ export const shopCount = (items, storeId, takesAnywhere = true) => items.filter(
 
 // Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien (Tabelle in brand.js): Dort kauft man kein Brot nebenbei.
 export const takesAnywhere = store => typeof store?.anywhere === 'boolean' ? store.anywhere : !chainOf(store?.name)?.drugstore;
+
+/* Auswahl „Alle“ im Laden: alles, was noch offen ist, egal für welches Geschäft, dazu die Artikel ohne Geschäft. Zuerst die Artikel ohne Geschäft, dann ein
+   Abschnitt je Geschäft (in der Reihenfolge von `stores`, genau wie die Gesamtliste unter „Planen“); leere Abschnitte fehlen. `done`: alles Abgehakte
+   (der Einkauf wird als Ganzes beendet). `items` sind die sichtbaren Artikel, `stores` die vorhandenen Geschäfte. */
+export const ALL_STORES = '*';   // Kennung der Auswahl „Alle“ (kein echtes Geschäft)
+export function shopAllView(items, stores) {
+  const open = items.filter(item => !item.checked);
+  const sections = [{ store: null, open: open.filter(item => !item.storeId) }, ...stores.map(store => ({ store, open: open.filter(item => item.storeId === store.id) }))]
+    .filter(section => section.open.length);
+  return { sections, done: items.filter(item => item.checked), count: open.length };
+}
