@@ -99,11 +99,11 @@ export const latestMonth = (rows, fallback) => rows.reduce((last, row) => (month
 
 /* ---------- Notiz ---------- */
 export const DEFAULT_NOTE = 'Wocheneinkauf';
-const NOTE_IDEAS = ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke', 'Drogerie', 'Obst & Gemüse', 'Grillen', 'Besuch'];
-/* Vorschläge für die Notiz eines Einkaufs, höchstens `limit`: zuerst „Wocheneinkauf“ (der Standard), danach „Drogerie“, wenn das Geschäft eine Drogerie ist,
+const NOTE_IDEAS = ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke', 'Drogerie', 'Obst & Gemüse', 'Grillen', 'Besuch', 'Wochenmarkt', 'Frühstück', 'Haushalt', 'Geschenk'];
+/* Vorschläge für die Notiz eines Einkaufs (die Liste in der App ist scrollbar), höchstens `limit`: zuerst „Wocheneinkauf“ (der Standard), danach „Drogerie“, wenn das Geschäft eine Drogerie ist,
    danach die bisher am häufigsten benutzten eigenen Notizen (bei gleicher Häufigkeit die zuletzt benutzte), zuletzt feste Ideen. Doppelte (auch in anderer
    Groß-/Kleinschreibung) erscheinen einmal; zu lange Notizen (über 30 Zeichen) sind keine Vorschläge. */
-export function noteSuggestions(rows, storeName = '', limit = 8) {
+export function noteSuggestions(rows, storeName = '', limit = 12) {
   const used = new Map();
   for (const row of rows) {
     const text = String(row.note ?? '').trim().replace(/\s+/g, ' ');

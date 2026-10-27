@@ -200,7 +200,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.17 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.19 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -324,8 +324,8 @@
     <p id="purchase-status" class="hint" role="status"></p>
     <label>Betrag (€)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Betrag in Euro"><button id="purchase-plus" class="add-button" type="submit" aria-label="Einkauf hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
-    <label>Notiz (optional)<input name="note" maxlength="120" placeholder="z. B. Getränke" autocomplete="off" aria-controls="purchase-note-picks"></label>
-    <div id="purchase-note-picks" class="note-picks" role="group" aria-label="Vorschläge für die Notiz: antippen zum Übernehmen" hidden></div>
+    <label>Notiz (optional)<span class="name-field"><input name="note" maxlength="120" placeholder="z. B. Getränke" autocomplete="off" aria-label="Notiz"><button id="purchase-note-toggle" class="field-button" type="button" aria-label="Vorschläge für die Notiz anzeigen" aria-expanded="false" aria-controls="purchase-note-picks"><svg class="icon"><use href="#i-chevron"/></svg></button></span></label>
+    <div id="purchase-note-picks" class="note-menu" role="group" aria-label="Vorschläge für die Notiz: antippen zum Übernehmen" hidden></div>
     <label id="purchase-prices-label" class="checkbox-label" hidden><input name="prices" type="checkbox"><span>Danach die Artikelpreise prüfen und übernehmen</span></label>
     <button type="submit" id="purchase-save">Speichern</button>
     <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>

@@ -1555,7 +1555,8 @@ function openFinish() {
   $('#finish-form').reset(); message();
   $('#finish-dialog').showModal();
 }
-// Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute.
+// Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
+// und die App springt zurück zu „Planen“.
 function finishShopping(withReceipt, amount = '') {
   const ids = visibleItems().filter(item => item.checked).map(item => item.id), typed = amount.trim();
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist.
@@ -1565,6 +1566,7 @@ function finishShopping(withReceipt, amount = '') {
   $('#finish-dialog').close();
   if (fields) spendMonth = monthOf(fields.date);
   if (ops.length) commit(ops, fields ? `${euros(fields.cents)} unter Ausgaben gespeichert` : ''); else render();
+  if (fields) setShopMode(false);   // Einkauf mit Betrag abgeschlossen: zurück zu „Planen“
   if (withReceipt) openReceipt(shopStore);
 }
 
@@ -1844,26 +1846,26 @@ function openPurchase(id = '') {
   form.elements.amount.value = row ? formatAmount(row.cents) : '';
   form.elements.date.value = row?.date || (spendMonth === monthOf(isoDate()) ? isoDate() : lastDay(spendMonth));
   // Neue Einträge beginnen mit „Wocheneinkauf“ (Vorschläge zum Austauschen erscheinen beim Tippen ins Feld); beim Ändern bleibt die Notiz, wie sie ist.
-  form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; hideNotePicks();
+  form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
   $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
   $('#purchase-delete').hidden = !row; $('#purchase-prices-label').hidden = true;
   $('#purchase-dialog').showModal();
   if (!row) form.elements.amount.focus();
 }
-// Vorschläge für die Notiz: erscheinen, sobald man ins Feld tippt; ein Tipp übernimmt den Vorschlag und schließt die Tastatur.
-let notePicksTimer = 0;
+// Vorschläge für die Notiz: Der Knopf rechts im Feld klappt eine scrollbare Liste auf; ein Tipp auf einen Eintrag übernimmt ihn und klappt sie wieder zu.
+function showNotePicks(open) {
+  $('#purchase-note-picks').hidden = !open; $('#purchase-note-toggle').setAttribute('aria-expanded', String(open));
+}
 function renderNotePicks() {
   const form = $('#purchase-form'), box = $('#purchase-note-picks'), storeId = form.elements.storeId.value;
   const store = active(state.stores).find(entry => entry.id === storeId)?.name || (purchaseEditing?.storeId === storeId ? purchaseEditing.storeName || '' : '');
   box.replaceChildren();
   for (const text of noteSuggestions(purchaseRows(), store)) {
-    const chip = element('button', text, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(text === form.elements.note.value.trim()));
-    chip.addEventListener('click', () => { form.elements.note.value = text; hideNotePicks(); form.elements.note.blur(); });
-    box.append(chip);
+    const pick = element('button', text); pick.type = 'button'; pick.setAttribute('aria-pressed', String(text === form.elements.note.value.trim()));
+    pick.addEventListener('click', () => { form.elements.note.value = text; showNotePicks(false); });
+    box.append(pick);
   }
-  box.hidden = false;
 }
-function hideNotePicks() { clearTimeout(notePicksTimer); $('#purchase-note-picks').hidden = true; }
 // Foto oder Screenshot eines Kassenbons: Text erkennen, Summe/Datum/Geschäft als Vorschlag in die Felder eintragen. Gespeichert wird erst mit „Speichern“.
 async function readPurchasePhoto(files) {
   if (!files.length || purchaseAbort) return;
@@ -2289,12 +2291,16 @@ $('#purchase-form').addEventListener('submit', event => {
   purchasePlus = 0; guard(savePurchase);
 });
 {
-  const note = $('#purchase-form').elements.note;
-  note.addEventListener('focus', () => { clearTimeout(notePicksTimer); renderNotePicks(); setTimeout(() => { if (document.activeElement === note) note.select(); }, 0); });
-  // Kurz verzögert, damit ein Tipp auf einen Vorschlag noch ankommt, wenn das Feld dabei den Fokus verliert.
-  note.addEventListener('blur', () => { clearTimeout(notePicksTimer); notePicksTimer = setTimeout(hideNotePicks, 250); });
-  note.addEventListener('input', () => { renderNotePicks(); });
-  $('#purchase-form').elements.storeId.addEventListener('change', () => { if (!$('#purchase-note-picks').hidden) renderNotePicks(); });
+  const note = $('#purchase-form').elements.note, box = $('#purchase-note-picks');
+  $('#purchase-note-toggle').addEventListener('click', () => {
+    if (!box.hidden) { showNotePicks(false); return; }
+    note.blur();   // die Tastatur würde die Liste verdecken
+    renderNotePicks(); showNotePicks(true);
+    box.querySelector('[aria-pressed=true]')?.scrollIntoView({ block: 'nearest' });
+  });
+  // Wer ins Feld tippt, will schreiben: Die Liste klappt zu, der Text ist ausgewählt (Tippen ersetzt ihn).
+  note.addEventListener('focus', () => { showNotePicks(false); setTimeout(() => { if (document.activeElement === note) note.select(); }, 0); });
+  $('#purchase-form').elements.storeId.addEventListener('change', () => { if (!box.hidden) renderNotePicks(); });
 }
 // Einträge wie Artikel löschen: Zeile lange halten und nach rechts in den roten Mülleimer schieben (statt nachträglich zu bearbeiten).
 dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {

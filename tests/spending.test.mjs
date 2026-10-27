@@ -190,11 +190,12 @@ describe('Aufräumen', () => {
 
 describe('Notiz-Vorschläge', () => {
   const note = (text, date = '2026-05-10', createdAt = `${date}T10:00:00.000Z`) => ({ note: text, date, createdAt });
-  test('ohne Verlauf: „Wocheneinkauf“ zuerst, dann feste Ideen, höchstens acht, keine Doppelten', () => {
+  test('ohne Verlauf: „Wocheneinkauf“ zuerst, dann feste Ideen, höchstens zwölf, keine Doppelten', () => {
     const list = noteSuggestions([]);
     assert.equal(DEFAULT_NOTE, 'Wocheneinkauf');
     assert.deepEqual(list.slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
-    assert.equal(list.length, 8);
+    assert.ok(list.includes('Wochenmarkt') && list.includes('Geschenk'), 'auch die späteren Ideen sind da (die Liste in der App scrollt)');
+    assert.equal(list.length, 12);
     assert.equal(new Set(list.map(text => text.toLocaleLowerCase('de'))).size, list.length);
   });
   test('Drogerien bekommen „Drogerie“ gleich nach dem Standard, andere Geschäfte nicht', () => {
@@ -211,7 +212,7 @@ describe('Notiz-Vorschläge', () => {
     assert.deepEqual(list.slice(0, 5), ['Wocheneinkauf', 'Grillabend', 'Kuchen', 'Geburtstag', 'Großeinkauf']);
     assert.ok(!list.some(text => text.length > 30));
     assert.equal(list.filter(text => text.toLocaleLowerCase('de') === 'wocheneinkauf').length, 1);
-    assert.equal(list.length, 8);
+    assert.equal(list.length, 12);
     assert.ok(list.includes('Grillabend') && !list.includes('grillabend'), 'die jüngste Schreibweise gilt');
   });
   test('nur die vier häufigsten eigenen Notizen, der Rest bleibt bei den festen Ideen; das Limit gilt', () => {
