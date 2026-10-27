@@ -1416,7 +1416,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const first = [];
     await page.waitForSelector('#daily-card .daily-ingredients');
     first.push(await title());
-    assert.match(await page.textContent('#daily-card'), /Min\..*Portionen.*Zutaten/s);
+    assert.match(await page.textContent('#daily-card'), /(Min|Std)\..*Portionen.*Zutaten/s);
     assert.match(await page.textContent('#daily-card'), /Aus der eingebauten Sammlung/);
     assert.equal(await page.locator('#daily-card a.daily-link').count(), 0, 'keine fremde Seite');
     await page.click('#daily-add');                                        // 1: hinzufügen
@@ -1479,7 +1479,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const advance = async button => { const old = await title(); await page.click(button); await page.waitForFunction(text => document.querySelector('#daily-card h3')?.textContent.trim() !== text, old); };
     assert.equal(await page.locator('#daily-reset').count(), 0, 'kein „Von vorn beginnen“ mehr');
     assert.match(await page.textContent('#daily-card'), /Neu zusammengestellt\. Gespeichert wird nur, was du hinzufügst\./);
-    assert.match(await page.textContent('#daily-card'), /Min\..*Portionen.*Zutaten/s);
+    assert.match(await page.textContent('#daily-card'), /(Min|Std)\..*Portionen.*Zutaten/s);
     const shown = [await title()];
     await advance('#daily-add'); shown.push(await title());
     await advance('#daily-skip'); shown.push(await title());
