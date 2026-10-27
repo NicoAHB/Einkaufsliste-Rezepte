@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="format-detection" content="telephone=no">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://images.openfoodfacts.org https://static.openfoodfacts.org https://upload.wikimedia.org; connect-src 'self' https://api.github.com https://world.openfoodfacts.org https://de.wikipedia.org https://*.workers.dev https://api.allorigins.win https://api.codetabs.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://*.workers.dev https://api.allorigins.win https://api.codetabs.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>Einkauf & Rezepte</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -171,8 +171,6 @@
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
         <label class="checkbox-label"><input id="product-images" type="checkbox"> Produktbilder anzeigen</label>
         <p class="hint" id="product-images-hint">Zeigt zu jedem Artikel automatisch ein Beispielbild.</p>
-        <label class="checkbox-label"><input id="product-photos" type="checkbox"> Fotos aus dem Internet suchen (experimentell)</label>
-        <p class="hint" id="product-photos-hint">Standard sind farbige Symbole passend zum Artikel, ganz ohne Internet. Mit dieser Einstellung sucht die App zusätzlich ein Foto bei Wikipedia und Open Food Facts und sendet dafür die Artikelnamen dorthin. Die Treffer passen nicht immer; ohne Treffer bleibt das Symbol.</p>
         <label>Darstellung<select id="theme"><option value="system">Wie auf dem Gerät</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label>
         <label>Geschäfte anzeigen als<select id="store-style"><option value="text">Text</option><option value="logo">Logo (Schriftzug in den Farben der Kette)</option></select></label>
         <div class="palette-field"><span id="palette-label">Farbe</span><div id="palette" class="palette" role="radiogroup" aria-labelledby="palette-label">

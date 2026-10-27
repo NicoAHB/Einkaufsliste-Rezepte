@@ -10,7 +10,6 @@ import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, suggestCategory } from './categories.js';
-import { createImages, imageKey } from './images.js';
 import { emojiFor } from './emoji.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
@@ -19,11 +18,10 @@ import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
-// Produktbilder: Kacheln mit Emoji (Standard, kein Internet nötig, emoji.js). Optional Fotos (Wikipedia, Open Food Facts, images.js): Standard aus; Ergebnisse bleiben auf dem Gerät.
+// Produktbilder: farbige Symbole rechts in der Artikelzeile (Einstellung „Produktbilder anzeigen“, Standard an).
 const imagesOn = () => config.productImages !== false;
-const photosOn = () => imagesOn() && config.productPhotos === true;
-const images = createImages({ onChange: key => { for (const box of document.querySelectorAll('.item-thumb')) if (box.dataset.imageKey === key) fillThumb(box); } });
-images.setEnabled(false);   // erst nach dem Laden der Einstellungen (fillSettings) freigeben, und nur mit eingeschalteten Fotos
+// Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
+for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
@@ -288,25 +286,11 @@ function storeHead(label, count, none) {
   row.append(icon('store'), name, element('span', String(count), 'count'));
   return row;
 }
-// Kachel rechts in der Zeile, rein dekorativ und nicht antippbar. Standard: ein farbiges Symbol (Emoji) passend zum Artikel. Nur mit „Fotos aus dem Internet
-// suchen“ kommt ein Foto dazu und ersetzt das Symbol, sobald es geladen ist; ohne Treffer oder bei Fehlern bleibt das Symbol.
+// Kachel rechts in der Zeile: ein farbiges Symbol (Emoji) passend zum Artikel (emoji.js), sonst zur Kategorie. Rein dekorativ, nicht antippbar, ohne Internet.
 let thumbLearned = new Map();
-function fillThumb(box) {
-  box.replaceChildren(element('span', box.dataset.emoji, 'emoji'));
-  box.classList.remove('has-photo');
-  const found = photosOn() ? images.state(box.dataset.imageKey) : { state: 'none' };
-  if (found.state !== 'image') return;
-  const picture = element('img'); picture.alt = ''; picture.loading = 'lazy'; picture.decoding = 'async'; picture.referrerPolicy = 'no-referrer';
-  picture.addEventListener('load', () => box.classList.add('has-photo'));
-  picture.addEventListener('error', () => { picture.remove(); if (navigator.onLine !== false) images.broken(box.dataset.imageKey); });
-  picture.src = found.url;
-  box.append(picture);
-}
 function thumbFor(item) {
   const box = element('span', undefined, 'item-thumb'); box.setAttribute('aria-hidden', 'true');
-  box.dataset.imageKey = imageKey(item.name); box.dataset.emoji = emojiFor(item.name, itemCategory(item, thumbLearned));
-  fillThumb(box);
-  if (photosOn()) images.request(item.name);
+  box.append(element('span', emojiFor(item.name, itemCategory(item, thumbLearned)), 'emoji'));
   return box;
 }
 function itemRow(item, withStore = false) {
@@ -1368,7 +1352,7 @@ function fillSettings() {
   }
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
-  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); $('#product-photos').checked = config.productPhotos === true; images.setEnabled(photosOn()); applyTheme();
+  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
   applyFolds();
@@ -2044,9 +2028,8 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
-// Gilt sofort: Aus = keine Kacheln und keine Abfragen (Laufendes wird abgebrochen), An = die Kacheln erscheinen und suchen los.
-$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); images.setEnabled(photosOn()); renderItems(); }));
-$('#product-photos').addEventListener('change', () => guard(() => { saveConfig({ ...config, productPhotos: $('#product-photos').checked }); images.setEnabled(photosOn()); renderItems(); }));
+// Gilt sofort, ohne Neuladen: Aus = keine Kacheln, die Zeile sieht aus wie früher.
+$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#palette').addEventListener('click', event => guard(() => {

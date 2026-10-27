@@ -51,7 +51,7 @@ Mit der Sahne verfeinern und pürieren.`;
 async function context(options = {}) {
   const { devices } = playwright;
   const ctx = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block', ...options.context });
-  // Produktbilder sind in der App standardmäßig an; die übrigen Prüfungen laufen ohne sie (keine Abfragen an Open Food Facts), die eigenen Tests schalten sie ein.
+  // Die Produktbilder (Symbole in den Artikelzeilen) sind in der App standardmäßig an; die übrigen Prüfungen laufen ohne sie (die Zeilen bleiben so wie sie waren), die eigenen Tests schalten sie ein.
   const settings = { actor: 'Nico', productImages: false, ...options.config };
   await ctx.addInitScript(([key, value, seed]) => { if (!localStorage.getItem(key) && seed) localStorage.setItem(key, JSON.stringify(value)); }, ['einkauf-settings-v1', settings, options.seed !== false]);
   const page = await ctx.newPage();
@@ -1885,55 +1885,24 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
-  /* ---------- Produktbilder: Standard sind Emoji (kein Internet); Fotos nur auf Wunsch (Wikipedia/Open Food Facts werden simuliert, die echten Dienste sind von hier nicht erreichbar) ---------- */
-  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-  const OFF_IMG = 'https://images.openfoodfacts.org/images/products/400/front_de.200.jpg';
-  const WIKI_IMG = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Foto.jpg/240px-Foto.jpg';
-  const wikiPages = (title, description = 'Pflanzenart') => ({ query: { pages: [{ pageid: 1, index: 1, title, description, pageimage: 'Foto.jpg', thumbnail: { source: WIKI_IMG, width: 240, height: 180 } }] } });
-  // Antworten je Artikel: Tomaten und Äpfel finden die Fotos bei Wikipedia, Nudeln bei Open Food Facts (weltweit), Milch nirgends, Butter fällt mit Fehler aus.
-  const photoAnswer = (source, term, germany) => {
-    if (source === 'wiki') return term === 'tomaten' ? wikiPages('Tomate') : term === 'äpfel' ? wikiPages('Apfel', 'Frucht') : term === 'butter' ? 'fail' : { query: { pages: [] } };
-    if (term === 'nudeln') return germany ? { products: [] } : { products: [{ product_name: 'Nudeln', image_front_small_url: OFF_IMG }] };
-    return term === 'butter' ? 'fail' : { products: [] };
-  };
-  async function netApis(ctx, answer = photoAnswer) {
-    const calls = [];
-    const reply = (route, result, host) => {
-      const headers = { 'access-control-allow-origin': '*' };
-      if (result === 'fail') return route.fulfill({ status: 500, headers, body: '{}' });
-      return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(result) });
-    };
-    await ctx.route('https://de.wikipedia.org/**', async route => { const url = new URL(route.request().url()), term = url.searchParams.get('gsrsearch'); calls.push(`wiki ${term}`); return reply(route, await answer('wiki', term, false)); });
-    await ctx.route('https://world.openfoodfacts.org/**', async route => { const url = new URL(route.request().url()), term = url.searchParams.get('search_terms'), germany = url.searchParams.has('tag_0'); calls.push(`off ${term} ${germany ? 'DE' : 'WELT'}`); return reply(route, await answer('off', term, germany)); });
-    await ctx.route(/https:\/\/(images\.openfoodfacts\.org|upload\.wikimedia\.org)\/.*/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
-    return calls;
-  }
-  // Die Abstände zwischen den Abfragen (0,4 s und 6,5 s) werden mit einer künstlichen Uhr übersprungen.
-  const settlePhotos = async (page, done) => {
-    for (let round = 0; round < 40; round++) {
-      if (await done()) return;
-      await page.clock.runFor(7000); await page.waitForTimeout(40);
-    }
-    throw new Error('Die Fotosuche wurde nicht fertig');
-  };
+  /* ---------- Produktbilder: farbige Symbole (Emoji) rechts in jeder Artikelzeile, ohne Internet ---------- */
   const tiles = page => page.evaluate(() => [...document.querySelectorAll('#items .item')].map(row => {
-    const tile = row.querySelector('.item-thumb'), picture = tile?.querySelector('img');
-    return { name: row.querySelector('strong').textContent, tile: Boolean(tile), emoji: tile?.querySelector('.emoji')?.textContent || '', photo: Boolean(tile?.classList.contains('has-photo')), src: picture?.src || '' };
+    const tile = row.querySelector('.item-thumb');
+    return { name: row.querySelector('strong').textContent, tile: Boolean(tile), emoji: tile?.querySelector('.emoji')?.textContent || '' };
   }));
   const external = page => { const urls = []; page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1')) urls.push(request.url()); }); return urls; };
 
-  test('Produktbilder: Standard sind farbige Symbole passend zum Artikel, sofort da, ohne Internet; rechts in jeder Zeile, nicht antippbar', async () => {
+  test('Produktbilder: farbige Symbole passend zum Artikel, sofort da, ohne Internet; rechts in jeder Zeile, nicht antippbar', async () => {
     const { ctx, page, problems } = await context({ config: { productImages: undefined } });   // nichts eingestellt = Standard
     const outside = external(page);
     await open(page);
     await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 4);
-    const rows = await tiles(page);
-    assert.deepEqual(rows.map(row => [row.name, row.emoji, row.photo, row.src]), [['Tomaten', '🍅', false, ''], ['Nudeln', '🍝', false, ''], ['Milch', '🥛', false, ''], ['Äpfel', '🍎', false, '']]);
+    assert.deepEqual((await tiles(page)).map(row => [row.name, row.emoji]), [['Tomaten', '🍅'], ['Nudeln', '🍝'], ['Milch', '🥛'], ['Äpfel', '🍎']]);
     // Darstellung: abgerundete Kachel rechts, Name und Menge links, nicht antippbar, rein dekorativ
     const look = await page.evaluate(() => [...document.querySelectorAll('#items .item')].map(row => {
       const tile = row.querySelector('.item-thumb'), box = tile.getBoundingClientRect(), copy = row.querySelector('.item-copy').getBoundingClientRect(), line = row.getBoundingClientRect(), style = getComputedStyle(tile);
       return { width: Math.round(box.width), height: Math.round(box.height), right: Math.round(line.right - box.right), copyEnd: Math.round(box.left - copy.right), radius: parseFloat(style.borderTopLeftRadius), border: parseFloat(style.borderTopWidth),
-        events: style.pointerEvents, hidden: tile.getAttribute('aria-hidden'), focusable: tile.querySelectorAll('button,a,[tabindex]').length, rowHeight: Math.round(line.height), size: parseFloat(getComputedStyle(tile.querySelector('.emoji')).fontSize) };
+        events: style.pointerEvents, hidden: tile.getAttribute('aria-hidden'), focusable: tile.querySelectorAll('button,a,[tabindex],img').length, rowHeight: Math.round(line.height), size: parseFloat(getComputedStyle(tile.querySelector('.emoji')).fontSize) };
     }));
     for (const row of look) {
       assert.deepEqual([row.width, row.height], [56, 56]);
@@ -1951,100 +1920,45 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const more = await tiles(page);
     assert.equal(more.find(row => row.name === 'Birne').emoji, '🍐'); assert.equal(more.find(row => row.name === 'Xyzabc').emoji, '📦');
     await page.waitForTimeout(500);
-    assert.deepEqual(outside, [], 'Standard: keine einzige Anfrage ins Internet');
-    assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-images-v2')), null);
+    assert.deepEqual(outside, [], 'keine einzige Anfrage ins Internet');
+    assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-images-v2') ?? localStorage.getItem('einkauf-images-v1')), null);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
 
-  test('Produktbilder: Fotos auf Wunsch (Standard aus): erst Symbol, dann Foto von Wikipedia oder Open Food Facts, ohne Treffer und bei Fehlern bleibt das Symbol', async () => {
-    const { ctx, page, problems } = await context({ config: { productImages: true, productPhotos: true } });
-    const calls = await netApis(ctx);
-    await page.clock.install({ time: new Date('2026-10-27T10:00:00') });
+  test('Produktbilder: Schalter in den Einstellungen (Standard an), gilt sofort, speichert sich; aus = keine Kacheln, die Zeile sieht aus wie früher; keine Foto-Einstellung', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: undefined } });   // nichts eingestellt = Standard
+    await ctx.addInitScript(() => { localStorage.setItem('einkauf-images-v1', '{"reis":{"u":"x","t":1}}'); localStorage.setItem('einkauf-images-v2', '{}'); });   // Reste aus Version 2.13
+    const outside = external(page);
     await open(page);
     await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 4);
-    await settlePhotos(page, async () => (await tiles(page)).filter(row => row.photo).length === 3 && (await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-images-v2') || '{}').milch?.n)) === 1);   // auch Milch ist fertig („kein Treffer“)
-    await page.waitForTimeout(100);
-    const rows = await tiles(page);
-    assert.deepEqual(rows.map(row => [row.name, row.photo, row.src ? new URL(row.src).hostname : '']), [['Tomaten', true, 'upload.wikimedia.org'], ['Nudeln', true, 'images.openfoodfacts.org'], ['Milch', false, ''], ['Äpfel', true, 'upload.wikimedia.org']]);
-    assert.equal(rows[2].emoji, '🥛', 'ohne Treffer bleibt das Symbol');
-    assert.deepEqual(calls.filter(call => call.startsWith('wiki')).sort(), ['wiki milch', 'wiki nudeln', 'wiki tomaten', 'wiki äpfel']);
-    assert.ok(calls.includes('off nudeln DE') && calls.includes('off nudeln WELT'), 'Open Food Facts: erst Deutschland, dann weltweit');
-    assert.ok(!calls.some(call => call.startsWith('off tomaten') || call.startsWith('off äpfel')), 'wer bei Wikipedia ein Foto hat, fragt Open Food Facts nicht');
-    // Foto in der Kachel: füllt sie, object-fit contain, lazy, rein dekorativ; das Symbol ist dann unsichtbar
-    const look = await page.evaluate(() => { const tile = document.querySelector('#items .item-thumb.has-photo'), picture = tile.querySelector('img'), box = tile.getBoundingClientRect(), shot = picture.getBoundingClientRect();
-      return { fit: getComputedStyle(picture).objectFit, lazy: picture.loading, alt: picture.getAttribute('alt'), inside: shot.width <= box.width && shot.height <= box.height, emoji: getComputedStyle(tile.querySelector('.emoji')).visibility, events: getComputedStyle(tile).pointerEvents }; });
-    assert.deepEqual(look, { fit: 'contain', lazy: 'lazy', alt: '', inside: true, emoji: 'hidden', events: 'none' });
-    // Dauerhaft gemerkt (Speicher v2): Adressen und „kein Treffer“, aber kein Fehlschlag; die erste Fassung (v1) wird verworfen
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-images-v2')));
-    assert.equal(saved.tomaten.u, WIKI_IMG); assert.equal(saved.nudeln.u, OFF_IMG); assert.equal(saved.milch.n, 1);
-    // Gleiche Namen teilen sich das Foto, ohne neue Abfrage; Fehlschläge werden beim nächsten Öffnen wiederholt, nichts sonst
-    const before = calls.length;
-    await page.fill('#item-form input[name=name]', 'TOMATEN'); await page.click('#item-form .add-button');
-    await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 5);
-    await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb.has-photo').length === 4);
-    assert.equal(calls.length, before, 'TOMATEN wurde nicht noch einmal gesucht');
-    calls.length = 0;
-    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
-    await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb.has-photo').length === 4);
-    await page.clock.runFor(30000); await page.waitForTimeout(100);
-    assert.deepEqual(calls, [], 'Fotos und „kein Treffer“ kommen aus dem Speicher');
-    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), [], 'auch keine Verstöße gegen die Sicherheitsrichtlinie');
-    await ctx.close();
-  });
-
-  test('Produktbilder: Schalter in den Einstellungen, gelten sofort, speichern sich; Fotos Standard aus; aus = keine Kacheln und keine Abfragen', async () => {
-    const { ctx, page, problems } = await context({ config: { productImages: undefined, productPhotos: undefined } });   // nichts eingestellt = Standard
-    let release; const gate = new Promise(resolve => { release = resolve; });
-    const aborted = []; page.on('requestfailed', request => { if (/openfoodfacts|wikipedia/.test(request.url())) aborted.push(request.failure()?.errorText); });
-    const calls = await netApis(ctx, async (source, term, germany) => { await gate; return photoAnswer(source, term, germany); });
-    await page.clock.install({ time: new Date('2026-10-27T10:00:00') });
-    await open(page);
-    await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 4);
-    await page.clock.runFor(30000); await page.waitForTimeout(100);
-    assert.deepEqual(calls, [], 'Standard: Symbole, keine Abfragen');
+    assert.equal(await page.evaluate(() => [localStorage.getItem('einkauf-images-v1'), localStorage.getItem('einkauf-images-v2')].join()), ',', 'alte Bild-Speicher aus Version 2.13 sind weg');
     await openSettings(page);
-    const images = page.locator('label.checkbox-label', { hasText: 'Produktbilder anzeigen' }), photos = page.locator('label.checkbox-label', { hasText: 'Fotos aus dem Internet suchen' });
-    assert.equal(await images.count(), 1); assert.equal(await photos.count(), 1);
-    assert.equal(await page.locator('#product-images').isChecked(), true, 'Produktbilder: Standard an');
-    assert.equal(await page.locator('#product-photos').isChecked(), false, 'Fotos: Standard aus');
+    assert.equal(await page.locator('label.checkbox-label', { hasText: 'Produktbilder anzeigen' }).count(), 1);
+    assert.equal(await page.locator('#product-images').isChecked(), true, 'Standard: an');
     assert.equal(await page.textContent('#product-images-hint'), 'Zeigt zu jedem Artikel automatisch ein Beispielbild.');
-    assert.match(await page.textContent('#product-photos-hint'), /Standard sind farbige Symbole[\s\S]*ohne Internet[\s\S]*Wikipedia und Open Food Facts[\s\S]*Artikelnamen[\s\S]*Symbol/);
-    assert.match(await photos.textContent(), /experimentell/);
-    // Fotos an: gilt sofort, ohne Neuladen; die erste Abfrage läuft
-    await page.check('#product-photos');
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).productPhotos), true, 'bei den übrigen Einstellungen gespeichert');
-    await page.click('[data-tab=shopping]');
-    await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 4);
-    await page.waitForFunction(() => true); await page.clock.runFor(1000); await page.waitForTimeout(200);
-    assert.ok(calls.length >= 1, 'Fotos an: es wird gesucht');
-    // Produktbilder aus: sofort keine Kacheln, laufende Abfrage abgebrochen, nichts Neues gesendet, die Zeile sieht aus wie früher
-    await page.click('[data-tab=settings]'); await page.uncheck('#product-images');
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).productImages), false);
+    assert.equal(await page.locator('#product-photos, :text("Fotos aus dem Internet")').count(), 0, 'keine Einstellung für Internet-Fotos');
+    // Aus: sofort keine Kacheln, die Zeile sieht aus wie früher (Haken und Text)
+    await page.uncheck('#product-images');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).productImages), false, 'dauerhaft gespeichert, bei den übrigen Einstellungen');
     await page.click('[data-tab=shopping]');
     assert.equal(await page.locator('.item-thumb').count(), 0);
-    assert.deepEqual(await page.evaluate(() => [...document.querySelector('#items .item').children].map(node => node.className)), ['check', 'item-copy'], 'wie früher: Haken und Text');
-    await page.waitForTimeout(100);
-    assert.ok(aborted.length >= 1, 'die laufende Abfrage wurde abgebrochen');
-    const sent = calls.length;
-    release(); await page.clock.runFor(120 * 1000); await page.waitForTimeout(150);
-    assert.equal(calls.length, sent, 'ausgeschaltet: keine weitere Abfrage, auch nach zwei Minuten');
-    assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-images-v2')), null, 'die abgebrochene Abfrage wurde nicht übernommen');
+    assert.deepEqual(await page.evaluate(() => [...document.querySelector('#items .item').children].map(node => node.className)), ['check', 'item-copy']);
     await page.fill('#item-form input[name=name]', 'Butter'); await page.click('#item-form .add-button');
-    await page.clock.runFor(60 * 1000); await page.waitForTimeout(100);
-    assert.equal(calls.length, sent); assert.equal(await page.locator('.item-thumb').count(), 0);
-    // Nach dem Neuladen bleibt es aus und still; Produktbilder wieder an: sofort da, als Symbole, ohne Neuladen
+    await page.waitForSelector('#items .item:has-text("Butter")');
+    assert.equal(await page.locator('.item-thumb').count(), 0, 'auch neue Artikel ohne Kachel');
+    // Nach dem Neuladen bleibt es aus; wieder an gilt sofort, ohne Neuladen
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     await page.waitForFunction(() => document.querySelector('#items .item'));
-    await page.clock.runFor(60 * 1000); await page.waitForTimeout(100);
-    assert.equal(calls.length, sent); assert.equal(await page.locator('.item-thumb').count(), 0);
+    assert.equal(await page.locator('.item-thumb').count(), 0);
     await openSettings(page);
     assert.equal(await page.locator('#product-images').isChecked(), false);
     await page.check('#product-images'); await page.click('[data-tab=shopping]');
     await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 5);
     const back = await tiles(page);
-    assert.deepEqual([back.find(row => row.name === 'Tomaten').emoji, back.find(row => row.name === 'Nudeln').emoji, back.find(row => row.name === 'Butter').emoji], ['🍅', '🍝', '🧈']);
-    assert.deepEqual(problems.filter(text => !/Failed to load resource|ERR_ABORTED/.test(text)), []);
+    assert.deepEqual([back.find(row => row.name === 'Tomaten').emoji, back.find(row => row.name === 'Butter').emoji], ['🍅', '🧈']);
+    assert.deepEqual(outside, [], 'nie eine Anfrage ins Internet');
+    assert.deepEqual(problems, []);
     await ctx.close();
   });
 
@@ -2071,31 +1985,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await ctx.close();
     });
   }
-
-  test('Produktbilder: ein Foto, das sich nicht laden lässt, lässt das Symbol stehen und wird später neu gesucht; ohne Netz bleibt alles benutzbar', async () => {
-    const { ctx, page, problems } = await context({ config: { productImages: true, productPhotos: true } });
-    const calls = await netApis(ctx, (source, term) => (source === 'wiki' ? (term === 'tomaten' ? wikiPages('Tomate') : { query: { pages: [] } }) : { products: [] }));
-    await ctx.route('https://upload.wikimedia.org/**', route => route.fulfill({ status: 404, body: 'weg' }));
-    await page.clock.install({ time: new Date('2026-10-27T10:00:00') });
-    await open(page);
-    await settlePhotos(page, async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-images-v2') || '{}').tomaten?.n)) === 1);
-    const rows = await tiles(page);
-    assert.deepEqual([rows[0].photo, rows[0].emoji, rows[0].src], [false, '🍅', ''], 'Symbol statt kaputtem Bild');
-    assert.equal(calls.filter(call => call === 'wiki tomaten').length, 1);
-    // Ohne Netz: alle Abfragen scheitern, die Liste bleibt voll benutzbar, überall die Symbole
-    const offline = await context({ config: { productImages: true, productPhotos: true } });
-    await offline.ctx.route(/https:\/\/(de\.wikipedia\.org|world\.openfoodfacts\.org)\/.*/, route => route.abort());
-    await offline.page.clock.install({ time: new Date('2026-10-27T10:00:00') });
-    await open(offline.page);
-    await offline.page.clock.runFor(30000); await offline.page.waitForTimeout(150);
-    assert.deepEqual((await tiles(offline.page)).map(row => row.emoji).sort(), ['🍅', '🍝', '🍎', '🥛'].sort());
-    await offline.page.fill('#item-form input[name=name]', 'Butter'); await offline.page.click('#item-form .add-button');
-    await offline.page.waitForSelector('#items .item:has-text("Butter")');
-    assert.equal(await offline.page.evaluate(() => localStorage.getItem('einkauf-images-v2')), null, 'Netzfehler werden nicht als „kein Treffer“ gemerkt');
-    assert.deepEqual(offline.problems.filter(text => !/Failed to load resource|ERR_FAILED/.test(text)), []);
-    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
-    await offline.ctx.close(); await ctx.close();
-  });
 
   test('Produktbilder: auch die Zeilen unter „Neu von …“ haben die Kachel; ohne Bilder bleiben sie wie vorher', async () => {
     for (const on of [true, false]) {

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { CATEGORIES } from '../categories.js';
 import { CATEGORY_EMOJI, FALLBACK_EMOJI, allEmoji, emojiFor } from '../emoji.js';
 
@@ -34,5 +36,8 @@ describe('Standard-Bild: Emoji zum Artikel', () => {
   test('die Kategorie-Schätzung der App und die Emoji passen zusammen: jeder Artikelname der Beispielkategorien ergibt ein sinnvolles Symbol (nie ein Paket bei bekannten Lebensmitteln)', () => {
     const common = ['Milch', 'Butter', 'Eier', 'Brot', 'Äpfel', 'Bananen', 'Tomaten', 'Nudeln', 'Reis', 'Kartoffeln', 'Zwiebeln', 'Käse', 'Joghurt', 'Hähnchen', 'Hackfleisch', 'Lachs', 'Mehl', 'Zucker', 'Salz', 'Öl', 'Kaffee', 'Tee', 'Wasser', 'Saft', 'Bier', 'Wein', 'Schokolade', 'Kekse', 'Spülmittel', 'Shampoo', 'Toilettenpapier'];
     for (const name of common) assert.notEqual(emojiFor(name), FALLBACK_EMOJI, name);
+  });
+  test('keine Lookbehind-Ausdrücke im Code (ältere iOS-Versionen können sie nicht und würden die ganze Datei ablehnen)', async () => {
+    for (const file of ['emoji.js', 'app.js']) assert.doesNotMatch(await readFile(path.join(import.meta.dirname, '..', file), 'utf8'), /\(\?<[=!]/, file);
   });
 });

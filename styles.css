@@ -2014,9 +2014,8 @@ body.in-store main {
   }
 }
 
-/* Bild rechts in der Artikelzeile: kleine, nicht antippbare Kachel. Standard ein farbiges Emoji zum Artikel; ein Foto (nur mit „Fotos aus dem Internet suchen“) ersetzt es, sobald es geladen ist. */
+/* Bild rechts in der Artikelzeile: kleine, nicht antippbare Kachel mit einem farbigen Emoji passend zum Artikel */
 .item-thumb {
-  position:relative;
   flex:none;
   display:grid;
   place-items:center;
@@ -2034,20 +2033,6 @@ body.in-store main {
   font-size:30px;
   line-height:1;
   color:#000
-}
-.item-thumb img {
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  opacity:0
-}
-.item-thumb.has-photo img {
-  opacity:1
-}
-.item-thumb.has-photo .emoji {
-  visibility:hidden
 }
 @media (max-width:340px) {
   .item-thumb {
