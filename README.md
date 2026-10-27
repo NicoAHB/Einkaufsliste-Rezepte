@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.18
+# Einkauf & Rezepte – Version 2.19
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,16 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.19: Notiz mit Aufklapp-Knopf
+
+- **Rechts im Notiz-Feld steht jetzt ein Pfeil-Knopf.** Ein Tipp darauf klappt eine **Liste mit Vorschlägen** unter dem Feld auf (Pfeil dreht sich, `aria-expanded`). Die Liste ist **scrollbar** (etwa vier bis fünf Zeilen sichtbar, eine angeschnittene Zeile zeigt, dass es weitergeht) und enthält bis zu **zwölf** Vorschläge: zuerst „Wocheneinkauf“, bei Drogerien „Drogerie“, dann deine häufigsten eigenen Notizen (bis zu vier), dann feste Ideen (Großeinkauf, Zwischendurch, Getränke, Drogerie, Obst & Gemüse, Grillen, Besuch, Wochenmarkt, Frühstück, Haushalt, Geschenk). Die aktuelle Notiz ist markiert.
+- Ein Tipp auf einen Eintrag **übernimmt** ihn und klappt die Liste zu. Ein zweiter Tipp auf den Knopf klappt sie ebenfalls zu. Beim Aufklappen schließt sich die Tastatur (sie würde die Liste verdecken); ein Tipp **ins Feld** klappt die Liste zu und wählt den Text aus, damit Tippen ihn ersetzt.
+- Das **ersetzt** die Vorschläge, die in Version 2.16 beim Tippen ins Feld unter dem Feld erschienen. Der Standard „Wocheneinkauf“ bei neuen Einträgen, das Mitlernen eigener Notizen und „beim Ändern kein Standard“ bleiben.
+
+Weiterer Testpunkt für Version 2.19:
+
+- [ ] Ausgaben → **Einkauf**: Rechts in der Notiz steht ein Pfeil. Ein Tipp klappt die Liste auf, du scrollst bis „Geschenk“ und tippst es an: Es steht in der Notiz, die Liste ist zu.
 
 ## Neu in Version 2.18: nach dem Betrag zurück zu „Planen“
 
@@ -47,7 +57,7 @@ Weitere Testpunkte für Version 2.17:
 
 - **Grünes „+“ im Betragsfeld:** Sobald ein Betrag im Feld steht, erscheint rechts im Feld ein **+** (wie im Namensfeld der Einkaufsliste; rein per CSS über `:placeholder-shown`, es nutzt dieselbe Formatierung `.name-field`/`.add-button`). Ein Tipp darauf **fügt den Einkauf hinzu und schließt die Tastatur**. Fehlt etwas (z. B. Betrag 0), wird die Tastatur trotzdem geschlossen, damit die Meldung nicht verdeckt wird. Das ausdrückliche Schließen ist nötig, weil iOS-Safari Knöpfen beim Antippen keinen Fokus gibt (das Feld und die Tastatur blieben sonst offen). Die Eingabetaste speichert weiterhin.
 - **Löschen per Ziehen:** Einträge in der Liste lassen sich wie Artikel **lange halten (etwa eine halbe Sekunde) und nach rechts in den roten Mülleimer ziehen**; Loslassen dort löscht („22,22 € gelöscht“), Loslassen daneben, Escape oder ein früheres Bewegen (Scrollen) löschen nichts, ein kurzer Tipp öffnet weiter das Ändern. Gelöscht wird wie sonst mit einer Löschmarkierung, sie kommt auf dem zweiten Gerät an. Es gibt dafür keine Rückfrage (wie bei Artikeln).
-- **Notiz mit Vorschlägen:** Neue Einträge beginnen mit **Wocheneinkauf** in der Notiz. Ein **Tipp ins Feld** wählt den Text aus (Tippen ersetzt ihn) und zeigt **Vorschläge zum Antippen**: zuerst Wocheneinkauf, bei Drogerien (Rossmann, dm, Müller, Douglas, Budni) gleich danach **Drogerie**, dann die bisher **am häufigsten benutzten eigenen Notizen** (bis zu vier, bei Gleichstand die zuletzt benutzte; Schreibweisen wie „grillabend“ und „Grillabend“ zählen zusammen), zuletzt feste Ideen (Großeinkauf, Zwischendurch, Getränke, Drogerie, Obst & Gemüse, Grillen, Besuch); höchstens acht, keine Doppelten, keine Notizen über 30 Zeichen. Ein Tipp auf einen Vorschlag übernimmt ihn und schließt die Tastatur; ein Tipp daneben blendet die Vorschläge aus. **Beim Ändern** eines Eintrags bleibt die Notiz, wie sie ist (leer bleibt leer, es gibt keinen Standard). Einträge, die aus einem Kassenbon-Text entstehen, bekommen keine Notiz.
+- **Notiz mit Vorschlägen:** Neue Einträge beginnen mit **Wocheneinkauf** in der Notiz. (Seit Version 2.19 erscheinen die Vorschläge in einer Aufklappliste hinter dem Pfeil im Feld, siehe oben.) Ein **Tipp ins Feld** wählt den Text aus (Tippen ersetzt ihn) und zeigt **Vorschläge zum Antippen**: zuerst Wocheneinkauf, bei Drogerien (Rossmann, dm, Müller, Douglas, Budni) gleich danach **Drogerie**, dann die bisher **am häufigsten benutzten eigenen Notizen** (bis zu vier, bei Gleichstand die zuletzt benutzte; Schreibweisen wie „grillabend“ und „Grillabend“ zählen zusammen), zuletzt feste Ideen (Großeinkauf, Zwischendurch, Getränke, Drogerie, Obst & Gemüse, Grillen, Besuch); höchstens acht, keine Doppelten, keine Notizen über 30 Zeichen. Ein Tipp auf einen Vorschlag übernimmt ihn und schließt die Tastatur; ein Tipp daneben blendet die Vorschläge aus. **Beim Ändern** eines Eintrags bleibt die Notiz, wie sie ist (leer bleibt leer, es gibt keinen Standard). Einträge, die aus einem Kassenbon-Text entstehen, bekommen keine Notiz.
 
 Weitere Testpunkte für Version 2.16:
 

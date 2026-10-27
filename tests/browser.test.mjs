@@ -909,56 +909,101 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
-  test('Ausgaben: Notiz beginnt mit „Wocheneinkauf“, ein Tipp ins Feld zeigt Vorschläge, ein Tipp darauf übernimmt sie; eigene Notizen werden mitgelernt', async () => {
+  for (const width of [280, 320, 390]) {
+    test(`Ausgaben: Notiz mit Aufklapp-Knopf rechts im Feld, scrollbare Vorschlagsliste, ein Tipp übernimmt (${width} px)`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
+      await open(page);
+      await page.click('[data-tab=spending]');
+      const note = page.locator('#purchase-form input[name=note]'), toggle = page.locator('#purchase-note-toggle'), menu = page.locator('#purchase-note-picks');
+      const items = () => menu.locator('button').allTextContents();
+      const focusedName = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName);
+      // iOS-Safari gibt Knöpfen beim Antippen keinen Fokus
+      await page.evaluate(() => document.addEventListener('mousedown', event => { if (event.target.closest('button')) event.preventDefault(); }, true));
+      await page.click('#add-purchase'); await sheetOpen(page);
+      assert.equal(await note.inputValue(), 'Wocheneinkauf');
+      // Der Knopf sitzt immer rechts im Feld (auch mit Text), die Liste ist zu
+      const box = await toggle.boundingBox(), field = await note.boundingBox();
+      assert.ok(await toggle.isVisible());
+      assert.ok(box.x >= field.x && box.x + box.width <= field.x + field.width && box.y >= field.y && box.y + box.height <= field.y + field.height, 'der Knopf liegt im Feld');
+      assert.ok(field.x + field.width - (box.x + box.width) < 10, 'ganz rechts');
+      assert.ok(box.width >= 40 && box.height >= 36, 'groß genug zum Tippen');
+      assert.ok(await note.evaluate(node => parseFloat(getComputedStyle(node).paddingRight)) >= box.width + 6, 'der Text endet vor dem Knopf');
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+      assert.equal(await menu.isVisible(), false, 'ohne Tipp auf den Knopf keine Liste');
+      // Tipp auf den Knopf: Liste klappt auf (Standard markiert), die Tastatur ist zu, die Liste scrollt
+      await note.focus();
+      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
+      await page.waitForSelector('#purchase-note-picks:not([hidden])');
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+      assert.notEqual(await focusedName(), 'note', 'die Tastatur ist zu, damit die Liste nicht verdeckt wird');
+      assert.deepEqual((await items()).slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
+      assert.equal(await menu.locator('button[aria-pressed=true]').textContent(), 'Wocheneinkauf');
+      const scroll = await menu.evaluate(node => ({ scrollable: node.scrollHeight > node.clientHeight + 4, overflowY: getComputedStyle(node).overflowY, height: node.clientHeight }));
+      assert.ok(scroll.scrollable && scroll.overflowY === 'auto', 'mehr Vorschläge als sichtbar: die Liste scrollt');
+      assert.ok(scroll.height <= 220, 'die Liste bleibt kompakt');
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.ok(await page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return dialog.scrollWidth <= dialog.clientWidth; }), 'Dialog läuft nicht über');
+      // Bis zum Ende scrollen und dort etwas wählen
+      await menu.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      assert.ok(await menu.locator('button', { hasText: 'Geschenk' }).evaluate(node => { const list = node.parentElement.getBoundingClientRect(), item = node.getBoundingClientRect(); return item.bottom <= list.bottom + 1 && item.top >= list.top - 1; }), 'der letzte Vorschlag ist erreichbar');
+      await page.touchscreen.tap(...Object.values(await spendCenter(menu.locator('button', { hasText: 'Geschenk' }))));
+      assert.equal(await note.inputValue(), 'Geschenk');
+      assert.equal(await menu.isVisible(), false, 'nach dem Wählen klappt die Liste zu');
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+      // Der Knopf klappt auch wieder zu; ein Tipp ins Feld klappt zu und wählt den Text aus
+      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
+      await page.waitForSelector('#purchase-note-picks:not([hidden])');
+      assert.equal(await menu.locator('button[aria-pressed=true]').textContent(), 'Geschenk', 'die aktuelle Notiz ist markiert');
+      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
+      assert.equal(await menu.isVisible(), false);
+      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
+      await page.waitForSelector('#purchase-note-picks:not([hidden])');
+      await page.touchscreen.tap(...Object.values(await spendCenter(note)));
+      assert.equal(await focusedName(), 'note');
+      assert.equal(await menu.isVisible(), false, 'Tippen ins Feld klappt die Liste zu');
+      await page.waitForFunction(length => { const node = document.querySelector('#purchase-form input[name=note]'); return node.selectionEnd - node.selectionStart === length; }, 'Geschenk'.length, { timeout: 3000 }).catch(() => { throw new Error('der Text ist nicht ausgewählt: Tippen würde ihn nicht ersetzen'); });
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
+  test('Ausgaben: Notiz beginnt mit „Wocheneinkauf“; eigene Notizen werden mitgelernt und in der Aufklappliste vorgeschlagen; beim Ändern gibt es keinen Standard', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.click('[data-tab=spending]');
-    const note = page.locator('#purchase-form input[name=note]'), picks = page.locator('#purchase-note-picks'), chips = () => picks.locator('.chip').allTextContents();
-    const focusedName = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName);
+    const note = page.locator('#purchase-form input[name=note]'), toggle = page.locator('#purchase-note-toggle'), menu = page.locator('#purchase-note-picks');
+    const items = async () => { if (await menu.isHidden()) await toggle.click(); return menu.locator('button').allTextContents(); };
     await page.click('#add-purchase'); await sheetOpen(page);
     assert.equal(await note.inputValue(), 'Wocheneinkauf');
-    assert.equal(await picks.isVisible(), false, 'ohne Tipp ins Feld keine Vorschläge');
-    // Tipp ins Feld: Vorschläge erscheinen, der Standard ist markiert und der Text ausgewählt (Tippen ersetzt ihn)
-    await page.touchscreen.tap(...Object.values(await spendCenter(note)));
-    await page.waitForSelector('#purchase-note-picks:not([hidden])');
-    assert.equal(await focusedName(), 'note');
-    assert.deepEqual((await chips()).slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
-    assert.equal(await picks.locator('.chip[aria-pressed=true]').textContent(), 'Wocheneinkauf');
-    assert.equal(await note.evaluate(node => node.selectionEnd - node.selectionStart), 'Wocheneinkauf'.length);
-    // Ein Tipp auf einen Vorschlag übernimmt ihn, schließt die Tastatur und blendet die Vorschläge aus
-    await picks.locator('.chip', { hasText: 'Getränke' }).tap();
+    // Vorschlag wählen und speichern
+    await toggle.click(); await menu.locator('button', { hasText: 'Getränke' }).click();
     assert.equal(await note.inputValue(), 'Getränke');
-    assert.equal(await picks.isVisible(), false);
-    assert.notEqual(await focusedName(), 'note', 'Tastatur zu');
     await page.fill('#purchase-form input[name=amount]', '5'); await page.click('#purchase-save');
     assert.match(await page.textContent('#purchase-list'), /Getränke[\s\S]*5,00\s€/);
     // Eigene Notiz tippen: wird beim nächsten Mal vorgeschlagen (häufigste zuerst, nach dem Standard)
     for (const amount of ['6', '7']) {
       await page.click('#add-purchase'); await sheetOpen(page);
       assert.equal(await note.inputValue(), 'Wocheneinkauf', 'jeder neue Eintrag beginnt wieder mit dem Standard');
+      assert.equal(await menu.isVisible(), false, 'die Liste ist beim Öffnen zu');
       await note.fill('Grillabend'); await page.fill('#purchase-form input[name=amount]', amount); await page.click('#purchase-save');
     }
     await page.click('#add-purchase'); await sheetOpen(page);
-    await note.focus();
-    assert.deepEqual((await chips()).slice(0, 4), ['Wocheneinkauf', 'Grillabend', 'Getränke', 'Großeinkauf']);
-    assert.equal(new Set(await chips()).size, (await chips()).length, 'keine doppelten Vorschläge');
-    assert.ok((await chips()).length <= 8);
-    // Ein Tipp auf „Wocheneinkauf“ setzt den Standard zurück; Tippen im Feld zeigt weiter alle Vorschläge
-    await note.fill('Gri'); assert.ok((await chips()).includes('Grillabend'));
-    await picks.locator('.chip', { hasText: 'Wocheneinkauf' }).click();
-    assert.equal(await note.inputValue(), 'Wocheneinkauf');
-    // Ein Tipp daneben blendet die Vorschläge wieder aus
-    await note.focus(); await page.waitForSelector('#purchase-note-picks:not([hidden])');
-    await page.click('#purchase-title'); await page.waitForSelector('#purchase-note-picks', { state: 'hidden' });
+    const list = await items();
+    assert.deepEqual(list.slice(0, 4), ['Wocheneinkauf', 'Grillabend', 'Getränke', 'Großeinkauf']);
+    assert.equal(new Set(list).size, list.length, 'keine doppelten Vorschläge');
+    assert.equal(list.length, 12);
+    await menu.locator('button', { hasText: 'Grillabend' }).click();
+    assert.equal(await note.inputValue(), 'Grillabend');
     await page.keyboard.press('Escape');
-    // Beim Ändern bleibt die Notiz, wie sie ist: leer bleibt leer, es gibt keinen Standard
+    // Beim Ändern bleibt die Notiz, wie sie ist: leer bleibt leer, es gibt keinen Standard; die Liste gibt es trotzdem
     await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
     assert.equal(await note.inputValue(), 'Getränke');
+    assert.equal(await menu.isVisible(), false);
     await note.fill(''); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
     assert.equal(await note.inputValue(), '', 'geleerte Notiz bleibt leer');
-    assert.equal(await picks.isVisible(), false);
-    await note.focus(); assert.ok((await chips()).includes('Wocheneinkauf'), 'auch beim Ändern gibt es Vorschläge');
+    assert.ok((await items()).includes('Wocheneinkauf'), 'auch beim Ändern gibt es Vorschläge');
+    assert.equal(await menu.locator('button[aria-pressed=true]').count(), 0, 'bei leerer Notiz ist nichts markiert');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
