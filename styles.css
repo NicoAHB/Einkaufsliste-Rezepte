@@ -902,8 +902,18 @@ button.item-copy strong {
   margin:0
 }
 .comparison-list li {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
   padding:10px 0;
   border-bottom:1px solid var(--line)
+}
+.comparison-list li>div {
+  min-width:0
+}
+.comparison-list li>button {
+  flex:none
 }
 .comparison-list small {
   display:block;

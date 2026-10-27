@@ -852,6 +852,99 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Kassenbon: „Apfeltasche“ bekommt nicht den Preis von „Apfel“; ein falsch notierter Preis lässt sich im Artikel vergessen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const parse = async text => {
+      await page.click('#open-receipt'); await sheetOpen(page);
+      await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
+      await page.waitForSelector('#receipt-review:not([hidden])');
+    };
+    const priced = async name => (await stored()).prices.filter(row => !row.deletedAt && row.name === name && row.storeId === 'store-rewe');
+    // 1. „Apfel“ ist bekannt und hat einen Preis
+    await parse('REWE Markt GmbH\nApfel 1,29 A\nSUMME 1,29');
+    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfel');
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129]);
+    // 2. „Apfeltasche“ (Gebäck) bleibt „Apfeltasche“: kein Vorschlag, kein Preisvergleich mit „Apfel“
+    await parse('REWE Markt GmbH\nApfeltasche 0,69 A\nApfel Saft 1,49 A\nBio Apfel 1,59 A\nSUMME 3,77');
+    const names = () => page.locator('#receipt-lines input[name=name]').evaluateAll(nodes => nodes.map(node => node.value));
+    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Apfel'], 'nur „Bio Apfel“ ist sicher dasselbe wie „Apfel“');
+    const note = index => page.locator('#receipt-lines .receipt-line').nth(index).locator('.receipt-note');
+    assert.ok(!/Vorschlag|Teurer|Günstiger/.test(await note(0).textContent()), 'kein Vorschlag, keine Preisänderung');
+    assert.match(await note(0).textContent(), /neu in der Preisliste/);
+    assert.match(await note(2).textContent(), /Vorschlag aus deiner Liste, bitte prüfen/);
+    assert.match(await note(2).textContent(), /früherer Preis erst nach Bestätigung/, 'bei einem Vorschlag kein früherer Preis');
+    assert.ok(!/Teurer|Günstiger|neu in der Preisliste/.test(await note(2).textContent()));
+    await note(2).getByRole('button', { name: 'Name passt' }).click();
+    assert.ok(!/Vorschlag|früherer Preis/.test(await note(2).textContent()), 'bestätigt: jetzt gilt der Name');
+    await page.locator('#receipt-lines .receipt-line').nth(2).locator('input[type=checkbox]').uncheck();   // „Bio Apfel“ hier nicht übernehmen
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69]);
+    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129], 'der Preis von „Apfel“ bleibt unberührt');
+    assert.equal((await stored()).aliases.filter(row => !row.deletedAt && row.from.includes('apfel')).length, 0, 'keine Zuordnung zu „Apfel“ gemerkt');
+    // 3. Ein Artikel „Apfel“ zeigt den Preis von „Apfel“, nicht den der Tasche
+    await page.getByRole('tab', { name: /^Rewe/ }).click();
+    await page.fill('#item-form input[name=name]', 'Apfel'); await page.click('#item-form button[type=submit]');
+    const row = page.locator('#items .item', { hasText: 'Apfel' }).first();
+    assert.match(await row.textContent(), /1,29/);
+    assert.ok(!(await row.textContent()).includes('0,69'));
+    // 4. Falsch notierter Preis: im Artikel „Vergessen“ (mit Rückfrage); das Preisfeld und die Liste zeigen ihn nicht mehr
+    await row.locator('.item-copy').click(); await sheetOpen(page);
+    assert.match(await page.textContent('#price-comparison'), /Rewe: 1,29\s€\/Stück/);
+    assert.equal(await page.locator('#price-comparison li button').count(), 1);
+    page.once('dialog', dialog => { assert.match(dialog.message(), /Rewe.*„Apfel“.*vergessen/); dialog.dismiss(); });
+    await page.locator('#price-comparison li button').click();
+    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129], 'abgebrochen: nichts vergessen');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#price-comparison li button').click();
+    await page.waitForFunction(() => /Noch keine vergleichbaren Preise/.test(document.querySelector('#price-comparison').textContent));
+    assert.equal(await page.inputValue('#edit-item-form input[name=priceEuros]'), '', 'das Preisfeld ist leer');
+    assert.deepEqual(await priced('Apfel'), []);
+    assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69], 'andere Preise bleiben');
+    await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.ok(!/1,29/.test(await page.locator('#items .item', { hasText: 'Apfel' }).first().textContent()), 'kein gemerkter Preis mehr am Artikel');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Gemerkte Namen: Zuordnungen von Kassenbon-Text zu Namen stehen in den Einstellungen und lassen sich entfernen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const aliases = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.filter(row => !row.deletedAt).map(row => [row.from, row.name]));
+    await openSettings(page);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen$/);
+    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
+    // Eine Zuordnung entsteht, wenn auf dem Bon ein Name geändert wird
+    await page.click('[data-tab=shopping]');
+    await page.click('#open-receipt'); await sheetOpen(page);
+    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,69 A\nSUMME 0,69'); await page.click('#receipt-parse');
+    await page.locator('#receipt-lines input[name=name]').fill('Apfel');   // falsch zugeordnet, wie im Alltag passiert
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    assert.deepEqual(await aliases(), [['apfeltasche', 'Apfel']]);
+    await openSettings(page);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)/);
+    assert.equal((await page.locator('#alias-list li').allTextContents()).join('|'), 'apfeltasche → Apfel');
+    // Beim nächsten Bon wird sie angewendet („Zuordnung gemerkt“) … bis sie entfernt ist
+    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
+    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,79 A\nSUMME 0,79'); await page.click('#receipt-parse');
+    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfel');
+    assert.match(await page.locator('#receipt-lines .receipt-note').textContent(), /Zuordnung gemerkt/);
+    await page.keyboard.press('Escape');
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Zuordnung apfeltasche zu Apfel entfernen' }).click();
+    assert.deepEqual(await aliases(), []);
+    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
+    assert.ok(!/\(\d+\)/.test(await page.textContent('#alias-details summary')));
+    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
+    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,79 A\nSUMME 0,79'); await page.click('#receipt-parse');
+    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfeltasche', 'ohne Zuordnung bleibt der Name');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Kassenbon: Text ohne Artikelzeilen, Summe stimmt nicht, schon eingetragene Zeilen sind abgewählt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -2282,7 +2375,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await page.click('[data-tab=settings]');
-    const ids = ['display-details', 'pantry-details', 'storage-details', 'import-details', 'connection-details'];
+    const ids = ['display-details', 'pantry-details', 'alias-details', 'storage-details', 'import-details', 'connection-details'];
     for (const id of ids) assert.equal(await page.locator(`#${id}`).evaluate(node => node.open), false, `${id} startet eingeklappt`);
     for (const id of ids) {
       const summary = page.locator(`#${id} > summary`);
@@ -2353,7 +2446,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });

@@ -152,12 +152,15 @@ export function parseReceipt(input) {
 
 const wordsOf = text => productKey(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 const better = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
-// Gleiches Wort, abgekürztes Wort („tom“ → „tomaten“) oder zusammengesetztes Wort („kirschtomaten“ → „tomaten“).
-const closeWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) ||
-  (Math.min(a.length, b.length) >= 5 && (a.endsWith(b) || b.endsWith(a)));
+// Passt ein Wort der Bonzeile zu einem Wort des bekannten Namens? Nur gleiches Wort oder abgekürztes Wort („tom“ → „tomaten“).
+// Zusammengesetzte Wörter zählen nie: „Apfeltasche“ ist nicht „Apfel“, „Hafermilch“ nicht „Milch“, „Kirschtomaten“ nicht „Tomaten“ (anderes Produkt, anderer Preis).
+const closeWord = (word, token) => word === token || (word.length >= 3 && word.length < token.length && token.startsWith(word));
+// Beigaben, die das Produkt nicht ändern („Bio Äpfel“ ist „Äpfel“). Jedes andere zusätzliche Wort macht den Vorschlag unsicher.
+const FILLER = new Set(['bio', 'frisch', 'frische', 'lose']);
 
-/* Name in der App für eine Bonzeile. 1. Was ihr schon einmal zugeordnet habt („gemerkt“), 2. ein bekannter Name, dessen Wörter alle
-   in der Bonzeile vorkommen, abgekürzt oder als Teil eines zusammengesetzten Worts („tom“, „Kirschtomaten“ → „Tomaten“, „Vorschlag“), 3. der aufgeräumte Bontext.
+/* Name in der App für eine Bonzeile. 1. Was ihr schon einmal zugeordnet habt („gemerkt“), 2. ein bekannter Name, wenn die Bonzeile sicher dasselbe Produkt ist
+   („Vorschlag“): alle Wörter des Namens kommen vor (gleich oder abgekürzt) und die Bonzeile enthält nichts anderes außer Beigaben wie „Bio“, 3. der aufgeräumte Bontext.
+   Im Zweifel gibt es keinen Vorschlag: Der Preis gehört zum Namen, ein falscher Treffer würde einem anderen Produkt den Preis geben.
    `aliases`: [{ from, name }], `known`: Namen, die die App schon kennt. */
 export function suggestName(item, aliases = [], known = []) {
   const key = aliasKey(item.name);
@@ -168,10 +171,12 @@ export function suggestName(item, aliases = [], known = []) {
   for (const name of known) {
     const tokens = wordsOf(name);
     if (!tokens.length || !tokens.every(token => words.some(word => closeWord(word, token)))) continue;
+    if (!words.every(word => FILLER.has(word) || tokens.some(token => closeWord(word, token)))) continue;   // ein weiteres Wort („Saft“, „Tasche“, „cherry“): unsicher
     const rank = [tokens.filter(token => words.includes(token)).length, tokens.length, -name.length];
     if (!best || better(rank, best.rank)) best = { name, rank };
   }
-  return best ? { name: best.name, how: 'Vorschlag', key } : { name: item.name, how: '', key };
+  // Derselbe Name (nur anders geschrieben, z. B. GROSSBUCHSTABEN) ist kein Vorschlag, den man prüfen müsste.
+  return best ? { name: best.name, how: productKey(best.name) === productKey(item.name) ? '' : 'Vorschlag', key } : { name: item.name, how: '', key };
 }
 
 // Welches Geschäft der App passt zum Namen auf dem Bon („rewe“ → „Rewe“)? Gibt die Kennung oder '' zurück.

@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.23
+# Einkauf & Rezepte – Version 2.24
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.24: Kassenbon-Namen vorsichtiger, falsche Preise und Zuordnungen entfernbar
+
+Anlass: Eine „Apfeltasche“ (Gebäck, 0,69 €) bekam den Preis des Obstes „Apfel“. Ursache war der Namensvorschlag beim Kassenbon: Er hielt ein Wort, das mit einem bekannten Namen beginnt („Apfeltasche“ beginnt mit „Apfel“), für dasselbe Produkt, und die App merkte sich die Zuordnung auch noch.
+
+- **Strenger Namensvorschlag (`suggestName` in `receipt.js`).** Eine Bonzeile bekommt nur dann den Namen aus deiner Liste, wenn sie **sicher dasselbe Produkt** ist: Alle Wörter des bekannten Namens kommen vor (gleich oder **abgekürzt**, z. B. „Tom“ → „Tomaten“) **und die Zeile enthält nichts anderes** außer Beigaben wie „Bio“, „frisch“, „lose“ (Größen und Prozentangaben zählen nicht). **Zusammengesetzte Wörter zählen nie:** „Apfeltasche“, „Apfelmus“, „Apfel Saft“, „Hafermilch“, „Milchreis“, „Kirschtomaten“, „Tom Cherry“ bleiben eigene Namen. Im Zweifel gibt es **keinen Vorschlag**, und damit auch keinen Preis, der zu einem anderen Produkt gehört. Eine Zeile, die nur anders geschrieben ist („MILCH“), ist kein Vorschlag mehr, den man prüfen müsste.
+- **Preis vergessen.** Im Artikel (Stift) steht unter **Zuletzt notierte Preise** hinter jedem Geschäft **Vergessen** (mit Rückfrage). Es entfernt alle notierten Preise dieses Geschäfts zu diesem Namen und, wenn der Artikel den Preis als eigenen Preis übernommen hatte, auch diesen. Das Preisfeld und die Schätzung zeigen ihn danach nicht mehr; ein selbst eingegebener anderer Preis bleibt.
+- **Gemerkte Namen.** Unter **Einstellungen → Gemerkte Namen (n)** steht jede gemerkte Zuordnung („Text auf dem Bon → Name in der App“) und lässt sich mit dem **x** entfernen. Beim nächsten Bon ist die Zuordnung dann weg. Ohne diese Liste wären falsche Zuordnungen unsichtbar gewesen und hätten bei jedem Bon wieder den falschen Namen eingesetzt.
+- **Wer schon einen falschen Preis hat** (wie bei der Apfeltasche): 1. in Einstellungen → Gemerkte Namen die falsche Zuordnung entfernen („apfeltasche → Apfel“), 2. im Artikel „Apfel“ unter Zuletzt notierte Preise **Vergessen** tippen.
+
+Weitere Testpunkte für Version 2.24:
+
+- [ ] Kassenbon einfügen mit einer Zeile „Apfeltasche 0,69“, während „Apfel“ in der App bekannt ist: Der Name bleibt **Apfeltasche**, die Zeile sagt „neu in der Preisliste“, es gibt keinen Preisvergleich mit Apfel. Eine Zeile „Bio Apfel“ schlägt dagegen „Apfel“ vor („Vorschlag aus deiner Liste, bitte prüfen“).
+- [ ] Einstellungen → Gemerkte Namen: Eine falsche Zuordnung entfernen. Im Artikel mit dem falschen Preis: **Vergessen** tippen, bestätigen: Der Preis ist weg (Preisfeld leer, keine Schätzung mehr).
 
 ## Neu in Version 2.23: „Alle“ im Laden und Artikel in ein anderes Geschäft verschieben
 
@@ -316,7 +330,7 @@ Für die Preisliste kann man gelegentlich den Text eines **digitalen Kassenbons*
 
 - **Erkannt werden** Artikelzeilen mit Preis, „2 x 0,79“, „0,432 kg x 3,99 EUR/kg“, Packungsgrößen im Namen („250g“, „1L“, „10 St“, „6x1,5L“), Rabatt-/Coupon-Zeilen (negativ), Pfand/Leergut (wird übersprungen), die Summe und das Datum. Der Markt wird aus dem Kopf des Bons einem eurer Geschäfte zugeordnet („Rewe“), sonst wählt ihr es.
 - **Summenprobe:** Die App vergleicht die Summe der erkannten Zeilen mit der Summe auf dem Bon. Weicht sie ab, steht eine Warnung dort („Möglicherweise fehlen Zeilen“), und nicht erkannte Zeilen sind aufklappbar.
-- **Namen:** „TOM CHERRY 250G“ ist nicht „Tomaten“. Die App schlägt den Namen vor, den sie schon kennt („Vorschlag, bitte prüfen“), oder nimmt eine **gemerkte Zuordnung** („Zuordnung gemerkt“). Ändert ihr einen Namen und speichert, merkt sich die App die Zuordnung (Sammlung `aliases`, wenige KB) und wendet sie beim nächsten Bon automatisch an. Der Preis gehört zu dem Namen, den ihr wählt: Wer immer laktosefreie H-Milch kauft, ordnet sie „Milch“ zu, und die Schätzung rechnet mit dem, was ihr wirklich bezahlt. Wer Cherry- und Rispentomaten unterscheiden will, gibt ihnen verschiedene Namen.
+- **Namen:** „TOM CHERRY 250G“ ist nicht „Tomaten“. Die App schlägt einen bekannten Namen nur bei **sicherem Treffer** vor („Vorschlag aus deiner Liste, bitte prüfen“, siehe Version 2.24), oder nimmt eine **gemerkte Zuordnung** („Zuordnung gemerkt“). Ändert ihr einen Namen und speichert, merkt sich die App die Zuordnung (Sammlung `aliases`, wenige KB) und wendet sie beim nächsten Bon automatisch an. Der Preis gehört zu dem Namen, den ihr wählt: Wer immer laktosefreie H-Milch kauft, ordnet sie „Milch“ zu, und die Schätzung rechnet mit dem, was ihr wirklich bezahlt. Wer Cherry- und Rispentomaten unterscheiden will, gibt ihnen verschiedene Namen.
 - **Aktionen sind keine Preisänderung:** Eine Zeile mit Rabatt wird als Aktion gespeichert (bezahlter Preis plus bekannter Normalpreis).
 - **Schon eingetragen:** Dieselbe Zeile am selben Tag ist vorab abgewählt, falls ihr einen Bon zweimal einfügt.
 - **Ältere Bons:** Das Datum bestimmt, wann ein Preis gilt. Ein später eingefügter älterer Bon überschreibt keinen neueren Preis.
