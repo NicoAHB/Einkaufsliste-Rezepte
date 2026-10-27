@@ -106,6 +106,7 @@
       <div class="section-head"><h2 id="recipes-title">Rezepte</h2>
         <div class="head-actions"><button id="import-recipe" class="secondary" type="button"><svg class="icon"><use href="#i-download"/></svg>Import</button><button id="add-recipe" type="button"><svg class="icon"><use href="#i-plus"/></svg>Neu</button></div></div>
       <button id="daily-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-star"/></svg><span id="daily-label">Rezepte des Tages</span></button>
+      <button id="cookable-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-cart"/></svg><span>Was kann ich kochen?</span></button>
       <label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen" aria-label="Rezepte durchsuchen" enterkeyhint="search"></label>
       <div id="tag-chips" class="chips" role="group" aria-label="Nach Tag filtern" hidden></div>
       <div id="recipe-list" class="recipe-grid"></div>
@@ -199,7 +200,7 @@
         </div><p class="hint">Hell zeigt die Farbe als Pastellton, Dunkel als tiefen Ton. Die Wahl gilt nur auf diesem Gerät.</p></div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.16 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.17 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -255,10 +256,17 @@
     <div id="help-body" class="help-body"></div>
     <p class="hint"><a href="https://github.com/NicoAHB/Einkaufsliste-Rezepte#readme" target="_blank" rel="noopener noreferrer">Technische Anleitung und Testliste auf GitHub (öffnet im Browser)</a></p>
     <button type="button" data-close="help-dialog" class="secondary">Schließen</button></div></dialog>
-  <dialog id="finish-dialog"><div class="stack"><div class="sheet-head"><h2>Einkauf beenden</h2><button type="button" data-close="finish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+  <dialog id="finish-dialog"><form id="finish-form" class="stack" novalidate><div class="sheet-head"><h2>Einkauf beenden</h2><button type="button" data-close="finish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="finish-text"></p>
+    <label>Was hast du bezahlt? (optional)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Bezahlter Betrag in Euro"><button class="add-button" type="submit" aria-label="Beenden und Betrag unter Ausgaben speichern"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
+    <p class="hint">Mit dem + wird der Einkauf beendet und der Betrag unter Ausgaben gespeichert.</p>
     <button id="finish-receipt" type="button">Beenden und Kassenbon einfügen</button>
     <button id="finish-only" type="button" class="secondary">Nur beenden</button>
+  </form></dialog>
+  <dialog id="cookable-dialog"><div class="stack"><div class="sheet-head"><h2>Was kann ich kochen?</h2><button type="button" data-close="cookable-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p id="cookable-count" class="hint" role="status"></p>
+    <div id="cookable-list" class="cookable-list"></div>
+    <details class="hint cookable-how"><summary>So wird gerechnet</summary><p><strong>Da</strong> ist, was im Vorrat steht oder in den letzten 7 Tagen abgehakt wurde (auch wenn es inzwischen von der Liste entfernt ist). <strong>Kommt noch</strong> ist, was offen auf der Einkaufsliste steht. Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Salz, Pfeffer und andere Zutaten „nach Bedarf“ und Wasser zählen nicht mit.</p></details>
   </div></dialog>
   <dialog id="cook-dialog" class="cook" aria-labelledby="cook-title"><div class="cook-head"><h2 id="cook-title"></h2><button type="button" data-close="cook-dialog" class="icon-button round" aria-label="Kochmodus beenden"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="cook-portions" class="hint"></p>

@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.16
+# Einkauf & Rezepte – Version 2.17
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,25 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Absichtlich noch nicht enthalten:** Schnellauswahl häufiger Artikel und die Erkennung von Zwiebel/Zwiebeln (Einzahl und Mehrzahl sind für die App verschiedene Namen; es wird nichts geraten).
+
+## Neu in Version 2.17: Betrag beim Einkauf beenden, „Was kann ich kochen?“
+
+- **Einkauf beenden → „Was hast du bezahlt?“:** Im Fenster steht ein Feld für den Betrag (z. B. `23,45`). Sobald etwas drinsteht, erscheint rechts das **+** (wie im Namensfeld). Ein Tipp darauf **beendet den Einkauf** (Abgehaktes verschwindet von der Liste) **und speichert den Betrag unter Ausgaben**: für das im Laden gewählte Geschäft, mit dem heutigen Datum und der Notiz „Wocheneinkauf“; beides lässt sich unter Ausgaben nachträglich ändern. Beides geschieht in **einer** Änderung. Ist der Betrag ungültig (z. B. `abc`), bleibt alles unverändert, die Meldung steht im Fenster und die Tastatur ist zu. Die Eingabetaste ohne Betrag erinnert an „Nur beenden“. „Beenden und Kassenbon einfügen“ und „Nur beenden“ bleiben; sie ignorieren das Feld, das bei jedem Öffnen leer ist. Der Kassenbon-Dialog zählt einen schon eingetragenen Betrag nicht doppelt (Abschnitt 2.15).
+- **Rezepte → „Was kann ich kochen?“** (`cookable.js`): Ordnet die Rezepte danach, wie viele Zutaten schon da sind.
+  - **Da:** Vorrat (Einstellungen → Vorrat), abgehakte Artikel und Artikel, die in den **letzten 7 Tagen** abgehakt und danach von der Liste entfernt wurden (sonst wäre nach „Einkauf beenden“ alles wieder weg). Wer einen Artikel nur löscht, ohne ihn abzuhaken, hat ihn nicht gekauft.
+  - **Kommt noch:** offene Artikel der Einkaufsliste (Geschäfte, die es nicht mehr gibt, zählen nicht).
+  - **Fehlt:** alles andere. Salz, Pfeffer und alle Zutaten „nach Bedarf“ sowie Wasser werden nicht verlangt. Es wird nur geprüft, **ob** etwas da ist, nicht die **Menge**.
+  - **Namen:** Einzahl/Mehrzahl und Zusätze sind egal („Zwiebel“ = „Zwiebeln“ = „rote Zwiebel (klein)“); einige Namen gelten als gleich (Öl = Olivenöl = Rapsöl, Sahne = Schlagsahne, Hack = Hackfleisch, Mehl = Weizenmehl, Milch = Vollmilch). Sonst wird nichts geraten: Tomatenmark ist keine Tomate, Reisnudeln sind kein Reis, Kokosmilch ist keine Milch, Frühlingszwiebeln sind keine Zwiebeln. Das kann auch zu Fehlern führen (Cherrytomaten zählen nicht für „Tomaten“), deshalb steht bei jedem Vorschlag genau, was als da, kommend oder fehlend gilt.
+  - **Reihenfolge:** „Alles da“, dann „Alles da, sobald ihr einkauft“, dann Rezepte mit den wenigsten fehlenden Zutaten (mindestens die Hälfte der Zutaten muss da sein oder kommen); bei Gleichstand zuerst, was am längsten nicht gekocht wurde (nie gekocht ganz vorn), dann Favoriten. Höchstens 15 Vorschläge.
+  - **Aktionen:** **Kochen**, **Fehlendes auf die Liste** (öffnet das Übernehmen-Fenster, vorausgewählt sind nur die Zutaten, die nirgends sind) und **Einplanen**. Das Vorschlagsfenster schließt sich dabei; solange es offen ist, aktualisiert es sich bei jedem Abgleich.
+
+Weitere Testpunkte für Version 2.17:
+
+- [ ] Im Laden etwas abhaken → **Einkauf beenden** → Betrag eintippen: Rechts im Feld erscheint ein **+**. Ein Tipp darauf: Der Einkauf ist beendet, die Tastatur ist zu, unter Ausgaben steht der Betrag (Geschäft, heute, „Wocheneinkauf“).
+- [ ] Im selben Fenster `abc` eintippen und auf das **+** tippen: Meldung, nichts wurde beendet oder gespeichert.
+- [ ] Rezepte → **Was kann ich kochen?**: Rezepte, die zu Vorrat und Liste passen, stehen oben; jeder Vorschlag zeigt Da / Kommt noch / Fehlt.
+- [ ] Einen Vorschlag mit fehlenden Zutaten: **Fehlendes auf die Liste** öffnet das Fenster mit nur den fehlenden Zutaten angehakt.
+- [ ] Nach dem Einkaufen und **Einkauf beenden** zählen die Zutaten noch als „da“ (7 Tage).
 
 ## Neu in Version 2.16: Ausgaben schneller bedienen
 
@@ -414,7 +433,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

@@ -14,6 +14,7 @@ import { emojiFor } from './emoji.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
+import { namesFrom, rankRecipes } from './cookable.js';
 import { DEFAULT_NOTE, compareTotals, dayLabel as spendDay, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -213,6 +214,7 @@ function render() {
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
+  if ($('#cookable-dialog').open) renderCookable();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
@@ -553,11 +555,12 @@ function editItem(id) {
   form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
   showComparison(item); message(); $('#item-dialog').showModal();
 }
-function removeRows(collection, ids) {
+function deleteOps(collection, ids) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
   const at = new Date().toISOString();
-  commit(rows.map(row => nextOp(collection, row.id, { deletedAt: at })));
+  return rows.map(row => nextOp(collection, row.id, { deletedAt: at }));
 }
+function removeRows(collection, ids) { commit(deleteOps(collection, ids)); }
 function renderStores() {
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of active(state.stores)) {
@@ -757,7 +760,8 @@ function saveRecipe(event) {
     $('#recipe-dialog').close();
   });
 }
-function openTransfer(id, servings) {
+// `only`: Kennungen der Zutaten, die vorausgewählt sein sollen (z. B. nur das, was zum Kochen noch fehlt); sonst alles außer Vorrat und „nach Bedarf“.
+function openTransfer(id, servings, only = null) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
@@ -766,7 +770,7 @@ function openTransfer(id, servings) {
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
     const label = element('label', undefined, 'transfer-row'), check = element('input'), stocked = inPantry(keys, row.name);
     // Salz, Pfeffer und Co. („nach Bedarf“) und der Vorrat: hat man meist da, nicht vorausgewählt.
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked; check.value = row.id;
+    check.type = 'checkbox'; check.checked = only ? only.has(row.id) : row.unit !== NO_AMOUNT && !stocked; check.value = row.id;
     // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
     label._ingredient = clone(row); label.append(check, element('span')); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
     $('#transfer-ingredients').append(label);
@@ -1231,6 +1235,39 @@ $('#daily-skip').addEventListener('click', () => guard(() => decideDaily('skippe
 $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
 $('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; });
 
+/* ---------- Was kann ich kochen? ---------- */
+// Ordnet die Rezepte danach, wie viele Zutaten schon da sind (Vorrat, Eingekauftes) oder noch kommen (offen auf der Einkaufsliste). Logik in cookable.js.
+function renderCookable() {
+  const recipes = active(state.recipes), ingredients = active(state.ingredients), live = new Set(active(state.stores).map(store => store.id));
+  const names = namesFrom({ pantry: state.pantry || [], items: state.items.filter(item => !item.storeId || live.has(item.storeId)), now: Date.now() });
+  const ranked = rankRecipes(recipes, recipe => ingredients.filter(row => row.recipeId === recipe.id), names);
+  const ready = ranked.filter(entry => entry.tier === 0).length, soon = ranked.filter(entry => entry.tier === 1).length;
+  $('#cookable-count').textContent = !recipes.length ? 'Noch kein Rezept.' : !ranked.length ? 'Noch passt kein Rezept zu euren Vorräten und der Einkaufsliste.' :
+    [ready && `${ready} ${ready === 1 ? 'Rezept' : 'Rezepte'} könnt ihr sofort kochen`, soon && `${soon} nach dem Einkauf`].filter(Boolean).join(' · ') || (ranked.length === 1 ? '1 Vorschlag, bei dem nur wenig fehlt' : `${ranked.length} Vorschläge, bei denen nur wenig fehlt`);
+  const box = $('#cookable-list'); box.replaceChildren();
+  if (recipes.length && !ranked.length) box.append(element('p', 'Tippe unter Einstellungen → Vorrat ein, was ihr immer zu Hause habt, oder setze Artikel auf die Einkaufsliste. Dann erscheinen hier passende Rezepte.', 'empty'));
+  const line = (label, list) => { const item = element('li'); item.append(element('strong', `${label}: `), document.createTextNode(list.join(', '))); return item; };
+  const later = action => () => { $('#cookable-dialog').close(); action(); };
+  for (const entry of ranked) {
+    const { recipe } = entry, card = element('article', undefined, 'card cookable-card'), lines = element('ul', undefined, 'cookable-lines'), servings = recipe.servings;
+    card.append(element('h3', recipe.name), element('p', entry.tier === 0 ? 'Alles da' : entry.tier === 1 ? `Alles da, sobald ihr einkauft (${entry.soon.length} von der Liste)` :
+      `Es fehlen ${entry.missing.length} von ${entry.total} Zutaten`, `cookable-status tier${entry.tier}`));
+    if (entry.have.length) lines.append(line('Da', entry.have));
+    if (entry.soon.length) lines.append(line('Kommt noch', entry.soon));
+    if (entry.missing.length) lines.append(line('Fehlt', entry.missing.map(row => row.name)));
+    card.append(lines);
+    const actions = element('div', undefined, 'actions');
+    actions.append(button('Kochen', later(() => openCook(recipe.id, servings)), 'secondary'));
+    if (entry.missing.length) actions.append(button('Fehlendes auf die Liste', later(() => openTransfer(recipe.id, servings, new Set(entry.missing.map(row => row.id)))), 'primary-action'));
+    actions.append(iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, later(() => openMeal({ recipeId: recipe.id, servings }))));
+    card.append(actions); box.append(card);
+  }
+}
+$('#cookable-open').addEventListener('click', () => guard(() => {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  renderCookable(); $('#cookable-dialog').showModal();
+}));
+
 /* ---------- GitHub ---------- */
 // GitHub Contents API: erst aktuellen Stand lesen, nur eigene Operationen anwenden,
 // dann mit genau dessen SHA schreiben. 409/422 führen zu erneutem Lesen und Mischen.
@@ -1515,13 +1552,19 @@ function openFinish() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   const checked = visibleItems().filter(item => item.checked).length;
   $('#finish-text').textContent = checked ? `${checked} abgehakte ${checked === 1 ? 'Artikel wird' : 'Artikel werden'} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.';
+  $('#finish-form').reset(); message();
   $('#finish-dialog').showModal();
 }
-function finishShopping(withReceipt) {
-  const ids = visibleItems().filter(item => item.checked).map(item => item.id);
-  if (ids.length) removeRows('items', ids);
+// Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute.
+function finishShopping(withReceipt, amount = '') {
+  const ids = visibleItems().filter(item => item.checked).map(item => item.id), typed = amount.trim();
+  // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist.
+  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId: shopStore, storeName: active(state.stores).find(store => store.id === shopStore)?.name || '', note: DEFAULT_NOTE }, isoDate()) : null;
+  const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   shopChecked.clear();
   $('#finish-dialog').close();
+  if (fields) spendMonth = monthOf(fields.date);
+  if (ops.length) commit(ops, fields ? `${euros(fields.cents)} unter Ausgaben gespeichert` : ''); else render();
   if (withReceipt) openReceipt(shopStore);
 }
 
@@ -2216,6 +2259,19 @@ $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
 $('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopAwake: event.target.checked }); syncShopAwake(); }));
 $('#shop-finish').addEventListener('click', () => guard(openFinish));
 $('#finish-only').addEventListener('click', () => guard(() => finishShopping(false)));
+// Das „+“ im Feld „Was hast du bezahlt?“: beendet den Einkauf und speichert den Betrag; die Tastatur schließt sich (auch bei einem Fehler, damit die Meldung sichtbar bleibt).
+let finishPlus = 0;
+$('#finish-form .add-button').addEventListener('pointerdown', () => { finishPlus = Date.now(); });
+$('#finish-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (Date.now() - finishPlus < 1500) document.activeElement?.blur?.();
+  finishPlus = 0;
+  guard(() => {
+    const amount = event.currentTarget.elements.amount.value;
+    if (!amount.trim()) throw new Error('Bitte einen Betrag eingeben oder „Nur beenden“ wählen.');
+    finishShopping(false, amount);
+  });
+});
 $('#finish-receipt').addEventListener('click', () => guard(() => finishShopping(true)));
 $('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
 $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
