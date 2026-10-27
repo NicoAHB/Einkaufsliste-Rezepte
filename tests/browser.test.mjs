@@ -62,7 +62,12 @@ async function context(options = {}) {
 }
 const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
 const horizontalOverflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-const sheetOpen = page => page.waitForSelector('dialog[open]');
+// Ein Dialog ist „offen“, sobald er da ist und seine Einblend-Bewegung zu Ende ist (sonst messen Prüfungen Ränder mitten in der Bewegung; mit Glas-Unschärfe dauert sie auf langsamen Rechnern länger).
+const sheetOpen = async page => {
+  await page.waitForSelector('dialog[open]');
+  await page.evaluate(() => Promise.race([new Promise(resolve => setTimeout(resolve, 1500)),
+    Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))]));
+};
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
@@ -128,7 +133,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         assert.equal(await horizontalOverflow(page), 0, `Überlauf im Bereich ${name}`);
         assert.ok((await sizes()).every(size => size >= 16), `Schrift unter 16 px im Bereich ${name}`);
         const bar = await page.locator('.tabs').boundingBox(), height = await page.evaluate(() => innerHeight);
-        assert.ok(Math.abs(bar.y + bar.height - height) < 1, `Leiste sitzt nicht am unteren Rand (${bar.y + bar.height} statt ${height})`);
+        // Mit Glas-Design schwebt die Leiste 8 px über dem Rand, ohne sitzt sie bündig unten
+        const gap = height - (bar.y + bar.height);
+        assert.ok(gap >= -1 && gap <= 9, `Leiste sitzt nicht am unteren Rand (${bar.y + bar.height} statt ${height})`);
       }
       await page.click('[data-tab=shopping]');
       const fits = () => page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return document.documentElement.scrollWidth <= document.documentElement.clientWidth && dialog.scrollWidth <= dialog.clientWidth; });
@@ -214,7 +221,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => !document.body.classList.contains('typing'));
     await page.waitForTimeout(250);
     const shown = await page.locator('.tabs').boundingBox();
-    assert.ok(Math.abs(shown.y + shown.height - height) < 1);
+    assert.ok(height - (shown.y + shown.height) >= -1 && height - (shown.y + shown.height) <= 9, 'Leiste ist wieder am unteren Rand (schwebend: 8 px Abstand)');
     await ctx.close();
   });
 
@@ -440,7 +447,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     await page.selectOption('#theme', 'dark');
     assert.equal(await page.getAttribute('#theme-color', 'content'), '#0f182e', 'dunkel: Dunkelblau, nicht mehr Dunkelgrün');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(15, 24, 46)');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(15, 24, 46)');
     await ctx.close();
   });
 
@@ -460,12 +467,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     assert.equal(await page.locator('#palette button').count(), 6);
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'blau');
-    const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const before = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
     await page.locator('#palette button[data-palette=rose]').scrollIntoViewIfNeeded();
     await page.click('#palette button[data-palette=rose]');
     assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'rose');
-    const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const after = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
     assert.notEqual(after, before, 'der Hintergrund hat die Farbe gewechselt');
     assert.equal(await page.getAttribute('#theme-color', 'content'), '#2e0f1a', 'Statusleiste: dunkles Rosé');
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'rose');
@@ -485,6 +492,131 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
+  });
+
+  // Glas-Design (Version 2.22): Schalter, Hintergrund und Transparenz; gemerkt pro Gerät, schon vor dem ersten Anzeigen angewendet
+  const glassState = page => page.evaluate(() => {
+    const root = document.documentElement, card = document.querySelector('#item-form'), tabs = document.querySelector('.tabs').getBoundingClientRect();
+    return {
+      on: root.hasAttribute('data-glass'), background: root.dataset.glassBg ?? null, level: root.style.getPropertyValue('--gs'),
+      blur: getComputedStyle(card).backdropFilter, tabsLeft: Math.round(tabs.left), tabsWidth: Math.round(tabs.width), viewport: innerWidth,
+      bodyBackground: getComputedStyle(document.body).backgroundColor, lights: getComputedStyle(document.body, '::before').content
+    };
+  });
+
+  test('Glas-Design: standardmäßig an; Schalter, Hintergrund und Transparenz wirken sofort und bleiben nach dem Neuladen', async () => {
+    const { ctx, page, problems } = await context({ context: { colorScheme: 'light' } });
+    await open(page);
+    let state = await glassState(page);
+    assert.equal(state.on, true, 'ohne gemerkte Wahl ist das Glas-Design an');
+    assert.equal(state.background, 'lichter'); assert.equal(state.level, '0.5');
+    assert.match(state.blur, /blur/, 'Karten sind unscharf hinterlegt');
+    assert.ok(state.tabsLeft > 0 && state.tabsWidth < state.viewport, 'die Leiste schwebt als Pille');
+    assert.equal(state.bodyBackground, 'rgba(0, 0, 0, 0)', 'der Hintergrund kommt von den Lichtern');
+    assert.notEqual(state.lights, 'none');
+
+    await openSettings(page);
+    assert.equal(await page.isChecked('#glass-on'), true);
+    assert.equal(await page.isVisible('#glass-options'), true);
+    assert.equal(await page.locator('#glass-bg button').count(), 3);
+    assert.equal(await page.locator('#glass-bg button[aria-checked=true]').getAttribute('data-bg'), 'lichter');
+    assert.equal(await page.inputValue('#glass-level'), '50');
+    assert.equal(await page.textContent('#glass-level-value'), '50 %');
+    await page.locator('#glass-on').scrollIntoViewIfNeeded();
+
+    // Transparenz: wirkt beim Ziehen sofort, gemerkt wird beim Loslassen
+    await page.fill('#glass-level', '100');
+    assert.equal((await glassState(page)).level, '1');
+    assert.equal(await page.textContent('#glass-level-value'), '100 %');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).glassLevel, 100);
+    // Hintergrund
+    await page.click('#glass-bg button[data-bg=verlauf]');
+    assert.equal((await glassState(page)).background, 'verlauf');
+    assert.equal(await page.locator('#glass-bg button[aria-checked=true]').getAttribute('data-bg'), 'verlauf');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).glassBg, 'verlauf');
+    // Nach dem Neuladen steht alles schon vor dem Start der App (theme.js im Kopf der Seite)
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    state = await glassState(page);
+    assert.deepEqual([state.on, state.background, state.level], [true, 'verlauf', '1']);
+    await openSettings(page);
+    assert.equal(await page.inputValue('#glass-level'), '100');
+    assert.equal(await page.locator('#glass-bg button[aria-checked=true]').getAttribute('data-bg'), 'verlauf');
+
+    // Ausschalten: alles wie vor Version 2.22 (volle Leiste, deckende Karten, Grundfarbe), die Auswahl verschwindet
+    await page.locator('#glass-on').scrollIntoViewIfNeeded();
+    await page.uncheck('#glass-on');
+    state = await glassState(page);
+    assert.equal(state.on, false); assert.equal(state.background, null); assert.equal(state.level, '');
+    assert.equal(state.blur, 'none', 'keine Unschärfe mehr');
+    assert.deepEqual([state.tabsLeft, state.tabsWidth], [0, state.viewport], 'die Leiste füllt wieder die Breite');
+    assert.notEqual(state.bodyBackground, 'rgba(0, 0, 0, 0)');
+    assert.equal(await page.isVisible('#glass-options'), false);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).glass, false);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal((await glassState(page)).on, false, 'bleibt nach dem Neuladen aus');
+    await openSettings(page);
+    assert.equal(await page.isChecked('#glass-on'), false);
+    // Wieder an: die zuletzt gewählten Werte gelten weiter
+    await page.check('#glass-on');
+    state = await glassState(page);
+    assert.deepEqual([state.on, state.background, state.level], [true, 'verlauf', '1']);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Glas-Design: gilt schon beim Laden der Seite (theme.js), nicht erst nach dem Start der App – kein Aufblitzen der alten Darstellung', async () => {
+    const { ctx, page, problems } = await context({ config: { glassBg: 'verlauf', glassLevel: 80 }, context: { colorScheme: 'light' } });
+    await ctx.addInitScript(() => {
+      window.__glassSeen = [];
+      new MutationObserver(list => { for (const entry of list) if (entry.attributeName === 'data-glass') window.__glassSeen.push(document.readyState); }).observe(document, { attributes: true, subtree: true });   // das Wurzelelement gibt es beim Einfügen des Skripts noch nicht
+    });
+    await open(page);
+    const seen = await page.evaluate(() => window.__glassSeen);
+    assert.equal(seen[0], 'loading', `Das Attribut wird gesetzt, solange die Seite noch lädt (${JSON.stringify(seen)})`);
+    const state = await glassState(page);
+    assert.deepEqual([state.on, state.background, state.level], [true, 'verlauf', '0.8']);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Glas-Design: unbekannte oder ungültige gemerkte Werte fallen auf die Standardwerte zurück; Statusleiste folgt der Grundfarbe', async () => {
+    const { ctx, page, problems } = await context({ config: { glassBg: 'regenbogen', glassLevel: 'viel' }, context: { colorScheme: 'light' } });
+    await open(page);
+    const state = await glassState(page);
+    assert.deepEqual([state.on, state.background, state.level], [true, 'lichter', '0.5']);
+    await openSettings(page);
+    assert.equal(await page.inputValue('#glass-level'), '50');
+    // Außerhalb des Bereichs wird begrenzt
+    await page.evaluate(() => localStorage.setItem('einkauf-settings-v1', JSON.stringify({ actor: 'Nico', glassLevel: 250 })));
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal((await glassState(page)).level, '1');
+    // Die Statusleiste hat mit und ohne Glas dieselbe Farbe (Farbe der Seite, nicht des durchsichtigen Körpers)
+    assert.equal(await page.getAttribute('#theme-color', 'content'), '#ecf0f9');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Glas-Design: Schrift bleibt bei jeder Transparenz gut lesbar (hell und dunkel), Leiste und Dialoge passen auch bei 280 px', async () => {
+    for (const scheme of ['light', 'dark']) for (const level of [0, 100]) {
+      const { ctx, page, problems } = await context({ config: { glassLevel: level }, context: { colorScheme: scheme, viewport: { width: 280, height: 640 } } });
+      await open(page);
+      // Grau auf den Karten: die Mischfarbe aus Hintergrund, Lichtfleck und Karte ergibt sich im Bild; hier genügt die Prüfung der Grundfarben
+      const [text, muted, bg] = [await colorOf(page, '--text'), await colorOf(page, '--muted'), await colorOf(page, '--bg')];
+      assert.ok(contrast(text, bg) >= 7, `${scheme}: Text auf Grundfarbe`);
+      assert.ok(contrast(muted, bg) >= 4.5, `${scheme} ${level}: Grautext auf Grundfarbe ${contrast(muted, bg).toFixed(2)}`);
+      assert.equal(await horizontalOverflow(page), 0, `${scheme} ${level}: nichts läuft seitlich über`);
+      // Alle fünf Reiter passen in die Leiste, auch bei der schmalsten Breite
+      const tabs = await page.evaluate(() => { const bar = document.querySelector('.tabs').getBoundingClientRect(); return [...document.querySelectorAll('.tabs button')].map(node => { const r = node.getBoundingClientRect(), label = node.querySelector('.tab-label'); return { inside: r.left >= bar.left - 0.5 && r.right <= bar.right + 0.5, fits: label.scrollWidth <= label.clientWidth + 1 }; }); });
+      assert.equal(tabs.length, 5); assert.ok(tabs.every(entry => entry.inside && entry.fits), `${scheme} ${level}: Reiter passen ${JSON.stringify(tabs)}`);
+      // Tastatur offen: die schwebende Leiste verschwindet ganz
+      await page.focus('#item-form input[name=name]');
+      await page.evaluate(() => document.body.classList.add('typing'));
+      await page.waitForFunction(() => document.querySelector('.tabs').getBoundingClientRect().top >= innerHeight, null, { timeout: 2000 }).catch(() => {});
+      assert.ok(await page.evaluate(() => document.querySelector('.tabs').getBoundingClientRect().top >= innerHeight), `${scheme} ${level}: Leiste bei offener Tastatur außerhalb des Bildes`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
   });
 
   test('Farbwahl: Beim Trennen der Verbindung bleibt die Farbe', async () => {
@@ -1617,7 +1749,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await news.filter({ hasText: 'Butter' }).textContent(), /neu von Anna/);
     assert.match(await news.filter({ hasText: 'Nudeln' }).textContent(), /600 g[\s\S]*\+100 g von Anna/);
     assert.equal(await page.locator('#items .item:not(.news)', { hasText: 'Butter' }).count(), 0, 'steht nicht doppelt in der Liste');
-    assert.ok(await news.first().evaluate(node => getComputedStyle(node).backgroundColor !== getComputedStyle(document.body).backgroundColor), 'farblich abgesetzt');
+    assert.ok(await news.first().evaluate(node => getComputedStyle(node).backgroundColor !== getComputedStyle(document.documentElement).backgroundColor), 'farblich abgesetzt');
     await news.filter({ hasText: 'Butter' }).getByRole('button', { name: 'Übernehmen' }).click();
     assert.equal(await news.count(), 1);
     assert.equal(await page.locator('#items .item:not(.news)', { hasText: 'Butter' }).count(), 1, 'Butter reiht sich in die Liste ein');

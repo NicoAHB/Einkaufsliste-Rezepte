@@ -1445,14 +1445,28 @@ const tokenDaysLeft = () => /^\d{4}-\d{2}-\d{2}$/.test(config.tokenExpires || ''
 const tokenLabel = days => days < 0 ? 'abgelaufen' : days === 0 ? 'läuft heute ab' : days === 1 ? 'läuft morgen ab' : `läuft in ${days} Tagen ab`;
 const tokenWarning = () => { const left = tokenDaysLeft(); return left !== null && left <= 7 ? left : null; };
 const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
+const GLASS_BACKGROUNDS = ['lichter', 'verlauf', 'schlicht'];
+const glassOn = () => config.glass !== false;
+const glassBackground = () => GLASS_BACKGROUNDS.includes(config.glassBg) ? config.glassBg : 'lichter';
+const glassLevel = () => Number.isFinite(config.glassLevel) ? Math.min(100, Math.max(0, Math.round(config.glassLevel))) : 50;
+function showGlassLevel(level) {
+  document.documentElement.style.setProperty('--gs', String(level / 100));
+  $('#glass-level-value').textContent = `${level} %`;
+}
 function applyTheme() {
   const root = document.documentElement, palette = PALETTES.includes(config.palette) ? config.palette : 'blau';
   if (!config.theme || config.theme === 'system') delete root.dataset.theme;
   else root.dataset.theme = config.theme;
   root.dataset.palette = palette;
   document.querySelectorAll('#palette button').forEach(node => node.setAttribute('aria-checked', String(node.dataset.palette === palette)));
-  // Die Farbe der Statusleiste folgt der gewählten Hintergrundfarbe, nicht nur dem Gerät.
-  const channels = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).map(Number);
+  // Glas-Design: aus = alles wie vor Version 2.22 (kein Attribut, keine Variable)
+  const glass = glassOn(), background = glassBackground(), level = glassLevel();
+  if (glass) { root.dataset.glass = ''; root.dataset.glassBg = background; showGlassLevel(level); }
+  else { delete root.dataset.glass; delete root.dataset.glassBg; root.style.removeProperty('--gs'); }
+  $('#glass-on').checked = glass; $('#glass-options').hidden = !glass; $('#glass-level').value = String(level); $('#glass-level-value').textContent = `${level} %`;
+  document.querySelectorAll('#glass-bg button').forEach(node => node.setAttribute('aria-checked', String(node.dataset.bg === background)));
+  // Die Farbe der Statusleiste folgt der gewählten Hintergrundfarbe, nicht nur dem Gerät (die Seite selbst, denn mit Glas ist der Körper durchsichtig).
+  const channels = getComputedStyle(root).backgroundColor.match(/[\d.]+/g).map(Number);
   if (channels.length < 3 || channels[3] === 0) return;   // noch keine Farbe berechnet: Statusleiste unverändert lassen
   const [red, green, blue] = channels;
   $('#theme-color').content = `#${[red, green, blue].map(value => Math.round(value).toString(16).padStart(2, '0')).join('')}`;
@@ -2298,6 +2312,14 @@ $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ..
 $('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
+$('#glass-on').addEventListener('change', () => guard(() => { saveConfig({ ...config, glass: $('#glass-on').checked }); applyTheme(); }));
+$('#glass-bg').addEventListener('click', event => guard(() => {
+  const choice = event.target.closest('button[data-bg]')?.dataset.bg;
+  if (choice) { saveConfig({ ...config, glassBg: choice }); applyTheme(); }
+}));
+// Beim Ziehen sofort zeigen, erst beim Loslassen merken.
+$('#glass-level').addEventListener('input', () => guard(() => { if (glassOn()) showGlassLevel(Number($('#glass-level').value)); }));
+$('#glass-level').addEventListener('change', () => guard(() => { saveConfig({ ...config, glassLevel: Number($('#glass-level').value) }); applyTheme(); }));
 $('#palette').addEventListener('click', event => guard(() => {
   const choice = event.target.closest('button[data-palette]')?.dataset.palette;
   if (choice) { saveConfig({ ...config, palette: choice }); applyTheme(); }
