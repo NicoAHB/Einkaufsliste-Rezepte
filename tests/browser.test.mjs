@@ -1810,10 +1810,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const top = selector => page.locator(selector).first().evaluate(node => Math.round(node.getBoundingClientRect().top + scrollY));
     const height = await page.evaluate(() => innerHeight);
-    // Zugeklappt: nur Namensfeld und „+“; die erste Artikelzeile steht ohne Scrollen im Bild
+    // Zugeklappt: nur das Namensfeld (das „+“ erscheint erst mit Text); die erste Artikelzeile steht ohne Scrollen im Bild
     assert.equal(await page.locator('#item-form.compact').count(), 1);
     for (const selector of ['#store-pick', '#item-form .qty', '#item-form .unit', '#item-form .price-fields']) assert.equal(await page.locator(selector).first().isVisible(), false, `${selector} versteckt`);
-    assert.equal(await page.locator('#item-form .add-button').isVisible(), true);
+    assert.equal(await page.locator('#item-form .add-button').isVisible(), false, 'ohne Text kein „+“');
     assert.ok(await top('#items .item') < height - 60, `erste Artikelzeile bei ${await top('#items .item')} px, Bildschirm ${height} px`);
     // Hineintippen klappt auf, Tippen auf freie Fläche (ohne Text) klappt wieder zu
     await page.focus('#item-form input[name=name]');
@@ -1828,7 +1828,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form input[name=name]', '');
     await page.touchscreen.tap(heading.x + 3, heading.y + 3);
     await page.waitForSelector('#item-form.compact');
-    // Hinzufügen mit dem „+“ im zugeklappten Zustand (Menge 1 Stück)
+    // Hinzufügen mit dem „+“ im Namensfeld (Menge 1 Stück)
     await page.fill('#item-form input[name=name]', 'Mandelmilch'); await page.click('#item-form .add-button');
     assert.match(await page.locator('#items .item', { hasText: 'Mandelmilch' }).textContent(), /1 Stück/);
     // Zeilen haben nur den Haken; Antippen öffnet die Bearbeitung, dort steht „Artikel löschen“
@@ -1841,6 +1841,48 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+
+  for (const width of [280, 314, 390]) {
+    test(`Namensfeld: grünes „+“ im Feld sobald etwas getippt ist; Tipp darauf fügt hinzu und schließt die Tastatur, Tipp ins Feld öffnet sie wieder (${width} px)`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
+      await open(page);
+      const name = page.locator('#item-form input[name=name]'), plus = page.locator('#item-form .add-button');
+      const focused = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName);
+      const center = async locator => { const box = await locator.boundingBox(); return [box.x + box.width / 2, box.y + box.height / 2]; };
+      assert.equal(await plus.isVisible(), false, 'leeres Feld: kein „+“');
+      // Mit Text erscheint das „+“ innerhalb des Feldes, am rechten Rand; langer Text läuft nicht darunter
+      await name.fill('Testgurke');
+      assert.equal(await plus.isVisible(), true);
+      const box = await plus.boundingBox(), field = await name.boundingBox();
+      assert.ok(box.x >= field.x && box.x + box.width <= field.x + field.width && box.y >= field.y && box.y + box.height <= field.y + field.height, 'das „+“ liegt im Feld');
+      assert.ok(field.x + field.width - (box.x + box.width) < 10, 'ganz rechts');
+      assert.ok(await name.evaluate(node => parseFloat(getComputedStyle(node).paddingRight)) >= box.width + 6, 'der Text endet vor dem „+“');
+      assert.ok(box.width >= 40 && box.height >= 36, 'groß genug zum Tippen');
+      assert.equal(await page.locator('#item-form .add-button svg').count(), 1);
+      await name.fill('');
+      assert.equal(await plus.isVisible(), false, 'Text gelöscht: „+“ weg');
+      // Tipp auf das „+“: Artikel ist da, Feld leer, Tastatur zu (kein Feld mehr im Fokus)
+      await name.focus(); await name.fill('Testgurke');
+      await page.touchscreen.tap(...await center(plus));
+      await page.waitForSelector('#items .item:has-text("Testgurke")');
+      assert.equal(await name.inputValue(), '');
+      assert.notEqual(await focused(), 'name', 'das Namensfeld hat den Fokus verloren (Tastatur zu)');
+      assert.equal(await page.evaluate(() => document.activeElement.matches('input,textarea,select')), false);
+      assert.equal(await plus.isVisible(), false);
+      await page.waitForSelector('#item-form.compact');
+      // Ein Tipp ins Feld öffnet die Tastatur wieder
+      await page.touchscreen.tap(...await center(name));
+      assert.equal(await focused(), 'name');
+      await page.waitForSelector('#item-form:not(.compact)');
+      // Mit der Eingabetaste der Tastatur bleibt der Fokus im Feld (mehrere Artikel nacheinander)
+      await name.fill('Testpaprika'); await page.keyboard.press('Enter');
+      await page.waitForSelector('#items .item:has-text("Testpaprika")');
+      assert.equal(await focused(), 'name');
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
 
   test('Einstellungen: Verbindung eingeklappt und unten, sobald verbunden; Vorrat und Darstellung oben', async () => {
     const remote = github(demo);
