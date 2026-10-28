@@ -238,7 +238,7 @@ function render() {
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
-  $('#add-purchase').disabled = !ready;
+  $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready;
 }
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
@@ -340,7 +340,10 @@ function itemRow(item, withStore = false) {
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
   copy.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: bearbeiten`);
   copy.addEventListener('click', () => guard(() => editItem(item.id)));
-  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit} · ${item.createdBy || 'Unbekannt'}${withStore ? ` · ${storeName(item.storeId)}` : ''}`));
+  // Erste Zeile: Name und Menge, deutlich. Zweite Zeile klein: Person, geschätzter Preis (und das Geschäft in der Gesamtliste). Der Preisvergleich mit Datum steht im Bearbeiten-Fenster.
+  const cost = itemCost(item, state.prices);
+  copy.append(element('strong', item.name), element('span', `${format(item.quantity)} ${item.unit}`, 'item-qty'),
+    element('small', [item.createdBy || 'Unbekannt', ...(cost !== null ? [`ca. ${euros(cost)}`] : []), ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   const expired = saleExpired(item);
   if (item.onSale) copy.append(element('span', expired ? `Angebot abgelaufen (${dayLabel(item.saleUntil)})` : item.saleUntil ? `Im Angebot bis ${dayLabel(item.saleUntil)}` : 'Im Angebot', `sale-badge${expired ? ' expired' : ''}`));
   if (item.onSale && item.salePrice) {
@@ -348,16 +351,8 @@ function itemRow(item, withStore = false) {
     const normal = itemQuote(item, state.prices);
     if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
   }
-  const cost = itemCost(item, state.prices);
-  if (cost !== null) copy.append(element('small', `Geschätzt: ${euros(cost)}`, 'price-note'));
   const trend = activeTrend(item, state.prices);
   if (trend) copy.append(element('small', trendLabel(trend), `trend ${trend.direction}`));
-  const quotes = comparePrices(item, state.stores, state.prices);
-  if (quotes.length) {
-    const best = quotes[0], stores = quotes.filter(row => Math.abs(row.rate - best.rate) < 0.000001).map(row => row.storeName).join(', ');
-    // Eine kurze Zeile; die ausführliche Fassung („zuletzt eingetragen am …“ je Geschäft) steht im Preisvergleich des Bearbeiten-Dialogs.
-    copy.append(element('small', `${quotes.length === 1 ? 'Preis' : 'Am günstigsten'}: ${stores} ${euros(best.rate)}/${best.unit} · ${shortDate(best.at)}${best.old ? ' (alt)' : ''}`, 'price-note'));
-  }
   row.append(check, copy);
   if (imagesOn()) row.append(thumbFor(item));
   return row;
@@ -596,6 +591,9 @@ function editItem(id) {
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice, item.saleUntil);
   form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
+  // Preis & Angebot sind zugeklappt (Name, Menge, Einheit, Geschäft stehen oben); die Zeile verrät den Stand.
+  const quote = itemQuote(item, state.prices), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
+  $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
   showComparison(item); message(); $('#item-dialog').showModal();
 }
 function deleteOps(collection, ids) {
@@ -1385,7 +1383,7 @@ function encodeFile(data) {
   let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
-let retryAt = 0, compactRequested = false;
+let retryAt = 0, compactRequested = false, lastSyncAt = 0;   // lastSyncAt: letzter geglückter Abgleich (die Foto-Bereinigung verlangt einen frischen)
 async function sync(manual = false) {
   if (!connected()) { restingStatus(); return; }
   if (busy || (!manual && Date.now() < retryAt)) return;
@@ -1396,7 +1394,7 @@ async function sync(manual = false) {
     for (let attempt = 0; attempt < 4; attempt++) {
       // Ohne eigene Änderungen genügt die Frage „hat sich etwas geändert?“ (HTTP 304).
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
-      if (!file) { retryAt = 0; message(); restingStatus(); hydratePhotos(); return; }
+      if (!file) { retryAt = 0; lastSyncAt = Date.now(); message(); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
       const batch = pending.slice();
       let merged = merge(remote, batch), tidy = null;
@@ -1421,7 +1419,7 @@ async function sync(manual = false) {
       saveLocal(merged, pending.filter(op => !sent.has(op.id)));
       remoteEtag = written ? '' : file.etag;
       if (compactRequested) { compactRequested = false; noteCompaction(tidy); }
-      ready = true; retryAt = 0; message();
+      ready = true; retryAt = 0; lastSyncAt = Date.now(); message();
       // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
       if (!wasReady || signature() !== before) render();
       restingStatus(); hydratePhotos();
@@ -2052,6 +2050,10 @@ function renderSpending() {
   $('#month-prev').disabled = spendMonth <= firstMonth(rows, now);
   $('#month-next').disabled = spendMonth >= latestMonth(rows, now);
 
+  // Ganz ohne Einträge: eine kurze Erklärung mit „Ersten Einkauf eintragen“; Monatswahl, Summe, Diagramm und Liste erscheinen nach dem ersten Eintrag.
+  const none = rows.length === 0;
+  $('#spending-empty').hidden = !none;
+  for (const node of [$('#spending .week-nav'), $('#spending-summary'), $('#spending-chart-card'), $('#spending .list-head'), $('#purchase-list'), $('#spending .spend-hint')]) node.hidden = none;
   const summary = $('#spending-summary'); summary.replaceChildren();
   summary.append(element('span', spendMonth === now ? 'Bisher ausgegeben' : 'Ausgegeben', 'spend-label'), element('strong', euros(current.total), 'spend-total'),
     element('small', current.count ? `${countLabel(current.count, 'Einkauf', 'Einkäufe')} · Ø ${euros(current.average)}` : 'In diesem Monat ist noch nichts eingetragen.'));
@@ -2314,11 +2316,28 @@ function compactNow() {
   noteCompaction(result); render();
 }
 // Fotodateien im Daten-Repository, auf die kein Rezept mehr verweist (ersetzte, entfernte, mit dem Rezept gelöschte Fotos).
+// Vorsicht: Das zweite Gerät lädt ein Foto hoch, bevor seine Rezeptänderung hier ankommt. Deshalb: ein ausdrücklich geglückter Abgleich vorher und noch einmal
+// nach der Rückfrage, und Fotos, die jünger als 24 Stunden sind (oder deren Alter GitHub nicht verrät), bleiben stehen.
+const PHOTO_GRACE_MS = 24 * 3600000;
+async function freshSync() {
+  const started = Date.now();
+  await sync(true);
+  if (pending.length) throw new Error('Es warten noch Änderungen. Bitte zuerst abgleichen (grüner Punkt oben).');
+  if (lastSyncAt < started) throw new Error('Der Abgleich hat gerade nicht geklappt. Es wird nichts gelöscht. Bitte später erneut versuchen.');
+}
+async function photoIsOld(file) {
+  try {
+    const response = await timed(`https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/commits?sha=${encodeURIComponent(config.branch)}&per_page=1&path=${encodeURIComponent(`${photosDir(config.path)}/${file.name}`)}`,
+      { headers: githubHeaders({ Accept: 'application/vnd.github+json' }) });
+    if (!response.ok) return false;
+    const date = Date.parse((await response.json())?.[0]?.commit?.committer?.date);
+    return Number.isFinite(date) && Date.now() - date > PHOTO_GRACE_MS;
+  } catch { return false; }
+}
 async function cleanPhotos() {
   if (!connected()) return;
   if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
-  await sync(true);
-  if (pending.length) throw new Error('Es warten noch Änderungen. Bitte zuerst abgleichen (grüner Punkt oben).');
+  await freshSync();
   const note = $('#storage-note'); note.textContent = 'Prüfe Fotos …';
   const response = await timed(`${photosApi()}?ref=${encodeURIComponent(config.branch)}`, { headers: githubHeaders({ Accept: 'application/vnd.github+json' }) });
   if (response.status === 404) { note.textContent = 'Es gibt keine Fotos im Daten-Repository.'; return; }
@@ -2326,16 +2345,24 @@ async function cleanPhotos() {
   const used = usedPhotos(), files = (await response.json()).filter(file => file.type === 'file' && /^[A-Za-z0-9-]{8,64}\.jpg$/.test(file.name));
   const orphans = files.filter(file => !used.has(file.name.slice(0, -4)));
   if (!orphans.length) { note.textContent = 'Alle Fotos werden noch verwendet.'; return; }
-  const size = orphans.reduce((sum, file) => sum + (file.size || 0), 0);
-  if (!confirm(`${orphans.length} nicht mehr verwendete Fotos (${kb(size)}) endgültig löschen?\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`)) { note.textContent = ''; return; }
-  let deleted = 0;
-  for (const file of orphans) {
+  const old = [];
+  for (const file of orphans) if (await photoIsOld(file)) old.push(file);
+  const young = orphans.length - old.length;
+  if (!old.length) { note.textContent = `${young} ungenutzte Fotos sind noch neu (unter 24 Stunden) und bleiben vorerst.`; return; }
+  const size = old.reduce((sum, file) => sum + (file.size || 0), 0);
+  if (!confirm(`${old.length} nicht mehr verwendete Fotos (${kb(size)}) endgültig löschen?${young ? `\n\n${young} neuere bleiben vorerst stehen.` : ''}\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`)) { note.textContent = ''; return; }
+  // Nach der Rückfrage noch einmal abgleichen: Inzwischen kann ein Rezept auf eines der Fotos verweisen.
+  await freshSync();
+  const stillUnused = usedPhotos();
+  const doomed = old.filter(file => !stillUnused.has(file.name.slice(0, -4)));
+  let deleted = 0, freed = 0;
+  for (const file of doomed) {
     const result = await timed(`${photosApi()}/${encodeURIComponent(file.name)}`, { method: 'DELETE', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }),
       body: JSON.stringify({ message: 'Einkauf & Rezepte: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
     if (!result.ok) { note.textContent = `${deleted} Fotos gelöscht, dann Fehler ${result.status}.`; return; }
-    deleted++;
+    deleted++; freed += file.size || 0;
   }
-  note.textContent = `${deleted} Fotos gelöscht, ${kb(size)} frei.`;
+  note.textContent = `${deleted} Fotos gelöscht, ${kb(freed)} frei.${young ? ` ${young} neuere bleiben vorerst stehen.` : ''}`;
 }
 // Fotos, auf die irgendein Rezept (auch ein gerade gelöschtes) oder die Upload-Warteschlange verweist.
 const usedPhotos = () => new Set([...state.recipes.map(row => row.photoId), ...queued(queueKey())].filter(Boolean));
@@ -2681,6 +2708,7 @@ $('#receipt-parse').addEventListener('click', () => guard(parseReceiptText));
 $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden = false; $('#receipt-review').hidden = true; message(); });
 $('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });
 $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
+$('#spending-first').addEventListener('click', () => guard(() => openPurchase()));
 $('#budget-form').addEventListener('submit', event => { event.preventDefault(); guard(saveBudget); });
 $('#budget-remove').addEventListener('click', () => guard(() => { $('#budget-dialog').close(); commit([nextOp('budgets', 'monthly', { cents: 0 })], 'Monatsbudget entfernt'); }));
 $('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });

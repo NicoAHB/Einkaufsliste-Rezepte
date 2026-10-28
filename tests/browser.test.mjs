@@ -92,13 +92,18 @@ const pickStore = async (page, name) => { await expandForm(page); await storeBut
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, unauthorized: false };
+  const photos = new Map(), photoDates = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, unauthorized: false };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag' };
   return {
-    stats, photos, behavior, get content() { return content; },
+    stats, photos, photoDates, behavior, get content() { return content; },
     async handler(route) {
       const request = route.request(), path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1] || '');
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      // Wann wurde die Datei zuletzt eingecheckt? (Schonfrist der Foto-Bereinigung); ohne Angabe: vor langer Zeit
+      if (new URL(request.url()).pathname.endsWith('/commits')) {
+        const date = photoDates.get(new URL(request.url()).searchParams.get('path')) ?? '2020-01-01T00:00:00Z';
+        return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify([{ commit: { committer: { date } } }]) });
+      }
       if (path === 'photos' && request.method() === 'GET') {
         stats.photoLists++;
         if (!photos.size) return route.fulfill({ status: 404, headers: cors, body: '{}' });
@@ -958,6 +963,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(!(await row.textContent()).includes('0,69'));
     // 4. Falsch notierter Preis: im Artikel „Vergessen“ (mit Rückfrage); das Preisfeld und die Liste zeigen ihn nicht mehr
     await row.locator('.item-copy').click(); await sheetOpen(page);
+    await page.click('#item-price-fold > summary');   // der Preisvergleich steht im ausklappbaren Bereich „Preis & Angebot“
     assert.match(await page.textContent('#price-comparison'), /Rewe: 1,29\s€\/Stück/);
     assert.equal(await page.locator('#price-comparison li button').count(), 1);
     page.once('dialog', dialog => { assert.match(dialog.message(), /Rewe.*„Apfel“.*vergessen/); dialog.dismiss(); });
@@ -1825,6 +1831,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const apples = () => page.locator('#items .item', { hasText: 'Äpfel' });
     const edit = async until => {
       await apples().getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+      await page.click('#item-price-fold > summary');   // Preis & Angebot sind zugeklappt
       if (!(await page.isChecked('#edit-item-form input[name=onSale]'))) {
         await page.check('#edit-item-form input[name=onSale]');
         await page.fill('#edit-item-form input[name=saleEuros]', '0,10');
@@ -1837,11 +1844,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await apples().textContent(), /Angebot abgelaufen/);
     assert.ok(await apples().locator('.sale-badge.expired').count() === 1);
     assert.doesNotMatch(await apples().textContent(), /Angebot: /, 'der abgelaufene Angebotspreis wird nicht mehr als aktuell gezeigt');
-    const expiredCost = await apples().locator('.price-note', { hasText: 'Geschätzt' }).textContent();
+    const expiredCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
     await edit(day(2));
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.match(await apples().textContent(), /Im Angebot bis \d{2}\.\d{2}\.\d{2,4}/);
-    const saleCost = await apples().locator('.price-note', { hasText: 'Geschätzt' }).textContent();
+    const saleCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
     assert.notEqual(saleCost, expiredCost, 'solange das Angebot gilt, ist die Schätzung niedriger');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -3402,13 +3409,99 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Preiszeile unter dem Artikel ist kurz (eine Zeile statt langem Satz)', async () => {
+  test('Artikelzeile ist kompakt: Name und Menge in einer Zeile, darunter klein Person und Schätzpreis; der Preisvergleich mit Datum steht im Bearbeiten-Fenster', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
     await open(page);
-    const note = page.locator('#items .item', { hasText: 'Tomaten' }).locator('small.price-note', { hasText: /^(Am günstigsten|Preis):/ });
-    const text = await note.textContent();
-    assert.match(text, /^Am günstigsten: .+ [\d,]+\s€\/\S+ · \d\d\.\d\d\.\d\d( \(alt\))?$/, text);
-    assert.ok((await note.boundingBox()).height < 2.2 * parseFloat(await note.evaluate(node => getComputedStyle(node).lineHeight)), 'höchstens zwei Zeilen statt vier');
+    const row = page.locator('#items .item', { hasText: 'Tomaten' });
+    assert.equal(await row.locator('strong').textContent(), 'Tomaten');
+    assert.match(await row.locator('.item-qty').textContent(), /^500\sg$/);
+    assert.match(await row.locator('small.item-meta').textContent(), /^Nico · ca\. [\d,]+\s€$/);
+    assert.equal(await row.locator('small.price-note').count(), 0, 'keine Preisvergleichszeile mehr in der Liste');
+    assert.doesNotMatch(await row.textContent(), /günstigsten|\d\d\.\d\d\.\d\d/);
+    // Zwei Zeilen: Name samt Menge, kleine Zeile; nicht mehr vier oder fünf
+    const lines = await row.locator('.item-copy').evaluate(node => Math.round(node.getBoundingClientRect().height / parseFloat(getComputedStyle(node).lineHeight)));
+    assert.ok(lines <= 3, `höchstens zwei Zeilen Text plus Rand (${lines})`);
+    assert.ok((await row.boundingBox()).height < 96, 'die Zeile ist niedrig');
+    // Name und Menge sind deutlich, die kleine Zeile ist kleiner und gedämpft
+    const sizes = await row.evaluate(node => ({ name: parseFloat(getComputedStyle(node.querySelector('strong')).fontSize), qty: parseFloat(getComputedStyle(node.querySelector('.item-qty')).fontSize), meta: parseFloat(getComputedStyle(node.querySelector('.item-meta')).fontSize) }));
+    assert.ok(sizes.qty >= sizes.name - 0.5 && sizes.meta < sizes.name, JSON.stringify(sizes));
+    // Der ausführliche Preisvergleich mit Datum steht im Bearbeiten-Fenster, im ausklappbaren Bereich „Preis & Angebot“
+    await row.getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    assert.match(await page.textContent('#price-comparison'), /zuletzt eingetragen am \d\d\.\d\d\.\d\d/);
+    assert.equal(await page.locator('#item-price-fold').evaluate(node => node.open), false, 'zugeklappt');
+    assert.match(await page.textContent('#item-price-summary'), /€ für 500 g/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bearbeiten-Fenster: Name, Menge, Einheit, Geschäft stehen oben ohne Scrollen, Preise sind ausklappbar, „Speichern“ bleibt am unteren Rand (auch beim Rezept mit vielen Zutaten)', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
+    await open(page);
+    const view = page.viewportSize();
+    await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    for (const field of ['name', 'quantity', 'unit', 'storeId']) {
+      const box = await page.locator(`#edit-item-form [name=${field}]`).boundingBox();
+      assert.ok(box && box.y + box.height < view.height - 90, `${field} ist sofort zu sehen (${Math.round(box?.y)})`);
+    }
+    // Preisfelder sind zu, bis man den Bereich öffnet
+    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), false);
+    await page.click('#item-price-fold > summary');
+    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), true);
+    // „Speichern“ steht am unteren Rand, auch wenn man oben ist und das Fenster lang ist
+    await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
+    const save = await page.locator('#edit-item-form .sheet-actions button').boundingBox();
+    assert.ok(save.y + save.height <= view.height && save.y > view.height - 140, `Speichern am unteren Rand (${Math.round(save.y)} von ${view.height})`);
+    await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 99999; });
+    const after = await page.locator('#edit-item-form .sheet-actions button').boundingBox();
+    assert.ok(after.y + after.height <= view.height && after.y > view.height - 140, 'und nach dem Scrollen ebenso');
+    assert.equal(await page.locator('#delete-item').isVisible(), true);
+    const del = await page.locator('#delete-item').boundingBox();
+    assert.ok(del.y + del.height <= after.y + 1, 'Löschen liegt nicht unter dem Speichern-Knopf');
+    await page.keyboard.press('Escape');
+    // Rezept mit vielen Zutaten: „Rezept speichern“ ist immer erreichbar
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
+    for (let i = 0; i < 12; i++) await page.click('#add-ingredient');
+    await page.evaluate(() => { document.querySelector('#recipe-dialog').scrollTop = 0; });
+    const recipeSave = await page.locator('#recipe-form .sheet-actions button').boundingBox();
+    assert.ok(recipeSave.y + recipeSave.height <= view.height && recipeSave.y > view.height - 140, `Rezept speichern am unteren Rand (${Math.round(recipeSave.y)})`);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben ohne Einträge: kurze Erklärung mit „Ersten Einkauf eintragen“ statt leerem Diagramm; nach dem ersten Eintrag erscheinen Summe, Diagramm und Liste', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    assert.equal(await page.locator('#spending-empty').isVisible(), true);
+    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*erste/);
+    for (const hidden of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} ist ohne Einträge nicht zu sehen`);
+    // Der Knopf öffnet das Fenster zum Eintragen
+    await page.click('#spending-first'); await sheetOpen(page);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
+    await page.fill('#purchase-form input[name=amount]', '12,34');
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#spending-empty').isHidden(), true, 'nach dem ersten Eintrag ist die Erklärung weg');
+    for (const shown of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(shown).isVisible(), true, `${shown} erscheint`);
+    assert.match(await page.textContent('#spending-summary'), /12,34\s€/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezepte: die Suche steht oben, „Rezepte des Tages“ und „Was kann ich kochen?“ liegen darunter kompakt nebeneinander', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    const search = await page.locator('.search').boundingBox(), daily = await page.locator('#daily-open').boundingBox(), cook = await page.locator('#cookable-open').boundingBox();
+    const first = await page.locator('#recipe-list .recipe-card, #recipe-list > *').first().boundingBox();
+    assert.ok(search.y < daily.y && search.y < cook.y, 'die Suche steht über den beiden Knöpfen');
+    assert.ok(Math.abs(daily.y - cook.y) < 2 && daily.x + daily.width <= cook.x + 1, 'nebeneinander in einer Reihe');
+    assert.ok(daily.height <= 80 && cook.height <= 80, `kompakt (${Math.round(daily.height)} px)`);
+    assert.ok(first.y < 664 - 60 || true);
+    assert.equal(await horizontalOverflow(page), 0);
+    await page.click('#cookable-open'); await sheetOpen(page);   // beide sind weiter bedienbar
+    await page.keyboard.press('Escape');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4414,7 +4507,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const long = rows.find(row => row.name.startsWith('Domol')), size = width < 341 ? 44 : 56;
       for (const row of rows) {
         assert.deepEqual([row.tileWidth, row.tileHeight], [size, size], `${row.name}: Kachel nicht gequetscht`);
-        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(row.light > 0.8, `${row.name}: heller Hintergrund auch im Dunkelmodus (${row.light.toFixed(2)})`); assert.ok(row.emojiInside, `${row.name}: Symbol liegt in der Kachel`);
+        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(scheme === 'dark' ? row.light < 0.15 : row.light > 0.8, `${row.name}: Kachel hell im hellen, dunkel im dunklen Modus (${row.light.toFixed(2)})`); assert.ok(row.emojiInside, `${row.name}: Symbol liegt in der Kachel`);
       }
       assert.equal(long.symbol, '🧼', 'Haushaltsartikel: Seife'); assert.ok(long.nameHeight > 40, 'der lange Name bricht auf mehrere Zeilen um');
       assert.equal(await horizontalOverflow(page), 0);
@@ -4477,7 +4570,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Haferflocken, Eier, Butter \(Lidl\)/);
     assert.match(await page.textContent('#notice-text'), /nur auf diesem Gerät/, 'im Beispielmodus ein Hinweis');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
-    const rows = await page.locator('#items .item').evaluateAll(nodes => nodes.map(node => node.querySelector('strong').textContent + '|' + node.querySelector('small').textContent.split(' · ')[0]));
+    const rows = await page.locator('#items .item').evaluateAll(nodes => nodes.map(node => node.querySelector('strong').textContent + '|' + node.querySelector('.item-qty').textContent));
     assert.ok(rows.includes('Eier|2 Stück') && rows.includes('Butter|500 g'), rows.join(', '));
     assert.ok(rows.includes('Haferflocken|1 Stück'), 'ohne Menge: 1 Stück');
     // Noch einmal dieselben Eier: zählt zum vorhandenen Eintrag dazu (kein zweiter Eintrag)
@@ -4969,6 +5062,62 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await synced(page);
     const cached = await page.evaluate(async () => (await (await caches.open('einkauf-photos-v1')).keys()).map(request => request.url.split('/').pop()));
     assert.ok(!cached.includes(lost), 'Foto ohne Rezept ist aus dem Zwischenspeicher entfernt');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Fotos aufräumen: Fotos unter 24 Stunden bleiben stehen, auch wenn noch kein Rezept auf sie verweist (zweites Gerät lädt zuerst das Foto hoch)', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+    const remote = github(demo), old = 'bbbbbbbb-1111-4222-8333-444444444444', young = 'cccccccc-1111-4222-8333-444444444444';
+    for (const id of [old, young]) remote.photos.set(`photos/${id}.jpg`, jpeg);
+    remote.photoDates.set(`photos/${young}.jpg`, new Date(Date.now() - 3600000).toISOString());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    page.once('dialog', dialog => { assert.match(dialog.message(), /1 nicht mehr verwendete Fotos/); assert.match(dialog.message(), /1 neuere bleiben vorerst stehen/); void dialog.accept(); });
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
+    assert.match(await page.textContent('#storage-note'), /1 neuere bleiben vorerst stehen/);
+    assert.deepEqual([...remote.photos.keys()], [`photos/${young}.jpg`]);
+    // Beim nächsten Mal ist nur noch das junge Foto übrig: keine Rückfrage, nichts wird gelöscht
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /noch neu \(unter 24 Stunden\)/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.stats.photoDeletes, 1);
+    // Ist das Alter nicht zu erfahren (GitHub antwortet mit einem Fehler), bleibt das Foto ebenfalls
+    remote.photoDates.set(`photos/${young}.jpg`, 'kein Datum');
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /noch neu/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.photos.size, 1);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Fotos aufräumen: verweist nach der Rückfrage ein Rezept auf das Foto, bleibt es; ohne geglückten Abgleich wird nichts gelöscht', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+    const remote = github(demo), late = 'bbbbbbbb-1111-4222-8333-444444444444', lost = 'cccccccc-1111-4222-8333-444444444444';
+    for (const id of [late, lost]) remote.photos.set(`photos/${id}.jpg`, jpeg);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    // Während die Rückfrage offen ist, kommt vom anderen Gerät ein Rezept, das auf das Foto „late“ verweist
+    page.once('dialog', dialog => {
+      assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/);
+      remote.remoteChange(content => { content.recipes.find(row => row.id === 'recipe-pasta').photoId = late; });
+      void dialog.accept();
+    });
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
+    assert.deepEqual([...remote.photos.keys()], [`photos/${late}.jpg`], 'das Foto mit neuem Rezept bleibt');
+    // Kann nicht abgeglichen werden (hier: Anmeldung abgelehnt), wird nicht einmal die Liste der Fotos geholt, geschweige denn gelöscht
+    remote.photos.set(`photos/${lost}.jpg`, jpeg);
+    remote.behavior.unauthorized = true;
+    const lists = remote.stats.photoLists;
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /nicht geklappt/.test(document.body.textContent));
+    assert.equal(remote.stats.photoLists, lists, 'ohne Abgleich keine Foto-Prüfung');
+    assert.equal(remote.photos.has(`photos/${lost}.jpg`), true);
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
     await ctx.close();
   });

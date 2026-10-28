@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { AUTO_BYTES, LIMIT_BYTES, POLICY, compact, due, sizeOf } from '../compact.js';
+import { AUTO_BYTES, LIMIT_BYTES, POLICY, cleanMarks, compact, due, sizeOf } from '../compact.js';
 import { suggestCategory } from '../categories.js';
 import { active, merge, operation, suggestItemNames, uid, validate } from '../data.js';
 
@@ -68,11 +68,73 @@ test('Gemerkte Preise: nur die neuesten je Geschäft, Produkt und Einheitengrupp
   assert.deepEqual(kept, ['andere', 'p4', 'p5']);
 });
 
-test('Änderungsprotokoll wird gekürzt, die neuesten bleiben in Reihenfolge', () => {
-  const data = base(); data.sync.applied = Array.from({ length: POLICY.keepApplied + 50 }, (_, index) => `op-${index}`);
+const ids = (count, from = 0) => Array.from({ length: count }, (_, index) => `op-${from + index}`);
+
+test('Änderungsprotokoll ohne Marken: alles bleibt bis zur Obergrenze, darüber die neuesten in Reihenfolge', () => {
+  const small = base(); small.sync.applied = ids(POLICY.keepApplied + 50);
+  assert.equal(compact(small, NOW).changed, false, 'unter der Obergrenze fällt ohne Altersangabe nichts weg');
+  const data = base(); data.sync.applied = ids(POLICY.maxApplied + 50);
+  const out = compact(data, NOW);
+  assert.equal(out.data.sync.applied.length, POLICY.maxApplied);
+  assert.equal(out.data.sync.applied[0], 'op-50'); assert.equal(out.data.sync.applied.at(-1), `op-${POLICY.maxApplied + 49}`);
+  assert.equal(out.removed.applied, 50);
+});
+
+test('Marken: Änderungen jünger als 45 Tage bleiben, ältere fallen weg, mindestens die letzten 600 bleiben', () => {
+  const data = base(); data.sync.applied = ids(1000);
+  data.sync.marks = [{ at: ago(120), n: 300 }, { at: ago(60), n: 700 }, { at: ago(20), n: 900 }];
   const out = compact(data, NOW).data;
-  assert.equal(out.sync.applied.length, POLICY.keepApplied);
-  assert.equal(out.sync.applied[0], 'op-50'); assert.equal(out.sync.applied.at(-1), `op-${POLICY.keepApplied + 49}`);
+  assert.equal(out.sync.applied.length, 1000 - 400, 'bis zur Marke von vor 60 Tagen (n = 700) wird gekürzt, aber nicht unter 600');
+  assert.equal(out.sync.applied[0], 'op-400');
+  // Marken wandern mit: die alten fallen weg, die jüngeren rücken auf
+  assert.deepEqual(out.sync.marks.map(mark => mark.n).slice(0, 2), [300, 500]);
+  assert.equal(out.sync.marks.at(-1).at, NOW.toISOString(), 'und das Aufräumen setzt eine neue Marke');
+  assert.equal(out.sync.marks.at(-1).n, 600);
+  const few = base(); few.sync.applied = ids(650); few.sync.marks = [{ at: ago(100), n: 640 }];
+  assert.equal(compact(few, NOW).data.sync.applied.length, POLICY.keepApplied, 'nie unter die Untergrenze');
+});
+
+test('Marken: je Tag höchstens eine neue, unlesbare werden ignoriert, die Datei bleibt gültig', () => {
+  const data = base(); data.sync.applied = ids(700);
+  data.sync.marks = [{ at: NOW.toISOString(), n: 650 }];
+  data.items.push({ id: 'x', name: 'Alt', quantity: 1, unit: 'Stück', checked: false, storeId: 'store-edeka', createdBy: 'Nico', createdAt: ago(90), updatedAt: ago(90), deletedAt: ago(40), _clock: { '*': { at: ago(90), id: '' } } });
+  const out = compact(data, NOW).data;
+  assert.equal(out.sync.marks.length, 1, 'heute ist schon eine Marke da');
+  const broken = base(); broken.sync.applied = ids(700);
+  broken.sync.marks = [null, { at: 'gestern', n: 5 }, { at: ago(80), n: 9999 }, { at: ago(80), n: 2.5 }, { at: ago(80), n: 100 }, { at: ago(90), n: 200 }];
+  broken.items.push({ id: 'y', name: 'Alt', quantity: 1, unit: 'Stück', checked: false, storeId: 'store-edeka', createdBy: 'Nico', createdAt: ago(90), updatedAt: ago(90), deletedAt: ago(40), _clock: { '*': { at: ago(90), id: '' } } });
+  const tidy = compact(broken, NOW).data;
+  assert.doesNotThrow(() => validate(tidy));
+  assert.equal(tidy.sync.applied.length, 700 - 100, 'nur die lesbare Marke (n = 100, älter als 45 Tage) zählt; Marken dürfen nicht rückwärts gehen');
+  assert.deepEqual(cleanMarks([{ at: ago(10), n: 5 }, { at: ago(20), n: 8 }], 10), [{ at: ago(10), n: 5 }], 'eine Marke mit früherem Zeitpunkt nach einer späteren gilt nicht');
+  assert.equal(compact(compact(broken, NOW).data, NOW).changed, false, 'ein zweiter Lauf ändert nichts');
+});
+
+test('Eine schon angewendete Änderung wirkt auch nach dem Aufräumen nicht ein zweites Mal (3 bleibt 3, ein entferntes Brot bleibt weg)', () => {
+  // Gerät A hat geschrieben, aber die Antwort ging verloren und es hat noch beide Änderungen in der Warteschlange.
+  const create = item('milch', 'Milch', { quantity: 2 }, ago(40)), add = op('items', 'milch', { add: { quantity: 1, unit: 'Stück' } }, ago(39));
+  const make = item('brot', 'Brot', {}, ago(50)), del = op('items', 'brot', { deletedAt: ago(45) }, ago(45));
+  let data = merge(base(), [create, add, make, del]);
+  // Gerät B arbeitet danach weiter: viele Änderungen, dann wird aufgeräumt (Gelöschtes aus der Datei, Protokoll gekürzt)
+  const later = Array.from({ length: 700 }, (_, index) => item(`x${index % 7}`, `Artikel ${index % 7}`, { checked: index % 2 === 0 }, ago(30 - (index % 25))));
+  data = merge(data, later);
+  const out = compact(data, NOW);
+  assert.ok(out.removed.items >= 1 && !out.data.items.some(row => row.id === 'brot'), 'das gelöschte Brot ist endgültig weg');
+  assert.ok(out.data.sync.applied.includes(add.id) && out.data.sync.applied.includes(make.id), 'aber die Änderungen sind weiter als angewendet vermerkt');
+  const again = merge(out.data, [create, add, make, del]);
+  assert.equal(again.items.find(row => row.id === 'milch').quantity, 3, 'die Menge bleibt 3');
+  assert.ok(!again.items.some(row => row.id === 'brot'), 'das Brot kommt nicht wieder');
+});
+
+test('Aufgeräumte Dateien tragen minRev 2 (alte Apps ohne das Feld ignorieren es); eine zu alte App liest sie nicht', () => {
+  const data = base(); data.sync.applied = ids(10);
+  data.items.push({ id: 'z', name: 'Alt', quantity: 1, unit: 'Stück', checked: false, storeId: 'store-edeka', createdBy: 'Nico', createdAt: ago(90), updatedAt: ago(90), deletedAt: ago(40), _clock: { '*': { at: ago(90), id: '' } } });
+  const out = compact(data, NOW).data;
+  assert.equal(out.sync.minRev, 2);
+  assert.doesNotThrow(() => validate(out));
+  assert.throws(() => validate({ ...out, sync: { ...out.sync, minRev: 3 } }), /zu alt/);
+  assert.throws(() => validate({ ...out, sync: { ...out.sync, minRev: 'x' } }), /beschädigt/);
+  assert.doesNotThrow(() => validate({ ...out, sync: { ...out.sync, minRev: undefined } }));
 });
 
 test('Zeitstempel je Feld werden durch eine Sammelmarke ersetzt; neuere Änderungen gewinnen weiter, ältere nicht', () => {
@@ -130,7 +192,7 @@ test('Ein Jahr Nutzung (20 Artikel pro Woche): ohne Aufräumen über der Grenze,
   }
   assert.ok(sizeOf(plain) > LIMIT_BYTES, `ohne Aufräumen nur ${sizeOf(plain)} Byte`);
   assert.ok(Math.max(...sizes) < AUTO_BYTES + 60000, `Höchststand ${Math.max(...sizes)} Byte`);
-  assert.ok(sizeOf(tidy) < 200000, `im Dauerbetrieb nur ${sizeOf(tidy)} Byte`);
+  assert.ok(sizeOf(tidy) < AUTO_BYTES, `im Dauerbetrieb nur ${sizeOf(tidy)} Byte`);   // aufgeräumt wird ab AUTO_BYTES; die Änderungen der letzten 45 Tage bleiben vermerkt (siehe trimApplied)
   assert.doesNotThrow(() => validate(tidy));
   assert.ok(tidy.names.length > 0 && tidy.names.length <= POLICY.maxNames);
   assert.equal(active(tidy.items).length, demo.items.length, 'Alle lebenden Artikel sind noch da');

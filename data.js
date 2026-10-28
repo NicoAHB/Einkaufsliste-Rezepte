@@ -87,8 +87,14 @@ export function validateRow(key, row) {
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
 }
 
+// Stand dieser App für die Datei. Wer die Datei später so ändert, dass ältere Apps sie falsch lesen oder beschädigen würden, trägt in `sync.minRev` die
+// nötige Mindestzahl ein; eine App mit kleinerer Zahl liest die Datei dann nicht mehr und schreibt nichts (sie verweist auf das Aktualisieren).
+// Apps bis Version 2.36 kennen das Feld noch nicht. Revision 2: Marken für die Liste der angewendeten Änderungen (`sync.marks`, siehe compact.js).
+export const SCHEMA_REV = 2;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
+  if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
+  if (data.sync?.minRev > SCHEMA_REV) throw new Error('Diese App-Version ist für die Daten zu alt. Bitte die App ganz schließen und neu öffnen (Aktualisierung), notfalls zweimal. Die Datei wird nicht verändert.');
   if (!data.sync || !Array.isArray(data.sync.applied) || data.sync.applied.some(id => typeof id !== 'string')) {
     throw new Error('Die Synchronisierungsdaten fehlen oder sind beschädigt. Bitte ein Backup prüfen.');
   }

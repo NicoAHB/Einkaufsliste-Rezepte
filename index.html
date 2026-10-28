@@ -110,9 +110,11 @@
     <section id="recipes" hidden aria-labelledby="recipes-title">
       <div class="section-head"><h2 id="recipes-title">Rezepte</h2>
         <div class="head-actions"><button id="import-recipe" class="secondary" type="button"><svg class="icon"><use href="#i-download"/></svg>Import</button><button id="add-recipe" type="button"><svg class="icon"><use href="#i-plus"/></svg>Neu</button></div></div>
-      <button id="daily-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-star"/></svg><span id="daily-label">Rezepte des Tages</span></button>
-      <button id="cookable-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-cart"/></svg><span>Was kann ich kochen?</span></button>
       <label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen" aria-label="Rezepte durchsuchen" enterkeyhint="search"></label>
+      <div class="discover" role="group" aria-label="Rezepte entdecken">
+        <button id="daily-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-star"/></svg><span id="daily-label">Rezepte des Tages</span></button>
+        <button id="cookable-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-cart"/></svg><span>Was kann ich kochen?</span></button>
+      </div>
       <div id="tag-chips" class="chips" role="group" aria-label="Nach Tag filtern" hidden></div>
       <div id="recipe-list" class="recipe-grid"></div>
     </section>
@@ -133,6 +135,11 @@
         <button id="month-prev" class="icon-button round" type="button" aria-label="Vorheriger Monat"><svg class="icon"><use href="#i-left"/></svg></button>
         <div class="week-title"><strong id="month-label"></strong><button id="month-today" class="text-button" type="button">Dieser Monat</button></div>
         <button id="month-next" class="icon-button round" type="button" aria-label="Nächster Monat"><svg class="icon"><use href="#i-right"/></svg></button>
+      </div>
+      <div id="spending-empty" class="card spend-empty" hidden>
+        <h3>Noch keine Ausgaben</h3>
+        <p>Trage deinen ersten Einkauf ein, den Betrag von Hand oder aus einem Kassenbon. Danach siehst du hier jeden Monat, wie viel ihr ausgegeben habt, im Vergleich zum Vormonat und nach Geschäft.</p>
+        <button id="spending-first" type="button"><svg class="icon"><use href="#i-plus"/></svg>Ersten Einkauf eintragen</button>
       </div>
       <div id="spending-summary" class="card spend-summary" aria-live="polite"></div>
       <div id="spending-budget" class="card spend-budget"></div>
@@ -253,12 +260,16 @@
     <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
     <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
-    <h3>Normaler Preis</h3><p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
-    <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
-    <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
-    <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Ohne Angebotspreis wird mit dem normalen Preis geschätzt.</p></div>
-    <p class="hint" data-price-hint></p><div id="price-comparison"></div><button type="submit">Artikel speichern</button>
+    <details id="item-price-fold" class="price-fold"><summary><span>Preis & Angebot</span><small id="item-price-summary"></small></summary>
+      <div class="stack">
+        <p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
+        <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
+        <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
+        <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Ohne Angebotspreis wird mit dem normalen Preis geschätzt.</p></div>
+        <p class="hint" data-price-hint></p><div id="price-comparison"></div>
+      </div></details>
     <button id="delete-item" type="button" class="danger">Artikel löschen</button>
+    <div class="sheet-actions"><button type="submit">Artikel speichern</button></div>
   </form></dialog>
   <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <div id="recipe-import-note" class="import-note" hidden></div>
@@ -272,7 +283,7 @@
     <label>Zubereitung<textarea name="instructions" rows="7" maxlength="20000" placeholder="Schritte oder Notizen"></textarea></label>
     <label>Quelle (Link, optional)<input name="sourceUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off" autocomplete="off"></label>
     <details id="recipe-raw" hidden><summary>Erkannten Rohtext anzeigen</summary><pre id="recipe-raw-text"></pre></details>
-    <button type="submit">Rezept speichern</button></form></dialog>
+    <div class="sheet-actions"><button type="submit">Rezept speichern</button></div></form></dialog>
   <dialog id="template-dialog"><div class="stack"><div class="sheet-head"><h2>Vorlagen</h2><button type="button" data-close="template-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p class="hint">Eine Vorlage ist eine gespeicherte Liste, z. B. „Wocheneinkauf“. „Auf die Liste“ trägt alle Artikel ein; was schon offen auf der Liste steht, wird zusammengezählt. Vorlagen sehen beide Personen.</p>
     <ul id="template-list" class="template-list"></ul>

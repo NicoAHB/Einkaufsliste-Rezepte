@@ -764,8 +764,9 @@ details[open]>summary::after {
   align-items:center;
   gap:8px;
   padding:9px 16px;
-  background:var(--accent);
-  color:var(--on-accent);
+  background:var(--accent-soft);
+  color:var(--accent);
+  border-left:4px solid var(--accent);
   font-size:.82rem;
   font-weight:750;
   letter-spacing:.06em;
@@ -2470,7 +2471,31 @@ body.in-store .tabs {
 /* Rezepte des Tages */
 .daily-open {
   width:100%;
+  margin:0
+}
+/* Rezepte: Die Suche steht oben, darunter die beiden Entdecken-Knöpfe kompakt nebeneinander */
+.discover {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
   margin:0 0 12px
+}
+.discover .daily-open {
+  flex-direction:column;
+  gap:4px;
+  min-height:64px;
+  padding:8px 10px;
+  font-size:.9rem;
+  line-height:1.2;
+  text-align:center
+}
+.discover .daily-open span {
+  text-wrap:balance
+}
+@media(max-width:300px) {
+  .discover {
+    grid-template-columns:1fr
+  }
 }
 .daily-card h3 {
   margin:0 0 4px;
@@ -3021,7 +3046,7 @@ output {
   --glass-line:hsl(0 0% 100% / .8);
   --glass-hi:hsl(0 0% 100% / .6);
   --glass-blur:calc(6px + var(--gs) * 24px);
-  --glass-shadow:0 10px 34px hsl(var(--h) 55% 32% / .13),0 2px 6px hsl(var(--h) 55% 32% / .06);
+  --glass-shadow:0 6px 20px hsl(var(--h) 55% 32% / .08);
   --seg-on:hsl(0 0% 100% / .9);
   --muted:hsl(var(--h) 22% 28%);
   --tint:hsl(var(--h) 85% 70% / .34);
@@ -3048,7 +3073,7 @@ output {
   --glass-line:hsl(0 0% 100% / .16);
   --glass-hi:hsl(0 0% 100% / .14);
   --glass-blur:calc(6px + var(--gs) * 24px);
-  --glass-shadow:0 12px 36px hsl(var(--h) 80% 4% / .45);
+  --glass-shadow:0 8px 22px hsl(var(--h) 80% 4% / .3);
   --seg-on:hsl(var(--h) 50% 30% / .85);
   --muted:hsl(var(--h) 22% 74%);
   --tint:hsl(var(--h) 80% 55% / .24);
@@ -3076,7 +3101,7 @@ output {
     --glass-line:hsl(0 0% 100% / .16);
     --glass-hi:hsl(0 0% 100% / .14);
     --glass-blur:calc(6px + var(--gs) * 24px);
-    --glass-shadow:0 12px 36px hsl(var(--h) 80% 4% / .45);
+    --glass-shadow:0 8px 22px hsl(var(--h) 80% 4% / .3);
     --seg-on:hsl(var(--h) 50% 30% / .85);
     --muted:hsl(var(--h) 22% 74%);
     --tint:hsl(var(--h) 80% 55% / .24);
@@ -3130,28 +3155,12 @@ output {
   border:1px solid var(--glass-line);
   box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-shadow)
 }
-:root[data-glass] .summary {
-  background:linear-gradient(135deg,var(--tint),var(--glass) 70%)
-}
-@supports ((-webkit-mask-composite:xor) or (mask-composite:exclude)) {
-  :root[data-glass] :is(.card,.item-list,.summary,.spend-budget,.day)::before {
-    content:"";
-    position:absolute;
-    inset:0;
-    padding:1.5px;
-    border-radius:inherit;
-    background:linear-gradient(140deg,var(--rim-a),var(--rim-b) 45%,var(--rim-c));
-    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-    -webkit-mask-composite:xor;
-    mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
-    pointer-events:none
-  }
-}
+/* Version 2.37: Karten tragen keinen farbigen Rahmenverlauf mehr; Farbe und Leuchten sind der Auswahl und der wichtigsten Aktion vorbehalten. */
 :root[data-glass] .item+.item {
   border-top-color:var(--glass-line)
 }
 :root[data-glass] .store-head:not(.none) {
-  background:linear-gradient(100deg,var(--accent),var(--head-end))
+  background:var(--accent-soft)
 }
 :root[data-glass] .store-head.none {
   background:var(--glass-strong)
@@ -3183,7 +3192,7 @@ output {
 /* Knöpfe: dezenter Verlauf, heller Innenrand, farbiger Schein (nur die Akzentknöpfe) */
 :root[data-glass] :is(#add-purchase,#add-recipe,#purchase-save,.primary-action,.inline-form>button,.stack>button:not(.secondary):not(.danger):not(.text-button),.chip[aria-selected=true],.chip[aria-pressed=true]) {
   background:linear-gradient(180deg,var(--btn-top),var(--accent));
-  box-shadow:inset 0 1px 0 var(--btn-hi),0 6px 16px var(--btn-glow)
+  box-shadow:inset 0 1px 0 var(--btn-hi),0 3px 10px var(--btn-glow)
 }
 :root[data-glass] :is(button.secondary,.chip,.chip-button,.icon-button.round):not([aria-selected=true]):not([aria-pressed=true]) {
   background:var(--glass);
@@ -3548,4 +3557,102 @@ html[data-landscape] .turn-hint {
   width:16px;
   height:16px;
   color:var(--accent)
+}
+
+/* Bearbeiten-Fenster (Artikel, Rezept): Das Wichtige steht oben, Preise und Angebote sind ausklappbar, „Speichern“ bleibt am unteren Rand erreichbar */
+.sheet-actions {
+  position:sticky;
+  bottom:calc(-22px - env(safe-area-inset-bottom));
+  z-index:2;
+  padding:12px 18px calc(22px + env(safe-area-inset-bottom));
+  background:var(--card);
+  border-top:1px solid var(--line)
+}
+.sheet-actions>button {
+  width:100%;
+  margin:0
+}
+.stack>.sheet-actions {
+  margin:14px -18px calc(-22px - env(safe-area-inset-bottom))
+}
+.price-fold {
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:0 14px
+}
+.price-fold>summary {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:48px;
+  cursor:pointer;
+  list-style:none;
+  font-weight:700
+}
+.price-fold>summary::-webkit-details-marker {
+  display:none
+}
+.price-fold>summary small {
+  flex:1;
+  min-width:0;
+  text-align:right;
+  color:var(--muted);
+  font-weight:500;
+  overflow-wrap:anywhere
+}
+.price-fold>summary::after {
+  content:"";
+  flex:none;
+  width:10px;
+  height:10px;
+  border:solid var(--muted);
+  border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+  transition:transform .15s
+}
+.price-fold[open]>summary::after {
+  transform:rotate(-135deg)
+}
+.price-fold[open] {
+  padding-bottom:14px
+}
+.item-qty {
+  margin-left:.5em;
+  font-weight:500;
+  white-space:nowrap
+}
+.item.checked .item-qty {
+  color:var(--muted)
+}
+:root[data-glass] .sheet-actions {
+  background:var(--glass-strong);
+  -webkit-backdrop-filter:blur(var(--glass-blur));
+  backdrop-filter:blur(var(--glass-blur));
+  border-top-color:var(--glass-line)
+}
+.item .item-meta {
+  color:var(--muted)
+}
+:root[data-theme=dark] .item-thumb {
+  background:hsl(var(--h) 25% 24%)
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) .item-thumb {
+    background:hsl(var(--h) 25% 24%)
+  }
+}
+/* Ausgaben ohne Einträge: kurze Erklärung statt leerem Diagramm */
+.spend-empty {
+  text-align:center
+}
+.spend-empty h3 {
+  margin:0 0 8px
+}
+.spend-empty p {
+  margin:0 0 16px;
+  color:var(--muted)
+}
+.spend-empty button {
+  width:100%
 }

@@ -17,7 +17,9 @@ export const POLICY = {
   doneDays: 21,          // erledigte, aber nie entfernte Artikel
   mealDays: 120,         // vergangene Gerichte im Wochenplan
   settledDays: 14,       // ab hier brauchen Datensätze keine Zeitstempel je Feld mehr
-  keepApplied: 600,      // Liste bereits angewendeter Änderungen (nur gegen doppeltes Senden nötig)
+  keepApplied: 600,      // Liste bereits angewendeter Änderungen (nur gegen doppeltes Senden nötig): so viele bleiben mindestens
+  appliedDays: 45,       // … und alle, die jünger als das sind (Marken, siehe `trimApplied`); ein Gerät, dessen Antwort verloren ging, sendet sonst alte Änderungen erneut
+  maxApplied: 2500,      // Obergrenze (etwa 100 KB), danach fallen die ältesten weg
   keepPrices: 2,         // gemerkte Preise je Geschäft, Produkt und Einheitengruppe
   maxNames: 300,         // Namensgedächtnis für Vorschläge
   maxAliases: 400,       // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
@@ -26,6 +28,35 @@ export const POLICY = {
 const DAY = 86400000;
 
 export const sizeOf = data => new TextEncoder().encode(JSON.stringify(data)).length;
+
+/* Liste der angewendeten Änderungen kürzen. Ein Gerät, dessen Schreiben gelang, dessen Antwort aber verloren ging, sendet dieselben Änderungen erneut;
+   sind sie vergessen, würden sie ein zweites Mal wirken (aus 3 wird 4, ein entfernter Artikel kommt wieder). Deshalb bleibt nicht einfach die Zahl
+   der letzten 600, sondern alles, was jünger als `appliedDays` ist. Dafür merkt sich jedes Aufräumen mit `sync.marks` eine Marke { at, n }:
+   „die ersten n Einträge der Liste waren vor `at` angewendet“. Die Liste wächst nur am Ende (die App hängt an), die Marken bleiben deshalb gültig.
+   Unlesbare oder widersprüchliche Marken werden ignoriert; dann bleibt es bei der Untergrenze `keepApplied`. */
+export function cleanMarks(marks, length) {
+  if (!Array.isArray(marks)) return [];
+  const clean = []; let last = 0;
+  for (const mark of marks) {
+    if (!mark || typeof mark.at !== 'string' || !Number.isFinite(Date.parse(mark.at)) || !Number.isInteger(mark.n) || mark.n <= last || mark.n > length) continue;
+    if (clean.length && Date.parse(mark.at) < Date.parse(clean.at(-1).at)) continue;
+    clean.push({ at: mark.at, n: mark.n }); last = mark.n;
+  }
+  return clean;
+}
+export function trimApplied(sync, now, policy) {
+  const length = sync.applied.length;
+  let marks = cleanMarks(sync.marks, length), drop = 0;
+  const cutoff = now.getTime() - (policy.appliedDays ?? POLICY.appliedDays) * DAY;
+  for (const mark of marks) if (Date.parse(mark.at) < cutoff) drop = mark.n;
+  drop = Math.min(drop, Math.max(0, length - policy.keepApplied));
+  drop = Math.max(drop, length - (policy.maxApplied ?? POLICY.maxApplied), 0);
+  const applied = drop ? sync.applied.slice(drop) : sync.applied;
+  marks = marks.map(mark => ({ at: mark.at, n: mark.n - drop })).filter(mark => mark.n > 0);
+  // Höchstens eine neue Marke je Tag
+  if (applied.length && (!marks.length || (applied.length > marks.at(-1).n && now.getTime() - Date.parse(marks.at(-1).at) >= DAY))) marks.push({ at: now.toISOString(), n: applied.length });
+  return { applied, marks, dropped: drop };
+}
 
 // Aus entfernten Artikeln bleibt ein kleines Gedächtnis (Name, Kategorie, Häufigkeit): Vorschläge und gelernte Kategorien
 // funktionieren weiter, ohne dass jeder alte Artikel in der Datei bleibt.
@@ -92,11 +123,10 @@ export function compact(input, now = new Date(), policy = POLICY) {
       if (fields.length && olderThan(row.updatedAt, policy.settledDays)) { row._clock = { '*': { at: row.updatedAt, id: '' } }; removed.clocks++; }
     }
   }
-  // 6. Liste angewendeter Änderungen auf die neuesten kürzen.
-  if (next.sync.applied.length > policy.keepApplied) {
-    removed.applied = next.sync.applied.length - policy.keepApplied;
-    next.sync.applied = next.sync.applied.slice(-policy.keepApplied);
-  }
+  // 6. Liste angewendeter Änderungen kürzen: Alles unter `appliedDays` Tagen bleibt (mindestens `keepApplied`, höchstens `maxApplied`).
+  const trimmed = trimApplied(next.sync, now, policy);
+  removed.applied = trimmed.dropped;
+  next.sync.applied = trimmed.applied;
   // 7. Gemerkte Kassenbon-Zuordnungen: bei sehr vielen bleiben die zuletzt geänderten.
   if (next.aliases.length > policy.maxAliases) {
     const keep = new Set([...next.aliases].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, policy.maxAliases).map(row => row.id));
@@ -108,7 +138,11 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // Leere Hilfslisten nicht erst anlegen, sonst gilt die Datei nach jedem Lauf als geändert.
   for (const key of ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets']) if (!next[key].length && !input[key]?.length) delete next[key];
   const changed = Object.values(removed).some(Boolean);
-  if (changed) next.sync.compactedAt = now.toISOString();
+  if (changed) {
+    next.sync.compactedAt = now.toISOString();
+    if (trimmed.marks.length) { next.sync.marks = trimmed.marks; next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 2); }
+    else delete next.sync.marks;
+  }
   validate(next);
   return { data: changed ? next : input, changed, removed, before, after: changed ? sizeOf(next) : before };
 }
