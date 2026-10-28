@@ -1,11 +1,11 @@
-/* Digitale Kassenbons: Text → Positionen. Reine Logik ohne DOM.
-   Der Text eines Bons (aus der App oder dem PDF des Marktes kopiert) wird in Artikelzeilen zerlegt. Erkannt werden Preis, Stückzahl
-   („2 x 0,79“), Gewicht („0,432 kg x 3,99 EUR/kg“), Packungsgröße im Namen („250g“, „1L“, „10 St“), Rabattzeilen und Pfand. Die
-   Summe laut Bon wird mit der Summe der erkannten Zeilen verglichen, so fällt eine nicht gelesene Zeile auf. Nichts wird gespeichert, bevor
-   die Person die Zeilen geprüft hat: Das hier liefert nur Vorschläge. Was nicht auf dem Bon steht, wird nicht erfunden: Ohne Stückzahl, Gewicht oder
-   Packungsgröße ist die Menge unbekannt (Einheit `Position`), ein Rabatt wird nur eingerechnet, wenn er eindeutig zur Zeile davor gehört. */
+/* Digitale Kassenbons: Text → Positionen, Summe, Datum und Kette. Reine Logik ohne DOM.
+   Der erkannte Text eines Bons (Foto, Screenshot) wird in Zeilen zerlegt. Erkannt werden Preis, Stückzahl („2 x 0,79“), Gewicht („0,432 kg x 3,99 EUR/kg“),
+   Packungsgröße im Namen („250g“, „1L“, „10 St“), Rabattzeilen und Pfand. Gebraucht wird das für „Ausgaben“: Die Summe laut Bon (sonst die Summe der erkannten
+   Zeilen), das Datum und das Geschäft werden als Vorschlag in die Felder eingetragen. Artikelpreise werden daraus nicht mehr abgeleitet: Bonzeilen den Artikeln der
+   Liste zuzuordnen ist ohne Produktdatenbank nicht zuverlässig (Version 2.44). Was nicht auf dem Bon steht, wird nicht erfunden. */
 import { productKey } from './prices.js';
-import { UNKNOWN_UNIT } from './history.js';
+// Steht auf dem Bon weder Menge noch Gewicht noch Packungsgröße, ist die Menge unbekannt.
+const UNKNOWN_UNIT = 'Position';
 
 const AMOUNT = String.raw`(-?)(\d{1,5}),(\d{2})(-?)`;
 const TAX = String.raw`(?:\s*[A-Z1-9*]{1,2})?`;                                  // Steuerkennzeichen am Zeilenende (A, B, 1, 2, *)
@@ -159,110 +159,6 @@ export function parseReceipt(input) {
     return { text: item.text, name, quote: paid, regularQuote: onSale ? quote : null, onSale, count, weight: item.weight, discountCents: item.discountCents, totalCents: item.totalCents, checks };
   }).filter(item => item.quote.cents > 0);
   return { items: result, skipped, total, sum, date, chain };
-}
-
-const wordsOf = text => productKey(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-const better = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
-// Passt ein Wort der Bonzeile zu einem Wort des bekannten Namens? Nur gleiches Wort oder abgekürztes Wort („tom“ → „tomaten“).
-// Zusammengesetzte Wörter zählen nie: „Apfeltasche“ ist nicht „Apfel“, „Hafermilch“ nicht „Milch“, „Kirschtomaten“ nicht „Tomaten“ (anderes Produkt, anderer Preis).
-const closeWord = (word, token) => word === token || (word.length >= 3 && word.length < token.length && token.startsWith(word));
-// Beigaben, die das Produkt nicht ändern („Bio Äpfel“ ist „Äpfel“). Jedes andere zusätzliche Wort macht den Vorschlag unsicher.
-const FILLER = new Set(['bio', 'frisch', 'frische', 'lose']);
-
-/* Sorten, die ein Wort (oder eine feste Wortfolge) für sich nur diese eine Bedeutung haben. Erkannt werden sie nur, wenn der Bon auch das Wort der Produktgruppe nennt
-   („Äpfel Gala“, „Pink Lady Apfel Bio“) und sonst nichts Weiteres: „Gala“ allein, „Apfel Saft“ oder „Apfeltasche“ werden nie einer Sorte oder Gruppe zugeordnet. */
-const VARIETIES = [
-  { group: ['äpfel', 'apfel'], names: ['gala', 'royal gala', 'pink lady', 'cripps pink', 'elstar', 'braeburn', 'granny smith', 'jonagold', 'boskoop', 'golden delicious', 'fuji', 'topaz', 'kanzi', 'santana', 'cox orange', 'red delicious'] },
-  { group: ['birnen', 'birne'], names: ['williams christ', 'conference', 'abate fetel', 'alexander lucas', 'forelle', 'santa maria', 'rocha'] }
-];
-const capital = text => text.split(' ').map(word => word.charAt(0).toLocaleUpperCase('de') + word.slice(1)).join(' ');
-function varietyOf(words) {
-  for (const { group, names } of VARIETIES) {
-    const head = words.find(word => group.includes(word));
-    if (!head) continue;
-    const rest = words.filter(word => word !== head && !FILLER.has(word)).join(' ');
-    if (!names.includes(rest)) return null;
-    return { name: capital(head), variant: `${capital(rest)}${words.includes('bio') ? ' Bio' : ''}` };
-  }
-  return null;
-}
-
-/* Marke oder Zusatz vor dem Namen (Version 2.43). Auf dem Bon steht „G&G Champignons“, „Farm.Sn.Aprikosen“ oder „G&G Senf mittels.“, auf der Liste „Champignons“, „Aprikosen“, „Senf“.
-   Der Listenname ist der Anker: Kommt er als ganzes Wort in der Bonzeile vor (Einzahl und Mehrzahl sind egal) und ist alles Übrige ungefährlich, ordnet die App die Zeile selbst zu
-   (Name = Listenname, Sorte oder genaue Bezeichnung = die Bonzeile, z. B. „G&G Champignons“). Ungefährlich sind: Beigaben („Bio“), bekannte Handelsmarken, Marken aus früheren
-   Zuordnungen und Abkürzungen (ein Wort mit Punkt dahinter oder ein einzelner Buchstabe). Ein weiteres Produktwort („Saft“, „Mus“, „Tasche“, „Joghurt“) macht es zu einem anderen Produkt. */
-const fold = word => word.toLowerCase().replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
-// Wortstamm für den Vergleich von Einzahl und Mehrzahl: Apfel/Äpfel, Aprikose/Aprikosen, Champignon/Champignons, Nudel/Nudeln
-function stemOf(word) {
-  let w = fold(word);
-  const cut = (suffix) => { if (w.endsWith(suffix) && w.length - suffix.length >= 4) { w = w.slice(0, -suffix.length); return true; } return false; };
-  cut('s'); if (!cut('en') && !cut('e')) cut('n');
-  return w;
-}
-// Wörter einer Bonzeile ohne Größen; `abbr`: abgekürzt (Punkt dahinter) oder ein einzelner Buchstabe („G&G“ → G, G)
-function lineTokens(text) {
-  const cleaned = String(text).replace(/\d+(?:[.,]\d+)?\s*%/g, ' ').replace(/\d+(?:[.,]\d+)?\s*(?:kg|g|ml|cl|ltr|liter|l|stk|st)\b\.?/giu, ' ');
-  return [...cleaned.matchAll(/(\p{L}+)(\.?)/gu)].map(match => ({ word: match[1].toLowerCase(), abbr: match[2] === '.' || match[1].length === 1 }));
-}
-const BRANDS = new Set(['gg', 'gut', 'günstig', 'guenstig', 'ja', 'rewe', 'edeka', 'beste', 'wahl', 'milbona', 'milsani', 'pilos', 'freshona', 'classic', 'netto', 'aldi', 'lidl', 'penny', 'demeter', 'bioland', 'regional', 'premium']);
-// Wörter, die ein anderes Produkt bezeichnen: Mit ihnen im Namen ist es nie dasselbe wie der Listenname („Apfel Saft“, „Tomaten Mark“, „Milch Reis“)
-const PRODUCT_WORDS = new Set(['saft', 'schorle', 'nektar', 'mus', 'püree', 'pueree', 'tasche', 'kuchen', 'torte', 'strudel', 'tee', 'kaffee', 'kakao', 'chips', 'riegel', 'keks', 'müsli', 'muesli', 'brot', 'brötchen',
-  'soße', 'sosse', 'sauce', 'suppe', 'creme', 'eis', 'likör', 'wein', 'bier', 'essig', 'marmelade', 'konfitüre', 'honig', 'pizza', 'pasta', 'salat', 'dose', 'konserve', 'glas', 'getränk', 'drink',
-  'joghurt', 'jogurt', 'milch', 'käse', 'kaese', 'quark', 'butter', 'margarine', 'öl', 'oel', 'mehl', 'zucker', 'salz', 'nudeln', 'reis', 'wurst', 'schinken', 'fleisch', 'fisch', 'ei', 'eier',
-  'pfanne', 'pfannkuchen', 'knödel', 'brei', 'pudding', 'trocken', 'getrocknet', 'getrocknete']);
-function learnedExtras(aliases) {
-  const learned = new Set();
-  for (const row of aliases) {
-    if (row.deletedAt) continue;
-    const own = new Set(wordsOf(row.name).map(stemOf));
-    for (const token of lineTokens(row.from)) if (!own.has(stemOf(token.word))) learned.add(token.word);
-  }
-  return learned;
-}
-const harmless = (token, learned) => !PRODUCT_WORDS.has(token.word) && !PRODUCT_WORDS.has(stemOf(token.word)) && (FILLER.has(token.word) || BRANDS.has(token.word) || learned.has(token.word) || token.abbr);
-function brandMatch(item, aliases, known) {
-  const tokens = lineTokens(item.name);
-  if (!tokens.length) return null;
-  const learned = learnedExtras(aliases), have = tokens.map(token => stemOf(token.word));
-  let best = null;
-  for (const name of known) {
-    const wanted = wordsOf(name).map(stemOf);
-    if (!wanted.length) continue;
-    const used = new Set();
-    const found = wanted.every(word => { const at = have.findIndex((stem, index) => !used.has(index) && stem === word); if (at < 0) return false; used.add(at); return true; });
-    if (!found) continue;
-    const extra = tokens.filter((_, index) => !used.has(index));
-    if (!extra.length || !extra.every(token => harmless(token, learned))) continue;   // ohne Zusatz gilt der gewöhnliche Vergleich (gleicher Name)
-    // Mehr Wörter gehen vor („Saure Sahne“ vor „Sahne“), dann die gleiche Schreibweise („Äpfel“ vor „Apfel“), dann der kürzere Name
-    const rank = [wanted.length, wordsOf(name).filter(word => tokens.some(token => token.word === word)).length, -name.length];
-    if (!best || better(rank, best.rank)) best = { name, rank };
-  }
-  return best ? { name: best.name, variant: item.name, how: 'Marke' } : null;
-}
-
-/* Name in der App für eine Bonzeile. 1. Was ihr schon einmal zugeordnet habt („gemerkt“), 2. ein bekannter Name, wenn die Bonzeile sicher dasselbe Produkt ist
-   („Vorschlag“): alle Wörter des Namens kommen vor (gleich oder abgekürzt) und die Bonzeile enthält nichts anderes außer Beigaben wie „Bio“, 3. der aufgeräumte Bontext.
-   Im Zweifel gibt es keinen Vorschlag: Der Preis gehört zum Namen, ein falscher Treffer würde einem anderen Produkt den Preis geben.
-   `aliases`: [{ from, name }], `known`: Namen, die die App schon kennt. */
-export function suggestName(item, aliases = [], known = []) {
-  const key = aliasKey(item.name);
-  const hit = aliases.find(row => !row.deletedAt && row.from === key);
-  if (hit) return { name: hit.name, variant: String(hit.variant || ''), how: 'gemerkt', key };
-  const words = key.split(' ').filter(Boolean);
-  const kind = varietyOf(words);
-  if (kind) return { name: kind.name, variant: kind.variant, how: 'Sorte', key };
-  const brand = brandMatch(item, aliases, known);
-  if (brand) return { ...brand, key };
-  let best = null;
-  for (const name of known) {
-    const tokens = wordsOf(name);
-    if (!tokens.length || !tokens.every(token => words.some(word => closeWord(word, token)))) continue;
-    if (!words.every(word => FILLER.has(word) || tokens.some(token => closeWord(word, token)))) continue;   // ein weiteres Wort („Saft“, „Tasche“, „cherry“): unsicher
-    const rank = [tokens.filter(token => words.includes(token)).length, tokens.length, -name.length];
-    if (!best || better(rank, best.rank)) best = { name, rank };
-  }
-  // Derselbe Name (nur anders geschrieben, z. B. GROSSBUCHSTABEN) ist kein Vorschlag, den man prüfen müsste.
-  return best ? { name: best.name, variant: '', how: productKey(best.name) === productKey(item.name) ? '' : 'Vorschlag', key } : { name: item.name, variant: '', how: '', key };
 }
 
 // Welches Geschäft der App passt zum Namen auf dem Bon („rewe“ → „Rewe“)? Gibt die Kennung oder '' zurück.
