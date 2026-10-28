@@ -35,6 +35,8 @@ export function validateRow(key, row) {
   if (key === 'stores' && row.anywhere !== undefined && row.anywhere !== null && typeof row.anywhere !== 'boolean') throw new Error('Ungültige Einstellung für Artikel ohne Geschäft.');
   // `separate` (Version 2.30): eigene Liste, nur sichtbar, wenn das Geschäft gewählt ist; fehlt oder null = normales Geschäft.
   if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
+  // `symbol` (Version 2.31): Geschäft als Bild statt Name anzeigen ('gift') oder ausdrücklich nicht ('none'); fehlt oder null = Voreinstellung nach dem Namen (siehe brand.js).
+  if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && !['gift', 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
   if (key === 'stores' && row.offersUrl !== undefined) {
     if (typeof row.offersUrl !== 'string') throw new Error('Ungültiger Angebotslink.');
     offerUrl(row.offersUrl);

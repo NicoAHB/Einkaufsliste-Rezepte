@@ -50,6 +50,11 @@ describe('Geschäfte: Einstellung für Artikel ohne Geschäft', () => {
     const good = merge(emptyData(), [store({})]);
     assert.throws(() => merge(good, [operation('stores', 's1', { anywhere: 'false' }, 'Nico', '2026-03-02T00:00:00.000Z')]), /Ungültige Einstellung/);
   });
+  test('symbol (Bild statt Name) darf fehlen, null, „gift“ oder „none“ sein, sonst wird die Änderung abgelehnt', () => {
+    for (const ok of [undefined, null, 'gift', 'none']) assert.doesNotThrow(() => merge(emptyData(), [store(ok === undefined ? {} : { symbol: ok })]), String(ok));
+    const good = merge(emptyData(), [store({})]);
+    for (const bad of ['Geschenk', '', true, 5]) assert.throws(() => merge(good, [operation('stores', 's1', { symbol: bad }, 'Nico', '2026-03-02T00:00:00.000Z')]), /Ungültiges Symbol/, String(bad));
+  });
   test('separate (eigene Liste) darf fehlen, null oder ein Wahrheitswert sein, sonst wird die Änderung abgelehnt; es wird mit dem Geschäft zusammengeführt', () => {
     for (const ok of [undefined, null, true, false]) assert.doesNotThrow(() => merge(emptyData(), [store(ok === undefined ? {} : { separate: ok })]), String(ok));
     const good = merge(emptyData(), [store({})]);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { brandOf, chainOf } from '../brand.js';
+import { brandOf, chainOf, defaultSymbol, symbolOf } from '../brand.js';
 import { defaultOfferUrl, storeOfferUrl } from '../prices.js';
 import { takesAnywhere } from '../shop.js';
 
@@ -29,4 +29,16 @@ test('Angebotsseiten und Drogerien kommen aus derselben Tabelle: Rossmann hat be
   assert.equal(defaultOfferUrl({ name: 'Edeka' }), 'https://www.edeka.de/angebote/');
   assert.equal(defaultOfferUrl({ name: 'Aldi' }), '');
   assert.equal(storeOfferUrl({ name: 'Rossmann', offersUrl: 'https://example.com/x' }), 'https://example.com/x');
+});
+
+test('Symbol statt Name: „Wünsche“ ist ein Geschenk, eine ausdrückliche Wahl gewinnt, andere Namen bleiben Text', () => {
+  for (const name of ['Wünsche', 'wünsche', 'WÜNSCHE', 'Wuensche', 'Wunsch', 'Wunschliste', 'Wunschzettel', 'Wünsche und Ideen']) assert.equal(defaultSymbol(name), 'gift', name);
+  for (const name of ['Edeka', 'Rossmann', 'Wünschelrute', 'Ohne Wünsche', 'Geschenke', '', undefined]) assert.equal(defaultSymbol(name), '', String(name));
+  assert.equal(symbolOf({ name: 'Wünsche' }), 'gift');
+  assert.equal(symbolOf({ name: 'Wünsche', symbol: null }), 'gift', 'null = Voreinstellung');
+  assert.equal(symbolOf({ name: 'Wünsche', symbol: 'none' }), '', 'ausdrücklich der Name');
+  assert.equal(symbolOf({ name: 'Edeka', symbol: 'gift' }), 'gift', 'ausdrücklich ein Geschenk');
+  assert.equal(symbolOf({ name: 'Ideen', symbol: 'gift' }), 'gift', 'auch nach dem Umbenennen');
+  assert.equal(symbolOf({ name: 'Wünsche', symbol: 'unbekannt' }), 'gift', 'Unbekanntes gilt als Voreinstellung');
+  assert.equal(symbolOf(undefined), '');
 });

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { planGenerated } from '../recipe-maker.js';
@@ -76,7 +77,9 @@ const sheetOpen = async page => {
 const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
 const openSettings = async page => { await page.click('[data-tab=settings]'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
-const pickStore = async (page, name) => { await expandForm(page); await page.locator('#store-pick button', { hasText: name }).click(); };
+// Ein Geschäft als Bild („Wünsche“ ist ein Geschenk) trägt seinen Namen als Beschriftung des Bildes, nicht als Text.
+const storeButton = (page, box, name) => { const byText = page.locator(`${box} .chip, ${box} button`, { hasText: name }); return byText.or(page.locator(`${box} .chip, ${box} button`, { has: page.getByRole('img', { name, exact: true }) })).first(); };
+const pickStore = async (page, name) => { await expandForm(page); await storeButton(page, '#store-pick', name).click(); };
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
@@ -3055,7 +3058,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(!(await itemsText()).includes('Fahrrad'), 'unter „Alle“ stehen keine Wünsche');
     assert.match(await page.textContent('#item-count'), /^5 offen/, 'Tomaten, Nudeln, Milch, Äpfel und Brot; ohne die zwei Wünsche');
     assert.match(await tab('Alle').textContent(), /Alle\s*5$/);
-    assert.match(await tab('Wünsche').textContent(), /Wünsche\s*2$/);
+    assert.equal((await tab('Wünsche').textContent()).trim(), '2', 'der Reiter zeigt nur das Bild und die Zahl');
     assert.ok(!(await page.textContent('#items')).includes('Zwiebeln'));
     // Der Reiter „Wünsche“ zeigt sie
     await tab('Wünsche').click();
@@ -3070,17 +3073,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#notice-text'), /„Buch“ steht bei „Wünsche“/);
     assert.ok(!(await itemsText()).includes('Buch'));
     assert.match(await tab('Alle').textContent(), /Alle\s*5$/);
-    assert.match(await tab('Wünsche').textContent(), /Wünsche\s*3$/);
+    assert.equal((await tab('Wünsche').textContent()).trim(), '3');
     // „Was kann ich kochen?“: die Zwiebeln auf den Wünschen zählen nicht als „kommt noch“
     await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page);
     assert.match(await page.locator('#cookable-list .cookable-card').first().locator('.cookable-lines').textContent(), /Fehlt: Zwiebel, Olivenöl/);
     await page.keyboard.press('Escape'); await page.click('[data-tab=shopping]');
     // Im Laden
     await page.click('#mode-shop');
-    const chip = name => page.locator('#shop-chips .chip', { hasText: name });
+    const chip = name => storeButton(page, '#shop-chips', name);
     const names = async () => (await page.locator('#shop-list .shop-name').allTextContents()).sort();
     assert.match(await chip('Alle').textContent(), /Alle\s*5$/, 'ohne Wünsche');
-    assert.match(await chip('Wünsche').textContent(), /Wünsche\s*3$/);
+    assert.equal((await chip('Wünsche').textContent()).trim(), '3');
     await chip('Alle').click();
     assert.ok(!(await names()).some(name => ['Fahrrad', 'Zwiebeln', 'Buch'].includes(name)), 'auch „Alle“ im Laden zeigt keine Wünsche');
     assert.match(await page.textContent('#shop-status'), /Noch 5 offen/);
@@ -3139,6 +3142,132 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.ok((await itemsText()).includes('Äpfel'));
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- Geschäft als Bild statt Name: „Wünsche“ ist ein Geschenk (Version 2.31) ----
+  // Ein Pixel des Bildschirms als [r, g, b] (aus dem PNG eines 1×1-Ausschnitts).
+  const pixelAt = async (page, x, y) => {
+    const png = await page.screenshot({ clip: { x: Math.round(x), y: Math.round(y), width: 1, height: 1 }, scale: 'css' });
+    let at = 8, width = 0, colorType = 0, data = [];
+    while (at < png.length) {
+      const length = png.readUInt32BE(at), type = png.toString('latin1', at + 4, at + 8), body = png.subarray(at + 8, at + 8 + length);
+      if (type === 'IHDR') { width = body.readUInt32BE(0); colorType = body[9]; } else if (type === 'IDAT') data.push(body);
+      at += 12 + length;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(data)), step = colorType === 6 ? 4 : 3;
+    assert.equal(width, 1);
+    return [raw[1], raw[2], raw[3]].slice(0, 3).concat(step === 4 ? [raw[4]] : []).slice(0, 3);
+  };
+
+  test('Wünsche als Geschenk-Bild: statt Text in Reitern, Auswahl beim Anlegen und im Laden; Name bleibt für Bildschirmleser; einstellbar pro Geschäft', async () => {
+    const remote = github(withWishes());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    const tab = name => page.getByRole('tab', { name: new RegExp(`^${name}`) });
+    const bar = '#store-chips', visible = box => page.locator(`${box} .store-symbol`).count();
+    // Planen: der Reiter zeigt das Bild, keinen Text; der Name steht als Beschriftung dran
+    assert.equal(await visible(bar), 1);
+    assert.ok(!(await page.textContent(bar)).includes('Wünsche'), 'kein Text „Wünsche“ im Reiter');
+    assert.equal(await page.locator(`${bar} .store-symbol`).getAttribute('aria-label'), 'Wünsche');
+    assert.equal(await page.locator(`${bar} .store-symbol`).getAttribute('role'), 'img');
+    assert.equal(await tab('Wünsche').count(), 1, 'für Bildschirmleser und Tests heißt der Reiter weiter „Wünsche“');
+    assert.equal(await page.locator(`${bar} .store-symbol svg`).getAttribute('aria-hidden'), 'true');
+    const heights = await page.locator(`${bar} .chip`).evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().height)));
+    assert.ok(Math.max(...heights) - Math.min(...heights) <= 2, `das Bild macht den Reiter nicht höher: ${heights}`);
+    await page.locator(`${bar} .chip:has(.store-symbol)`).scrollIntoViewIfNeeded();   // der Reiter liegt rechts in der verschiebbaren Leiste
+    const symbol = await page.locator(`${bar} .store-symbol svg`).boundingBox();
+    assert.ok(symbol.width >= 26 && symbol.width <= 36, `kleines Bild (${symbol.width} px)`);
+    // Das Bild wird tatsächlich gezeichnet (nicht leer): ausgeblendet sieht dieselbe Stelle anders aus
+    const spot = { x: symbol.x, y: symbol.y, width: symbol.width, height: symbol.height };
+    const shown = await page.screenshot({ clip: spot });
+    await page.locator(`${bar} .store-symbol`).evaluate(node => { node.style.visibility = 'hidden'; });
+    const hidden = await page.screenshot({ clip: spot });
+    await page.locator(`${bar} .store-symbol`).evaluate(node => { node.style.visibility = ''; });
+    assert.ok(!shown.equals(hidden), 'das Geschenk ist zu sehen');
+    // Auswahl beim Anlegen eines Artikels und „Im Laden“
+    await expandForm(page);
+    assert.equal(await visible('#store-pick'), 1);
+    assert.ok(!(await page.textContent('#store-pick')).includes('Wünsche'));
+    await page.click('#mode-shop');
+    assert.equal(await visible('#shop-chips'), 1);
+    assert.ok(!(await page.textContent('#shop-chips')).includes('Wünsche'));
+    await page.locator('#shop-chips .chip:has(.store-symbol)').click();
+    assert.deepEqual((await page.locator('#shop-list .shop-name').allTextContents()).sort(), ['Fahrrad', 'Zwiebeln'], 'ein Tipp auf das Bild wählt die Liste');
+    assert.equal(await horizontalOverflow(page), 0);
+    await page.click('#shop-back');
+    // Einstellbar: im Dialog „Geschäfte“ steht „Anzeige im Reiter“, für Wünsche vorbelegt mit dem Geschenk
+    await page.click('#manage-stores'); await sheetOpen(page);
+    const row = index => page.locator('#store-editor .store-row').nth(index);
+    const pick = index => row(index).locator('select[name=symbol]');
+    const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
+    const record = name => remote.content.stores.find(entry => entry.name === name);
+    assert.equal(await pick(3).inputValue(), 'gift');
+    assert.equal(await pick(0).inputValue(), 'name');
+    assert.match(await row(3).textContent(), /Anzeige im Reiter/);
+    // Edeka als Geschenk: ausdrücklich gespeichert; der Reiter zeigt dann das Bild
+    await pick(0).selectOption('gift'); await saved(0);
+    assert.equal(record('Edeka').symbol, 'gift');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await visible(bar), 2);
+    assert.ok(!(await page.textContent(bar)).includes('Edeka'));
+    assert.equal(await tab('Edeka').count(), 1);
+    // Wünsche wieder als Name: ausdrücklich „none“; der Text ist zurück
+    await page.click('#manage-stores'); await sheetOpen(page);
+    await pick(3).selectOption('name'); await saved(3);
+    assert.equal(record('Wünsche').symbol, 'none');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.ok((await page.textContent(bar)).includes('Wünsche'), 'als Name steht der Text wieder da');
+    assert.equal(await visible(bar), 1, 'nur noch Edeka als Bild');
+    // Zurück auf die Voreinstellung: nichts wird festgeschrieben (null); Edeka ebenso
+    await page.click('#manage-stores'); await sheetOpen(page);
+    await pick(3).selectOption('gift'); await saved(3);
+    await pick(0).selectOption('name'); await saved(0);
+    assert.equal(record('Wünsche').symbol, null);
+    assert.equal(record('Edeka').symbol, null);
+    // Umbenannt: ohne ausdrückliche Wahl gilt die Voreinstellung nach dem Namen (kein Geschenk); mit Wahl bleibt es
+    await row(3).locator('input[name=name]').fill('Ideen'); await pick(3).selectOption('name'); await saved(3);
+    assert.equal(record('Ideen').symbol, null, 'Ideen: Voreinstellung ist der Name');
+    await pick(3).selectOption('gift'); await saved(3);
+    assert.equal(record('Ideen').symbol, 'gift', 'ausdrücklich als Geschenk');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await tab('Ideen').count(), 1);
+    assert.equal(await visible(bar), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Geschenk-Bild: auf hellem, dunklem, farbigem und Glas-Hintergrund, gewählt und nicht gewählt, bleibt es erkennbar (Rand heller oder dunkler als der Grund, mindestens 3 : 1)', async () => {
+    const remote = github(withWishes());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    const tabs = page.locator('#store-chips .chip');
+    const wishes = tabs.filter({ has: page.locator('.store-symbol') }), selected = tabs.filter({ hasText: 'Alle' });   // „Alle“ ist gewählt: so sieht ein gewählter Reiter aus
+    await wishes.scrollIntoViewIfNeeded();
+    // Das Bild hat zwei Ränder: außen weiß, innen eine dunkle Kontur (aus dem Bild selbst gelesen): an jeder Stelle genügt einer von beiden
+    const edges = await page.evaluate(() => { const symbol = document.querySelector('#i-gift'); return [...symbol.querySelectorAll('[stroke]')].map(node => node.getAttribute('stroke')); });
+    assert.ok(edges.includes('#fff'), 'weißer Außenrand'); assert.ok(edges.includes('#5a2d3a'), 'dunkle Kontur');
+    const white = [255, 255, 255], dark = [0x5a, 0x2d, 0x3a];
+    const worst = { ratio: Infinity, at: '' };
+    for (const theme of ['light', 'dark']) for (const palette of ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich']) for (const glass of ['aus', 'lichter', 'verlauf', 'schlicht']) {
+      await page.evaluate(([theme, palette, glass]) => {
+        const root = document.documentElement; root.dataset.theme = theme; root.dataset.palette = palette;
+        if (glass === 'aus') { delete root.dataset.glass; delete root.dataset.glassBg; root.style.removeProperty('--gs'); } else { root.dataset.glass = ''; root.dataset.glassBg = glass; root.style.setProperty('--gs', '0.5'); }
+        return Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
+      }, [theme, palette, glass]);
+      await page.waitForTimeout(120);
+      for (const [state, chip] of [['nicht gewählt', wishes], ['gewählt', selected]]) {
+        await chip.scrollIntoViewIfNeeded();
+        const box = await chip.boundingBox(), ground = await pixelAt(page, box.x + 5, box.y + box.height / 2);   // links im Reiter, neben dem Bild
+        const ratio = Math.max(contrast(white, ground), contrast(dark, ground));
+        if (ratio < worst.ratio) { worst.ratio = ratio; worst.at = `${theme}/${palette}/${glass}/${state}: Grund rgb(${ground})`; }
+        assert.ok(ratio >= 3, `${theme}/${palette}/${glass}/${state}: Grund rgb(${ground}), bester Rand nur ${ratio.toFixed(2)} : 1`);
+      }
+    }
+    console.log(`Geschenk-Bild: schwächster Rand ${worst.ratio.toFixed(2)} : 1 bei ${worst.at}`);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

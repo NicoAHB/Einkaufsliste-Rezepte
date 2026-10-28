@@ -3348,3 +3348,22 @@ html[data-landscape] .turn-hint {
   font-size:1.25rem;
   font-weight:650
 }
+
+/* Geschäft als kleines Bild statt Name (Geschenk bei „Wünsche“): weißer Rand und dunkle Kontur stecken im Bild, es bleibt auf hellem, dunklem und farbigem Grund erkennbar, auch auf einem gewählten Reiter */
+.store-symbol {
+  display:inline-flex;
+  align-items:center;
+  vertical-align:middle
+}
+.store-symbol svg {
+  display:block;
+  width:32px;
+  height:32px
+}
+.chip .store-symbol {
+  margin:-3px 0
+}
+.store-head .store-symbol svg,.move-target .store-symbol svg {
+  width:26px;
+  height:26px
+}
