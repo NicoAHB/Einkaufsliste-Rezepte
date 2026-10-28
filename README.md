@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.35
+# Einkauf & Rezepte – Version 2.36
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.36: „Bildschirm anlassen“ sicher an, gesperrt ohne Haken und ohne „Einkauf beenden“
+
+- **Gesperrt sind „Bildschirm anlassen“ (Haken samt Fehlerzeile) und „Einkauf beenden“ ausgeblendet.** Beide gibt es nur im entsperrten Zustand: nach dem Schloss, nach der automatischen Sperre, beim Zurückkehren aus dem Hintergrund und nach einem Neuladen (die Sperre wird gemerkt). Entsperren (Knopf unten gedrückt halten) bringt beide zurück. Der Bildschirm bleibt dabei an: Das Ausblenden gibt den Bildschirm **nicht** frei.
+- **„Bildschirm anlassen“ ist unter „Im Laden“ von Anfang an an** und dort abwählbar. Ein früher gespeichertes „Aus“ (das Feld `shopAwake` aus Version 1.9 bis 2.35, als der Standard noch „aus“ war) wird nicht mehr gelesen; gemerkt wird jetzt im Feld `shopScreenOn`, und nur ein ausdrückliches Abwählen gilt.
+- **Neuer Versuch statt dauerhaft abgewählt:** Lehnt das Gerät die Anforderung einmal ab (z. B. Stromsparmodus), versucht die App es beim erneuten Öffnen von „Im Laden“ und beim Zurückkehren in die App wieder, statt den Haken für den Rest der Sitzung abgewählt zu lassen. Die Fehlermeldung erscheint weiter nur, wenn der Haken selbst gesetzt wurde.
+- **Nicht getestet:** das Verhalten auf einem echten iPhone. Ob iOS die Anforderung in einer zum Home-Bildschirm hinzugefügten App erlaubt, hängt von der iOS-Version ab; lehnt das Gerät sie ab, bleibt der Haken abgewählt, und der Bildschirm geht nach der am Handy eingestellten Zeit aus (geprüft nur im Chromium-Browser mit iPhone-13-Emulation und einer nachgebauten Schnittstelle).
+
+Weitere Testpunkte für Version 2.36:
+
+- [ ] „Im Laden“ öffnen: „Bildschirm anlassen“ ist angehakt und „Einkauf beenden“ steht da. Schloss tippen: **beides ist weg**, nur die Liste und der Knopf zum Entsperren bleiben. Der Bildschirm wird nicht dunkel. Entsperren: beides ist wieder da.
+- [ ] Haken abwählen, App neu laden: bleibt abgewählt.
 
 ## Neu in Version 2.35: Vorschläge für den Vorrat
 

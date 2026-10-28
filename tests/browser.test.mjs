@@ -2158,7 +2158,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Im Laden: Sperre – gesperrt bewirkt Tippen nichts (auch nicht Reiter, „Planen“, Beenden), Entsperren nur gedrückt halten, bleibt nach dem Neuladen', async () => {
+  test('Im Laden: Sperre – gesperrt bewirkt Tippen nichts (auch nicht Reiter, „Planen“), kein „Einkauf beenden“, Entsperren nur gedrückt halten, bleibt nach dem Neuladen', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await inShop(page);
@@ -2177,9 +2177,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('.tabs').isHidden(), true, 'im Laden gibt es unten keine Leiste');
     await page.click('#shop-back');
     assert.equal(await page.locator('#shop-view').isVisible(), true, '„Planen“ wirkt nicht');
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));   // ganz nach unten, über die schwebende Leiste hinaus
-    await pressAndHold(page, '#shop-finish', 1000); await page.mouse.up();
-    assert.equal(await page.locator('#finish-dialog[open]').count(), 0, 'auch das gedrückte Beenden nicht');
+    assert.equal(await page.locator('#shop-finish').isHidden(), true, '„Einkauf beenden“ gibt es gesperrt nicht');
     await page.keyboard.press('Tab');
     // Ein kurzer Tipp auf Entsperren genügt nicht
     const unlock = await page.locator('#shop-unlock').boundingBox();
@@ -2369,8 +2367,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#shop-lock');
     const unlock = page.locator('#shop-unlock'), bar = page.locator('#shop-lockbar');
     const animations = node => node.evaluate(element => element.getAnimations().map(animation => animation.animationName));
-    // Leere Fläche, Name, Menge, Planen, Beenden: überall dasselbe, nie ein Text
-    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back', '#shop-finish']) {
+    // Leere Fläche, Name, Menge, Planen: überall dasselbe, nie ein Text
+    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back']) {
       await page.locator(target).first().click();
       assert.equal(await page.locator('#notice').isHidden(), true, `${target}: kein Hinweistext`);
       assert.equal(await bar.evaluate(node => node.classList.contains('nudge')), true, `${target}: der Knopf leuchtet auf`);
@@ -2487,13 +2485,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Abwählen gibt den Bildschirm frei und wird gemerkt
     await page.uncheck('#shop-awake');
     await page.waitForFunction(() => window.__wake.releases === 1);
-    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopAwake, false);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopScreenOn, false);
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     assert.equal(await page.isChecked('#shop-awake'), false, 'bleibt abgewählt');
     assert.equal(await page.evaluate(() => window.__wake.requests), 0, 'und fordert den Bildschirm nicht an');
     await page.check('#shop-awake');
     await page.waitForFunction(() => window.__wake.requests === 1);
-    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopAwake, true);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopScreenOn, true);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2507,6 +2505,117 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#shop-awake-hint').textContent(), '', 'keine Fehlermeldung, wenn die Person nichts eingeschaltet hat');
     await page.click('#shop-awake');   // der Haken springt zurück, weil die Anforderung scheitert
     await page.waitForFunction(() => document.querySelector('#shop-awake-hint').textContent.includes('Geht gerade nicht'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- Version 2.36: Bildschirm anlassen sicher an; gesperrt gibt es weder den Haken noch „Einkauf beenden“ ----
+  const wakeMock = () => {
+    const wake = window.__wake = { requests: 0, releases: 0, fail: 0, listeners: [], drop() { this.listeners.splice(0).forEach(listener => listener()); } };   // drop: das Gerät gibt den Bildschirm von selbst frei
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+      wake.requests++;
+      if (wake.fail > 0) { wake.fail--; throw new DOMException('nicht erlaubt', 'NotAllowedError'); }
+      return { release: async () => { wake.releases++; }, addEventListener: (type, listener) => { if (type === 'release') wake.listeners.push(listener); } };
+    } } });
+  };
+
+  test('Bildschirm anlassen: ein früher gespeichertes „Aus“ (altes Feld aus Version 2.35 und davor) gilt nicht mehr, Standard ist an; nur das neue Abwählen zählt', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0, shopAwake: false } });
+    await ctx.addInitScript(wakeMock);
+    await open(page);
+    await page.click('#mode-shop');
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    assert.equal(await page.isChecked('#shop-awake'), true, 'trotz altem „Aus“ von Anfang an an');
+    await page.uncheck('#shop-awake');
+    await page.waitForFunction(() => window.__wake.releases === 1);
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')));
+    assert.equal(saved.shopScreenOn, false, 'das Abwählen wird im neuen Feld gemerkt');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.isChecked('#shop-awake'), false, 'und gilt danach');
+    assert.equal(await page.evaluate(() => window.__wake.requests), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bildschirm anlassen: klappt die Anforderung einmal nicht, wird sie beim erneuten Öffnen von „Im Laden“ und beim Zurückkehren in die App neu versucht', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0 } });
+    await ctx.addInitScript(wakeMock);
+    await open(page);
+    await page.evaluate(() => { window.__wake.fail = 1; });   // die erste Anforderung scheitert
+    await page.click('#mode-shop');
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    await page.waitForFunction(() => !document.querySelector('#shop-awake').checked);
+    assert.equal(await page.locator('#shop-awake-hint').textContent(), '', 'ohne Fehlermeldung (Standard)');
+    // Zurück zu „Planen“ und wieder „Im Laden“: neuer Versuch, diesmal klappt es
+    await page.click('#shop-back'); await page.click('#mode-shop');
+    await page.waitForFunction(() => window.__wake.requests === 2);
+    await page.waitForFunction(() => document.querySelector('#shop-awake').checked);
+    // Das Gerät gibt den Bildschirm im Hintergrund frei; die App holt ihn sich beim Zurückkehren wieder
+    await page.evaluate(() => { window.__wake.drop(); window.__wake.fail = 1; });
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));   // zurück in der App, die Anforderung scheitert wieder
+    await page.waitForFunction(() => window.__wake.requests === 3 && !document.querySelector('#shop-awake').checked);
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(() => window.__wake.requests === 4 && document.querySelector('#shop-awake').checked);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: „Bildschirm anlassen“ und „Einkauf beenden“ sind ausgeblendet, der Bildschirm bleibt an; entsperrt sind beide wieder da (auch nach dem Neuladen und der Auto-Sperre)', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 4 } });
+    await ctx.addInitScript(wakeMock);
+    await open(page);
+    await inShop(page);
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    const visible = async () => ({
+      awake: await page.locator('#shop-awake-label').isVisible(), hint: await page.locator('#shop-awake-hint').evaluate(node => !node.hidden),
+      finish: await page.locator('#shop-finish').isVisible()
+    });
+    assert.deepEqual(await visible(), { awake: true, hint: true, finish: true }, 'entsperrt: beides da');
+    assert.equal(await page.isChecked('#shop-awake'), true);
+    // Von Hand sperren (Schloss)
+    await page.click('#shop-lock');
+    assert.deepEqual(await visible(), { awake: false, hint: false, finish: false }, 'gesperrt: weder Haken noch „Einkauf beenden“');
+    assert.equal(await page.locator('#shop-view :text("Bildschirm anlassen")').count(), 1, 'der Text steht nur im (verborgenen) Haken');
+    assert.equal(await page.locator('#shop-view :text("Bildschirm anlassen"):visible').count(), 0);
+    assert.equal(await page.locator('#shop-view :text("Einkauf beenden"):visible').count(), 0);
+    assert.deepEqual(await page.evaluate(() => ({ requests: window.__wake.requests, releases: window.__wake.releases })), { requests: 1, releases: 0 }, 'der Bildschirm bleibt trotzdem an');
+    // Weder per Tastatur erreichbar noch beim Tippen auf die Stelle darunter
+    await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'shop-finish');
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'shop-awake');
+    // Gesperrt bleibt es nach dem Neuladen (die Sperre wird gemerkt) – auch dann ist beides weg
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    assert.deepEqual(await visible(), { awake: false, hint: false, finish: false }, 'auch nach dem Neuladen');
+    // Entsperren: beides wieder da
+    await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+    await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+    assert.deepEqual(await visible(), { awake: true, hint: true, finish: true }, 'entsperrt: beides wieder da');
+    assert.equal(await page.isChecked('#shop-awake'), true, 'der Haken steht unverändert');
+    // Automatische Sperre nach der Wartezeit blendet es ebenfalls aus
+    await page.waitForFunction(() => !document.querySelector('#shop-lockbar').hidden, null, { timeout: 9000 });
+    assert.deepEqual(await visible(), { awake: false, hint: false, finish: false }, 'auch nach der automatischen Sperre');
+    // Der Knopf „Einkauf beenden“ lässt sich gesperrt nicht auslösen (auch nicht per Skript-Klick)
+    await page.evaluate(() => document.querySelector('#shop-finish').click());
+    assert.equal(await page.locator('#finish-dialog[open]').count(), 0);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: abgewählter Haken bleibt abgewählt; Entsperren zeigt ihn wieder abgewählt (kein Bildschirm angefordert)', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0, shopScreenOn: false } });
+    await ctx.addInitScript(wakeMock);
+    await open(page);
+    await inShop(page);
+    assert.equal(await page.isChecked('#shop-awake'), false);
+    await page.click('#shop-lock');
+    assert.equal(await page.locator('#shop-awake-label').isHidden(), true);
+    await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+    await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+    assert.equal(await page.locator('#shop-awake-label').isVisible(), true);
+    assert.equal(await page.isChecked('#shop-awake'), false);
+    assert.equal(await page.evaluate(() => window.__wake.requests), 0, 'der Bildschirm wurde nie angefordert');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2618,10 +2727,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const gap = view.height - (lockbar.y + lockbar.height);
       assert.ok(gap >= 6 && gap <= 24, `die Sperre sitzt am unteren Rand (Abstand ${Math.round(gap)} px)`);
       assert.ok(tabsBottom.y + tabsBottom.height / 2 > lockbar.y, 'dort, wo vorher die Leiste war');
-      // Die Liste ragt nicht unter die Sperre; „Einkauf beenden“ bleibt nach dem Scrollen frei
+      // Die Liste ragt nicht unter die Sperre: Nach dem Scrollen bleibt ihr Ende frei („Einkauf beenden“ gibt es gesperrt nicht)
       await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-      const finishLocked = await page.locator('#shop-finish').boundingBox();
-      assert.ok(finishLocked.y + finishLocked.height <= lockbar.y + 1, 'unter der Sperre verdeckt nichts den letzten Knopf');
+      assert.equal(await page.locator('#shop-finish').isHidden(), true);
+      const listLocked = await page.locator('#shop-list').boundingBox();
+      assert.ok(listLocked.y + listLocked.height <= lockbar.y + 1, 'unter der Sperre verdeckt nichts das Ende der Liste');
       // Meldungen (hier: Abhaken per Halten) stehen über der Sperre, nicht dahinter
       await page.evaluate(() => window.scrollTo(0, 0));
       await pressAndHold(page, '#shop-list .shop-tap', 650); await page.mouse.up();
@@ -3234,7 +3344,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('Ohne Verbindung: „Speichern & verbinden“ ist aktiv; „Token entfernen“ behält Name, Darstellung und Geräteeinstellungen', async () => {
     const remote = github(structuredClone(demo));
-    const { ctx, page, problems } = await context({ config: { ...connectedConfig, palette: 'rose', storeStyle: 'logo', shopMode: false, groupItems: false, shopAwake: true } });
+    const { ctx, page, problems } = await context({ config: { ...connectedConfig, palette: 'rose', storeStyle: 'logo', shopMode: false, groupItems: false, shopScreenOn: true } });
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await openSettings(page);
@@ -3242,7 +3352,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#disconnect');
     await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
     const kept = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')));
-    assert.deepEqual([kept.actor, kept.palette, kept.storeStyle, kept.groupItems, kept.shopAwake], ['Nico', 'rose', 'logo', false, true], 'nur die Verbindungsdaten sind weg');
+    assert.deepEqual([kept.actor, kept.palette, kept.storeStyle, kept.groupItems, kept.shopScreenOn], ['Nico', 'rose', 'logo', false, true], 'nur die Verbindungsdaten sind weg');
     for (const key of ['owner', 'repo', 'token', 'savedAt', 'tokenExpires']) assert.equal(kept[key], undefined, key);
     const button = page.locator('#settings-form button[type=submit]');
     assert.equal(await button.isDisabled(), false);

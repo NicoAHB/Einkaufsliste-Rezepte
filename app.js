@@ -1546,20 +1546,24 @@ async function backup() {
 let shopStore = '', shopDoneOpen = false;
 const shopChecked = new Map();   // Artikel ohne Geschäft, die in dieser Sitzung in einem Geschäft abgehakt wurden: Kennung → Geschäft
 const shopOn = () => config.shopMode === true;
-function setShopMode(on) { saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
+// Beim Öffnen von „Im Laden“ (ein Tipp der Person) wird der Bildschirm neu angefordert, auch wenn es vorher nicht klappte; ebenso beim Zurückkehren in die App.
+function setShopMode(on) { awake.shop.failed = false; saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
 function applyMode() {
   const on = shopOn();
   $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
   $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
   if (on) renderShop();
-  syncShopAwake(); syncChrome(); syncShopLock();
+  syncChrome(); syncShopLock();
 }
 // Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
 function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); armLock(); }
 function syncShopAwake() {
   const supported = 'wakeLock' in navigator;
-  const on = config.shopAwake !== false;   // seit Version 2.33 standardmäßig an (nur ein ausdrückliches Ausschalten gilt)
-  $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && on && !awake.shop.failed;
+  // Standardmäßig an; nur ein ausdrückliches Abwählen (`shopScreenOn: false`) gilt. Das frühere Feld `shopAwake` (Version 1.9 bis 2.35, damals Standard „aus“) wird nicht mehr gelesen.
+  const on = config.shopScreenOn !== false;
+  // Gesperrt gibt es weder den Haken noch den Hinweis dazu; der Bildschirm bleibt trotzdem an.
+  const locked = isLocked();
+  $('#shop-awake-label').hidden = !supported || locked; $('#shop-awake-hint').hidden = locked; $('#shop-awake').checked = supported && on && !awake.shop.failed;
   const want = supported && on && shopOn() && !$('#shopping').hidden && !document.hidden;
   void keepAwake('shop', want);
 }
@@ -1600,8 +1604,9 @@ function syncShopLock() {
   const locked = isLocked();
   document.body.classList.toggle('shop-locked', locked);
   $('#shop-lockbar').hidden = !locked; $('#shop-lock').hidden = locked;
+  $('#shop-finish').hidden = locked;   // „Einkauf beenden“ gibt es nur entsperrt
   $('#shop-autolock').value = String(lockSeconds(config.shopLock));
-  armLock();
+  syncShopAwake(); armLock();
 }
 function armLock() {
   clearTimeout(lockTimer); lockTimer = null;
@@ -1809,7 +1814,7 @@ async function keepAwake(name, on) {
   } catch {
     entry.lock = null; entry.failed = true; $(entry.box).checked = false; entry.wanted = false;
     // Wer „Bildschirm anlassen“ nicht selbst eingeschaltet hat (Standard an), bekommt bei einem Fehlschlag keine Fehlermeldung, nur den abgewählten Haken.
-    hint.textContent = name === 'shop' && config.shopAwake !== true ? '' : 'Geht gerade nicht. Stattdessen am Handy unter Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
+    hint.textContent = name === 'shop' && config.shopScreenOn !== true ? '' : 'Geht gerade nicht. Stattdessen am Handy unter Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
   }
 }
 function openCook(id, servings) {
@@ -2650,12 +2655,12 @@ $('#cook-dialog').addEventListener('close', () => { void keepAwake('cook', false
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (awake.cook.wanted && !awake.cook.lock && $('#cook-dialog').open) void keepAwake('cook', true);
-  syncShopAwake();
+  awake.shop.failed = false; syncShopAwake();
 });
 $('#mode-plan').addEventListener('click', () => guard(() => setShopMode(false)));
 $('#shop-back').addEventListener('click', () => guard(() => setShopMode(false)));
 $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
-$('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopAwake: event.target.checked }); syncShopAwake(); }));
+$('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopScreenOn: event.target.checked }); syncShopAwake(); }));
 holdToConfirm($('#shop-finish'), HOLD_FINISH_MS, () => { if (!isLocked()) openFinish(); }, 'Zum Beenden gedrückt halten');
 $('#finish-only').addEventListener('click', () => guard(() => finishShopping(false)));
 // Das „+“ im Feld „Was hast du bezahlt?“: beendet den Einkauf und speichert den Betrag; die Tastatur schließt sich (auch bei einem Fehler, damit die Meldung sichtbar bleibt).
