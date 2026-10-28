@@ -1576,16 +1576,18 @@ function armLock() {
 }
 // Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
 for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
-// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Zwei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
-// den Kreis eines Artikels (abhaken) und ein Geschäft (wechseln).
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Drei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
+// den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
-const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip';
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
 document.addEventListener('click', event => {
   if (!isLocked() || lockBypass || event.target.closest?.('#shop-lockbar, #notice-undo')) return;   // „Rückgängig“ nach dem Abhaken geht auch gesperrt
   event.preventDefault(); event.stopPropagation();
   if (Date.now() - lockHint > 3000) {
     lockHint = Date.now();
-    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln' : 'Gesperrt · unten gedrückt halten zum Entsperren');
+    const done = event.target.closest?.('#shop-list .shop-done summary');
+    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln'
+      : done ? `Gesperrt · „Erledigt“ gedrückt halten zum ${done.parentElement.open ? 'Schließen' : 'Öffnen'}` : 'Gesperrt · unten gedrückt halten zum Entsperren');
   }
 }, true);
 function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
@@ -1600,6 +1602,7 @@ document.addEventListener('pointerdown', event => {
   node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
   lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
     const target = node; endLockHold(); clearSelection(); navigator.vibrate?.(15);
+    lockHint = Date.now();   // das Loslassen danach ist ein Klick auf dasselbe Element (bleibt es stehen, wie „Erledigt“): er wird verschluckt, ohne zu melden
     lockBypass = true; try { target.click(); } finally { lockBypass = false; }
   }, HOLD_ITEM_MS) };
 }, true);

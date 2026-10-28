@@ -2195,6 +2195,59 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Im Laden gesperrt: „Erledigt“ gedrückt halten öffnet und schließt die Liste – ein Tipp oder Wegziehen nicht; bleibt gesperrt, nichts wird markiert', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await inShop(page);
+    await shopTap(page, 'Tomaten').click();   // etwas Erledigtes, damit es den Bereich gibt
+    const summary = page.locator('#shop-list .shop-done summary'), details = page.locator('#shop-list .shop-done details');
+    const isOpen = () => details.evaluate(node => node.open);
+    assert.equal(await isOpen(), false);
+    await page.click('#shop-lock');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    // Tipp: nichts, nur ein Hinweis, der das Gedrückthalten nennt
+    await summary.click();
+    assert.equal(await isOpen(), false, 'ein Tipp öffnet nichts');
+    assert.match(await page.textContent('#notice-text'), /„Erledigt“ gedrückt halten zum Öffnen/);
+    // Zu früh loslassen und Wegziehen: nichts
+    await pressAndHold(page, '#shop-list .shop-done summary', 200);
+    assert.equal(await page.locator('#shop-list .shop-done summary.holding').count(), 1, 'die Zeile füllt sich');
+    await page.mouse.up();
+    assert.equal(await page.locator('#shop-list .shop-done summary.holding').count(), 0);
+    assert.equal(await isOpen(), false);
+    const box = await summary.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 4 });
+    await page.waitForTimeout(700); await page.mouse.up();
+    assert.equal(await isOpen(), false, 'wer beim Halten wegzieht (Scrollen), öffnet nichts');
+    // Gedrückt halten öffnet; das Loslassen danach schaltet nicht wieder um und meldet nichts Neues
+    await page.waitForTimeout(3100);   // Hinweis-Sperre abwarten, damit eine fälschliche Meldung auffiele
+    await page.evaluate(() => document.querySelector('#notice').hidden = true);
+    await pressAndHold(page, '#shop-list .shop-done summary', 650); await page.mouse.up();
+    assert.equal(await isOpen(), true, 'durch Halten geöffnet');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
+    assert.equal(await page.locator('#notice').isHidden(), true, 'nach dem Loslassen keine Sperr-Meldung');
+    assert.equal(await page.locator('#shop-list .shop-done .shop-name', { hasText: 'Tomaten' }).isVisible(), true);
+    assert.equal(await page.evaluate(() => getSelection().toString()), '', 'nichts ist markiert');
+    // Der Hinweis nennt jetzt das Schließen; Halten schließt wieder
+    await page.waitForTimeout(3100);
+    await summary.click();
+    assert.match(await page.textContent('#notice-text'), /„Erledigt“ gedrückt halten zum Schließen/);
+    await pressAndHold(page, '#shop-list .shop-done summary', 650); await page.mouse.up();
+    assert.equal(await isOpen(), false, 'durch Halten geschlossen');
+    // Nichts anderes wurde dabei verändert
+    assert.equal(await itemState(page, 'Tomaten'), true);
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    // Entsperrt öffnet ein Tipp wie gewohnt
+    await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+    await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+    await summary.click();
+    assert.equal(await isOpen(), true, 'entsperrt: ein Tipp genügt');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

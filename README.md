@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.27
+# Einkauf & Rezepte – Version 2.28
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,17 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.28: gesperrt „Erledigt“ öffnen
+
+- **Gesperrt: „Erledigt (n)“ gedrückt halten (0,5 s) öffnet oder schließt die Liste** der abgehakten Artikel. Die Zeile füllt sich beim Halten wie ein Kreis oder ein Geschäft; ein kurzer Tipp bewirkt weiter nichts (Hinweis „Gesperrt · „Erledigt“ gedrückt halten zum Öffnen“, beim offenen Bereich „… zum Schließen“); wer beim Halten wegzieht (Scrollen), öffnet nichts. Die Ansicht bleibt gesperrt.
+- Geöffnet lässt sich ein versehentlich abgehakter Artikel gesperrt über seinen Kreis (gedrückt halten) wieder zurücknehmen.
+- Das Loslassen nach einem gelungenen Halten zeigt keinen zusätzlichen Sperr-Hinweis mehr.
+- **Nicht getestet:** das Halten auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation).
+
+Weiterer Testpunkt für Version 2.28:
+
+- [ ] Im Laden sperren (Schloss), dann **„Erledigt“** unter der Liste etwa eine halbe Sekunde halten: Der Bereich klappt auf (und beim nächsten Halten wieder zu), ohne dass etwas blau markiert wird. Kurzer Tipp: nichts.
 
 ## Neu in Version 2.27: keine Textauswahl im Laden
 

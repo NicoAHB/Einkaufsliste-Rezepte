@@ -3284,6 +3284,12 @@ body.shop-locked .toast {
   color:var(--on-accent);
   transition:background-color var(--hold,500ms) linear,color var(--hold,500ms) linear
 }
+.shop-done summary.holding {
+  background:var(--accent);
+  color:var(--on-accent);
+  border-radius:var(--radius,12px);
+  transition:background-color var(--hold,500ms) linear,color var(--hold,500ms) linear
+}
 /* Eine Einstellung in einer Zeile: Name links, Auswahl rechts */
 .inline-field {
   display:flex;
