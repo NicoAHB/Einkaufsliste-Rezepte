@@ -3257,8 +3257,9 @@ output {
   -webkit-backdrop-filter:blur(6px);
   backdrop-filter:blur(6px)
 }
+/* Die feste Überschrift (und die feste Knopfleiste unten) liegt auf einer undurchsichtigen Fläche in der Glasfarbe: Beim Scrollen schimmert sonst Text darunter durch. */
 :root[data-glass] .sheet-head {
-  background:transparent
+  background:linear-gradient(var(--glass-strong),var(--glass-strong)),var(--card)
 }
 
 :root[data-glass] .move-bar {
@@ -3626,9 +3627,7 @@ html[data-landscape] .turn-hint {
   color:var(--muted)
 }
 :root[data-glass] .sheet-actions {
-  background:var(--glass-strong);
-  -webkit-backdrop-filter:blur(var(--glass-blur));
-  backdrop-filter:blur(var(--glass-blur));
+  background:linear-gradient(var(--glass-strong),var(--glass-strong)),var(--card);
   border-top-color:var(--glass-line)
 }
 .item .item-meta {

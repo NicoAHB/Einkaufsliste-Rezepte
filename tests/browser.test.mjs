@@ -5415,6 +5415,73 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- Version 2.38: Die feste Überschrift und die feste Knopfleiste in Fenstern sind undurchsichtig (Text darunter schimmerte durch) ----
+  for (const [glass, scheme] of [[true, 'light'], [true, 'dark'], [false, 'light'], [false, 'dark']]) {
+    test(`Fenster: beim Scrollen schimmert nichts durch die feste Überschrift und die feste Leiste (${glass ? 'Glas-Design' : 'ohne Glas'}, ${scheme})`, async () => {
+      const { ctx, page, problems } = await context({ config: { glass }, context: { viewport: { width: 390, height: 480 }, colorScheme: scheme } });
+      await open(page);
+      const lum = ([r, g, b]) => { const [x, y, z] = [r, g, b].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * x + .7152 * y + .0722 * z; };
+      // Prüft einen waagerechten Streifen: Er muss einfarbig sein (nur Hintergrund, kein Text darunter)
+      const flat = async (box, label) => {
+        const values = [];
+        for (let x = box.x; x <= box.x + box.width; x += Math.max(3, Math.round(box.width / 40))) values.push(lum(await pixelAt(page, x, box.y)));
+        const spread = Math.max(...values) - Math.min(...values);
+        assert.ok(spread < 0.06, `${label}: es schimmert etwas durch (Streuung ${spread.toFixed(2)} über ${values.length} Punkte)`);
+      };
+      const check = async (dialog, label) => {
+        await sheetOpen(page);
+        await page.evaluate(([selector, at]) => { document.querySelector(selector).scrollTop = at; }, [dialog, 420]);
+        await page.waitForTimeout(150);
+        assert.ok(await page.evaluate(selector => document.querySelector(selector).scrollTop > 20, dialog), `${label}: das Fenster ist gescrollt`);
+        // Erst nach dem Scrollen messen: Die Überschrift rückt dabei an den oberen Rand (top: -8px)
+        const box = await page.locator(`${dialog} .sheet-head`).boundingBox(), shell = await page.locator(dialog).boundingBox();
+        const heading = await page.locator(`${dialog} .sheet-head h2`).boundingBox(), close = await page.locator(`${dialog} .sheet-head button`).first().boundingBox();
+        const top = Math.max(box.y, shell.y) + 6;   // sichtbarer oberer Rand der Überschrift (die runden Ecken des Fensters bleiben außen vor)
+        // Zwischen Überschrift und Schließen-Knopf sowie am oberen und unteren Rand: nur Hintergrund, kein Text darunter
+        const band = { x: heading.x + heading.width + 8, y: box.y + box.height / 2, width: close.x - 8 - (heading.x + heading.width + 8) };
+        if (band.width > 12) await flat(band, `${label}, neben der Überschrift`);
+        await flat({ x: box.x + 32, y: top, width: box.width - 64 }, `${label}, oberer Rand der Überschrift`);
+        await flat({ x: box.x + 32, y: box.y + box.height - 3, width: box.width - 64 }, `${label}, unterer Rand der Überschrift`);
+      };
+      // In allen Fenstern der App: Die Grundfläche jeder festen Überschrift und Leiste ist deckend (Alpha 1), egal welches Fenster
+      const bases = await page.evaluate(() => [...document.querySelectorAll('dialog .sheet-head, dialog .sheet-actions, dialog .cook-head')].map(node => ({ dialog: node.closest('dialog').id, kind: node.className, color: getComputedStyle(node).backgroundColor })));
+      assert.ok(bases.length >= 12, `viele feste Überschriften (${bases.length})`);
+      for (const base of bases) assert.ok(/^rgb\(/.test(base.color) || /,\s*1\)$/.test(base.color), `${base.dialog} ${base.kind}: Grundfläche nicht deckend (${base.color})`);
+      // Anleitung (lang)
+      await openSettings(page); await page.click('#open-help'); await page.waitForSelector('#help-dialog[open]');
+      await page.evaluate(() => document.querySelectorAll('#help-body details').forEach(node => { node.open = true; }));
+      await check('#help-dialog', 'Anleitung');
+      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+      // Einkauf eintragen (Foto-Feld und Eingaben liegen unter der Überschrift)
+      await goTab(page, 'spending');
+      await page.click('#add-purchase'); await page.waitForSelector('#purchase-dialog[open]');
+      await check('#purchase-dialog', 'Einkauf eintragen');
+      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+      // Rezepte des Tages und Was kann ich kochen?
+      await goTab(page, 'recipes');
+      await page.click('#daily-open'); await page.waitForSelector('#daily-dialog[open]');
+      await check('#daily-dialog', 'Rezepte des Tages');
+      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+      await page.click('#cookable-open'); await page.waitForSelector('#cookable-dialog[open]');
+      await page.evaluate(() => document.querySelectorAll('#cookable-dialog details').forEach(node => { node.open = true; }));
+      await check('#cookable-dialog', 'Was kann ich kochen?');
+      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+      // Geschäfte & Angebote
+      await goTab(page, 'shopping'); await openStores(page);
+      await check('#stores-dialog', 'Geschäfte & Angebote');
+      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+      // Artikel bearbeiten: die feste Knopfleiste unten
+      await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+      await page.click('#item-price-fold > summary');
+      await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
+      const bar = await page.locator('#edit-item-form .sheet-actions').boundingBox();
+      await flat({ x: bar.x + 6, y: bar.y + 3, width: bar.width - 12 }, 'Knopfleiste, oberer Rand');
+      await flat({ x: bar.x + 6, y: bar.y + bar.height - 3, width: bar.width - 12 }, 'Knopfleiste, unterer Rand');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
   test('Neuer Name und Backup', async () => {
     const { ctx, page } = await context({ seed: false });
     await open(page);

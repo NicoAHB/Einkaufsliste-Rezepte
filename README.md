@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.37
+# Einkauf & Rezepte – Version 2.38
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.38: Überschriften in Fenstern schimmern nicht mehr durch
+
+Fehler (auf dem iPhone gefunden): Beim Scrollen in einem Fenster (Geschäfte & Angebote, Anleitung, Einkauf eintragen, Rezepte des Tages, Was kann ich kochen?) blieb die Überschrift oben stehen, hatte aber im Glas-Design keinen eigenen Hintergrund. Der Text darunter schimmerte durch und lag über dem Titel. Das war schon seit dem Glas-Design (2.22) so; es fiel in den eigenen Aufnahmen auf und wurde fälschlich als bekannte Eigenheit stehen gelassen.
+
+- **Die feste Überschrift** (`.sheet-head`) und **die feste Knopfleiste unten** (`.sheet-actions`, seit 2.37 im Bearbeiten-Fenster von Artikel und Rezept) liegen im Glas-Design auf einer deckenden Fläche in der Glasfarbe (Glasfarbe über der Kartenfarbe). Ohne Glas waren sie schon deckend.
+- **Test:** Ein Browser-Test scrollt Anleitung, Einkauf eintragen, Rezepte des Tages, Was kann ich kochen? und Geschäfte & Angebote (mit Glas und ohne, hell und dunkel) und misst per Pixel, dass neben und am Rand der Überschrift nur Hintergrund zu sehen ist; ein zweiter Teil prüft in allen Fenstern, dass die Grundfläche jeder festen Überschrift deckend ist. Vor der Korrektur scheiterte der Test im Glas-Design, danach nicht mehr.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone (geprüft im Chromium-Browser mit iPhone-13-Emulation).
+
+Weiterer Testpunkt für Version 2.38:
+
+- [ ] In „Geschäfte & Angebote“, „Anleitung“, „Einkauf eintragen“ und „Rezepte des Tages“ nach unten scrollen: Die Überschrift bleibt oben stehen, **nichts schimmert durch**, der Text läuft sauber unter ihr weg.
 
 ## Neu in Version 2.37: Daten abgesichert, ruhigere Optik, Mehrfachauswahl, Entwürfe, Vollsicherung, Tests auf GitHub
 
