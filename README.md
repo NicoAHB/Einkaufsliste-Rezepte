@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.29
+# Einkauf & Rezepte – Version 2.30
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,22 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.30: eigene Liste (z. B. „Wünsche“)
+
+Anlass: Du möchtest ein eigenes Geschäft „Wünsche“ anlegen, dessen Artikel **nirgends sonst** auftauchen. Rossmann bleibt unverändert: Dort steht „Im Laden“ weiter nichts ohne Geschäft, und unter „Alle“ erscheinen die Rossmann-Artikel wie gewünscht.
+
+- **Neuer Schalter pro Geschäft:** In „Geschäfte“ gibt es das Häkchen **Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist**. Ist es gesetzt, entfällt „Im Laden auch Artikel ohne Geschäft anzeigen“ (die eigene Liste nimmt nie Artikel ohne Geschäft auf). Der Schalter gilt für beide Personen (gemeinsame Datei, Feld `separate`, optional).
+- **Planen:** Die Artikel stehen nicht unter „Alle“, nicht in der Summe und nicht in den Zählern („Alle“, „Ohne Geschäft“, „n offen“); nur unter dem Reiter der Liste, mit eigener Summe und eigenem Zähler am Reiter. Wird unter „Alle“ ein Artikel für die eigene Liste angelegt, sagt die Meldung, wo er steht („„Buch“ steht bei „Wünsche““). Kehrt man von der eigenen Liste zu „Alle“ zurück, ist das Geschäft im Eingabefeld nicht mehr vorgewählt (sonst verschwänden neue Artikel unbemerkt).
+- **Im Laden:** Die Auswahl „Alle“ und die Hinweise „n Artikel für andere Geschäfte“ zählen sie nicht mit; nur wer oben „Wünsche“ wählt, sieht sie (ohne „Überall möglich“ und ohne Hinweise auf Artikel anderswo). Der Zähler am Reiter „Wünsche“ zählt die eigenen offenen Artikel.
+- **Einkauf beenden:** Bei einem anderen Geschäft oder bei „Alle“ bleibt Abgehaktes aus einer eigenen Liste unberührt; ist die eigene Liste selbst gewählt, wird nur sie beendet (die Tomaten bei Edeka bleiben stehen).
+- **Was kann ich kochen? / Vorlagen:** Artikel einer eigenen Liste zählen nicht als „kommt noch“ und nicht in „Liste als Vorlage speichern“ unter „Alle“.
+- Verschieben (Zeile ziehen) in die eigene Liste und zurück geht wie bei jedem Geschäft; die Leiste oben zeigt sie als Ziel.
+- **Nicht getestet:** das Verhalten auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, mit simuliertem GitHub).
+
+Weiterer Testpunkt für Version 2.30:
+
+- [ ] Geschäft „Wünsche“ anlegen, unter „Geschäfte“ **Eigene Liste** ankreuzen und speichern. Zwei Wünsche eintragen: Sie stehen unter „Alle“ nicht, nicht im Zähler und nicht „Im Laden“ unter „Alle“; nur der Reiter „Wünsche“ zeigt sie. Auf dem zweiten Handy erscheint dasselbe nach dem Abgleich.
 
 ## Neu in Version 2.29: die App steht immer hochkant
 

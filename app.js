@@ -1,7 +1,7 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
-import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from './shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
@@ -177,11 +177,13 @@ function currentStore(id) {
 }
 /* Ansicht der Einkaufsliste: 'all' (alle Geschäfte, Startseite), 'none' (Artikel ohne Geschäft) oder die ID eines Geschäfts.
    Artikel eines gelöschten Geschäfts bleiben überall verborgen; Artikel ohne Geschäft (storeId '') gehören zu keinem Geschäft. */
-const visibleItems = () => {
-  const live = new Set(active(state.stores).map(store => store.id));
-  return active(state.items).filter(item => !item.storeId || live.has(item.storeId));
+// Artikel einer eigenen Liste (Geschäft mit „separate“, z. B. „Wünsche“) fehlen hier, außer `including` ist dieses Geschäft; `true` nimmt alle mit (für die Zähler an den Geschäften).
+const visibleItems = (including = '') => {
+  const live = new Set(active(state.stores).map(store => store.id)), rows = active(state.items).filter(item => !item.storeId || live.has(item.storeId));
+  return including === true ? rows : withoutSeparate(rows, active(state.stores), including);
 };
-const inView = item => view === 'all' || (view === 'none' ? !item.storeId : item.storeId === view);
+// „Alle“ zeigt eine eigene Liste nicht mit; sie erscheint nur unter ihrem Geschäft.
+const inView = item => view === 'all' ? !state.stores.some(store => store.id === item.storeId && !store.deletedAt && isSeparate(store)) : view === 'none' ? !item.storeId : item.storeId === view;
 const viewStore = () => active(state.stores).find(store => store.id === view);
 const storeName = id => active(state.stores).find(store => store.id === id)?.name || 'Ohne Geschäft';
 // Welches Geschäft ein neuer Artikel bekommt: das der gewählten Ansicht, sonst keines.
@@ -190,8 +192,9 @@ function showView(next) {
   view = next;
   const form = $('#item-form');
   // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
-  // In „Alle“ bleibt die letzte Auswahl stehen; „Ohne Geschäft“ wählt keines.
-  if (viewStore()) form.elements.storeId.value = view; else if (view === 'none') form.elements.storeId.value = '';
+  // In „Alle“ bleibt die letzte Auswahl stehen (außer eine eigene Liste wie „Wünsche“: dort verschwänden neue Artikel unbemerkt); „Ohne Geschäft“ wählt keines.
+  if (viewStore()) form.elements.storeId.value = view;
+  else if (view === 'none' || (view === 'all' && isSeparate(active(state.stores).find(store => store.id === form.elements.storeId.value)))) form.elements.storeId.value = '';
   renderStorePick(); storeChanged(); renderStoreChips(); renderItems();
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
@@ -238,7 +241,8 @@ function render() {
 }
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
-  const items = visibleItems(), open = id => items.filter(item => !item.checked && (id === 'all' || (id === 'none' ? !item.storeId : item.storeId === id))).length;
+  const everything = visibleItems(true), items = visibleItems();   // `items`: ohne eigene Listen (für „Alle“ und „Ohne Geschäft“)
+  const open = id => (id === 'all' ? items : id === 'none' ? items.filter(item => !item.storeId) : everything.filter(item => item.storeId === id)).filter(item => !item.checked).length;
   const add = (id, label, count, store = false) => {
     const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button';
     if (store) chip.append(storeLabel(label));
@@ -352,7 +356,7 @@ function renderItems() {
   renderShoppingInfo();
   thumbLearned = learnCategories(state.items);
   const list = $('#items'); list.replaceChildren();
-  const rows = visibleItems().filter(inView);
+  const rows = visibleItems(true).filter(inView);
   ensureSeen();
   const news = seen ? newFromOthers(rows, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const open = rows.filter(item => !item.checked && !newIds.has(item.id)), done = rows.filter(item => item.checked).sort(byName);
@@ -445,7 +449,7 @@ function renderShoppingInfo() {
   $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
   if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
   else $('#offers-link').removeAttribute('href');
-  const total = shoppingTotal(visibleItems().filter(inView), state.prices);
+  const total = shoppingTotal(visibleItems(true).filter(inView), state.prices);
   const box = $('#shopping-total'); box.replaceChildren();
   // Eine Zeile, die Geschäftsauswahl darüber sagt schon, wofür die Summe gilt.
   if (!total.count) box.append(element('strong', 'Alles erledigt'));
@@ -605,12 +609,17 @@ function renderStores() {
     const anywhereLabel = element('label', undefined, 'checkbox-label'), anywhere = element('input');
     anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.checked = takesAnywhere(store);
     anywhereLabel.append(anywhere, ' „Im Laden“ auch Artikel ohne Geschäft anzeigen');
-    form.append(nameLabel, linkLabel, anywhereLabel, save);
+    // Eigene Liste (z. B. „Wünsche“): Die Artikel erscheinen nirgends, nur wenn dieses Geschäft gewählt ist. Dann gibt es keine Artikel ohne Geschäft dazu.
+    const separateLabel = element('label', undefined, 'checkbox-label'), separate = element('input');
+    separate.type = 'checkbox'; separate.name = 'separate'; separate.checked = isSeparate(store); anywhereLabel.hidden = separate.checked;
+    separate.addEventListener('change', () => { anywhereLabel.hidden = separate.checked; });
+    separateLabel.append(separate, ' Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist');
+    form.append(nameLabel, linkLabel, separateLabel, anywhereLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id); const typed = offerUrl(link.value);
       // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
-      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked })]); renderStores();
+      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked, separate: separate.checked || null })]); renderStores();
     }); });
     const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
@@ -1268,7 +1277,8 @@ $('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; });
 // Ordnet die Rezepte danach, wie viele Zutaten schon da sind (Vorrat, Eingekauftes) oder noch kommen (offen auf der Einkaufsliste). Logik in cookable.js.
 function renderCookable() {
   const recipes = active(state.recipes), ingredients = active(state.ingredients), live = new Set(active(state.stores).map(store => store.id));
-  const names = namesFrom({ pantry: state.pantry || [], items: state.items.filter(item => !item.storeId || live.has(item.storeId)), now: Date.now() });
+  // Auch bereits entfernte Artikel zählen (schon eingekauft); eine eigene Liste („Wünsche“) zählt nicht.
+  const names = namesFrom({ pantry: state.pantry || [], items: withoutSeparate(state.items.filter(item => !item.storeId || live.has(item.storeId)), active(state.stores)), now: Date.now() });
   const ranked = rankRecipes(recipes, recipe => ingredients.filter(row => row.recipeId === recipe.id), names);
   const ready = ranked.filter(entry => entry.tier === 0).length, soon = ranked.filter(entry => entry.tier === 1).length;
   $('#cookable-count').textContent = !recipes.length ? 'Noch kein Rezept.' : !ranked.length ? 'Noch passt kein Rezept zu euren Vorräten und der Einkaufsliste.' :
@@ -1650,21 +1660,22 @@ function shopNewsRow(entry) {
   return row;
 }
 function renderShop() {
-  const stores = active(state.stores), items = visibleItems();
+  const stores = active(state.stores), everything = visibleItems(true);
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = '';
+  const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
   const chips = $('#shop-chips'); chips.replaceChildren();
   // „Alle“ steht vor den Geschäften (wie unter „Planen“): alles Offene aus allen Geschäften und ohne Geschäft
   if (stores.length) {
     const all = element('button', 'Alle', 'chip'); all.type = 'button';
     all.setAttribute('role', 'tab'); all.setAttribute('aria-selected', String(shopStore === ALL_STORES));
-    const open = items.filter(item => !item.checked).length; if (open) all.append(element('span', String(open), 'count'));
+    const open = visibleItems().filter(item => !item.checked).length; if (open) all.append(element('span', String(open), 'count'));
     all.addEventListener('click', () => { shopStore = ALL_STORES; renderShop(); });
     chips.append(all);
   }
   for (const store of stores) {
     const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
-    const count = shopCount(items, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
+    const count = shopCount(everything, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
     chips.append(chip);
   }
@@ -1690,8 +1701,9 @@ function renderShop() {
     list.append(element('li', 'Überall möglich', 'store-head none'));
     for (const group of anywhere) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
   }
-  if (shop.elsewhere) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
-  if (shop.hidden) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte“)`, 'shop-note'));
+  const apart = isSeparate(stores.find(store => store.id === shopStore));   // eine eigene Liste steht für sich: keine Hinweise auf Artikel anderswo
+  if (shop.elsewhere && !apart) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
+  if (shop.hidden && !apart) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte“)`, 'shop-note'));
   appendShopDone(list, shop.done);
 }
 function appendShopDone(list, rows) {
@@ -1716,9 +1728,14 @@ function renderShopAll(list, items, stores) {
   }
   appendShopDone(list, all.done);
 }
+// Was „Einkauf beenden“ entfernt: alles Abgehakte der Ansicht. Eine eigene Liste („Wünsche“) bleibt dabei unberührt; ist sie selbst gewählt, wird nur sie beendet.
+function finishItems() {
+  const own = isSeparate(active(state.stores).find(store => store.id === shopStore));
+  return visibleItems(shopStore === ALL_STORES ? '' : shopStore).filter(item => item.checked && (!own || item.storeId === shopStore));
+}
 function openFinish() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
-  const checked = visibleItems().filter(item => item.checked).length;
+  const checked = finishItems().length;
   $('#finish-text').textContent = checked ? `${checked} abgehakte ${checked === 1 ? 'Artikel wird' : 'Artikel werden'} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.';
   $('#finish-form').reset(); message();
   $('#finish-dialog').showModal();
@@ -1726,7 +1743,7 @@ function openFinish() {
 // Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
 // und die App springt zurück zu „Planen“.
 function finishShopping(withReceipt, amount = '') {
-  const checked = visibleItems().filter(item => item.checked), ids = checked.map(item => item.id), typed = amount.trim();
+  const checked = finishItems(), ids = checked.map(item => item.id), typed = amount.trim();
   const storeId = shopStore === ALL_STORES ? '' : shopStore;   // „Alle“ ist kein Geschäft: der Betrag wird dann ohne Geschäft gespeichert
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
@@ -2158,7 +2175,7 @@ $('#pantry-form').addEventListener('submit', event => { event.preventDefault(); 
 
 /* ---------- Vorlagen ---------- */
 const templateRows = () => active(state.templates || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-const templateSource = () => visibleItems().filter(item => inView(item) && !item.checked);
+const templateSource = () => visibleItems(true).filter(item => inView(item) && !item.checked);
 function renderTemplates() {
   const list = $('#template-list'); list.replaceChildren();
   const rows = templateRows();
@@ -2454,7 +2471,7 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   if (edited.storeId && effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
   commit(ops); $('#item-dialog').close();
 }); });
-$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems().filter(row => inView(row) && row.checked).map(row => row.id))));
+$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#manage-stores').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');

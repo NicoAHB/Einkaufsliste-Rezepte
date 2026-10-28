@@ -50,4 +50,13 @@ describe('Geschäfte: Einstellung für Artikel ohne Geschäft', () => {
     const good = merge(emptyData(), [store({})]);
     assert.throws(() => merge(good, [operation('stores', 's1', { anywhere: 'false' }, 'Nico', '2026-03-02T00:00:00.000Z')]), /Ungültige Einstellung/);
   });
+  test('separate (eigene Liste) darf fehlen, null oder ein Wahrheitswert sein, sonst wird die Änderung abgelehnt; es wird mit dem Geschäft zusammengeführt', () => {
+    for (const ok of [undefined, null, true, false]) assert.doesNotThrow(() => merge(emptyData(), [store(ok === undefined ? {} : { separate: ok })]), String(ok));
+    const good = merge(emptyData(), [store({})]);
+    assert.throws(() => merge(good, [operation('stores', 's1', { separate: 'ja' }, 'Nico', '2026-03-02T00:00:00.000Z')]), /eigene Liste/);
+    const on = merge(good, [operation('stores', 's1', { separate: true }, 'Nico', '2026-03-02T00:00:00.000Z')]);
+    assert.equal(on.stores.find(row => row.id === 's1').separate, true);
+    const off = merge(on, [operation('stores', 's1', { separate: null }, 'Anna', '2026-03-03T00:00:00.000Z')]);
+    assert.equal(off.stores.find(row => row.id === 's1').separate, null, 'die spätere Änderung gilt');
+  });
 });

@@ -19,8 +19,16 @@ export function shopView(items, storeId, session = new Map(), takesAnywhere = tr
 // Zahl der offenen Artikel, die man in diesem Geschäft kaufen kann (eigene und „überall möglich“).
 export const shopCount = (items, storeId, takesAnywhere = true) => items.filter(item => !item.checked && (item.storeId ? item.storeId === storeId : takesAnywhere)).length;
 
-// Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien (Tabelle in brand.js): Dort kauft man kein Brot nebenbei.
-export const takesAnywhere = store => typeof store?.anywhere === 'boolean' ? store.anywhere : !chainOf(store?.name)?.drugstore;
+// Eigene Liste (Version 2.30): Ein Geschäft mit `separate` (z. B. „Wünsche“) hat Artikel, die nur erscheinen, wenn genau dieses Geschäft gewählt ist: nicht unter „Alle“, nicht in Summen,
+// Zählern und Hinweisen anderer Ansichten. `including`: das gerade gewählte Geschäft, dessen eigene Liste sichtbar bleibt.
+export const isSeparate = store => store?.separate === true;
+export function withoutSeparate(items, stores, including = '') {
+  const apart = new Set(stores.filter(store => isSeparate(store) && store.id !== including).map(store => store.id));
+  return apart.size ? items.filter(item => !apart.has(item.storeId)) : items;
+}
+
+// Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Eine eigene Liste nie; sonst ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien (Tabelle in brand.js): Dort kauft man kein Brot nebenbei.
+export const takesAnywhere = store => isSeparate(store) ? false : typeof store?.anywhere === 'boolean' ? store.anywhere : !chainOf(store?.name)?.drugstore;
 
 /* Auswahl „Alle“ im Laden: alles, was noch offen ist, egal für welches Geschäft, dazu die Artikel ohne Geschäft. Zuerst die Artikel ohne Geschäft, dann ein
    Abschnitt je Geschäft (in der Reihenfolge von `stores`, genau wie die Gesamtliste unter „Planen“); leere Abschnitte fehlen. `done`: alles Abgehakte

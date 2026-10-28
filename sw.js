@@ -1,5 +1,5 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v41';
+const CACHE = 'einkauf-shell-v42';
 // Die Texterkennung ist groß (ca. 5 MB) und ändert sich selten: eigener Speicher, der App-Updates übersteht.
 const VENDOR = 'einkauf-vendor-v1';
 const FILES = ['./', './index.html', './styles.css', './app.js', './data.js', './prices.js', './recipe-import.js', './page-source.js', './ocr.js', './categories.js', './plan.js', './photos.js', './compact.js', './receipt.js', './cook.js', './news.js', './shop.js', './dragdelete.js', './brand.js', './help.js', './daily.js', './recipe-maker.js', './emoji.js', './spending.js', './cookable.js', './grocery-names.js', './theme.js',

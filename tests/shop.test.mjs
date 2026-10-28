@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, LOCK_CHOICES, LOCK_DEFAULT, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere } from '../shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, LOCK_CHOICES, LOCK_DEFAULT, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from '../shop.js';
 
 const item = (id, storeId, checked = false) => ({ id, storeId, checked, name: id });
 const items = [item('milch', 'edeka'), item('brot', ''), item('kaese', 'lidl'), item('nudeln', 'edeka', true), item('eier', '', true)];
@@ -82,4 +82,33 @@ test('Sperre im Laden: gültige Wartezeit, Standard bei Unsinn, Haltezeiten spü
   assert.ok(LOCK_CHOICES.includes(LOCK_DEFAULT));
   assert.ok(HOLD_FINISH_MS >= 500 && HOLD_FINISH_MS <= 1200);
   assert.ok(HOLD_UNLOCK_MS >= 400 && HOLD_UNLOCK_MS <= 1000);
+});
+
+test('Eigene Liste („Wünsche“): ihre Artikel stehen nur, wenn genau dieses Geschäft gewählt ist; sie nimmt nie Artikel ohne Geschäft auf', () => {
+  const stores = [{ id: 'edeka', name: 'Edeka' }, { id: 'wuensche', name: 'Wünsche', separate: true }, { id: 'lidl', name: 'Lidl', separate: false }];
+  assert.equal(isSeparate(stores[1]), true);
+  assert.equal(isSeparate(stores[0]), false);
+  assert.equal(isSeparate(stores[2]), false);
+  assert.equal(isSeparate(undefined), false);
+  const rows = [item('milch', 'edeka'), item('fahrrad', 'wuensche'), item('brot', ''), item('kaese', 'lidl'), item('buch', 'wuensche', true)];
+  assert.deepEqual(ids(withoutSeparate(rows, stores)), ['milch', 'brot', 'kaese'], 'ohne Auswahl: keine eigene Liste');
+  assert.deepEqual(ids(withoutSeparate(rows, stores, 'edeka')), ['milch', 'brot', 'kaese'], 'ein anderes Geschäft gewählt: auch nicht');
+  assert.deepEqual(ids(withoutSeparate(rows, stores, 'wuensche')), ['milch', 'fahrrad', 'brot', 'kaese', 'buch'], 'die eigene Liste ist gewählt: sie ist dabei');
+  const plain = [item('milch', 'edeka')];
+  assert.equal(withoutSeparate(plain, [stores[0]]), plain, 'ohne eigene Liste unverändert');
+  // Eine eigene Liste nimmt keine Artikel ohne Geschäft auf, auch wenn es ausdrücklich eingestellt ist
+  assert.equal(takesAnywhere({ name: 'Wünsche', separate: true }), false);
+  assert.equal(takesAnywhere({ name: 'Wünsche', separate: true, anywhere: true }), false);
+  assert.equal(takesAnywhere({ name: 'Edeka', separate: false }), true);
+  const wishes = shopView(withoutSeparate(rows, stores, 'wuensche'), 'wuensche', new Map(), takesAnywhere(stores[1]));
+  assert.deepEqual(ids(wishes.open), ['fahrrad']);
+  assert.deepEqual(ids(wishes.anywhere), [], 'Brot steht bei den Wünschen nicht');
+  assert.deepEqual(ids(wishes.done), ['buch']);
+  assert.equal(shopCount(rows, 'wuensche', takesAnywhere(stores[1])), 1, 'der Zähler am Reiter: nur die eigenen offenen Artikel');
+  // Edeka und „Alle“ sehen sie nicht und zählen sie nicht als „für andere Geschäfte“
+  assert.equal(shopView(withoutSeparate(rows, stores, 'edeka'), 'edeka').elsewhere, 1, 'nur Lidl-Käse');
+  const all = shopAllView(withoutSeparate(rows, stores), stores);
+  assert.deepEqual(all.sections.map(section => section.store?.id ?? null), [null, 'edeka', 'lidl']);
+  assert.equal(all.count, 3);
+  assert.deepEqual(ids(all.done), []);
 });
