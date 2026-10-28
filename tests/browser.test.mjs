@@ -2195,6 +2195,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const selectable = selector => page.locator(selector).first().evaluate(node => getComputedStyle(node).userSelect);
+    assert.notEqual(await selectable('#items .group-head span'), 'none', 'unter „Planen“ unverändert');
+    assert.equal(await page.evaluate(() => { const node = document.querySelector('#items .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), false);
+    await inShop(page);
+    for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-list .group-head .count', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
+      assert.equal(await selectable(selector), 'none', `${selector}: keine Textauswahl`);
+    }
+    assert.notEqual(await selectable('#shop-autolock'), 'none', 'die Auswahl der Sperrzeit bleibt bedienbar');
+    // Die Auswahl beginnt gar nicht erst …
+    assert.equal(await page.evaluate(() => { const node = document.querySelector('#shop-list .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), true);
+    // … und eine vorhandene Auswahl verschwindet, wenn gesperrt ein Kreis gehalten wird
+    await page.click('#shop-lock');
+    await page.evaluate(() => getSelection().selectAllChildren(document.querySelector('#shop-lockbar span')));   // etwas Markierbares außerhalb der Liste
+    assert.ok((await page.evaluate(() => getSelection().toString())).length > 0, 'Vorbereitung: etwas ist markiert');
+    await pressAndHold(page, '#shop-list .shop-tap', 650); await page.mouse.up();
+    assert.equal(await itemState(page, 'Tomaten'), true, 'abgehakt');
+    assert.equal(await page.evaluate(() => getSelection().toString()), '', 'nichts bleibt markiert');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Im Laden: automatisch sperren nach Wartezeit ohne Berührung (Berührung setzt sie zurück), beim Zurückkehren aus dem Hintergrund, einstellbar, „Nie“ sperrt nicht', async () => {
     const { ctx, page, problems } = await context({ config: { shopLock: 2 } });
     await open(page);

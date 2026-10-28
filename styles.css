@@ -1759,7 +1759,8 @@ body.in-store main {
   flex:1;
   min-width:0;
   font-weight:650;
-  overflow-wrap:anywhere
+  overflow-wrap:anywhere;
+  hyphens:auto
 }
 .shop-qty {
   flex:none;
@@ -3298,4 +3299,15 @@ body.shop-locked .toast {
 }
 .hint:empty {
   display:none
+}
+
+/* Im Laden gibt es keine Textauswahl und kein Kontextmenü (ein langer Druck auf den Kreis oder ein Geschäft darf nichts blau markieren); Eingabefelder ausgenommen */
+#shop-view {
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
+}
+#shop-view select,#shop-view input {
+  -webkit-user-select:auto;
+  user-select:auto
 }

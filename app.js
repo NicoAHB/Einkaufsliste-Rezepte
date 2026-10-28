@@ -1537,7 +1537,7 @@ function holdToConfirm(node, ms, action, hint = '') {
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
     pointer = true; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
     stop(); node.classList.add('holding');
-    timer = setTimeout(() => { stop(); settle(); navigator.vibrate?.(15); guard(action); }, ms);
+    timer = setTimeout(() => { stop(); settle(); clearSelection(); navigator.vibrate?.(15); guard(action); }, ms);
   });
   node.addEventListener('pointermove', event => { if (timer !== null && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) stop(); });
   node.addEventListener('pointerleave', stop);
@@ -1589,6 +1589,9 @@ document.addEventListener('click', event => {
   }
 }, true);
 function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
+// Ein langer Druck markiert auf iOS sonst Text in der Nähe (blaue Auswahl mit Griffen): Im Laden gibt es keine Textauswahl (CSS), und beim Gedrückthalten wird sie zusätzlich unterbunden.
+document.addEventListener('selectstart', event => { if (shopOn() && (event.target.parentElement || event.target).closest?.('#shop-view')) event.preventDefault(); }, true);
+const clearSelection = () => { try { getSelection()?.removeAllRanges(); } catch { /* keine Auswahl */ } };
 document.addEventListener('pointerdown', event => {
   if (!isLocked() || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
   const node = event.target.closest?.(LOCK_HOLD);
@@ -1596,7 +1599,7 @@ document.addEventListener('pointerdown', event => {
   endLockHold();
   node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
   lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
-    const target = node; endLockHold(); navigator.vibrate?.(15);
+    const target = node; endLockHold(); clearSelection(); navigator.vibrate?.(15);
     lockBypass = true; try { target.click(); } finally { lockBypass = false; }
   }, HOLD_ITEM_MS) };
 }, true);
