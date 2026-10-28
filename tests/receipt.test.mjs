@@ -36,7 +36,7 @@ test('REWE-Bon: Zeilen, Gewicht, Stückzahl, Größe im Namen; Pfand wird nicht 
   const r = parseReceipt(rewe);
   assert.deepEqual(r.items.map(item => item.name), ['Bio Vollmilch 3,8%', 'Kirschtomaten', 'Bananen', 'Gurke', 'Eier']);
   const byName = name => r.items.find(item => item.name === name);
-  assert.deepEqual(byName('Bio Vollmilch 3,8%').quote, { cents: 129, quantity: 1, unit: 'Stück' });
+  assert.deepEqual(byName('Bio Vollmilch 3,8%').quote, { cents: 129, quantity: 1, unit: 'Position' }, 'keine Menge auf dem Bon: unbekannt, nicht „1 Stück“');
   assert.deepEqual(byName('Kirschtomaten').quote, { cents: 199, quantity: 250, unit: 'g' });
   assert.deepEqual(byName('Bananen').quote, { cents: 179, quantity: 1, unit: 'kg' }, 'Gewichtsware: Preis je kg');
   assert.deepEqual(byName('Gurke').quote, { cents: 79, quantity: 1, unit: 'Stück' });
@@ -86,7 +86,7 @@ test('Weicht die Summe ab, fällt das auf (nicht erkannte Zeile)', () => {
 test('Ein Rabatt auf den ganzen Einkauf wird keinem Artikel zugeschlagen', () => {
   const r = parseReceipt('Käse 2,00 A\nGutschein -5,00\nSUMME -3,00');
   assert.equal(r.items[0].onSale, false);
-  assert.equal(r.skipped.some(entry => /ganzen Einkauf/.test(entry.why)), true);
+  assert.equal(r.skipped.some(entry => /keiner Position eindeutig zugeordnet/.test(entry.why)), true);
 });
 
 test('Positive Zeilen mit Wörtern wie „Plus“ oder „Aktion“ im Namen sind normale Artikel', () => {
@@ -115,12 +115,12 @@ test('Zuordnungsschlüssel ignoriert Größen und Prozent, nicht den Namen', () 
 test('Namensvorschlag: gemerkte Zuordnung, bekannter Name nur bei sicherem Treffer, sonst Bontext', () => {
   const known = ['Tomaten', 'Tomatenmark', 'Milch', 'Kartoffeln', 'Gurke'];
   const aliases = [{ from: 'milbona h milch', name: 'Milch' }, { from: 'tom cherry', name: 'Cherrytomaten', deletedAt: null }];
-  assert.deepEqual(suggestName({ name: 'Milbona H-Milch 1,5%', text: '' }, aliases, known), { name: 'Milch', how: 'gemerkt', key: 'milbona h milch' });
+  assert.deepEqual(suggestName({ name: 'Milbona H-Milch 1,5%', text: '' }, aliases, known), { name: 'Milch', variant: '', how: 'gemerkt', key: 'milbona h milch' });
   assert.equal(suggestName({ name: 'Tom Cherry', text: '' }, aliases, known).name, 'Cherrytomaten', 'was ihr einmal zugeordnet habt, gilt');
-  assert.deepEqual(suggestName({ name: 'Tom', text: '' }, [], known), { name: 'Tomaten', how: 'Vorschlag', key: 'tom' }, 'Abkürzung allein wird zum bekannten Namen');
+  assert.deepEqual(suggestName({ name: 'Tom', text: '' }, [], known), { name: 'Tomaten', variant: '', how: 'Vorschlag', key: 'tom' }, 'Abkürzung allein wird zum bekannten Namen');
   assert.equal(suggestName({ name: 'Tomatenmark', text: '' }, [], known).name, 'Tomatenmark', 'genauer Name vor Abkürzung');
-  assert.deepEqual(suggestName({ name: 'MILCH', text: '' }, [], known), { name: 'Milch', how: '', key: 'milch' }, 'nur anders geschrieben: nichts zu prüfen');
-  assert.deepEqual(suggestName({ name: 'Gouda jung', text: '' }, [], known), { name: 'Gouda jung', how: '', key: 'gouda jung' });
+  assert.deepEqual(suggestName({ name: 'MILCH', text: '' }, [], known), { name: 'Milch', variant: '', how: '', key: 'milch' }, 'nur anders geschrieben: nichts zu prüfen');
+  assert.deepEqual(suggestName({ name: 'Gouda jung', text: '' }, [], known), { name: 'Gouda jung', variant: '', how: '', key: 'gouda jung' });
   assert.equal(suggestName({ name: 'Tom Cherry', text: '' }, [{ from: 'tom cherry', name: 'Weg', deletedAt: '2027-01-01T00:00:00.000Z' }], known).name, 'Tom Cherry', 'gelöschte Zuordnung zählt nicht');
 });
 
@@ -129,7 +129,7 @@ test('Namensvorschlag im Zweifel nicht: ein anderes Produkt bekommt nie den Prei
   const name = text => suggestName({ name: text, text: '' }, [], known);
   // Zusammengesetzte Wörter und zusätzliche Wörter sind andere Produkte
   for (const text of ['Apfeltasche', 'Apfel Saft', 'Apfelmus', 'Apfelstrudel', 'Hafermilch', 'Milchreis', 'Buttermilch', 'Bio Vollmilch', 'Kirschtomaten', 'Tom Cherry', 'Speisekartoffeln fest', 'Sahne Torte']) {
-    assert.deepEqual(name(text), { name: text, how: '', key: name(text).key }, `${text} bleibt, wie es auf dem Bon steht`);
+    assert.deepEqual(name(text), { name: text, variant: '', how: '', key: name(text).key }, `${text} bleibt, wie es auf dem Bon steht`);
   }
   // Sicher dasselbe Produkt: gleiches Wort, Beigaben wie „Bio“, Größen, andere Schreibweise
   assert.equal(name('Bio Apfel').name, 'Apfel');
@@ -166,4 +166,52 @@ test('Leerer oder fremder Text liefert keine Positionen und keinen Absturz', () 
     const r = parseReceipt(text);
     assert.deepEqual(r.items, []);
   }
+});
+
+test('Menge: ohne Stückzahl, Gewicht oder Packungsgröße bleibt sie unbekannt; ein Preis je kg bleibt ein Preis je kg', () => {
+  const r = parseReceipt('EDEKA\nÄPFEL                    1,29 A\nBANANEN 3 Stk x 0,29    0,87 A\nTOMATEN 0,500 kg x 2,98 EUR/kg  1,49 A\nMEHL 1KG                1,09 A\nSUMME 4,74');
+  const by = name => r.items.find(item => item.name === name);
+  assert.deepEqual(by('Äpfel').quote, { cents: 129, quantity: 1, unit: 'Position' });
+  assert.match(by('Äpfel').checks.join(' '), /Menge und Einheit stehen nicht auf dem Bon/);
+  assert.deepEqual(by('Bananen').quote, { cents: 29, quantity: 1, unit: 'Stück' }, 'Stückzahl steht auf dem Bon');
+  assert.deepEqual(by('Tomaten').quote, { cents: 298, quantity: 1, unit: 'kg' }, 'Gewichtsware bleibt „je kg“, nie ein Stückpreis');
+  assert.deepEqual(by('Mehl').quote, { cents: 109, quantity: 1, unit: 'kg' });
+  assert.deepEqual(by('Mehl').checks, []);
+});
+
+test('Rabatt: nur direkt unter einer Zeile und ohne Hinweis auf Coupon, Gutschein oder Punkte wird eingerechnet und zur Kontrolle gemeldet', () => {
+  const r = parseReceipt('REWE\nJOGHURT 500G          0,99 B\nRabatt          -0,20\nKÄSE 200G            2,49 B\nCOUPON Wochenend   -0,50\nPAYBACK Punkte   -0,30\nSUMME 2,48');
+  const joghurt = r.items.find(item => item.name === 'Joghurt'), kaese = r.items.find(item => item.name === 'Käse');
+  assert.equal(joghurt.onSale, true);
+  assert.equal(joghurt.discountCents, 20);
+  assert.match(joghurt.checks.join(' '), /Rabatt von 0,20 € direkt unter der Zeile eingerechnet/);
+  assert.equal(kaese.onSale, false, 'ein Coupon gehört nicht eindeutig zu dieser Zeile');
+  assert.equal(kaese.discountCents, 0);
+  assert.equal(r.skipped.filter(entry => /keiner Position eindeutig zugeordnet/.test(entry.why)).length, 2, 'Coupon und Punkte stehen zur Prüfung in der Liste');
+});
+
+test('Pfand und Leergut sind keine Artikel und beeinflussen keinen Artikelpreis', () => {
+  const r = parseReceipt('LIDL\nCOLA 1,5L             1,19 A\nPFAND 0,25 EUR          0,25 A\nSUMME 1,44');
+  assert.deepEqual(r.items.map(item => [item.name, item.quote.cents]), [['Cola', 119]]);
+  assert.ok(r.skipped.some(entry => entry.why === 'Pfand'));
+  assert.equal(r.sum, 144);
+});
+
+test('Sorten: nur eine bekannte Sorte mit dem Wort der Gruppe wird erkannt; Apfeltasche, Apfelsaft und „Gala“ allein nie', () => {
+  const known = ['Äpfel', 'Apfelsaft', 'Apfeltasche'];
+  const name = text => suggestName({ name: text, text: '' }, [], known);
+  assert.deepEqual([name('Gala Äpfel 1kg').name, name('Gala Äpfel 1kg').variant, name('Gala Äpfel 1kg').how], ['Äpfel', 'Gala', 'Sorte']);
+  assert.deepEqual([name('Äpfel Pink Lady').name, name('Äpfel Pink Lady').variant], ['Äpfel', 'Pink Lady']);
+  assert.deepEqual([name('BIO ÄPFEL ELSTAR').name, name('BIO ÄPFEL ELSTAR').variant], ['Äpfel', 'Elstar Bio']);
+  assert.deepEqual([name('Apfel Granny Smith').name, name('Apfel Granny Smith').variant], ['Apfel', 'Granny Smith'], 'die Gruppe bleibt, wie sie auf dem Bon steht');
+  for (const text of ['Gala', 'Pink Lady', 'Apfeltasche', 'Apfelsaft', 'Apfel Saft', 'Apfelmus', 'Äpfel Gala Saft', 'Gala Birnen', 'Hafermilch']) {
+    const result = name(text);
+    assert.equal(result.variant, '', `${text}: keine Sorte erfunden`);
+    assert.notEqual(result.how, 'Sorte', text);
+  }
+  assert.equal(name('Äpfel').variant, '');
+  assert.deepEqual(suggestName({ name: 'Birnen Conference', text: '' }, [], []).variant, 'Conference');
+  // Eine bestätigte Zuordnung bringt ihre Sorte mit
+  const alias = [{ from: 'gala äpfel', name: 'Äpfel', variant: 'Gala' }];
+  assert.deepEqual(suggestName({ name: 'GALA ÄPFEL 1KG', text: '' }, alias, []), { name: 'Äpfel', variant: 'Gala', how: 'gemerkt', key: 'gala äpfel' });
 });

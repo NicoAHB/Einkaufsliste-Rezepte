@@ -125,9 +125,9 @@ export function noteSuggestions(rows, storeName = '', limit = 12) {
 
 /* ---------- Geschätzt gegen bezahlt ---------- */
 // Geschätzte Summe der Artikel (ihr gemerkter Preis), aber nur, wenn für mindestens 70 % ein Preis bekannt ist; sonst 0 (keine brauchbare Schätzung).
-export function estimateOf(items, history = []) {
+export function estimateOf(items) {
   let cents = 0, priced = 0;
-  for (const item of items) { const cost = itemCost(item, history); if (cost !== null) { cents += cost; priced += 1; } }
+  for (const item of items) { const cost = itemCost(item); if (cost !== null) { cents += cost; priced += 1; } }
   return items.length && priced / items.length >= 0.7 ? cents : 0;
 }
 // Bezahlt gegen geschätzt: null ohne Schätzung; 'over' (rot), wenn mehr als 5 % (mindestens 0,50 €) darüber, sonst 'ok' (grün). `diff` = bezahlt − geschätzt in Cent.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { merge, operation, validate } from '../data.js';
-import { comparePrices, effectiveQuote, itemCost, localDay, saleExpired } from '../prices.js';
+import { effectiveQuote, itemCost, localDay, saleExpired } from '../prices.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
 const q = (cents, quantity = 1, unit = 'Stück') => ({ cents, quantity, unit });
@@ -19,22 +19,10 @@ test('Ein Angebot gilt bis einschließlich zum letzten Tag, danach nicht mehr', 
 
 test('Abgelaufene Angebote zählen nicht mehr als Preis: Summe und effektiver Preis nehmen den Normalpreis', () => {
   const sale = item({ saleUntil: '2026-03-12' });
-  assert.deepEqual(effectiveQuote(sale, [], '2026-03-12'), q(60));
-  assert.deepEqual(effectiveQuote(sale, [], '2026-03-13'), q(100));
-  assert.equal(itemCost(sale, [], '2026-03-12'), 120);
-  assert.equal(itemCost(sale, [], '2026-03-13'), 200);
-});
-
-test('Preisvergleich zeigt den Tag der Notiz, markiert alte Notizen und rechnet abgelaufene Aktionen mit dem Normalpreis', () => {
-  const stores = [{ id: 'a', name: 'Edeka', deletedAt: null }, { id: 'b', name: 'Lidl', deletedAt: null }, { id: 'c', name: 'Rewe', deletedAt: null }];
-  const row = (id, storeId, createdAt, extra) => ({ id, storeId, name: 'Joghurt', createdAt, updatedAt: createdAt, deletedAt: null, quote: q(100), regularQuote: q(100), onSale: false, ...extra });
-  const history = [row('1', 'a', '2026-03-01T12:00:00.000Z'), row('2', 'b', '2025-12-01T12:00:00.000Z', { quote: q(50), regularQuote: q(80), onSale: true, saleUntil: '2025-12-10' }),
-    row('3', 'c', '2026-03-10T12:00:00.000Z', { quote: q(40), regularQuote: null, onSale: true, saleUntil: '2026-03-11' })];
-  const rows = comparePrices({ name: 'Joghurt', unit: 'Stück' }, stores, history, '2026-03-12');
-  assert.deepEqual(rows.map(entry => [entry.storeName, entry.rate, entry.expired, entry.old]), [['Lidl', 80, true, true], ['Edeka', 100, false, false]], 'Rewe: abgelaufene Aktion ohne bekannten Normalpreis wird nicht verglichen');
-  assert.equal(rows[1].at, '2026-03-01T12:00:00.000Z');
-  // Ein noch gültiges Angebot zählt zu seinem Preis
-  assert.equal(comparePrices({ name: 'Joghurt', unit: 'Stück' }, stores, history, '2026-03-10').find(entry => entry.storeName === 'Rewe').rate, 40);
+  assert.deepEqual(effectiveQuote(sale, '2026-03-12'), q(60));
+  assert.deepEqual(effectiveQuote(sale, '2026-03-13'), q(100));
+  assert.equal(itemCost(sale, '2026-03-12'), 120);
+  assert.equal(itemCost(sale, '2026-03-13'), 200);
 });
 
 test('Datenmodell: saleUntil ist optional und wird geprüft', () => {

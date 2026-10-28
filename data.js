@@ -1,5 +1,5 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
-import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
+import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory, validAisles } from './categories.js';
 // `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
@@ -61,8 +61,13 @@ export function validateRow(key, row) {
       !Number.isFinite(Date.parse(entry.at)) || !(entry.quantity > 0) || typeof entry.unit !== 'string'))) throw new Error('Ungültige Mengenänderungen.');
   if (key === 'prices' && (typeof row.name !== 'string' || typeof row.storeId !== 'string' || !validQuote(row.quote))) throw new Error('Ungültiger gemerkter Preis.');
   if (key === 'prices' && row.regularQuote !== undefined && row.regularQuote !== null && !validQuote(row.regularQuote)) throw new Error('Ungültiger gemerkter Normalpreis.');
-  // Optional (Version 1.8): Preisentwicklung { was, at } und Herkunft der Notiz.
+  // Optional (Version 1.8): Preisentwicklung { was, at }. Seit 2.40 nicht mehr berechnet; ältere Notizen behalten das Feld.
   if (key === 'prices' && row.trend !== undefined && row.trend !== null && (!validQuote(row.trend.was) || !Number.isFinite(Date.parse(row.trend.at)))) throw new Error('Ungültige Preisentwicklung.');
+  // Optional (Version 2.40): `src` 'bon' = vom Nutzer geprüfte Kassenbonposition (bezahlter Preis; ohne das Feld ist die Herkunft ungeklärt und die Notiz wird zur Prüfung angeboten),
+  // `variant` = Sorte oder genaue Bezeichnung (z. B. „Gala“), `receipt` = Originaltext der Bonzeile, `receiptKey` = Schlüssel gegen doppeltes Übernehmen derselben Bonposition.
+  if (key === 'prices' && row.src !== undefined && row.src !== 'bon') throw new Error('Ungültige Herkunft des Preises.');
+  if (key === 'prices' && ((row.variant !== undefined && (typeof row.variant !== 'string' || row.variant.length > 80)) || (row.receipt !== undefined && (typeof row.receipt !== 'string' || row.receipt.length > 200)) ||
+      (row.receiptKey !== undefined && (typeof row.receiptKey !== 'string' || row.receiptKey.length > 300)))) throw new Error('Ungültige Angaben zum bezahlten Preis.');
   if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
       row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
       row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
@@ -87,12 +92,15 @@ export function validateRow(key, row) {
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
+  // `variant` (Version 2.40): Sorte, die zur Zuordnung gehört („gala äpfel“ → Äpfel, Gala).
+  if (key === 'aliases' && row.variant !== undefined && (typeof row.variant !== 'string' || row.variant.length > 80)) throw new Error('Ungültige Namenszuordnung.');
 }
 
 // Stand dieser App für die Datei. Wer die Datei später so ändert, dass ältere Apps sie falsch lesen oder beschädigen würden, trägt in `sync.minRev` die
 // nötige Mindestzahl ein; eine App mit kleinerer Zahl liest die Datei dann nicht mehr und schreibt nichts (sie verweist auf das Aktualisieren).
 // Apps bis Version 2.36 kennen das Feld noch nicht. Revision 2: Marken für die Liste der angewendeten Änderungen (`sync.marks`, siehe compact.js).
-export const SCHEMA_REV = 2;
+// Revision 3 (Version 2.40): bezahlte Preise mit Sorte (`prices.variant`, `prices.src`); eine ältere App würde sie beim Aufräumen zusammenwerfen.
+export const SCHEMA_REV = 3;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -195,6 +203,9 @@ export function merge(data, operations) {
         row._clock[field] = { at: op.at, id: op.id };
       }
     }
+    if ((op.collection === 'prices' && ['src', 'variant', 'receipt', 'receiptKey'].some(field => field in op.patch)) || (op.collection === 'aliases' && 'variant' in op.patch)) {
+      next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 3);   // ab jetzt darf nur noch eine App schreiben, die Sorten kennt
+    }
     row.updatedAt = [row.updatedAt, op.at].sort().at(-1);
     applied.add(op.id);
     next.updatedAt = [next.updatedAt, op.at].sort().at(-1);
@@ -286,22 +297,22 @@ export function frequentItems(history, items, limit = 6, minCount = 2) {
     .sort((a, b) => b.count - a.count || b.at.localeCompare(a.at) || a.name.localeCompare(b.name, 'de')).slice(0, limit);
 }
 
-// Neue Listenartikel aus fertig umgerechneten Zeilen {name, quantity, unit}. Gemerkter Preis und Kategorie
-// (zuletzt verwendete für denselben Namen, sonst geschätzt) werden vorgeschlagen, aber nie erfunden.
-export function newItems(rows, storeId, actor, at, history = [], items = []) {
+// Neue Listenartikel aus fertig umgerechneten Zeilen {name, quantity, unit}. Die Kategorie (zuletzt verwendete für denselben Namen,
+// sonst geschätzt) wird vorgeschlagen, aber nie erfunden. Einen Preis bekommt ein neuer Artikel nie von selbst (auch nicht aus früheren Käufen).
+export function newItems(rows, storeId, actor, at, items = []) {
   const learned = learnCategories(items);
   return rows.map(row => {
     const category = suggestCategory(row.name, learned);
     return operation('items', uid(), { storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
-      price: rememberedPrice(history, storeId, row.name, row.unit), onSale: false, ...(category ? { category } : {}) }, actor, at);
+      price: null, onSale: false, ...(category ? { category } : {}) }, actor, at);
   });
 }
 
 // Zutaten „nach Bedarf“ (Salz, Pfeffer) haben keine Menge, die sich umrechnen ließe: Sie landen als 1 Stück auf der Liste.
 export const listRow = (row, factor = 1) => row.unit === NO_AMOUNT ?
   { name: row.name, quantity: 1, unit: 'Stück', noAmount: true } : { name: row.name, quantity: row.quantity * factor, unit: row.unit };
-export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, history = [], items = []) {
-  return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, history, items);
+export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, items = []) {
+  return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, items);
 }
 
 /* Vorrat: Zutaten, die man immer zu Hause hat. Ein Name wie „Salz, Pfeffer“ oder „Salz und Pfeffer“ besteht aus mehreren Teilen
@@ -381,9 +392,9 @@ export function duplicateFolds(items, now = new Date().toISOString()) {
 }
 
 // Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
-export function addToList(rows, storeId, actor, at, history = [], items = []) {
+export function addToList(rows, storeId, actor, at, items = []) {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
-  const created = newItems(fresh, storeId, actor, at, history, items);
+  const created = newItems(fresh, storeId, actor, at, items);
   // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).
   const ops = [...created, ...counted.map(entry => operation('items', entry.id, { add: entry.add }, actor, at))];
   return { ops, added: created.length, counted, skipped };

@@ -78,7 +78,7 @@ test('Zutaten auf die Liste: Portionen umrechnen, „nach Bedarf“ wird 1 Stüc
     { id: 'i2', recipeId: 'r', name: 'Salz', quantity: 1, unit: NO_AMOUNT, deletedAt: null },
     { id: 'i3', recipeId: 'r', name: 'Gelöscht', quantity: 1, unit: 'g', deletedAt: at(1) },
     { id: 'i4', recipeId: 'andere', name: 'Fremd', quantity: 1, unit: 'g', deletedAt: null }];
-  const ops = ingredientItems(ingredients, 'r', 'store-1', 2.5, 'Nico', at(7), []);
+  const ops = ingredientItems(ingredients, 'r', 'store-1', 2.5, 'Nico', at(7));
   assert.equal(ops.length, 2);
   assert.deepEqual(ops.map(row => [row.patch.name, row.patch.quantity, row.patch.unit]), [['Nudeln', 500, 'g'], ['Salz', 1, 'Stück']]);
   assert.ok(ops.every(row => row.collection === 'items' && row.patch.checked === false && row.patch.createdBy === 'Nico'));
@@ -152,7 +152,7 @@ test('Wochenplan-Änderungen werden wie alle anderen zusammengeführt (auch ohne
 
 test('Neue Artikel: Kategorie wird aus früheren Artikeln gelernt, sonst geschätzt, sonst weggelassen', () => {
   const known = [{ name: 'Kefir', category: 'getraenke', updatedAt: at(1) }];
-  const ops = newItems([{ name: 'kefir', quantity: 1, unit: 'l' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }, { name: 'Xyzzy', quantity: 1, unit: 'Stück' }], 'store-1', 'Nico', at(5), [], known);
+  const ops = newItems([{ name: 'kefir', quantity: 1, unit: 'l' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }, { name: 'Xyzzy', quantity: 1, unit: 'Stück' }], 'store-1', 'Nico', at(5), known);
   assert.deepEqual(ops.map(row => row.patch.category), ['getraenke', 'obst', undefined]);
   assert.ok(!('category' in ops[2].patch));
   assert.ok(ops.every(row => row.collection === 'items' && row.patch.createdBy === 'Nico' && row.patch.checked === false));
