@@ -1704,24 +1704,34 @@ body.in-store .tabs {
   min-width:0;
   min-height:68px;
   gap:14px;
-  padding:12px 12px 12px 0;
+  padding:12px 6px 12px 0;
   color:var(--text);
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none
 }
-.shop-text .item-thumb {
-  width:44px;
-  height:44px;
-  margin:0;
-  border-radius:12px
-}
-.shop-text .item-thumb .emoji {
-  font-size:26px
-}
+/* Das Produktsymbol ist dieselbe Kachel wie in der Einkaufsliste (.item-thumb); auf schmalen Bildschirmen bleibt sie, dafür rücken Kreis und Text enger zusammen */
 @media (max-width:340px) {
+  .shop-tap {
+    width:60px
+  }
+  /* Schmal: die Menge steht unter dem Namen (wie in der Einkaufsliste), das Symbol rechts über beide Zeilen; so bleibt dem Namen mehr Platz */
+  .shop-text {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    column-gap:10px;
+    row-gap:0
+  }
+  .shop-text .shop-name {
+    grid-column:1
+  }
+  .shop-text .shop-qty {
+    grid-column:1;
+    grid-row:2
+  }
   .shop-text .item-thumb {
-    display:none
+    grid-column:2;
+    grid-row:1 / span 2
   }
 }
 .shop-mark {

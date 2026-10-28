@@ -3458,7 +3458,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   test('Im Laden: Name und Menge sind so groß wie in der Einkaufsliste unter „Planen“; keine Preisinfo und kein Pfeil, ein Tipp auf Name oder Menge bewirkt nichts', async () => {
-    const { ctx, page, problems } = await context();
+    const { ctx, page, problems } = await context({ config: { productImages: undefined } });   // Produktbilder wie ausgeliefert: an
     await open(page);
     const size = selector => page.evaluate(sel => parseFloat(getComputedStyle(document.querySelector(sel)).fontSize), selector);
     const plan = { name: await size('#items .item-copy strong'), qty: await size('#items .item-copy .item-qty') };
@@ -3473,6 +3473,20 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
     assert.equal(await checked(), before, 'ein Tipp auf den Namen hakt nichts ab');
     assert.equal(await horizontalOverflow(page), 0);
+    // Das Produktsymbol steht im Laden wie in der Einkaufsliste, auch auf schmalen Bildschirmen (z. B. „Vergrößerte Darstellung“ mit 320 px)
+    const thumb = selector => page.evaluate(sel => { const node = document.querySelector(sel), box = node.getBoundingClientRect(), row = node.closest('li').getBoundingClientRect(); return { width: Math.round(box.width), height: Math.round(box.height), emoji: node.textContent.trim(), inside: box.right <= row.right + 0.5 && box.left >= row.left - 0.5 }; }, selector);
+    for (const width of [390, 320, 280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.click('#shop-back'); await page.waitForSelector('#items .item .item-thumb');
+      const plan = await thumb('#items .item .item-thumb');
+      await page.click('#mode-shop'); await page.waitForSelector('#shop-list .shop-item .item-thumb');
+      const shop = await thumb('#shop-list .shop-item .item-thumb');
+      assert.deepEqual(shop, { ...plan, inside: true }, `Symbol im Laden wie in der Einkaufsliste bei ${width} px`);
+      assert.ok(shop.emoji.length > 0, 'ein Symbol steht da');
+      assert.equal(await horizontalOverflow(page), 0, `kein Überlauf bei ${width} px`);
+      const nameBox = await page.locator('#shop-list .shop-name').first().evaluate(node => { const row = node.closest('li').getBoundingClientRect(), box = node.getBoundingClientRect(); return box.left >= row.left && box.right <= row.right; });
+      assert.ok(nameBox, `der Name bleibt in der Zeile bei ${width} px`);
+    }
     assert.deepEqual(problems, []);
     await ctx.close();
   });

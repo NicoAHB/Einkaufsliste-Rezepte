@@ -35,11 +35,14 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Schrift im Laden.** Name und Menge sind jetzt so groß wie in der Einkaufsliste unter „Planen“ (vorher 1,3-fach und 1,05-fach). Lange Namen brechen dadurch seltener um.
 
-**Tests:** `tests/browser.test.mjs`: Schriftgröße im Laden gleich der unter „Planen“, kein Pfeil und keine Preisinfo, ein Tipp auf den Namen tut nichts; kein Kassenbon-Weg und kein Bereich „Bezahlte Preise“; vorhandene Preisnotizen und Zuordnungen bleiben nach neuen Änderungen unverändert in der Datei; Gemerkte Namen. `tests/receipt.test.mjs` prüft nur noch das Lesen von Summe, Datum, Kette und Zeilen. Die Tests für die Preisinfo, die Bon-Zuordnung und `history.js` entfallen.
+**Produktsymbol im Laden.** Das farbige Symbol rechts in der Zeile ist dieselbe Kachel wie in der Einkaufsliste (gleiche Größe, gleiches Symbol) und gilt auch auf **schmalen Bildschirmen**. Vorher war es bei 340 px Breite und weniger ausgeblendet; das trifft z. B. ein iPhone mit „Vergrößerter Darstellung“. Dort steht die Menge unter dem Namen (wie in der Einkaufsliste) und das Symbol rechts über beide Zeilen. Der Schalter „Produktbilder anzeigen“ in den Einstellungen gilt für beide Ansichten.
+
+**Tests:** `tests/browser.test.mjs`: Schriftgröße im Laden gleich der unter „Planen“, Produktsymbol im Laden gleich groß wie in der Einkaufsliste (390, 320 und 280 px, innerhalb der Zeile), kein Pfeil und keine Preisinfo, ein Tipp auf den Namen tut nichts; kein Kassenbon-Weg und kein Bereich „Bezahlte Preise“; vorhandene Preisnotizen und Zuordnungen bleiben nach neuen Änderungen unverändert in der Datei; Gemerkte Namen. `tests/receipt.test.mjs` prüft nur noch das Lesen von Summe, Datum, Kette und Zeilen. Die Tests für die Preisinfo, die Bon-Zuordnung und `history.js` entfallen.
 
 Testpunkte für Version 2.44 (iPhone):
 
 - [ ] Im Laden: Name und Menge der Artikel sind so groß wie in der Einkaufsliste; lange Namen („Blumenerde“, „Domol Feinwaschmittel“) brechen seltener um. Ein Tipp auf den Namen bewirkt nichts, der Kreis hakt ab.
+- [ ] Im Laden: Jeder Artikel hat sein Produktsymbol rechts wie in der Einkaufsliste, auch mit „Vergrößerter Darstellung“ (iPhone-Einstellungen → Anzeige & Helligkeit → Anzeige). Dort steht die Menge unter dem Namen. „Produktbilder anzeigen“ aus: keine Symbole, in keiner Ansicht.
 - [ ] Einkauf beenden: nur „Was hast du bezahlt?“ mit „+“ und „Nur beenden“, kein Kassenbon-Knopf. Einkauf/„Preisschild“: Angebote wie bisher, kein „Kassenbon“-Knopf mehr.
 - [ ] Einstellungen: kein Bereich „Bezahlte Preise“; „Gemerkte Namen“ zeigt „Text → Name“.
 - [ ] Ausgaben → Einkauf eintragen: Kassenbon-Foto/Screenshot liest Summe, Datum und Geschäft; es gibt keinen Haken für Artikelpreise.
