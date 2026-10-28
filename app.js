@@ -2,7 +2,7 @@ import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, freq
 import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
-import { brandOf } from './brand.js';
+import { brandOf, defaultSymbol, symbolOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
@@ -298,8 +298,17 @@ function groupHead(label, count) {
   row.append(element('span', label), element('span', String(count), 'count'));
   return row;
 }
-// Name eines Geschäfts: als Text oder (Einstellung „Geschäfte anzeigen als“) als Schriftzug in den Farben der Kette; unbekannte Geschäfte bleiben Text.
+// Kleines Bild statt Name (Geschenk bei „Wünsche“): Bildschirmleser und der Hinweis beim Berühren bekommen weiter den Namen.
+function symbolNode(symbol, name) {
+  const node = element('span', undefined, 'store-symbol'), svg = document.createElementNS(SVG_NS, 'svg'), use = document.createElementNS(SVG_NS, 'use');
+  node.setAttribute('role', 'img'); node.setAttribute('aria-label', name); node.title = name;
+  svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); use.setAttribute('href', `#i-${symbol}`); svg.append(use); node.append(svg);
+  return node;
+}
+// Name eines Geschäfts: als Bild (Voreinstellung für „Wünsche“, pro Geschäft einstellbar), sonst als Text oder (Einstellung „Geschäfte anzeigen als“) als Schriftzug in den Farben der Kette; unbekannte Geschäfte bleiben Text.
 function storeLabel(name) {
+  const symbol = symbolOf(active(state.stores).find(store => store.name === name) || { name });
+  if (symbol) return symbolNode(symbol, name);
   const key = config.storeStyle === 'logo' ? brandOf(name) : '';
   return key ? element('span', name, `brand brand-${key}`) : document.createTextNode(name);
 }
@@ -614,12 +623,16 @@ function renderStores() {
     separate.type = 'checkbox'; separate.name = 'separate'; separate.checked = isSeparate(store); anywhereLabel.hidden = separate.checked;
     separate.addEventListener('change', () => { anywhereLabel.hidden = separate.checked; });
     separateLabel.append(separate, ' Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist');
-    form.append(nameLabel, linkLabel, separateLabel, anywhereLabel, save);
+    // Anzeige im Reiter: der Name oder ein kleines Bild (Voreinstellung nach dem Namen, siehe brand.js)
+    const symbolLabel = element('label', 'Anzeige im Reiter'), symbolPick = element('select');
+    symbolPick.name = 'symbol'; symbolPick.append(new Option('Name', 'name'), new Option('Geschenk-Symbol (kleines Bild)', 'gift')); symbolPick.value = symbolOf(store) || 'name'; symbolLabel.append(symbolPick);
+    form.append(nameLabel, linkLabel, symbolLabel, separateLabel, anywhereLabel, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id); const typed = offerUrl(link.value);
       // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
-      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked, separate: separate.checked || null })]); renderStores();
+      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked, separate: separate.checked || null,
+        symbol: (symbolPick.value === 'gift' ? 'gift' : '') === defaultSymbol(name) ? null : symbolPick.value === 'gift' ? 'gift' : 'none' })]); renderStores();
     }); });
     const remove = button('Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');

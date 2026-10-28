@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.30
+# Einkauf & Rezepte – Version 2.31
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.31: Geschenk-Symbol statt „Wünsche“
+
+- **Das Geschäft „Wünsche“ erscheint als kleines Geschenk-Bild** (Geschenk in gedecktem Altrosa mit sandfarbener Schleife, mattem Gold-Stern und weißem Herz; bewusst nicht knallig) statt als Text: im Reiter unter „Planen“, in der Geschäftsauswahl beim Anlegen eines Artikels, in der Leiste „Im Laden“ und als Ziel beim Verschieben. Der Name bleibt als Beschriftung für Bildschirmleser und als Hinweis beim Berühren erhalten; Meldungen und Dialoge nennen ihn weiter als Text.
+- **Einstellbar pro Geschäft:** In „Geschäfte“ gibt es **Anzeige im Reiter** (Name oder Geschenk-Symbol). Voreinstellung: „Wünsche“ (auch Wunschliste, Wunschzettel) zeigt das Geschenk, alle anderen den Namen. Wer die Voreinstellung wählt, schreibt nichts fest (Feld `symbol` bleibt leer); eine ausdrückliche Wahl (`gift` oder `none`) bleibt auch nach dem Umbenennen. Gilt auf beiden Handys. Das Geschenk lässt sich so auch einem anderen Geschäft geben.
+- **Farben für jeden Hintergrund:** Das Bild trägt einen weißen Außenrand und eine dunkle Kontur (tiefes Weinrot) um Geschenk, Schleife und Stern. Auf hellem Grund trägt die dunkle Kontur, auf dunklem oder farbigem Grund der weiße Rand, auch auf einem gewählten Reiter (gefüllt mit der Farbe). Geprüft: hell und dunkel, alle sechs Farben, Glas aus sowie alle drei Glas-Hintergründe, gewählt und nicht gewählt; der Rand ist überall mindestens 3 : 1 vom Grund abgehoben (schwächster Fall 4,2 : 1).
+- Die Einstellung „Geschäfte anzeigen als Text oder Logo“ gilt nur für Geschäfte ohne Symbol.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, per Pixelmessung des Grundes neben dem Bild).
+
+Weiterer Testpunkt für Version 2.31:
+
+- [ ] Reiter „Wünsche“ ansehen: Es steht nur das Geschenk mit der Zahl da, auch wenn der Reiter gewählt ist, im hellen und im dunklen Modus und bei anderen Farben und Glas-Hintergründen. Unter „Geschäfte“ → „Anzeige im Reiter“ auf „Name“ stellen: Der Text ist zurück.
 
 ## Neu in Version 2.30: eigene Liste (z. B. „Wünsche“)
 

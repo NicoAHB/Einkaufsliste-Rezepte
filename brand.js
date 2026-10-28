@@ -15,6 +15,11 @@ const CHAINS = [
   { key: 'budni', pattern: /^budni\b/, drugstore: true }
 ];
 const normalise = name => String(name || '').trim().toLowerCase().replace(/ß/g, 'ss').replace(/\s+/g, ' ');
+// Symbol statt Name (Version 2.31): Ein Geschäft kann als kleines Bild statt als Name erscheinen. Ausdrücklich eingestellt (`symbol`: 'gift' oder 'none'), sonst nach dem Namen:
+// „Wünsche“ (auch Wunschliste, Wunschzettel) ist ein Geschenk. `gift` muss zu `<symbol id="i-gift">` in index.html passen.
+export const SYMBOLS = ['gift'];
+export const defaultSymbol = name => /^w(?:ü|ue|u)nsch(?:e|liste|zettel)?\b/.test(normalise(name)) ? 'gift' : '';
+export const symbolOf = store => store?.symbol === 'none' ? '' : SYMBOLS.includes(store?.symbol) ? store.symbol : defaultSymbol(store?.name);
 // Die Kette zu einem Geschäftsnamen oder null.
 export const chainOf = name => CHAINS.find(chain => chain.pattern.test(normalise(name))) || null;
 // Schlüssel für die Anzeige als Logo („rewe“) oder '' bei Geschäften ohne Logo.
