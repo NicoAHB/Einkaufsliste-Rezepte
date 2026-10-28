@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.34
+# Einkauf & Rezepte – Version 2.35
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.35: Vorschläge für den Vorrat
+
+- **Einstellungen → Vorrat** bietet unter der Liste **Vorschläge häufiger Vorräte** zum Übernehmen an: Würzen (Salz, Pfeffer, Paprikapulver, Zimt, Muskat, Oregano, Thymian, Currypulver), Backen (Mehl, Zucker, Vanillezucker, Puderzucker, Backpulver), Öl, Essig & Soßen (Öl, Olivenöl, Essig, Senf, Sojasauce, Tomatenmark, Gemüsebrühe), Haltbares (Nudeln, Reis, Haferflocken) und Gemüse, meist da (Zwiebel, Knoblauchzehen). Die Namen sind so geschrieben, wie sie in Rezepten meistens stehen, denn der Vorrat vergleicht Namen genau (Groß- und Kleinschreibung egal).
+- **Ein Tipp auf einen Namen** (Chip mit Plus) nimmt ihn in den Vorrat; er erscheint oben in der Liste, der Vorschlag verschwindet. **„Alle übernehmen“** nimmt alle noch fehlenden auf einmal. Was schon im Vorrat steht, auch selbst eingetippt in anderer Schreibweise (`pfeffer` für „Pfeffer“), wird nicht mehr angeboten; entfernt man einen Eintrag (✕), kommt der Vorschlag zurück. Stehen alle im Vorrat, sagt eine Zeile „Alle Vorschläge stehen schon im Vorrat.“
+- Wirkung wie bei selbst eingetragenen Vorräten: Beim Übernehmen von Rezepten und beim Wocheneinkauf sind diese Zutaten vorab abgewählt und mit „Vorrat“ gekennzeichnet; sie zählen bei „Was kann ich kochen?“ als vorhanden. Der Vorrat gilt für beide Personen (gemeinsame Datei).
+- Neue Datei `pantry-suggestions.js` (Liste und Auswahl, mit Tests); im Offline-Paket und in der Upload-Liste.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, bei 280 und 390 px, hell und dunkel).
+
+Weiterer Testpunkt für Version 2.35:
+
+- [ ] Einstellungen → Vorrat aufklappen: Unter der Liste stehen die Vorschläge in Gruppen. Ein paar antippen (sie wandern in die Liste), dann **Alle übernehmen**. Einen Eintrag mit ✕ entfernen: Der Vorschlag kommt zurück.
 
 ## Neu in Version 2.34: im Laden keine Leiste unten
 
@@ -665,7 +677,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

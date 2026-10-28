@@ -775,6 +775,56 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Vorrat: Vorschläge häufiger Vorräte zum Übernehmen (Tipp auf einen Namen, „Alle übernehmen“); Vorhandenes wird nicht mehr angeboten, Entferntes kommt zurück', async () => {
+    for (const width of [280, 390]) {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 700 } } });
+      await open(page); await openSettings(page);
+      const box = page.locator('#pantry-suggestions'), chips = box.locator('.suggest-chips .chip');
+      const pantry = () => page.locator('#pantry-list li:not(.empty) > span').allTextContents();
+      const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.pantry.filter(row => !row.deletedAt).map(row => row.name));
+      assert.match(await box.locator('h4').textContent(), /Vorschläge zum Übernehmen/);
+      assert.deepEqual(await box.locator('.suggest-title').allTextContents(), ['Würzen', 'Backen', 'Öl, Essig & Soßen', 'Haltbares', 'Gemüse, meist da']);
+      const total = await chips.count();
+      assert.equal(total, 25);
+      assert.deepEqual(await pantry(), [], 'der Vorrat ist leer');
+      // Ein Tipp nimmt den Namen in den Vorrat; der Vorschlag verschwindet
+      const salt = page.getByRole('button', { name: 'Salz in den Vorrat übernehmen' });
+      assert.ok((await salt.boundingBox()).height >= 40, 'gut zu treffen');
+      await salt.click();
+      assert.deepEqual(await pantry(), ['Salz']);
+      assert.deepEqual(await stored(), ['Salz'], 'gespeichert');
+      assert.equal(await chips.count(), total - 1);
+      assert.equal(await salt.count(), 0);
+      // Selbst eingetippt (andere Schreibweise): auch dieser Vorschlag verschwindet
+      await page.fill('#pantry-form input[name=name]', 'pfeffer'); await page.click('#pantry-form button[type=submit]');
+      assert.equal(await page.getByRole('button', { name: 'Pfeffer in den Vorrat übernehmen' }).count(), 0);
+      assert.equal(await chips.count(), total - 2);
+      // Alle übernehmen: der Rest kommt in den Vorrat, nichts doppelt
+      await page.getByRole('button', { name: 'Alle übernehmen' }).click();
+      assert.equal(await chips.count(), 0);
+      assert.equal((await pantry()).length, total, 'jeder Vorschlag genau einmal (Salz, „pfeffer“ und die übrigen)');
+      assert.equal(new Set((await pantry()).map(name => name.toLowerCase())).size, total);
+      assert.equal(await page.getByRole('button', { name: 'Alle übernehmen' }).count(), 0);
+      assert.match(await box.textContent(), /Alle Vorschläge stehen schon im Vorrat/);
+      // Entfernen bringt den Vorschlag zurück
+      await page.getByRole('button', { name: 'Mehl aus dem Vorrat entfernen' }).click();
+      assert.deepEqual(await chips.allTextContents(), ['Mehl']);
+      assert.equal(await page.getByRole('button', { name: 'Alle übernehmen' }).count(), 1);
+      assert.ok(!(await stored()).includes('Mehl'));
+      // Wirkung im Alltag: ein Rezept mit Salz zeigt „Vorrat“ (Salz steht im Vorrat)
+      assert.equal(await horizontalOverflow(page), 0, `kein seitlicher Überlauf bei ${width} px`);
+      const widest = await chips.evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().right)));
+      assert.ok(widest.every(right => right <= width), 'die Chips bleiben im Bild');
+      await page.getByRole('button', { name: 'Mehl in den Vorrat übernehmen' }).click();
+      assert.equal(await page.getByRole('button', { name: 'Alle übernehmen' }).count(), 0);
+      await page.getByRole('button', { name: 'Zucker aus dem Vorrat entfernen', exact: true }).click();
+      const head = await box.locator('.suggest-head').evaluate(node => [...node.children].map(child => { const r = child.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
+      assert.ok(head.every(([left, right]) => left >= 0 && right <= width), `Überschrift und „Alle übernehmen“ bleiben im Bild (${JSON.stringify(head)})`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
   test('Vorrat: in den Einstellungen pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

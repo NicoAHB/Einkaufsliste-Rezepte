@@ -7,6 +7,7 @@ import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuilti
 import { dragDelete } from './dragdelete.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain, suggestName } from './receipt.js';
+import { pantrySuggestions } from './pantry-suggestions.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, suggestCategory } from './categories.js';
@@ -2198,6 +2199,31 @@ function renderPantry() {
   for (const row of rows) {
     const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id])));
     list.append(entry);
+  }
+  renderPantrySuggestions();
+}
+// Vorschläge häufiger Vorräte (pantry-suggestions.js) zum Übernehmen: ein Tipp auf einen Namen nimmt ihn in den Vorrat, „Alle übernehmen“ alle noch fehlenden.
+// Was schon im Vorrat steht (auch in anderer Groß- und Kleinschreibung), wird nicht mehr angeboten.
+function addToPantry(names) {
+  const fresh = pantryAdditions(names, pantryKeys(state.pantry));
+  if (fresh.length) commit(fresh.map(name => nextOp('pantry', uid(), { name })));
+}
+function renderPantrySuggestions() {
+  const box = $('#pantry-suggestions'); box.replaceChildren();
+  const groups = pantrySuggestions(pantryKeys(state.pantry));
+  const head = element('div', undefined, 'suggest-head'); head.append(element('h4', 'Vorschläge zum Übernehmen'));
+  box.append(head);
+  if (!groups.length) { box.append(element('p', 'Alle Vorschläge stehen schon im Vorrat.', 'hint')); return; }
+  head.append(button('Alle übernehmen', () => addToPantry(groups.flatMap(group => group.names)), 'secondary small'));
+  for (const group of groups) {
+    const section = element('div', undefined, 'suggest-group'), chips = element('div', undefined, 'suggest-chips');
+    for (const name of group.names) {
+      const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(icon('plus'), document.createTextNode(name));
+      chip.setAttribute('aria-label', `${name} in den Vorrat übernehmen`);
+      chip.addEventListener('click', () => guard(() => addToPantry([name])));
+      chips.append(chip);
+    }
+    section.append(element('span', group.title, 'suggest-title'), chips); box.append(section);
   }
 }
 $('#pantry-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
