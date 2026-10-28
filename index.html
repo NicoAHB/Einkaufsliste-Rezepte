@@ -237,7 +237,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.38 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.39 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -394,7 +394,7 @@
   </form></dialog>
   <dialog id="meal-dialog"><form id="meal-form" class="stack"><div class="sheet-head"><h2 id="meal-title">Gericht planen</h2><button type="button" data-close="meal-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">
-    <label>Tag<input name="date" type="date" required></label>
+    <label data-day>Tag<input name="date" type="date" required></label>
     <label>Rezept<select name="recipeId"></select></label>
     <label data-custom hidden>Eigenes Gericht<input name="title" maxlength="80" placeholder="z. B. Pizza bestellen" autocomplete="off"></label>
     <label>Portionen<input name="servings" inputmode="decimal" required maxlength="16"></label>

@@ -1469,6 +1469,12 @@ dialog::backdrop {
   margin:0;
   font-size:1.3rem
 }
+/* Der Tag in der Überschrift (z. B. „Gericht planen – Montag 26.10.“) ist kleiner wie auf den Tageskarten und bricht nie in der Mitte um. */
+.sheet-head h2 span {
+  font-size:.8em;
+  font-weight:600;
+  white-space:nowrap
+}
 .dialog-error {
   padding:12px;
   margin-bottom:12px;

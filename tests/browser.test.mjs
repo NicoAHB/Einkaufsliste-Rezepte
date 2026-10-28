@@ -4865,6 +4865,55 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Gericht planen: Der Tag steht in der Überschrift und wird nicht noch einmal gewählt (nur von der Rezeptkarte aus gibt es die Tagesauswahl)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=plan]');
+    const titleOf = () => page.locator('#meal-title').textContent();
+    const dayField = () => page.locator('#meal-form [data-day]').isVisible();
+    // ＋ am Donnerstag: Der Tag steht in der Überschrift, kein Auswahlfeld
+    const thursday = page.locator('.day').nth(3);
+    const label = (await thursday.locator('h3').textContent()).replace(/^(\D+?)\s*(\d)/, '$1 $2');   // „Donnerstag29.10.“ (Datum steht im eigenen Element) → „Donnerstag 29.10.“
+    assert.match(label, /^Donnerstag \d{2}\.\d{2}\.$/);
+    await thursday.locator('.day-head .icon-button').click(); await sheetOpen(page);
+    assert.equal(await titleOf(), `Gericht planen – ${label}`);
+    assert.equal(await dayField(), false, 'Kein Tag zur Auswahl');
+    // Auch in schmalen Fenstern bleibt die Überschrift samt Schließen-Knopf im Bild
+    for (const width of [390, 320, 280]) {
+      await page.setViewportSize({ width, height: 640 });
+      const fit = await page.evaluate(() => { const head = document.querySelector('#meal-form .sheet-head'), close = head.querySelector('button').getBoundingClientRect(), title = head.querySelector('h2').getBoundingClientRect(); return { closeRight: close.right, title: title.right, width: innerWidth, overflow: document.querySelector('#meal-dialog').scrollWidth - document.querySelector('#meal-dialog').clientWidth }; });
+      assert.ok(fit.closeRight <= fit.width && fit.title <= fit.closeRight && fit.overflow <= 0, `Überschrift passt bei ${width} px: ${JSON.stringify(fit)}`);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    // Speichern legt das Gericht auf diesen Tag
+    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Tomaten-Pasta' }); await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    assert.match(await page.locator('.day').nth(3).textContent(), /Tomaten-Pasta/);
+    assert.equal(await page.locator('.meal').count(), 1, 'Nur Donnerstag hat ein Gericht');
+    // Ändern: ebenfalls Tag in der Überschrift, kein Auswahlfeld
+    await page.locator('.day').nth(3).getByRole('button', { name: /Tomaten-Pasta ändern/ }).click(); await sheetOpen(page);
+    assert.equal(await titleOf(), `Gericht ändern – ${label}`);
+    assert.equal(await dayField(), false);
+    await page.fill('#meal-form input[name=servings]', '3'); await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    assert.match(await page.locator('.day').nth(3).textContent(), /3 Portionen/);
+    assert.equal(await page.locator('.meal').count(), 1, 'Tag blieb unverändert');
+    // Von der Rezeptkarte aus ist noch kein Tag gewählt: Überschrift ohne Tag, dafür die Tagesauswahl
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click(); await sheetOpen(page);
+    assert.equal(await titleOf(), 'Gericht planen');
+    assert.equal(await dayField(), true, 'Tagesauswahl vorhanden');
+    const later = new Date(); later.setDate(later.getDate() + 9);
+    const iso = `${later.getFullYear()}-${String(later.getMonth() + 1).padStart(2, '0')}-${String(later.getDate()).padStart(2, '0')}`, dm = `${String(later.getDate()).padStart(2, '0')}.${String(later.getMonth() + 1).padStart(2, '0')}.`;
+    await page.fill('#meal-form input[name=date]', iso); await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#plan:not([hidden])');
+    const card = page.locator('.day', { hasText: 'Kichererbsen-Curry' });
+    assert.equal(await card.count(), 1);
+    assert.ok((await card.locator('h3').textContent()).includes(dm), `Gericht liegt am gewählten Tag ${dm}`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Wochenplan: planen, abhaken, Wochen-Einkaufsliste, eigenes Gericht, Rückgängig', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

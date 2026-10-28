@@ -1099,7 +1099,11 @@ function openMeal(options = {}) {
   form.elements.title.value = meal?.title || '';
   form.elements.servings.value = plain(meal?.servings || options.servings || recipes.find(recipe => recipe.id === select.value)?.servings || 2);
   syncMealForm(false);
-  $('#meal-title').textContent = meal ? 'Gericht ändern' : 'Gericht planen';
+  // Kommt man von einem Tag (＋ am Tag, Bearbeiten), steht der Tag in der Überschrift und lässt sich hier nicht noch einmal wählen. Nur von der Rezeptkarte aus (noch kein Tag) gibt es die Tagesauswahl.
+  const fixedDay = Boolean(meal || options.date), day = form.elements.date.value;
+  form.querySelector('[data-day]').hidden = fixedDay;
+  const title = $('#meal-title'); title.textContent = meal ? 'Gericht ändern' : 'Gericht planen';
+  if (fixedDay) title.append(' – ', element('span', `${dayName(day)} ${dayMonthLabel(day)}`));
   $('#meal-dialog').showModal();
 }
 function syncMealForm(changedRecipe) {
