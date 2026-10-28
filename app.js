@@ -2525,6 +2525,18 @@ const photosApi = () => `https://api.github.com/repos/${encodeURIComponent(confi
 fillCategorySelects();
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
+// Ein Tipp auf den Bereich außerhalb eines Fensters (oben, auf den abgedunkelten Hintergrund) schließt es wie das „×“. Das Drücken und das Loslassen müssen beide außerhalb liegen:
+// Wer in einem Feld Text markiert und außerhalb loslässt, schließt nichts. Das Willkommensfenster lässt sich nicht wegtippen (es braucht den Namen).
+let outsideDown = null;
+const outsideOf = (dialog, event) => { const box = dialog.getBoundingClientRect(); return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom; };
+const tapDialog = event => event.target instanceof HTMLDialogElement && event.target.open && event.target.id !== 'welcome' && outsideOf(event.target, event) ? event.target : null;
+document.addEventListener('pointerdown', event => { outsideDown = tapDialog(event); }, true);
+document.addEventListener('click', event => {
+  const dialog = tapDialog(event), started = outsideDown; outsideDown = null;
+  if (dialog && dialog === started) dialog.close();
+}, true);
+// iOS Safari meldet einen Tipp auf ein Element ohne eigenen Klick-Empfänger nicht als Klick: Der leere Empfänger macht den Hintergrund des Fensters „antippbar“.
+document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', () => {}));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
 // Die Statuszeile oben ist zugleich ein Knopf: verbunden gleicht sie ab, sonst führt sie in die Einstellungen zum Verbinden.
 $('#syncline').addEventListener('click', () => guard(() => {

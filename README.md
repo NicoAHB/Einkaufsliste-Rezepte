@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.39
+# Einkauf & Rezepte – Version 2.40
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,21 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.40: Überschrift scrollt mit, Tipp außerhalb schließt das Fenster
+
+Meine Korrektur aus 2.38 war falsch verstanden: Die Überschrift mit dem „×“ sollte nicht deckend stehen bleiben, sondern **mitscrollen**. Das gilt jetzt überall.
+
+- **Die Überschrift** (`.sheet-head`, im Kochmodus `.cook-head`) steht am Anfang des Fensters und scrollt mit dem Inhalt weg. Beim Hochscrollen ist sie mit dem „×“ wieder da. Das gilt in jedem Fenster: Geschäfte & Angebote, Anleitung, Einkauf eintragen, Rezepte des Tages, Was kann ich kochen?, Artikel und Rezept bearbeiten, Gericht planen und im Kochmodus. Die Deckfläche aus 2.38 entfällt, weil nichts mehr darunter durchläuft.
+- **Nur die Knopfleiste unten** (z. B. „Speichern“ im Bearbeiten-Fenster) bleibt stehen und ist weiter undurchsichtig.
+- **Schließen durch Tippen außerhalb:** Ein Tipp auf den abgedunkelten Bereich oberhalb des Fensters schließt es wie das „×“ (`app.js`). Es zählt nur, wenn Drücken **und** Loslassen außerhalb liegen; wer in einem Feld Text markiert und außerhalb loslässt, schließt nichts. Das Willkommensfenster lässt sich nicht wegtippen (es braucht den Namen), der Kochmodus füllt den ganzen Bildschirm und hat keinen Bereich außerhalb (dort: hochscrollen, „×“). Ein angefangenes Rezept bleibt auch dabei als Entwurf erhalten.
+- **Tests:** Ein Browser-Test prüft in 10 Fenstern (Glas und ohne, hell und dunkel), dass die Überschrift mit dem Inhalt wegscrollt, beim Hochscrollen wieder da ist und das „×“ schließt, dass keine Überschrift festgesetzt ist und dass die Knopfleiste unten bleibt. Ein zweiter prüft das Schließen durch Tippen außerhalb, auch das Nichtschließen beim Markieren und im Willkommensfenster. Fünf eingebaute Fehler wurden erkannt.
+- **Nicht getestet:** das Verhalten auf einem echten iPhone (geprüft im Chromium-Browser mit iPhone-13-Emulation). Auf iOS bekommt jedes Fenster einen leeren Klick-Empfänger, damit der Tipp auf den Hintergrund dort als Klick ankommt.
+
+Testpunkte für Version 2.40:
+
+- [ ] In „Rezept bearbeiten“, „Geschäfte & Angebote“, „Anleitung“, „Einkauf eintragen“ nach unten scrollen: Die Überschrift **verschwindet**, beim Hochscrollen ist sie mit dem „×“ wieder da.
+- [ ] Auf den dunklen Bereich oberhalb eines Fensters tippen: Das Fenster schließt sich. Im Willkommensfenster und beim Textmarkieren in einem Feld passiert nichts.
 
 ## Neu in Version 2.39: „Gericht planen“ fragt den Tag nicht noch einmal
 
