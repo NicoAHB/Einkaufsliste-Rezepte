@@ -3718,14 +3718,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const itemsText = () => page.textContent('#items');
     // Planen, Alle: keine Wünsche in der Liste, im Zähler „offen“ und in der Summe; der Reiter „Wünsche“ zählt seine eigenen
     assert.ok(!(await itemsText()).includes('Fahrrad'), 'unter „Alle“ stehen keine Wünsche');
-    assert.match(await page.textContent('#item-count'), /^5 offen/, 'Tomaten, Nudeln, Milch, Äpfel und Brot; ohne die zwei Wünsche');
+    assert.equal(await page.locator('#item-count').count(), 0, 'die Zeile „n offen · n erledigt“ gibt es nicht mehr');
     assert.match(await tab('Alle').textContent(), /Alle\s*5$/);
     assert.equal((await tab('Wünsche').textContent()).trim(), '2', 'der Reiter zeigt nur das Bild und die Zahl');
     assert.ok(!(await page.textContent('#items')).includes('Zwiebeln'));
     // Der Reiter „Wünsche“ zeigt sie
     await tab('Wünsche').click();
     assert.deepEqual((await page.locator('#items .item-name, #items .item-copy strong').allTextContents()).sort(), ['Fahrrad', 'Zwiebeln']);
-    assert.match(await page.textContent('#item-count'), /^2 offen/);
     // Ein Artikel, der in „Alle“ zu den Wünschen kommt, verschwindet dort: die Meldung sagt, wo er steht
     await tab('Alle').click();
     await expandForm(page);
@@ -5525,7 +5524,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await sheetContext();
     await open(page);
     await openMealPicker(page);
-    assert.equal(await page.locator('#meal-form select').count(), 0, 'keine Auswahlbox mehr');
+    assert.equal(await page.locator('#meal-form select[name=recipeId]').count(), 0, 'keine Auswahlbox für das Rezept mehr (nur das Filterfeld)');
     const labels = await page.locator('#recipe-pick .pick-row strong').allTextContents();
     assert.deepEqual(labels, ['★ Kichererbsen-Curry', 'Apfel-Pfannkuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
     assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), '');
@@ -5593,6 +5592,168 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const other = await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).boundingBox();
     await page.mouse.move(other.x + 40, other.y + other.height / 2); await page.mouse.down(); await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await page.mouse.up();
     assert.match(await sheetText(page), /PORTIONEN\s*\n?2/, 'ein anderes Rezept: dessen eigene Portionen');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // Rezepte für den Filter: Stichworte in verschiedener Schreibweise, ein Favorit (Curry), unterschiedlich lange her
+  const ago = days => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const filterData = () => {
+    const data = sheetData(), at = '2026-10-25T00:00:00.000Z', longAgo = ago(90), recent = ago(3);
+    const make = (id, name, tags, lastCookedAt) => ({ id, name, servings: 4, tags, instructions: 'Alles kochen.', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, ...(lastCookedAt ? { lastCookedAt } : {}) });
+    Object.assign(data.recipes.find(row => row.id === 'recipe-pasta'), { lastCookedAt: longAgo });
+    Object.assign(data.recipes.find(row => row.id === 'recipe-curry'), { lastCookedAt: recent });
+    data.recipes.push(make('recipe-linsen', 'Linsensuppe', ['Suppe', 'Vegan'], recent), make('recipe-kuerbis', 'Kürbissuppe', ['suppe', 'Einfach'], longAgo), make('recipe-schoko', 'Schokokuchen', ['Süß'], ago(5)));
+    return data;
+  };
+  const filterContext = async (data = filterData(), options = {}) => {
+    const made = await context(options);
+    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    return made;
+  };
+  const pickRows = page => page.locator('#recipe-pick .pick-row strong').allTextContents();
+
+  test('Plan: neben „Rezept“ steht ein Auswahlfeld zum Filtern: Alle, Favoriten, Lange nicht gekocht und jedes Stichwort (Groß-/Kleinschreibung egal) mit Zahl; die Liste zeigt nur Passendes', async () => {
+    const { ctx, page, problems } = await filterContext();
+    await open(page);
+    await openMealPicker(page);
+    const select = page.locator('#recipe-filter');
+    assert.equal(await select.isVisible(), true);
+    assert.equal(await select.getAttribute('aria-label'), 'Rezepte filtern');
+    assert.deepEqual(await select.locator('option').allTextContents(), ['Alle Rezepte (6)', '★ Favoriten (1)', 'Lange nicht gekocht (3)', 'Einfach (2)', 'Schnell (1)', 'Suppe (2)', 'Süß (2)', 'Vegan (2)', 'Vegetarisch (2)']);
+    assert.equal(await select.inputValue(), '', 'zuerst alle Rezepte');
+    assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Apfel-Pfannkuchen', 'Kürbissuppe', 'Linsensuppe', 'Schokokuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
+    // rechts neben „Rezept“, auf einer Zeile, im Fenster, gut zu treffen
+    const caption = await page.locator('#recipe-pick-label').boundingBox(), field = await select.boundingBox(), dialog = await page.locator('#meal-dialog').boundingBox();
+    assert.ok(field.x >= caption.x + caption.width, 'rechts neben „Rezept“');
+    assert.ok(Math.abs(field.y + field.height / 2 - (caption.y + caption.height / 2)) < 8, 'auf einer Zeile mit „Rezept“');
+    assert.ok(field.x + field.width <= dialog.x + dialog.width && field.height >= 36, 'im Fenster und groß genug zum Tippen');
+    // Stichwort: „Suppe“ und „suppe“ sind ein Eintrag; Favoriten zuerst, sonst nach Namen; „Eigenes Gericht“ bleibt am Ende
+    await select.selectOption({ label: 'Suppe (2)' });
+    assert.deepEqual(await pickRows(page), ['Kürbissuppe', 'Linsensuppe', 'Eigenes Gericht (ohne Rezept)']);
+    await select.selectOption({ label: 'Vegan (2)' });
+    assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Linsensuppe', 'Eigenes Gericht (ohne Rezept)']);
+    await select.selectOption({ label: '★ Favoriten (1)' });
+    assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Eigenes Gericht (ohne Rezept)']);
+    // Lange nicht gekocht: noch nie Gekochtes zuerst, dann das am längsten her; die Zeile sagt, wie lange
+    await select.selectOption({ label: 'Lange nicht gekocht (3)' });
+    assert.deepEqual(await pickRows(page), ['Apfel-Pfannkuchen', 'Kürbissuppe', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
+    assert.deepEqual(await page.locator('#recipe-pick .pick-row small').allTextContents(), ['2 Portionen · noch nie gekocht', '4 Portionen · zuletzt vor 3 Monaten', '2 Portionen · zuletzt vor 3 Monaten']);
+    // Zurück zu allen: keine Zusatzangabe mehr
+    await select.selectOption({ label: 'Alle Rezepte (6)' });
+    assert.deepEqual(await page.locator('#recipe-pick .pick-row small').allTextContents(), ['2 Portionen', '2 Portionen', '4 Portionen', '4 Portionen', '4 Portionen', '2 Portionen']);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: nach dem Filtern wählt ein Tipp wie sonst; das gewählte Rezept bleibt in der Liste, auch wenn der Filter es ausschließt; gespeichert wird das gewählte; beim nächsten Öffnen steht wieder „Alle Rezepte“', async () => {
+    const { ctx, page, problems } = await filterContext();
+    await open(page);
+    await openMealPicker(page);
+    const select = page.locator('#recipe-filter');
+    await select.selectOption({ label: 'Süß (2)' });
+    assert.deepEqual(await pickRows(page), ['Apfel-Pfannkuchen', 'Schokokuchen', 'Eigenes Gericht (ohne Rezept)']);
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Schokokuchen' }).click();
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-schoko');
+    assert.equal(await page.inputValue('#meal-form input[name=servings]'), '4', 'die Portionen des Rezepts');
+    // anderer Filter: das gewählte bleibt sichtbar und markiert, die übrigen passen zum Filter
+    await select.selectOption({ label: 'Vegan (2)' });
+    assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Linsensuppe', 'Schokokuchen', 'Eigenes Gericht (ohne Rezept)']);
+    assert.equal(await page.locator('#recipe-pick .pick-row[aria-pressed=true] strong').textContent(), 'Schokokuchen');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-schoko', 'der Filter ändert die Wahl nicht');
+    // eine neue Wahl in der gefilterten Liste ersetzt sie; das vorige verschwindet wieder aus der Liste
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Linsensuppe' }).click();
+    await select.selectOption({ label: 'Suppe (2)' });
+    assert.deepEqual(await pickRows(page), ['Kürbissuppe', 'Linsensuppe', 'Eigenes Gericht (ohne Rezept)']);
+    assert.equal(await page.locator('#recipe-pick .pick-row[aria-pressed=true] strong').textContent(), 'Linsensuppe');
+    // „Eigenes Gericht“ bleibt bei jedem Filter wählbar
+    await page.locator('#recipe-pick .pick-row.custom').click();
+    assert.ok(await page.locator('#meal-form [data-custom]').isVisible());
+    await select.selectOption({ label: 'Vegan (2)' });
+    assert.equal(await page.locator('#recipe-pick .pick-row.custom').getAttribute('aria-pressed'), 'true');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Linsensuppe' }).click();
+    await page.click('#meal-form button[type=submit]');
+    assert.match(await page.textContent('#plan-days'), /Linsensuppe/);
+    // beim nächsten Öffnen: kein Filter mehr
+    await page.locator('.day-head .icon-button').nth(1).click(); await page.waitForSelector('#meal-dialog[open]');
+    assert.equal(await page.locator('#recipe-filter').inputValue(), '', 'wieder „Alle Rezepte“');
+    assert.equal((await pickRows(page)).length, 7);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: beim Ändern eines Gerichts zeigt der Filter es nicht weg; langes Drücken öffnet auch in der gefilterten Liste das Rezeptblatt; kein passendes Rezept sagt es', async () => {
+    const { ctx, page, problems } = await filterContext();
+    await open(page);
+    await openMealPicker(page);
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).click();
+    await page.click('#meal-form button[type=submit]');
+    await page.getByRole('button', { name: /Tomaten-Pasta ändern/ }).first().click();
+    await page.waitForSelector('#meal-dialog[open]'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-pick .pick-row[aria-pressed=true] strong').textContent(), 'Tomaten-Pasta', 'das gewählte Rezept ist markiert');
+    await page.locator('#recipe-filter').selectOption({ label: 'Süß (2)' });
+    assert.deepEqual(await pickRows(page), ['Apfel-Pfannkuchen', 'Schokokuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)'], 'das gewählte Rezept bleibt in der Liste');
+    // langes Drücken in der gefilterten Liste: das Rezeptblatt, ohne die Wahl zu ändern
+    const row = page.locator('#recipe-pick .pick-row', { hasText: 'Schokokuchen' }), box = await row.boundingBox();
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down();
+    await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await sheetOpen(page); await page.mouse.up();
+    assert.ok((await sheetText(page)).includes('Schokokuchen'));
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
+    await page.click('#sheet-close');
+    // ein Stichwort ohne Rezept (etwa nach einem Abgleich): die Liste sagt es und bietet weiter „Eigenes Gericht“ an
+    await page.evaluate(() => { const option = document.createElement('option'); option.value = 'tag:nichts'; option.textContent = 'Nichts (0)'; document.querySelector('#recipe-filter').append(option); });
+    await page.locator('#recipe-filter').selectOption('tag:nichts');
+    assert.equal(await page.locator('#recipe-pick .pick-empty').count(), 0, 'solange ein Rezept gewählt ist, steht es da');
+    assert.deepEqual(await pickRows(page), ['Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)'], 'das gewählte Rezept bleibt, „Eigenes Gericht“ auch');
+    await page.locator('#recipe-pick .pick-row.custom').click();
+    assert.equal(await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).count(), 1, 'ein Tipp baut die Liste nicht um (nichts springt unter dem Finger)');
+    await page.locator('#recipe-filter').selectOption({ label: 'Süß (2)' }); await page.locator('#recipe-filter').selectOption('tag:nichts');
+    assert.equal(await page.locator('#recipe-pick .pick-empty').textContent(), 'Kein Rezept dafür.');
+    assert.deepEqual(await pickRows(page), ['Eigenes Gericht (ohne Rezept)']);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: ohne Favoriten, ohne Stichworte und ohne lange nicht gekochte Rezepte gibt es nichts zu filtern – das Feld ist nicht da', async () => {
+    const data = sheetData(); data.recipes = [{ id: 'recipe-solo', name: 'Nur ein Rezept', servings: 3, tags: [], instructions: 'Kochen.', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {}, lastCookedAt: ago(2) }]; data.ingredients = [];
+    const { ctx, page, problems } = await filterContext(data);
+    await open(page);
+    await openMealPicker(page);
+    assert.equal(await page.locator('#recipe-filter').isVisible(), false);
+    assert.deepEqual(await pickRows(page), ['Nur ein Rezept', 'Eigenes Gericht (ohne Rezept)']);
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Nur ein Rezept' }).click();
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-solo');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const width of [280, 320, 390]) {
+    test(`Plan bei ${width} px: „Rezept“ und das Filterfeld stehen auf einer Zeile, nichts läuft über den Rand`, async () => {
+      const { ctx, page, problems } = await filterContext(filterData(), { context: { viewport: { width, height: 740 } } });
+      await open(page);
+      await openMealPicker(page);
+      await page.locator('#recipe-filter').selectOption({ label: 'Lange nicht gekocht (3)' });
+      assert.equal(await horizontalOverflow(page), 0);
+      const caption = await page.locator('#recipe-pick-label').boundingBox(), field = await page.locator('#recipe-filter').boundingBox(), list = await page.locator('#recipe-pick').boundingBox();
+      assert.ok(field.x >= caption.x + caption.width - 1 && Math.abs(field.y + field.height / 2 - (caption.y + caption.height / 2)) < 10, 'auf einer Zeile');
+      assert.ok(field.x + field.width <= list.x + list.width + 1 && field.width >= 120, `das Feld ist breit genug (${Math.round(field.width)} px) und endet mit der Liste`);
+      const rows = await page.locator('#recipe-pick .pick-row').evaluateAll(nodes => nodes.map(node => ({ right: node.getBoundingClientRect().right, scroll: node.scrollWidth - node.clientWidth })));
+      assert.ok(rows.every(entry => entry.right <= width && entry.scroll <= 1), 'die Zeilen passen in die Breite');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
+  test('Einkaufsliste: die Zeile „n offen · n erledigt“ ist weg; „Auswählen“ und „Erledigte entfernen“ stehen links und rechts auf einer Zeile', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    assert.equal(await page.locator('#item-count').count(), 0);
+    assert.ok(!/\d+ offen · \d+ erledigt/.test(await page.textContent('#shopping')), 'der Text kommt nirgends vor');
+    const select = await page.locator('#select-mode').boundingBox(), clear = await page.locator('#clear-checked').boundingBox(), viewport = page.viewportSize();
+    assert.ok(Math.abs(select.y - clear.y) < 6 && select.x < clear.x, 'auf einer Zeile, „Auswählen“ links');
+    assert.ok(select.x >= 0 && clear.x + clear.width <= viewport.width, 'im Bildschirm');
+    assert.ok(select.height >= 36 && clear.height >= 36);
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

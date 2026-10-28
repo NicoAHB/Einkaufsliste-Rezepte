@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.45
+# Einkauf & Rezepte – Version 2.46
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,36 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.46: Rezepte im Plan filtern, Zähler in der Einkaufsliste entfernt
+
+**Rezepte filtern im Fenster „Gericht planen“.** Rechts neben „Rezept“ steht ein **Auswahlfeld** („Rezepte filtern“). Es bietet
+- **Alle Rezepte** (so steht es beim Öffnen immer da),
+- **★ Favoriten** (nur wenn es welche gibt),
+- **Lange nicht gekocht** (nur wenn es welche gibt): Rezepte, die **seit mindestens 28 Tagen nicht** gekocht wurden oder **noch nie**. Das am längsten her ist, steht zuerst, noch nie Gekochtes ganz oben; unter dem Namen steht „noch nie gekocht“ oder „zuletzt vor 3 Monaten“. „Gekocht“ heißt: mit „Heute gekocht“, im Kochmodus oder über das Abhaken im Plan festgehalten.
+- **jedes Stichwort** (Schnell, Einfach, Suppe, Süß, Vegan, Vegetarisch …), das mindestens ein Rezept trägt, **mit Zahl** („Suppe (8)“). Groß- und Kleinschreibung ist egal: „vegan“ und „Vegan“ sind ein Eintrag.
+
+Die Stichworte sind die der Rezepte (Feld „Stichworte“ am Rezept; die eingebauten Rezepte des Tages bringen Schnell, Suppe, Süß, Vegan, Vegetarisch, Pasta, Fleisch … mit). Ein Stichwort, das kein Rezept trägt, erscheint nicht. Wer ein Rezept „einfach“ oder „schnell“ nennen will, trägt das Stichwort am Rezept ein.
+
+**So verhält sich die Liste**
+- Ein **Tipp** wählt wie bisher, **langes Drücken** zeigt das Rezeptblatt (auch in der gefilterten Liste). „Eigenes Gericht“ steht bei jedem Filter am Ende.
+- Das **gewählte Rezept bleibt in der Liste**, auch wenn der Filter es ausschließt: So sieht man im Fenster immer, was gespeichert würde. Ein Filterwechsel ändert die Wahl nie. Ein Tipp baut die Liste nicht um (nichts springt unter dem Finger); erst ein neuer Filter tut das.
+- Die Reihenfolge: Favoriten zuerst, dann nach Namen; bei „Lange nicht gekocht“ das am längsten her zuerst.
+- Beim nächsten Öffnen steht wieder „Alle Rezepte“. Gibt es nichts zu filtern (keine Favoriten, keine Stichworte, nichts lange nicht gekocht), ist das Feld **nicht da**.
+- Nichts davon verändert Daten; es ist nur eine Ansicht.
+
+**Einkaufsliste: „n offen · n erledigt“ ist weg.** Die Zeile über der Liste entfällt. „Auswählen“ steht links, „Erledigte entfernen“ rechts auf einer Zeile. Die Zahlen an den Geschäfts-Reitern und im Laden („Noch 7 offen“) bleiben.
+
+**Technik.** Die Logik steht in `recipe-filter.js` (ohne Oberfläche, mit Tests): `filterOptions`, `pickRecipes`, `cookedLongAgo`. Dienstdatei im Offline-Paket, Cache `einkauf-shell-v58`.
+
+**Tests:** `tests/recipe-filter.test.mjs` (Einträge und Zahlen, Schreibweisen, 28-Tage-Grenze, Reihenfolge, gewähltes Rezept bleibt, Eingabe unverändert) und im Browser: Auswahlfeld neben „Rezept“ auf einer Zeile (280/320/390 px), alle Filter, Wahl bleibt, Wiederöffnen, Ändern eines Gerichts, langes Drücken in der gefilterten Liste, kein Feld ohne Auswahl, Zeile „offen · erledigt“ weg.
+
+Testpunkte für Version 2.46 (iPhone):
+
+- [ ] Einkauf: über der Liste steht nur „Auswählen“ (links) und „Erledigte entfernen“ (rechts), keine Zeile „n offen · n erledigt“.
+- [ ] Plan → ein Tag → ＋: rechts neben „Rezept“ das Auswahlfeld. „Suppe“ zeigt nur Suppen, „Lange nicht gekocht“ die am längsten nicht gekochten (mit „zuletzt vor …“), „Favoriten“ nur die Sterne.
+- [ ] Rezept wählen, dann einen anderen Filter einstellen: das gewählte bleibt in der Liste und markiert. Speichern übernimmt das gewählte.
+- [ ] In der gefilterten Liste ein Rezept lange drücken: das Rezeptblatt erscheint.
 
 ## Neu in Version 2.45: Rezeptblatt als PDF (Vorschau, Speichern, Teilen) und Rezeptauswahl mit langem Drücken
 
@@ -898,7 +928,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
