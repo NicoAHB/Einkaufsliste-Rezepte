@@ -55,6 +55,8 @@ async function context(options = {}) {
   // Die Produktbilder (Symbole in den Artikelzeilen) sind in der App standardmäßig an; die übrigen Prüfungen laufen ohne sie (die Zeilen bleiben so wie sie waren), die eigenen Tests schalten sie ein.
   const settings = { actor: 'Nico', productImages: false, ...options.config };
   await ctx.addInitScript(([key, value, seed]) => { if (!localStorage.getItem(key) && seed) localStorage.setItem(key, JSON.stringify(value)); }, ['einkauf-settings-v1', settings, options.seed !== false]);
+  // Die Prüfungen laufen, als wäre die App schon geöffnet (dieselbe Sitzung); nur `fresh: true` simuliert einen Start nach vollständigem Schließen.
+  if (!options.fresh) await ctx.addInitScript(() => { try { sessionStorage.setItem('einkauf-session-v1', '1'); } catch { /* ohne Sitzungsspeicher */ } });
   const page = await ctx.newPage();
   const problems = [];
   page.on('pageerror', error => problems.push(error.message));
@@ -72,6 +74,11 @@ const sheetOpen = async page => {
   await page.waitForSelector('dialog[open]');
   await page.evaluate(() => Promise.race([new Promise(resolve => setTimeout(resolve, 1500)),
     Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))]));
+};
+// Der Dialog „Geschäfte“ zeigt jedes Geschäft zugeklappt; die meisten Prüfungen brauchen die Felder und klappen deshalb alle auf (das Zuklappen prüft ein eigener Test).
+const openStores = async page => {
+  await page.click('#manage-stores'); await sheetOpen(page);
+  await page.evaluate(() => { document.querySelectorAll('#store-editor .store-row').forEach(node => { node.open = true; }); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 };
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const expandForm = page => page.focus('#item-form input[name=name]');
@@ -2104,7 +2111,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     await inShop(page);
     assert.equal(await page.locator('#shop-lockbar').isHidden(), true);
-    assert.equal(await page.inputValue('#shop-autolock'), '30', 'Standard: nach 30 Sekunden');
+    assert.equal(await page.locator('#shop-view #shop-autolock').count(), 0, 'die Auswahl der Sperrzeit steht nicht mehr unter „Im Laden“, nur in den Einstellungen');
     await page.click('#shop-lock');
     assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
     assert.equal(await page.evaluate(() => document.body.classList.contains('shop-locked')), true);
@@ -2154,8 +2161,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Die Liste steht im Mittelpunkt: keine Erklärabsätze unter den Einstellungen und dem Beenden-Knopf
     assert.equal(await page.locator('#shop-view p.hint:visible').count(), 0, 'kein Erklärtext sichtbar');
     assert.equal(await page.locator('#shop-awake-hint').isVisible(), false);
-    const row = await page.locator('#shop-autolock').evaluate(node => { const r = node.getBoundingClientRect(), l = node.closest('label').getBoundingClientRect(); return { sameLine: Math.abs((r.top + r.height / 2) - (l.top + l.height / 2)) < 4, height: l.height }; });
-    assert.ok(row.sameLine && row.height < 70, 'Bezeichnung und Auswahl stehen in einer Zeile');
     await page.click('#shop-lock');
     assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
     const state = name => itemState(page, name);
@@ -2265,7 +2270,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.deepEqual(await page.evaluate(() => window.__locks), ['portrait'], 'die App will hochkant');
       assert.equal(await page.locator('#turn-hint').isVisible(), false, 'hochkant: kein Hinweis');
       assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-landscape')), false);
-      await page.click('#manage-stores'); await sheetOpen(page);
+      await openStores(page);
       assert.equal(await page.locator('dialog[open]').isVisible(), true);
       // Gedreht: nur der Hinweis, nichts anderes (auch das offene Fenster nicht) ist zu sehen
       await page.setViewportSize({ width: 844, height: 390 });
@@ -2383,6 +2388,163 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- Version 2.33: Sperre 10 s (nur in den Einstellungen), Bildschirm anlassen an, Start unter „Planen“ ----
+  test('Automatisch sperren: Standard 10 Sekunden, einstellbar nur unter Einstellungen → Im Laden (nicht mehr in der Ansicht „Im Laden“); die Sperre greift nach 10 Sekunden', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    // Einstellungen: eigener Bereich „Im Laden“ mit Standard 10 Sekunden
+    await page.click('[data-tab=settings]');
+    assert.equal(await page.locator('#shop-details').evaluate(node => node.open), false, 'der Bereich ist zugeklappt');
+    await page.click('#shop-details > summary');
+    assert.equal(await page.inputValue('#shop-autolock'), '10', 'Standard: 10 Sekunden');
+    assert.equal(await page.locator('#shop-autolock option:checked').textContent(), '10 Sekunden (Standard)');
+    assert.deepEqual(await page.locator('#shop-autolock option').allTextContents(), ['Nie', '10 Sekunden (Standard)', '20 Sekunden', '30 Sekunden', '1 Minute', '2 Minuten']);
+    assert.match(await page.textContent('#shop-card'), /Bildschirm anlassen/, 'der Hinweis nennt, wo „Bildschirm anlassen“ steht');
+    // In der Ansicht „Im Laden“ gibt es die Auswahl nicht mehr
+    await page.click('[data-tab=shopping]'); await page.click('#mode-shop');
+    assert.equal(await page.locator('#shop-view #shop-autolock').count(), 0);
+    assert.equal(await page.locator('#shop-view select').count(), 0, 'keine Auswahl mehr unter der Liste');
+    // Ohne Berührung sperrt sich die Ansicht nach 10 Sekunden (nicht nach 30)
+    const started = Date.now();
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await page.waitForFunction(() => !document.querySelector('#shop-lockbar').hidden, null, { timeout: 20000 });
+    const waited = Date.now() - started;
+    assert.ok(waited >= 9000 && waited <= 14000, `gesperrt nach ${waited} ms (Standard 10 Sekunden)`);
+    // Eine andere Zeit gilt nach dem Ändern in den Einstellungen und bleibt nach dem Neuladen
+    await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+    await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+    await openSettings(page);
+    await page.selectOption('#shop-autolock', '60');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopLock, 60);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.inputValue('#shop-autolock'), '60');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bildschirm anlassen: unter „Im Laden“ standardmäßig an (Bildschirm bleibt an), abwählbar; die Wahl bleibt', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0 } });   // ohne Sperre: ein Neuladen in „Im Laden“ sperrt sonst (Hintergrund)
+    await ctx.addInitScript(() => {
+      window.__wake = { requests: 0, releases: 0 };
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wake.requests++; return { release: async () => { window.__wake.releases++; }, addEventListener() {} }; } } });
+    });
+    await open(page);
+    await page.click('#mode-shop');
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    assert.equal(await page.isChecked('#shop-awake'), true, 'Haken von Anfang an gesetzt');
+    assert.equal(await page.locator('#shop-awake-hint').textContent(), '', 'ohne Erklärtext');
+    // Abwählen gibt den Bildschirm frei und wird gemerkt
+    await page.uncheck('#shop-awake');
+    await page.waitForFunction(() => window.__wake.releases === 1);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopAwake, false);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.isChecked('#shop-awake'), false, 'bleibt abgewählt');
+    assert.equal(await page.evaluate(() => window.__wake.requests), 0, 'und fordert den Bildschirm nicht an');
+    await page.check('#shop-awake');
+    await page.waitForFunction(() => window.__wake.requests === 1);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopAwake, true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bildschirm anlassen scheitert still, wenn der Haken nicht selbst gesetzt wurde (Standard); selbst gesetzt zeigt sich die Fehlermeldung', async () => {
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(() => { Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { throw new DOMException('nicht erlaubt', 'NotAllowedError'); } } }); });
+    await open(page);
+    await page.click('#mode-shop');
+    await page.waitForFunction(() => !document.querySelector('#shop-awake').checked);
+    assert.equal(await page.locator('#shop-awake-hint').textContent(), '', 'keine Fehlermeldung, wenn die Person nichts eingeschaltet hat');
+    await page.click('#shop-awake');   // der Haken springt zurück, weil die Anforderung scheitert
+    await page.waitForFunction(() => document.querySelector('#shop-awake-hint').textContent.includes('Geht gerade nicht'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Start nach vollständigem Schließen: immer „Einkauf → Planen“ (nicht „Im Laden“, nicht gesperrt); ein Neuladen in derselben Sitzung bleibt, wie es war', async () => {
+    // Zuletzt war „Im Laden“ gesperrt; die App wurde ganz geschlossen (neue Sitzung)
+    const { ctx, page, problems } = await context({ fresh: true, config: { shopMode: true, shopLocked: true, shopLock: 0 } });
+    await open(page);
+    assert.equal(await page.locator('#shopping').isVisible(), true, 'Reiter Einkauf');
+    assert.equal(await page.locator('[data-tab=shopping]').getAttribute('aria-current'), 'page');
+    assert.equal(await page.locator('#plan-view').isVisible(), true, 'Planen');
+    assert.equal(await page.locator('#shop-view').isHidden(), true, 'nicht „Im Laden“');
+    assert.equal(await page.locator('#shop-lockbar').isHidden(), true);
+    assert.equal(await page.evaluate(() => document.body.classList.contains('shop-locked')), false);
+    assert.equal(await page.locator('#mode-plan').getAttribute('aria-selected'), 'true');
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')));
+    assert.deepEqual([saved.shopMode, saved.shopLocked], [false, false], 'auch gespeichert');
+    assert.equal(saved.actor, 'Nico', 'die übrigen Einstellungen bleiben');
+    // Im Laden und gesperrt, dann dieselbe Sitzung neu laden (z. B. vom Handy aus dem Hintergrund verworfen): es bleibt „Im Laden“ und gesperrt
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click(); await page.click('#shop-lock');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.locator('#shop-view').isVisible(), true, 'dieselbe Sitzung: weiter „Im Laden“');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'und gesperrt');
+    // Eine neue Sitzung (App ganz geschlossen und neu geöffnet): wieder Planen
+    const next = await ctx.newPage();
+    await next.goto(`${base}/index.html`); await next.waitForSelector('#status[data-state]', { state: 'attached' });
+    await next.evaluate(() => sessionStorage.clear());   // das Schließen der App beendet die Sitzung
+    await next.reload(); await next.waitForSelector('#status[data-state]', { state: 'attached' });
+    await next.waitForFunction(() => document.querySelector('#mode-plan')?.getAttribute('aria-selected') === 'true');
+    assert.equal(await next.locator('#shop-view').isHidden(), true);
+    assert.equal(await next.locator('#shop-lockbar').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt mit Pfeil, aufklappbar; „Neues Geschäft“ unten fest; ein neues Geschäft erscheint zugeklappt', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
+    await open(page);
+    await page.click('#manage-stores'); await sheetOpen(page);
+    const rows = page.locator('#store-editor .store-row');
+    assert.equal(await rows.count(), 3);
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.tagName + ':' + node.open)), ['DETAILS:false', 'DETAILS:false', 'DETAILS:false'], 'alle zugeklappt');
+    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe'], 'nur der Name steht da');
+    for (const box of await rows.locator('summary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 48, `gut zu treffen (${box} px)`);
+    assert.equal(await rows.first().locator('input[name=name]').isVisible(), false, 'die Felder sind verborgen');
+    const arrow = await rows.first().locator('summary').evaluate(node => getComputedStyle(node, '::after').content);
+    assert.notEqual(arrow, 'none', 'der Pfeil steht rechts');
+    // „Neues Geschäft“: fest, nicht klappbar, sichtbar
+    const form = page.locator('#store-form');
+    assert.equal(await form.evaluate(node => node.closest('details') === null), true, 'nicht in einer klappbaren Karte');
+    assert.equal(await form.locator('input[name=name]').isVisible(), true);
+    assert.equal(await form.locator('h3').textContent(), 'Neues Geschäft');
+    // Aufklappen mit einem Tipp auf die Zeile; die anderen bleiben zu
+    await rows.nth(2).locator('summary').click();
+    assert.equal(await rows.nth(2).evaluate(node => node.open), true);
+    assert.equal(await rows.nth(2).locator('input[name=name]').isVisible(), true);
+    assert.equal(await rows.nth(2).locator('input[name=name]').inputValue(), 'Rewe');
+    assert.equal(await rows.nth(0).evaluate(node => node.open), false);
+    assert.equal(await horizontalOverflow(page), 0);
+    await rows.nth(2).locator('summary').click();
+    assert.equal(await rows.nth(2).evaluate(node => node.open), false, 'ein zweiter Tipp klappt zu');
+    // Ein neues Geschäft: erscheint zugeklappt (und leuchtet kurz auf); was offen war, bleibt offen
+    await rows.nth(0).locator('summary').click();
+    await page.fill('#store-form input[name=name]', 'Aldi');
+    await page.click('#store-form button');
+    await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row').length === 4);
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [true, false, false, false], 'Edeka bleibt offen, das neue Aldi ist zu');
+    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
+    assert.equal(await rows.nth(3).evaluate(node => node.classList.contains('fresh')), true, 'das neue Geschäft leuchtet kurz auf');
+    assert.equal(await page.inputValue('#store-form input[name=name]'), '', 'das Formular ist wieder leer');
+    // Ein Geschäft bearbeiten und speichern: bleibt offen, andere Karten bleiben unberührt
+    await rows.nth(0).locator('input[name=name]').fill('Edeka Nord');
+    await rows.nth(0).getByRole('button', { name: /speichern/ }).click();
+    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka Nord', 'Lidl', 'Rewe', 'Aldi']);
+    assert.equal(await rows.nth(0).evaluate(node => node.open), true, 'die bearbeitete Karte bleibt offen');
+    // Wieder geöffnet: alles zu
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await page.click('#manage-stores'); await sheetOpen(page);
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [false, false, false, false], 'beim nächsten Öffnen wieder alle zugeklappt');
+    // „Angebotslink festlegen“ öffnet das Fenster mit genau diesem Geschäft aufgeklappt
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await page.getByRole('tab', { name: /^Aldi/ }).click();
+    await page.click('#set-offers'); await sheetOpen(page);
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [false, false, false, true], 'nur Aldi ist aufgeklappt');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -2393,7 +2555,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-list .group-head .count', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
       assert.equal(await selectable(selector), 'none', `${selector}: keine Textauswahl`);
     }
-    assert.notEqual(await selectable('#shop-autolock'), 'none', 'die Auswahl der Sperrzeit bleibt bedienbar');
     // Die Auswahl beginnt gar nicht erst …
     assert.equal(await page.evaluate(() => { const node = document.querySelector('#shop-list .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), true);
     // … und eine vorhandene Auswahl verschwindet, wenn gesperrt ein Kreis gehalten wird
@@ -2426,15 +2587,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForTimeout(2600);
     assert.equal(await locked(), false, 'mitten im Beenden-Fenster wird nicht gesperrt');
     await page.keyboard.press('Escape');
-    // Einstellung: Nie
-    await page.selectOption('#shop-autolock', '0');
+    // Einstellung: Nie (die Auswahl steht in den Einstellungen, nicht mehr unter „Im Laden“)
+    const setLock = async value => { await openSettings(page); await page.selectOption('#shop-autolock', value); await page.click('[data-tab=shopping]'); };
+    await setLock('0');
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).shopLock, 0);
     await page.waitForTimeout(2600);
     assert.equal(await locked(), false, 'Nie: es sperrt nicht von selbst');
     await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
     assert.equal(await locked(), false, 'Nie gilt auch beim Zurückkehren aus dem Hintergrund');
     // Mit Wartezeit sperrt das Zurückkehren aus dem Hintergrund (Bildschirm aus, Hosentasche)
-    await page.selectOption('#shop-autolock', '30');
+    await setLock('30');
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     assert.equal(await locked(), true, 'aus dem Hintergrund zurück: gesperrt');
     await page.evaluate(() => { delete document.hidden; });
@@ -2454,7 +2616,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
     assert.deepEqual(await page.locator('#shop-list .shop-name').allTextContents(), ['Äpfel']);
     await page.click('#shop-back');
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     page.once('dialog', dialog => dialog.accept());
     await page.click('[aria-label="Rewe löschen"]');
     await page.keyboard.press('Escape');
@@ -2886,7 +3048,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });
@@ -2990,7 +3152,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ config: connectedConfig });
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     const row = page.locator('#store-editor .store-row').nth(3);   // Roßmann
     await row.locator('input[name=name]').fill('Rossmann Drogerie'); await row.getByRole('button', { name: /speichern/ }).click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
@@ -3105,7 +3267,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await chip('Roßmann').textContent(), /Roßmann\s*1$/, 'der Zähler am Reiter zählt Brot nicht mit');
     assert.match(await chip('Edeka').textContent(), /Edeka\s*3$/);
     // Einstellbar: im Dialog „Geschäfte“ lässt sich das pro Geschäft umstellen
-    await page.click('#shop-back'); await page.click('#manage-stores'); await sheetOpen(page);
+    await page.click('#shop-back'); await openStores(page);
     const row = name => page.locator('#store-editor .store-row').nth({ Edeka: 0, 'Roßmann': 3 }[name]);
     assert.equal(await row('Roßmann').locator('input[name=anywhere]').isChecked(), false, 'Drogerie: standardmäßig aus');
     assert.equal(await row('Edeka').locator('input[name=anywhere]').isChecked(), true);
@@ -3198,7 +3360,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(remote.content.items.find(row => row.name === 'Tomaten').deletedAt, null, 'die Tomaten bleiben abgehakt stehen');
     assert.equal(remote.content.items.find(row => row.name === 'Zwiebeln').deletedAt, null);
     // Einstellbar: im Dialog „Geschäfte“ gibt es „Eigene Liste“; dann entfällt „Artikel ohne Geschäft“
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     const row = index => page.locator('#store-editor .store-row').nth(index);
     assert.equal(await row(3).locator('input[name=separate]').isChecked(), true, 'Wünsche: eigene Liste');
     assert.equal(await row(3).locator('input[name=anywhere]').isVisible(), false, 'dann entfällt „Artikel ohne Geschäft“');
@@ -3215,7 +3377,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await tab('Rewe').click();
     assert.ok((await itemsText()).includes('Äpfel'), 'aber unter „Rewe“');
     await tab('Alle').click();
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     await row(2).locator('input[name=separate]').uncheck();
     assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), true);
     await row(2).getByRole('button', { name: /speichern/ }).click();
@@ -3281,7 +3443,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await horizontalOverflow(page), 0);
     await page.click('#shop-back');
     // Einstellbar: im Dialog „Geschäfte“ steht „Anzeige im Reiter“, für Wünsche vorbelegt mit dem Geschenk
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     const row = index => page.locator('#store-editor .store-row').nth(index);
     const pick = index => row(index).locator('select[name=symbol]');
     const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
@@ -3297,14 +3459,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(!(await page.textContent(bar)).includes('Edeka'));
     assert.equal(await tab('Edeka').count(), 1);
     // Wünsche wieder als Name: ausdrücklich „none“; der Text ist zurück
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     await pick(3).selectOption('name'); await saved(3);
     assert.equal(record('Wünsche').symbol, 'none');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.ok((await page.textContent(bar)).includes('Wünsche'), 'als Name steht der Text wieder da');
     assert.equal(await visible(bar), 1, 'nur noch Edeka als Bild');
     // Zurück auf die Voreinstellung: nichts wird festgeschrieben (null); Edeka ebenso
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     await pick(3).selectOption('gift'); await saved(3);
     await pick(0).selectOption('name'); await saved(0);
     assert.equal(record('Wünsche').symbol, null);
@@ -4382,7 +4544,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.locator('#items .store-head').first().textContent(), /Ohne Geschäft/);
     assert.ok(await page.locator('#items .item', { hasText: 'Nudeln' }).count() >= 1);
     // Geschäft löschen: seine Artikel verschwinden aus allen Ansichten, die ohne Geschäft bleiben
-    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStores(page);
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: 'Rewe löschen' }).click();
     await page.click('#stores-dialog [data-close]');

@@ -1983,19 +1983,90 @@ body.in-store main {
   min-height:32px;
   height:32px
 }
+/* Geschäfte-Dialog: vorhandene Geschäfte als zugeklappte Karten mit Pfeil; „Neues Geschäft“ unten ist eine feste Karte */
 .store-row {
   display:block;
-  margin:10px 0;
-  padding:14px;
+  margin:8px 0;
   border:1px solid var(--line);
-  border-radius:14px
+  border-radius:14px;
+  background:var(--card)
 }
-.store-row form {
+.store-row>summary {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:56px;
+  padding:6px 14px;
+  cursor:pointer;
+  list-style:none;
+  font-weight:650;
+  -webkit-user-select:none;
+  user-select:none
+}
+.store-row>summary::-webkit-details-marker {
+  display:none
+}
+.store-row>summary::after {
+  content:"";
+  flex:none;
+  width:10px;
+  height:10px;
+  margin:0 4px;
+  border:solid var(--muted);
+  border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+  transition:transform .15s
+}
+.store-row[open]>summary::after {
+  transform:rotate(-135deg)
+}
+.store-row[open]>summary {
+  border-bottom:1px solid var(--line)
+}
+.store-name {
+  display:flex;
+  align-items:center;
+  flex:1;
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.store-pill {
+  flex:none;
+  padding:2px 10px;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:var(--accent);
+  font-size:.8rem;
+  font-weight:700
+}
+.store-body {
+  padding:12px 14px 14px
+}
+.store-body form {
   display:block
 }
-.store-row button {
+.store-body button {
   width:100%;
   margin-top:8px
+}
+.store-row.fresh {
+  animation:store-fresh 1.6s ease-out
+}
+@keyframes store-fresh {
+  from {
+    box-shadow:0 0 0 3px var(--accent)
+  }
+  to {
+    box-shadow:0 0 0 0 transparent
+  }
+}
+.store-new {
+  margin-top:18px;
+  padding-top:16px;
+  border-top:1px solid var(--line-strong)
+}
+.store-new h3 {
+  margin:0
 }
 @keyframes sheet {
   from {

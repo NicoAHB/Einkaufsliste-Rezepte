@@ -103,7 +103,6 @@
         <ul id="shop-list" class="item-list shop-list"></ul>
         <label id="shop-awake-label" class="checkbox-label" hidden><input id="shop-awake" type="checkbox"> Bildschirm anlassen</label>
         <p id="shop-awake-hint" class="hint" role="status"></p>
-        <label id="shop-autolock-label" class="inline-field"><span>Automatisch sperren</span><select id="shop-autolock"><option value="0">Nie</option><option value="10">10 Sekunden</option><option value="20">20 Sekunden</option><option value="30">30 Sekunden</option><option value="60">1 Minute</option><option value="120">2 Minuten</option></select></label>
         <button id="shop-finish" type="button" class="secondary hold-button"><span>Einkauf beenden</span></button>
       </div>
     </section>
@@ -181,6 +180,10 @@
         <ul id="pantry-list" class="pantry-list"></ul></div></details>
       
       </div>
+      <div id="shop-card" class="card stack"><details id="shop-details" class="fold"><summary><h3>Im Laden</h3></summary><div class="stack">
+        <label id="shop-autolock-label" class="inline-field"><span>Automatisch sperren</span><select id="shop-autolock"><option value="0">Nie</option><option value="10">10 Sekunden (Standard)</option><option value="20">20 Sekunden</option><option value="30">30 Sekunden</option><option value="60">1 Minute</option><option value="120">2 Minuten</option></select></label>
+        <p class="hint">Nach dieser Zeit ohne Berührung sperrt sich die Ansicht „Im Laden“ von selbst, damit in der Hosentasche nichts versehentlich abgehakt wird. Gilt nur auf diesem Gerät. „Bildschirm anlassen“ steht in der Ansicht „Im Laden“ selbst.</p></div></details>
+      </div>
       <div id="alias-card" class="card stack"><details id="alias-details" class="fold"><summary><h3>Gemerkte Namen<span id="alias-count"></span></h3></summary><div class="stack">
         <p class="hint">Wenn du auf einem Kassenbon einen Namen änderst oder bei „Meinst du dasselbe wie …?“ zustimmst, merkt sich die App die Zuordnung („Text auf dem Bon → Name in der App“) und wendet sie beim nächsten Mal an. Eine falsche Zuordnung entfernst du hier; ihr gemerkter Preis lässt sich im Artikel unter „Zuletzt notierte Preise“ vergessen.</p>
         <ul id="alias-list" class="pantry-list"></ul></div></details>
@@ -222,7 +225,7 @@
         </div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.32 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.33 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -244,7 +247,7 @@
   <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>
-  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Angebotslinks öffnen die Händlerseite. Es werden keine Angebote automatisch abgerufen. Beim Löschen bleiben Artikel intern erhalten.</p><div id="store-editor"></div><form id="store-form" class="stack"><label>Neues Geschäft<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button>Geschäft hinzufügen</button></form></dialog>
+  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><div id="store-editor"></div><form id="store-form" class="stack store-new"><h3>Neues Geschäft</h3><label>Name<input name="name" required maxlength="80"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button>Geschäft hinzufügen</button></form></dialog>
   <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
