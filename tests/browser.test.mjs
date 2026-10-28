@@ -357,6 +357,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const edeka = page.locator('#store-editor .store-row', { hasText: 'Edeka' });
     await edeka.locator('.aisle-fold > summary').click();
     assert.equal(await edeka.locator('.aisle-list li').count(), 11, 'alle Gänge stehen in der Liste');
+    // Gestalt: Name lesbar in einer Zeile, Pfeile 44 px und rechts daneben (nicht Buchstabe für Buchstabe, nicht über die ganze Breite)
+    const layout = await edeka.locator('.aisle-list li').evaluateAll(nodes => nodes.map(node => { const [name, up, down] = [node.querySelector('span'), ...node.querySelectorAll('button')].map(part => part.getBoundingClientRect()); return { name: name.width, nameHeight: name.height, up: [up.width, up.height], down: [down.width, down.height], order: name.right <= up.left + 1 && up.right <= down.left + 1, inside: down.right <= node.getBoundingClientRect().right + 1 }; }));
+    for (const row of layout) {
+      assert.ok(row.name > 110 && row.nameHeight < 60, `Name steht lesbar (${Math.round(row.name)} × ${Math.round(row.nameHeight)} px)`);
+      assert.deepEqual([row.up, row.down], [[44, 44], [44, 44]], 'Pfeile 44 × 44 px'); assert.ok(row.order && row.inside, 'Name, nach oben, nach unten nebeneinander im Rahmen');
+    }
+    assert.equal(await horizontalOverflow(page), 0);
     assert.equal(await edeka.locator('.aisle-list li').first().textContent(), 'Obst & Gemüse');
     assert.equal(await edeka.getByRole('button', { name: 'Obst & Gemüse nach oben' }).isDisabled(), true, 'der oberste kann nicht weiter nach oben');
     assert.equal(await edeka.getByRole('button', { name: 'Sonstiges nach unten' }).isDisabled(), true);

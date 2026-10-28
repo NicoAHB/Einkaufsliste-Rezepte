@@ -3699,8 +3699,17 @@ html[data-landscape] .turn-hint {
   min-width:0;
   overflow-wrap:anywhere
 }
-.aisle-list .icon-button {
-  flex:none
+.store-body .aisle-list .icon-button {
+  flex:none;
+  width:44px;
+  min-height:44px;
+  height:44px;
+  margin:0;
+  padding:0
+}
+.store-body .aisle-fold>.text-button {
+  width:auto;
+  margin:4px 0 0
 }
 .aisle-list .icon-button:disabled {
   opacity:.3
