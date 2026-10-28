@@ -1,0 +1,48 @@
+# Führt die Tests bei jeder Änderung aus (Logiktests und Browsertests in Chromium).
+# Die App selbst braucht keinen Build; diese Datei betrifft nur die Prüfung.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Logiktests
+        run: npm run test:logic
+      - name: Playwright installieren (Chromium)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Schrift Inter als Standard (wie in der Entwicklungsumgebung)
+        # Ohne sie nimmt der Runner die breitere Schrift DejaVu Sans; die Layouttests (z. B. fünf Reiter bei 280 px) messen Schriftbreiten.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-inter
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'XML'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+          <fontconfig>
+            <alias><family>system-ui</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>-apple-system</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>BlinkMacSystemFont</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>Segoe UI</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>sans-serif</family><prefer><family>Inter</family></prefer></alias>
+          </fontconfig>
+          XML
+          fc-cache -f
+          fc-match sans-serif
+          fc-match system-ui
+      - name: Browsertests
+        run: npm run test:browser

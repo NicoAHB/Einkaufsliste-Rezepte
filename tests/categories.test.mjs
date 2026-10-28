@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CATEGORIES, categoryLabel, groupByCategory, guessCategory, isCategory, itemCategory, rememberedCategory, suggestCategory } from '../categories.js';
+import { CATEGORIES, categoryLabel, groupByCategory, guessCategory, isCategory, itemCategory, orderCategories, rememberedCategory, suggestCategory, validAisles } from '../categories.js';
 
 const corpus = {
   obst: ['Äpfel', 'Bananen', 'Zwiebeln', 'Rote Zwiebeln', 'Knoblauch', 'Kartoffeln', 'Süßkartoffeln', 'Tomaten', 'Cherrytomaten', 'Gurke', 'Salatgurke', 'Paprika', 'Karotten', 'Möhren', 'Brokkoli', 'Blumenkohl', 'Rotkohl', 'Eisbergsalat', 'Rucola', 'Spinat', 'Zucchini', 'Zitronen', 'Limetten', 'Avocado', 'Champignons', 'Frühlingszwiebeln', 'Lauch', 'Petersilie', 'Basilikum', 'Ingwer', 'Erdbeeren', 'Himbeeren', 'Preiselbeeren', 'Weintrauben', 'Gemüse', 'Frisches Gemüse', 'Maiskolben', 'Chilischote', 'Kohlrabi', 'Mangold'],
@@ -64,4 +64,33 @@ test('Lange Artikelverläufe bremsen die Anzeige nicht aus', () => {
   const groups = groupByCategory(rows, history);
   assert.ok(performance.now() - started < 500, `zu langsam: ${Math.round(performance.now() - started)} ms`);
   assert.equal(groups.find(group => group.id === 'vorrat').items.length, 300);
+});
+
+test('Eigene Reihenfolge der Gänge: genannte zuerst, der Rest wie im Standard; Unbekanntes und Doppeltes zählt nicht', () => {
+  const ids = order => orderCategories(order).map(category => category.id);
+  assert.deepEqual(ids(null), CATEGORIES.map(category => category.id), 'ohne Liste: Standardweg');
+  assert.deepEqual(ids(undefined), ids([]));
+  assert.deepEqual(ids(['getraenke', 'obst']).slice(0, 3), ['getraenke', 'obst', 'brot']);
+  assert.equal(ids(['getraenke', 'obst']).length, CATEGORIES.length, 'kein Gang geht verloren');
+  assert.deepEqual(ids(['obst', 'obst', 'unsinn', 7, null]), ids(['obst']), 'doppelt und unbekannt wird ignoriert');
+  assert.deepEqual(ids('kein Feld'), ids(null));
+  assert.equal(new Set(ids(['vorrat', 'sonstiges', 'obst'])).size, CATEGORIES.length);
+  const input = ['vorrat']; ids(input); assert.deepEqual(input, ['vorrat'], 'die Eingabe bleibt unverändert');
+});
+
+test('Gültige Liste: fehlt oder null ist der Standard; nur bekannte, nicht doppelte Kennungen', () => {
+  for (const ok of [undefined, null, [], ['obst'], CATEGORIES.map(category => category.id)]) assert.equal(validAisles(ok), true, JSON.stringify(ok));
+  for (const bad of ['obst', {}, ['unsinn'], ['obst', 'obst'], [1], [...CATEGORIES.map(category => category.id), 'obst']]) assert.equal(validAisles(bad), false, JSON.stringify(bad));
+});
+
+test('groupByCategory ordnet nach der Reihenfolge des Geschäfts; ohne Angabe bleibt alles wie bisher', () => {
+  const rows = ['Tomaten', 'Nudeln', 'Milch', 'Wasser'].map(name => ({ name }));
+  const labels = order => groupByCategory(rows, rows, order).map(group => group.id);
+  assert.deepEqual(labels(), ['obst', 'kuehl', 'vorrat', 'getraenke']);
+  assert.deepEqual(labels(null), labels());
+  assert.deepEqual(labels(['getraenke', 'vorrat']), ['getraenke', 'vorrat', 'obst', 'kuehl']);
+  assert.deepEqual(labels(['unsinn']), labels(), 'Unbekanntes ändert nichts');
+  // Namen bleiben in jeder Gruppe alphabetisch
+  const mixed = ['Birne', 'Apfel', 'Zwiebel'].map(name => ({ name }));
+  assert.deepEqual(groupByCategory(mixed, mixed, ['obst'])[0].items.map(item => item.name), ['Apfel', 'Birne', 'Zwiebel']);
 });

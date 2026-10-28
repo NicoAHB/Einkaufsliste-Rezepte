@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
-import { compact } from '../compact.js';
+import { POLICY, compact } from '../compact.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('templates', id, patch, 'Nico', at);
 const items = [{ name: 'Milch', quantity: 2, unit: 'l', storeId: 'store-lidl' }, { name: 'Brot', quantity: 1, unit: 'Stück' }];
@@ -36,7 +36,7 @@ describe('Einkaufsvorlagen', () => {
     const result = compact(data, new Date('2026-03-10T00:00:00.000Z'));
     assert.equal(result.removed.templates, 1);
     assert.deepEqual(result.data.templates.map(row => row.id), ['keep']);
-    const bare = emptyData(); delete bare.templates; bare.sync.applied = Array.from({ length: 700 }, (_, index) => `op-${index}`);
+    const bare = emptyData(); delete bare.templates; bare.sync.applied = Array.from({ length: POLICY.maxApplied + 100 }, (_, index) => `op-${index}`);
     const none = compact(bare, new Date('2026-03-10T00:00:00.000Z'));
     assert.equal(none.changed, true);
     assert.equal(none.data.templates, undefined, 'ohne Vorlagen entsteht keine leere Liste');

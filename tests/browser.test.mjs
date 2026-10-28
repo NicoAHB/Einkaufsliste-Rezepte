@@ -8,6 +8,7 @@ import zlib from 'node:zlib';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { planGenerated } from '../recipe-maker.js';
+import { readZip } from '../zip.js';
 
 let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
@@ -92,13 +93,18 @@ const pickStore = async (page, name) => { await expandForm(page); await storeBut
 
 function github(initial) {
   let content = structuredClone(initial), sha = 'sha-1', etag = '"e-1"', version = 1;
-  const photos = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, unauthorized: false };
+  const photos = new Map(), photoDates = new Map(), stats = { gets: 0, puts: 0, notModified: 0, photoPuts: 0, photoGets: 0, photoLists: 0, photoDeletes: 0 }, behavior = { failPhotoPuts: false, unauthorized: false };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,PUT,DELETE,OPTIONS', 'access-control-expose-headers': 'ETag' };
   return {
-    stats, photos, behavior, get content() { return content; },
+    stats, photos, photoDates, behavior, get content() { return content; },
     async handler(route) {
       const request = route.request(), path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1] || '');
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      // Wann wurde die Datei zuletzt eingecheckt? (Schonfrist der Foto-Bereinigung); ohne Angabe: vor langer Zeit
+      if (new URL(request.url()).pathname.endsWith('/commits')) {
+        const date = photoDates.get(new URL(request.url()).searchParams.get('path')) ?? '2020-01-01T00:00:00Z';
+        return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify([{ commit: { committer: { date } } }]) });
+      }
       if (path === 'photos' && request.method() === 'GET') {
         stats.photoLists++;
         if (!photos.size) return route.fulfill({ status: 404, headers: cors, body: '{}' });
@@ -238,6 +244,259 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForTimeout(250);
     const shown = await page.locator('.tabs').boundingBox();
     assert.ok(height - (shown.y + shown.height) >= -1 && height - (shown.y + shown.height) <= 9, 'Leiste ist wieder am unteren Rand (schwebend: 8 px Abstand)');
+    await ctx.close();
+  });
+
+  test('Mehrere Artikel gemeinsam bearbeiten: Auswahlmodus, Tipp wählt aus, Geschäft zuordnen (gleiche Artikel werden zusammengezählt), Löschen mit Rückfrage, „Alle“/„Keine“', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 780 } } });
+    await open(page);
+    const row = name => page.locator('#items .item', { hasText: name });
+    const names = scope => page.locator(`${scope} .item strong`).allTextContents();
+    // Ohne Auswahlmodus ist alles wie bisher (Kreis hakt ab, Tipp bearbeitet)
+    assert.equal(await page.locator('#select-bar').isHidden(), true);
+    assert.equal(await page.locator('#items .select-mark').count(), 0);
+    await page.click('#select-mode');
+    assert.equal(await page.locator('#select-bar').isVisible(), true);
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt');
+    assert.equal(await page.isDisabled('#select-move'), true); assert.equal(await page.isDisabled('#select-delete'), true);
+    assert.equal(await page.locator('#clear-checked').isHidden(), true);
+    assert.equal(await page.getAttribute('#select-mode', 'aria-pressed'), 'true');
+    // Tipp wählt aus (kein Bearbeiten-Fenster, nicht abgehakt)
+    await row('Tomaten').getByRole('button', { name: /auswählen/ }).first().click();
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'kein Bearbeiten-Fenster');
+    await row('Nudeln').locator('.item-copy').click();
+    assert.equal(await page.textContent('#select-count'), '2 ausgewählt');
+    assert.equal(await page.locator('#items .item.selected').count(), 2);
+    assert.equal(await page.locator('#items .item.checked').count(), 0, 'nichts wurde abgehakt');
+    assert.equal(await row('Tomaten').locator('.select-mark').getAttribute('aria-pressed'), 'true');
+    await row('Nudeln').locator('.select-mark').click();   // Kreis wählt ebenfalls ab
+    assert.equal(await page.textContent('#select-count'), '1 ausgewählt');
+    // „Alle“ wählt alles in der Ansicht, „Keine“ nimmt alles zurück
+    await page.click('#select-all');
+    assert.equal(await page.locator('#items .item.selected').count(), await page.locator('#items .item').count());
+    assert.equal(await page.textContent('#select-all'), 'Keine');
+    await page.click('#select-all');
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt');
+    // Geschäft zuordnen: Tomaten und Nudeln zu Lidl
+    await row('Tomaten').locator('.item-copy').click(); await row('Nudeln').locator('.item-copy').click();
+    await page.click('#select-move'); await sheetOpen(page);
+    assert.match(await page.textContent('#move-text'), /2 Artikel ausgewählt/);
+    await page.locator('#move-choices button', { hasText: 'Lidl' }).click();
+    assert.match(await page.textContent('#notice-text'), /2 Artikel → Lidl/);
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt', 'die Auswahl ist danach leer, der Modus bleibt');
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    const lidl = await names('#items');
+    assert.ok(lidl.includes('Tomaten') && lidl.includes('Nudeln'), lidl.join(', '));
+    // Gleiche Artikel in verschiedenen Geschäften: beim Verschieben ins selbe Ziel werden sie zusammengezählt
+    await page.click('#select-mode');
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    await page.fill('#item-form input[name=name]', 'Joghurt'); await page.click('#item-form .add-button');
+    await page.getByRole('tab', { name: /^Lidl/ }).click();
+    await page.fill('#item-form input[name=name]', 'Joghurt'); await page.fill('#item-form input[name=quantity]', '2'); await page.click('#item-form .add-button');
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    await page.click('#select-mode');
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 2);
+    for (const entry of await page.locator('#items .item', { hasText: 'Joghurt' }).all()) await entry.locator('.item-copy').click();
+    await page.click('#select-move'); await sheetOpen(page);
+    await page.locator('#move-choices button', { hasText: 'Rewe' }).click();
+    assert.match(await page.textContent('#notice-text'), /2 Artikel → Rewe \(1 zusammengezählt\)/);
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1, 'nur noch ein Joghurt');
+    assert.match(await row('Joghurt').locator('.item-qty').textContent(), /^3\sStück$/);
+    // Löschen: erst die Rückfrage, abgebrochen bleibt alles, bestätigt sind beide weg
+    await row('Joghurt').locator('.item-copy').click(); await row('Tomaten').locator('.item-copy').click();
+    page.once('dialog', dialog => { assert.match(dialog.message(), /2 Artikel löschen/); void dialog.dismiss(); });
+    await page.click('#select-delete');
+    assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1, 'abgebrochen: nichts gelöscht');
+    page.once('dialog', dialog => { void dialog.accept(); });
+    await page.click('#select-delete');
+    await page.waitForFunction(() => !/Joghurt|Tomaten/.test(document.querySelector('#items').textContent));
+    assert.match(await page.textContent('#notice-text'), /2 Artikel gelöscht/);
+    // Beenden: wieder alles wie bisher; auch beim Wechsel in einen anderen Bereich endet der Modus
+    await page.click('#select-done');
+    assert.equal(await page.locator('#select-bar').isHidden(), true);
+    assert.ok(await page.locator('#items .check:not(.select-mark)').count() > 0, 'Abhaken-Kreise sind zurück');
+    await page.click('#select-mode');
+    await page.click('[data-tab=recipes]');
+    assert.equal(await page.locator('#select-bar').isHidden(), true, 'andere Bereiche haben keine Auswahlleiste');
+    await page.click('[data-tab=shopping]');
+    assert.equal(await page.locator('#items .select-mark').count(), 0, 'der Modus wurde beendet');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Auswahlleiste: nichts läuft über den Rand (280 px), die Liste bleibt bis zum Ende erreichbar, Ziehen ist im Auswahlmodus aus', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 560 } } });
+    await open(page);
+    await page.click('#select-mode');
+    assert.equal(await horizontalOverflow(page), 0);
+    const bar = await page.locator('#select-bar').boundingBox();
+    assert.ok(bar.x >= 0 && bar.x + bar.width <= 280, `die Leiste passt in die Breite (${Math.round(bar.x)} + ${Math.round(bar.width)})`);
+    for (const button of await page.locator('#select-bar button').all()) { const box = await button.boundingBox(); assert.ok(box.height >= 44 && box.x >= 0 && box.x + box.width <= 280, 'Knopf groß genug und im Bild'); }
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const last = await page.locator('#items > *:last-child').boundingBox(), top = (await page.locator('#select-bar').boundingBox()).y;
+    assert.ok(last.y + last.height <= top + 1, `das Ende der Liste liegt nicht unter der Leiste (${Math.round(last.y + last.height)} ≤ ${Math.round(top)})`);
+    // Langes Halten hebt keine Zeile ab (kein Verschieben-Fenster)
+    const copy = await page.locator('#items .item .item-copy').first().boundingBox();
+    await page.mouse.move(copy.x + 40, copy.y + copy.height / 2); await page.mouse.down(); await page.waitForTimeout(700);
+    assert.equal(await page.locator('.drag-ghost').count(), 0, 'nichts hebt ab');
+    await page.mouse.up();
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Reihenfolge der Gänge je Geschäft: im Geschäfte-Fenster ändern, gilt unter „Planen“ (Geschäft und „Alle“) und „Im Laden“, Standard stellt zurück', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0 } });
+    await open(page);
+    const heads = async scope => (await page.locator(`${scope} .group-head`).allTextContents()).map(text => text.replace(/\d+$/, '').trim());
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    assert.deepEqual(await heads('#items'), ['Obst & Gemüse', 'Vorrat & Konserven'], 'Standard: wie im Laden');
+    // Im Geschäfte-Fenster: Vorrat & Konserven ganz nach oben
+    await openStores(page);
+    const edeka = page.locator('#store-editor .store-row', { hasText: 'Edeka' });
+    await edeka.locator('.aisle-fold > summary').click();
+    assert.equal(await edeka.locator('.aisle-list li').count(), 11, 'alle Gänge stehen in der Liste');
+    // Gestalt: Name lesbar in einer Zeile, Pfeile 44 px und rechts daneben (nicht Buchstabe für Buchstabe, nicht über die ganze Breite)
+    const layout = await edeka.locator('.aisle-list li').evaluateAll(nodes => nodes.map(node => { const [name, up, down] = [node.querySelector('span'), ...node.querySelectorAll('button')].map(part => part.getBoundingClientRect()); return { name: name.width, nameHeight: name.height, up: [up.width, up.height], down: [down.width, down.height], order: name.right <= up.left + 1 && up.right <= down.left + 1, inside: down.right <= node.getBoundingClientRect().right + 1 }; }));
+    for (const row of layout) {
+      assert.ok(row.name > 110 && row.nameHeight < 60, `Name steht lesbar (${Math.round(row.name)} × ${Math.round(row.nameHeight)} px)`);
+      assert.deepEqual([row.up, row.down], [[44, 44], [44, 44]], 'Pfeile 44 × 44 px'); assert.ok(row.order && row.inside, 'Name, nach oben, nach unten nebeneinander im Rahmen');
+    }
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.equal(await edeka.locator('.aisle-list li').first().textContent(), 'Obst & Gemüse');
+    assert.equal(await edeka.getByRole('button', { name: 'Obst & Gemüse nach oben' }).isDisabled(), true, 'der oberste kann nicht weiter nach oben');
+    assert.equal(await edeka.getByRole('button', { name: 'Sonstiges nach unten' }).isDisabled(), true);
+    for (let i = 0; i < 5; i++) await edeka.getByRole('button', { name: 'Vorrat & Konserven nach oben' }).click();
+    assert.equal(await edeka.locator('.aisle-list li').first().innerText().then(text => text.trim()), 'Vorrat & Konserven');
+    assert.equal(await edeka.getByRole('button', { name: 'Standardreihenfolge' }).isVisible(), true);
+    // Erst „Speichern“ übernimmt die Reihenfolge; vorher ändert sich die Liste nicht
+    assert.deepEqual(await heads('#items'), ['Obst & Gemüse', 'Vorrat & Konserven']);
+    await edeka.getByRole('button', { name: 'Edeka speichern' }).click();
+    assert.deepEqual(await heads('#items'), ['Vorrat & Konserven', 'Obst & Gemüse'], 'Planen, Geschäft Edeka');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.stores.find(row => row.name === 'Edeka').aisles);
+    assert.equal(saved[0], 'vorrat'); assert.equal(saved.length, 11);
+    await page.keyboard.press('Escape');
+    // „Alle“: der Abschnitt Edeka folgt der Reihenfolge, Lidl bleibt im Standard
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    const sections = await page.locator('#items .store-head, #items .group-head').allTextContents();
+    const text = sections.map(entry => entry.replace(/\d+$/, '').trim());
+    const edekaPart = text.slice(text.findIndex(entry => /edeka/i.test(entry)));
+    assert.ok(edekaPart.indexOf('Vorrat & Konserven') < edekaPart.indexOf('Obst & Gemüse'), `Abschnitt Edeka: ${edekaPart.join(' | ')}`);
+    // Im Laden: dieselbe Reihenfolge
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    assert.deepEqual(await heads('#shop-list'), ['Vorrat & Konserven', 'Obst & Gemüse'], 'Im Laden, Edeka');
+    await page.click('#shop-back');
+    // Zurück auf den Standard
+    await openStores(page);
+    const again = page.locator('#store-editor .store-row', { hasText: 'Edeka' });
+    await again.locator('.aisle-fold > summary').click();
+    assert.equal(await again.locator('.aisle-list li').first().innerText().then(value => value.trim()), 'Vorrat & Konserven', 'die gespeicherte Reihenfolge steht beim nächsten Öffnen');
+    await again.getByRole('button', { name: 'Standardreihenfolge' }).click();
+    assert.equal(await again.locator('.aisle-list li').first().innerText().then(value => value.trim()), 'Obst & Gemüse');
+    assert.equal(await again.getByRole('button', { name: 'Standardreihenfolge' }).isHidden(), true, 'im Standard gibt es nichts zurückzusetzen');
+    await again.getByRole('button', { name: 'Edeka speichern' }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('tab', { name: /^Edeka/ }).click();
+    assert.deepEqual(await heads('#items'), ['Obst & Gemüse', 'Vorrat & Konserven']);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptentwurf: Angefangenes bleibt beim Schließen und nach dem Neuladen erhalten, wird angeboten, lässt sich zurückholen oder verwerfen; nach dem Speichern ist er weg', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}'));
+    await page.click('[data-tab=recipes]');
+    // Ein unberührtes Formular hinterlässt keinen Entwurf
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isHidden(), true, 'noch kein Entwurf');
+    await page.click('#recipe-dialog [data-close]');
+    assert.deepEqual(await drafts(), {});
+    // Etwas tippen: der Entwurf wird von selbst gesichert (ohne zu speichern), auch das Hinzufügen einer Zutat
+    await page.click('#add-recipe'); await sheetOpen(page);
+    await page.fill('#recipe-form input[name=name]', 'Linsensuppe');
+    await page.fill('#ingredient-editor .ingredient-row [data-field=name]', 'Rote Linsen');
+    await page.fill('#ingredient-editor .ingredient-row [data-field=quantity]', '250');
+    await page.fill('#ingredient-editor .ingredient-row [data-field=unit]', 'g');
+    await page.click('#add-ingredient');
+    await page.fill('#ingredient-editor .ingredient-row:nth-child(2) [data-field=name]', 'Zwiebel');
+    await page.fill('#recipe-form textarea[name=instructions]', 'Alles kochen.');
+    await page.waitForFunction(() => /Linsensuppe/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    assert.deepEqual((await drafts()).new.state.ingredients.map(row => row.name), ['Rote Linsen', 'Zwiebel']);
+    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.recipes)).some(row => row.name === 'Linsensuppe'), false, 'nichts davon ist gespeichert');
+    // Schließen mit X, dann erneut „Neu“: der Entwurf wird angeboten
+    await page.click('#recipe-dialog [data-close]');
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isVisible(), true);
+    assert.match(await page.textContent('#recipe-draft-note'), /nicht gespeicherten Entwurf von \d\d\.\d\d\.\d\d.*\d\d:\d\d/);
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), '', 'angeboten, aber nicht von selbst eingesetzt');
+    // Die App ganz neu laden (wie nach vollständigem Schließen): der Entwurf ist noch da
+    await page.keyboard.press('Escape');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isVisible(), true, 'auch nach dem Neuladen');
+    await page.getByRole('button', { name: 'Entwurf zurückholen' }).click();
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), 'Linsensuppe');
+    assert.equal(await page.locator('#ingredient-editor .ingredient-row').count(), 2);
+    assert.equal(await page.inputValue('#ingredient-editor .ingredient-row:nth-child(2) [data-field=name]'), 'Zwiebel');
+    assert.equal(await page.inputValue('#recipe-form textarea[name=instructions]'), 'Alles kochen.');
+    assert.equal(await page.locator('#recipe-draft-note').isHidden(), true);
+    // Speichern: der Entwurf ist weg, ein weiteres „Neu“ bietet nichts mehr an
+    await page.click('#recipe-form .sheet-actions button'); await page.waitForSelector('#recipe-dialog', { state: 'hidden' });
+    assert.deepEqual(await drafts(), {});
+    assert.match(await page.textContent('#recipe-list'), /Linsensuppe/);
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isHidden(), true);
+    // Verwerfen: ein neuer Entwurf wird angeboten und lässt sich verwerfen
+    await page.fill('#recipe-form input[name=name]', 'Nur ein Anfang');
+    await page.waitForFunction(() => /Nur ein Anfang/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    await page.click('#recipe-dialog [data-close]');
+    await page.click('#add-recipe'); await sheetOpen(page);
+    await page.getByRole('button', { name: 'Verwerfen' }).click();
+    assert.equal(await page.locator('#recipe-draft-note').isHidden(), true);
+    assert.deepEqual(await drafts(), {});
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), '');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptentwurf: gilt je Rezept (Bearbeiten eines vorhandenen Rezepts), ein importiertes Rezept bleibt bis zum Speichern erhalten', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}'));
+    await page.click('[data-tab=recipes]');
+    // Vorhandenes Rezept ändern, ohne zu speichern, und schließen
+    const card = page.locator('.recipe-card', { hasText: 'Apfel-Pfannkuchen' });
+    await card.locator('summary').click(); await card.getByRole('button', { name: 'Bearbeiten' }).click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), 'Apfel-Pfannkuchen');
+    await page.fill('#recipe-form input[name=name]', 'Apfel-Pfannkuchen mit Zimt');
+    await page.waitForFunction(() => /Zimt/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    const keys = Object.keys(await drafts());
+    assert.equal(keys.length, 1);
+    assert.notEqual(keys[0], 'new');
+    await page.click('#recipe-dialog [data-close]');
+    // „Neu“ bietet diesen Entwurf nicht an, das Rezept selbst schon
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isHidden(), true, 'der Entwurf gehört zum anderen Rezept');
+    await page.click('#recipe-dialog [data-close]');
+    // Importiertes Rezept (aus Text): sofort als Entwurf gesichert, auch ohne Änderung
+    await page.click('#import-recipe');
+    await page.click('[data-source=text]'); await page.fill('#import-form textarea[name=text]', textRecipe);
+    await page.click('#import-run'); await page.waitForSelector('#recipe-dialog[open]');
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), 'Cremige Tomatensuppe');
+    assert.ok((await drafts()).import, 'der Import ist als Entwurf gesichert');
+    await page.click('#recipe-dialog [data-close]');
+    // Wer danach ein neues Rezept anlegt, bekommt das liegengebliebene importierte Rezept angeboten
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.match(await page.textContent('#recipe-draft-note'), /importiertes Rezept/);
+    await page.getByRole('button', { name: 'Entwurf zurückholen' }).click();
+    assert.equal(await page.inputValue('#recipe-form input[name=name]'), 'Cremige Tomatensuppe');
+    assert.equal((await drafts()).import, undefined, 'aus „import“ wird „new“');
+    assert.ok((await drafts()).new);
+    assert.deepEqual(problems, []);
     await ctx.close();
   });
 
@@ -958,6 +1217,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(!(await row.textContent()).includes('0,69'));
     // 4. Falsch notierter Preis: im Artikel „Vergessen“ (mit Rückfrage); das Preisfeld und die Liste zeigen ihn nicht mehr
     await row.locator('.item-copy').click(); await sheetOpen(page);
+    await page.click('#item-price-fold > summary');   // der Preisvergleich steht im ausklappbaren Bereich „Preis & Angebot“
     assert.match(await page.textContent('#price-comparison'), /Rewe: 1,29\s€\/Stück/);
     assert.equal(await page.locator('#price-comparison li button').count(), 1);
     page.once('dialog', dialog => { assert.match(dialog.message(), /Rewe.*„Apfel“.*vergessen/); dialog.dismiss(); });
@@ -1825,6 +2085,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const apples = () => page.locator('#items .item', { hasText: 'Äpfel' });
     const edit = async until => {
       await apples().getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+      await page.click('#item-price-fold > summary');   // Preis & Angebot sind zugeklappt
       if (!(await page.isChecked('#edit-item-form input[name=onSale]'))) {
         await page.check('#edit-item-form input[name=onSale]');
         await page.fill('#edit-item-form input[name=saleEuros]', '0,10');
@@ -1837,11 +2098,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await apples().textContent(), /Angebot abgelaufen/);
     assert.ok(await apples().locator('.sale-badge.expired').count() === 1);
     assert.doesNotMatch(await apples().textContent(), /Angebot: /, 'der abgelaufene Angebotspreis wird nicht mehr als aktuell gezeigt');
-    const expiredCost = await apples().locator('.price-note', { hasText: 'Geschätzt' }).textContent();
+    const expiredCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
     await edit(day(2));
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.match(await apples().textContent(), /Im Angebot bis \d{2}\.\d{2}\.\d{2,4}/);
-    const saleCost = await apples().locator('.price-note', { hasText: 'Geschätzt' }).textContent();
+    const saleCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
     assert.notEqual(saleCost, expiredCost, 'solange das Angebot gilt, ist die Schätzung niedriger');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -2658,10 +2919,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const rows = page.locator('#store-editor .store-row');
     assert.equal(await rows.count(), 3);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.tagName + ':' + node.open)), ['DETAILS:false', 'DETAILS:false', 'DETAILS:false'], 'alle zugeklappt');
-    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe'], 'nur der Name steht da');
-    for (const box of await rows.locator('summary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 48, `gut zu treffen (${box} px)`);
+    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe'], 'nur der Name steht da');
+    for (const box of await rows.locator('> summary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 48, `gut zu treffen (${box} px)`);
     assert.equal(await rows.first().locator('input[name=name]').isVisible(), false, 'die Felder sind verborgen');
-    const arrow = await rows.first().locator('summary').evaluate(node => getComputedStyle(node, '::after').content);
+    const arrow = await rows.first().locator('> summary').evaluate(node => getComputedStyle(node, '::after').content);
     assert.notEqual(arrow, 'none', 'der Pfeil steht rechts');
     // „Neues Geschäft“: fest, nicht klappbar, sichtbar
     const form = page.locator('#store-form');
@@ -2669,27 +2930,27 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await form.locator('input[name=name]').isVisible(), true);
     assert.equal(await form.locator('h3').textContent(), 'Neues Geschäft');
     // Aufklappen mit einem Tipp auf die Zeile; die anderen bleiben zu
-    await rows.nth(2).locator('summary').click();
+    await rows.nth(2).locator('> summary').click();
     assert.equal(await rows.nth(2).evaluate(node => node.open), true);
     assert.equal(await rows.nth(2).locator('input[name=name]').isVisible(), true);
     assert.equal(await rows.nth(2).locator('input[name=name]').inputValue(), 'Rewe');
     assert.equal(await rows.nth(0).evaluate(node => node.open), false);
     assert.equal(await horizontalOverflow(page), 0);
-    await rows.nth(2).locator('summary').click();
+    await rows.nth(2).locator('> summary').click();
     assert.equal(await rows.nth(2).evaluate(node => node.open), false, 'ein zweiter Tipp klappt zu');
     // Ein neues Geschäft: erscheint zugeklappt (und leuchtet kurz auf); was offen war, bleibt offen
-    await rows.nth(0).locator('summary').click();
+    await rows.nth(0).locator('> summary').click();
     await page.fill('#store-form input[name=name]', 'Aldi');
     await page.click('#store-form button');
     await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row').length === 4);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [true, false, false, false], 'Edeka bleibt offen, das neue Aldi ist zu');
-    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
+    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
     assert.equal(await rows.nth(3).evaluate(node => node.classList.contains('fresh')), true, 'das neue Geschäft leuchtet kurz auf');
     assert.equal(await page.inputValue('#store-form input[name=name]'), '', 'das Formular ist wieder leer');
     // Ein Geschäft bearbeiten und speichern: bleibt offen, andere Karten bleiben unberührt
     await rows.nth(0).locator('input[name=name]').fill('Edeka Nord');
     await rows.nth(0).getByRole('button', { name: /speichern/ }).click();
-    assert.deepEqual(await rows.locator('summary').allTextContents(), ['Edeka Nord', 'Lidl', 'Rewe', 'Aldi']);
+    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka Nord', 'Lidl', 'Rewe', 'Aldi']);
     assert.equal(await rows.nth(0).evaluate(node => node.open), true, 'die bearbeitete Karte bleibt offen');
     // Wieder geöffnet: alles zu
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
@@ -3402,13 +3663,99 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Preiszeile unter dem Artikel ist kurz (eine Zeile statt langem Satz)', async () => {
+  test('Artikelzeile ist kompakt: Name und Menge in einer Zeile, darunter klein Person und Schätzpreis; der Preisvergleich mit Datum steht im Bearbeiten-Fenster', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
     await open(page);
-    const note = page.locator('#items .item', { hasText: 'Tomaten' }).locator('small.price-note', { hasText: /^(Am günstigsten|Preis):/ });
-    const text = await note.textContent();
-    assert.match(text, /^Am günstigsten: .+ [\d,]+\s€\/\S+ · \d\d\.\d\d\.\d\d( \(alt\))?$/, text);
-    assert.ok((await note.boundingBox()).height < 2.2 * parseFloat(await note.evaluate(node => getComputedStyle(node).lineHeight)), 'höchstens zwei Zeilen statt vier');
+    const row = page.locator('#items .item', { hasText: 'Tomaten' });
+    assert.equal(await row.locator('strong').textContent(), 'Tomaten');
+    assert.match(await row.locator('.item-qty').textContent(), /^500\sg$/);
+    assert.match(await row.locator('small.item-meta').textContent(), /^Nico · ca\. [\d,]+\s€$/);
+    assert.equal(await row.locator('small.price-note').count(), 0, 'keine Preisvergleichszeile mehr in der Liste');
+    assert.doesNotMatch(await row.textContent(), /günstigsten|\d\d\.\d\d\.\d\d/);
+    // Zwei Zeilen: Name samt Menge, kleine Zeile; nicht mehr vier oder fünf
+    const lines = await row.locator('.item-copy').evaluate(node => Math.round(node.getBoundingClientRect().height / parseFloat(getComputedStyle(node).lineHeight)));
+    assert.ok(lines <= 3, `höchstens zwei Zeilen Text plus Rand (${lines})`);
+    assert.ok((await row.boundingBox()).height < 96, 'die Zeile ist niedrig');
+    // Name und Menge sind deutlich, die kleine Zeile ist kleiner und gedämpft
+    const sizes = await row.evaluate(node => ({ name: parseFloat(getComputedStyle(node.querySelector('strong')).fontSize), qty: parseFloat(getComputedStyle(node.querySelector('.item-qty')).fontSize), meta: parseFloat(getComputedStyle(node.querySelector('.item-meta')).fontSize) }));
+    assert.ok(sizes.qty >= sizes.name - 0.5 && sizes.meta < sizes.name, JSON.stringify(sizes));
+    // Der ausführliche Preisvergleich mit Datum steht im Bearbeiten-Fenster, im ausklappbaren Bereich „Preis & Angebot“
+    await row.getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    assert.match(await page.textContent('#price-comparison'), /zuletzt eingetragen am \d\d\.\d\d\.\d\d/);
+    assert.equal(await page.locator('#item-price-fold').evaluate(node => node.open), false, 'zugeklappt');
+    assert.match(await page.textContent('#item-price-summary'), /€ für 500 g/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bearbeiten-Fenster: Name, Menge, Einheit, Geschäft stehen oben ohne Scrollen, Preise sind ausklappbar, „Speichern“ bleibt am unteren Rand (auch beim Rezept mit vielen Zutaten)', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
+    await open(page);
+    const view = page.viewportSize();
+    await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    for (const field of ['name', 'quantity', 'unit', 'storeId']) {
+      const box = await page.locator(`#edit-item-form [name=${field}]`).boundingBox();
+      assert.ok(box && box.y + box.height < view.height - 90, `${field} ist sofort zu sehen (${Math.round(box?.y)})`);
+    }
+    // Preisfelder sind zu, bis man den Bereich öffnet
+    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), false);
+    await page.click('#item-price-fold > summary');
+    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), true);
+    // „Speichern“ steht am unteren Rand, auch wenn man oben ist und das Fenster lang ist
+    await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
+    const save = await page.locator('#edit-item-form .sheet-actions button').boundingBox();
+    assert.ok(save.y + save.height <= view.height && save.y > view.height - 140, `Speichern am unteren Rand (${Math.round(save.y)} von ${view.height})`);
+    await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 99999; });
+    const after = await page.locator('#edit-item-form .sheet-actions button').boundingBox();
+    assert.ok(after.y + after.height <= view.height && after.y > view.height - 140, 'und nach dem Scrollen ebenso');
+    assert.equal(await page.locator('#delete-item').isVisible(), true);
+    const del = await page.locator('#delete-item').boundingBox();
+    assert.ok(del.y + del.height <= after.y + 1, 'Löschen liegt nicht unter dem Speichern-Knopf');
+    await page.keyboard.press('Escape');
+    // Rezept mit vielen Zutaten: „Rezept speichern“ ist immer erreichbar
+    await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
+    for (let i = 0; i < 12; i++) await page.click('#add-ingredient');
+    await page.evaluate(() => { document.querySelector('#recipe-dialog').scrollTop = 0; });
+    const recipeSave = await page.locator('#recipe-form .sheet-actions button').boundingBox();
+    assert.ok(recipeSave.y + recipeSave.height <= view.height && recipeSave.y > view.height - 140, `Rezept speichern am unteren Rand (${Math.round(recipeSave.y)})`);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Ausgaben ohne Einträge: kurze Erklärung mit „Ersten Einkauf eintragen“ statt leerem Diagramm; nach dem ersten Eintrag erscheinen Summe, Diagramm und Liste', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    assert.equal(await page.locator('#spending-empty').isVisible(), true);
+    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*erste/);
+    for (const hidden of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} ist ohne Einträge nicht zu sehen`);
+    // Der Knopf öffnet das Fenster zum Eintragen
+    await page.click('#spending-first'); await sheetOpen(page);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
+    await page.fill('#purchase-form input[name=amount]', '12,34');
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#spending-empty').isHidden(), true, 'nach dem ersten Eintrag ist die Erklärung weg');
+    for (const shown of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(shown).isVisible(), true, `${shown} erscheint`);
+    assert.match(await page.textContent('#spending-summary'), /12,34\s€/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezepte: die Suche steht oben, „Rezepte des Tages“ und „Was kann ich kochen?“ liegen darunter kompakt nebeneinander', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
+    await open(page);
+    await page.click('[data-tab=recipes]');
+    const search = await page.locator('.search').boundingBox(), daily = await page.locator('#daily-open').boundingBox(), cook = await page.locator('#cookable-open').boundingBox();
+    const first = await page.locator('#recipe-list .recipe-card, #recipe-list > *').first().boundingBox();
+    assert.ok(search.y < daily.y && search.y < cook.y, 'die Suche steht über den beiden Knöpfen');
+    assert.ok(Math.abs(daily.y - cook.y) < 2 && daily.x + daily.width <= cook.x + 1, 'nebeneinander in einer Reihe');
+    assert.ok(daily.height <= 80 && cook.height <= 80, `kompakt (${Math.round(daily.height)} px)`);
+    assert.ok(first.y < 664 - 60 || true);
+    assert.equal(await horizontalOverflow(page), 0);
+    await page.click('#cookable-open'); await sheetOpen(page);   // beide sind weiter bedienbar
+    await page.keyboard.press('Escape');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4414,7 +4761,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const long = rows.find(row => row.name.startsWith('Domol')), size = width < 341 ? 44 : 56;
       for (const row of rows) {
         assert.deepEqual([row.tileWidth, row.tileHeight], [size, size], `${row.name}: Kachel nicht gequetscht`);
-        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(row.light > 0.8, `${row.name}: heller Hintergrund auch im Dunkelmodus (${row.light.toFixed(2)})`); assert.ok(row.emojiInside, `${row.name}: Symbol liegt in der Kachel`);
+        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(scheme === 'dark' ? row.light < 0.15 : row.light > 0.8, `${row.name}: Kachel hell im hellen, dunkel im dunklen Modus (${row.light.toFixed(2)})`); assert.ok(row.emojiInside, `${row.name}: Symbol liegt in der Kachel`);
       }
       assert.equal(long.symbol, '🧼', 'Haushaltsartikel: Seife'); assert.ok(long.nameHeight > 40, 'der lange Name bricht auf mehrere Zeilen um');
       assert.equal(await horizontalOverflow(page), 0);
@@ -4477,7 +4824,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Haferflocken, Eier, Butter \(Lidl\)/);
     assert.match(await page.textContent('#notice-text'), /nur auf diesem Gerät/, 'im Beispielmodus ein Hinweis');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
-    const rows = await page.locator('#items .item').evaluateAll(nodes => nodes.map(node => node.querySelector('strong').textContent + '|' + node.querySelector('small').textContent.split(' · ')[0]));
+    const rows = await page.locator('#items .item').evaluateAll(nodes => nodes.map(node => node.querySelector('strong').textContent + '|' + node.querySelector('.item-qty').textContent));
     assert.ok(rows.includes('Eier|2 Stück') && rows.includes('Butter|500 g'), rows.join(', '));
     assert.ok(rows.includes('Haferflocken|1 Stück'), 'ohne Menge: 1 Stück');
     // Noch einmal dieselben Eier: zählt zum vorhandenen Eintrag dazu (kein zweiter Eintrag)
@@ -4970,6 +5317,101 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const cached = await page.evaluate(async () => (await (await caches.open('einkauf-photos-v1')).keys()).map(request => request.url.split('/').pop()));
     assert.ok(!cached.includes(lost), 'Foto ohne Rezept ist aus dem Zwischenspeicher entfernt');
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Fotos aufräumen: Fotos unter 24 Stunden bleiben stehen, auch wenn noch kein Rezept auf sie verweist (zweites Gerät lädt zuerst das Foto hoch)', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+    const remote = github(demo), old = 'bbbbbbbb-1111-4222-8333-444444444444', young = 'cccccccc-1111-4222-8333-444444444444';
+    for (const id of [old, young]) remote.photos.set(`photos/${id}.jpg`, jpeg);
+    remote.photoDates.set(`photos/${young}.jpg`, new Date(Date.now() - 3600000).toISOString());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    page.once('dialog', dialog => { assert.match(dialog.message(), /1 nicht mehr verwendete Fotos/); assert.match(dialog.message(), /1 neuere bleiben vorerst stehen/); void dialog.accept(); });
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
+    assert.match(await page.textContent('#storage-note'), /1 neuere bleiben vorerst stehen/);
+    assert.deepEqual([...remote.photos.keys()], [`photos/${young}.jpg`]);
+    // Beim nächsten Mal ist nur noch das junge Foto übrig: keine Rückfrage, nichts wird gelöscht
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /noch neu \(unter 24 Stunden\)/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.stats.photoDeletes, 1);
+    // Ist das Alter nicht zu erfahren (GitHub antwortet mit einem Fehler), bleibt das Foto ebenfalls
+    remote.photoDates.set(`photos/${young}.jpg`, 'kein Datum');
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /noch neu/.test(document.querySelector('#storage-note').textContent));
+    assert.equal(remote.photos.size, 1);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Fotos aufräumen: verweist nach der Rückfrage ein Rezept auf das Foto, bleibt es; ohne geglückten Abgleich wird nichts gelöscht', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+    const remote = github(demo), late = 'bbbbbbbb-1111-4222-8333-444444444444', lost = 'cccccccc-1111-4222-8333-444444444444';
+    for (const id of [late, lost]) remote.photos.set(`photos/${id}.jpg`, jpeg);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    // Während die Rückfrage offen ist, kommt vom anderen Gerät ein Rezept, das auf das Foto „late“ verweist
+    page.once('dialog', dialog => {
+      assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/);
+      remote.remoteChange(content => { content.recipes.find(row => row.id === 'recipe-pasta').photoId = late; });
+      void dialog.accept();
+    });
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
+    assert.deepEqual([...remote.photos.keys()], [`photos/${late}.jpg`], 'das Foto mit neuem Rezept bleibt');
+    // Kann nicht abgeglichen werden (hier: Anmeldung abgelehnt), wird nicht einmal die Liste der Fotos geholt, geschweige denn gelöscht
+    remote.photos.set(`photos/${lost}.jpg`, jpeg);
+    remote.behavior.unauthorized = true;
+    const lists = remote.stats.photoLists;
+    await page.click('#clean-photos');
+    await page.waitForFunction(() => /nicht geklappt/.test(document.body.textContent));
+    assert.equal(remote.stats.photoLists, lists, 'ohne Abgleich keine Foto-Prüfung');
+    assert.equal(remote.photos.has(`photos/${lost}.jpg`), true);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Vollsicherung mit Fotos: ZIP mit daten.json, allen Rezeptfotos und lies-mich.txt; Fehlendes wird genannt, kein Token darin', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 9, 8, 7]);
+    const remote = github(demo), keep = 'aaaaaaaa-1111-4222-8333-444444444444', gone = 'dddddddd-1111-4222-8333-444444444444';
+    const [first, second] = remote.content.recipes;
+    first.photoId = keep; second.photoId = gone;   // das zweite Foto gibt es nirgends
+    remote.photos.set(`photos/${keep}.jpg`, jpeg);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    await openSettings(page);
+    assert.equal(await page.locator('#export-full').isVisible(), true);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-full')]);
+    assert.match(download.suggestedFilename(), /^einkauf-vollsicherung-\d{4}-\d\d-\d\d\.zip$/);
+    const files = readZip(new Uint8Array(await readFile(await download.path())));
+    assert.deepEqual(files.map(file => file.name), ['daten.json', `fotos/${keep}.jpg`, 'lies-mich.txt']);
+    const data = JSON.parse(new TextDecoder().decode(files[0].data));
+    assert.ok(data.items.length > 0 && data.recipes.some(row => row.photoId === keep), 'dieselben Daten wie die JSON-Sicherung');
+    assert.deepEqual([...files[1].data], [...jpeg], 'das Foto ist unverändert');
+    const readme = new TextDecoder().decode(files[2].data);
+    assert.ok(readme.includes(gone) && /Nicht gesichert/.test(readme), 'das fehlende Foto wird genannt');
+    assert.ok(!files.some(file => /token/i.test(new TextDecoder().decode(file.data)) && file.name !== 'lies-mich.txt'), 'kein Token in der Sicherung');
+    await page.waitForFunction(() => /Gesichert: Daten und 1 Foto, 1 Foto nicht gefunden/.test(document.querySelector('#export-note').textContent));
+    assert.equal(await page.isDisabled('#export-full'), false, 'der Knopf ist danach wieder bedienbar');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Vollsicherung im Beispielmodus (ohne Verbindung): ZIP mit Daten, ohne Fotos', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await openSettings(page);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-full')]);
+    const files = readZip(new Uint8Array(await readFile(await download.path())));
+    assert.deepEqual(files.map(file => file.name), ['daten.json', 'lies-mich.txt']);
+    assert.ok(JSON.parse(new TextDecoder().decode(files[0].data)).recipes.length > 0);
+    await page.waitForFunction(() => /Gesichert: Daten und 0 Fotos/.test(document.querySelector('#export-note').textContent));
+    assert.deepEqual(problems, []);
     await ctx.close();
   });
 

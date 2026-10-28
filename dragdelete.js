@@ -104,7 +104,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
   }
 
   list.addEventListener('pointerdown', event => {
-    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || drag) return;
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || drag || options.disabled?.()) return;   // `options.disabled()`: z. B. im Auswahlmodus
     const row = event.target.closest?.(selector);
     if (!row) return;
     const point = { x: event.clientX, y: event.clientY };
