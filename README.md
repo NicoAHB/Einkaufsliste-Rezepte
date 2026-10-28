@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.26
+# Einkauf & Rezepte – Version 2.27
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,19 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.27: keine Textauswahl im Laden
+
+Fehler aus Version 2.26: Beim langen Drücken auf einen Kreis (gesperrt zum Abhaken) markierte iOS zusätzlich Text in der Nähe blau (mit Auswahlgriffen), etwa den Kreis selbst und die Zahl in der Überschrift.
+
+- **Im Laden gibt es keine Textauswahl und kein Kontextmenü mehr** (`user-select: none`, `-webkit-touch-callout: none` für die ganze Ansicht; Eingabefelder und die Auswahl der Sperrzeit sind ausgenommen). Unter „Planen“ und in anderen Bereichen bleibt Text auswählbar.
+- Zusätzlich wird der Beginn einer Auswahl (`selectstart`) in der Laden-Ansicht abgebrochen, und eine vorhandene Auswahl wird gelöscht, sobald ein Kreis, ein Geschäft oder „Einkauf beenden“ durch Halten ausgelöst wird.
+- Lange Artikelnamen werden im Laden, wo es geht, mit Silbentrennung umbrochen („Feinwasch-mittel“ statt „Feinwaschm-ittel“).
+- **Nicht getestet:** das Verhalten der Textauswahl auf einem echten iPhone (der Test prüft die Einstellung und das Abbrechen des Auswahlbeginns, nicht die iOS-Lupe selbst).
+
+Weiterer Testpunkt für Version 2.27:
+
+- [ ] Im Laden gesperrt einen **Kreis** halten, bis er sich füllt: Der Artikel ist abgehakt, und **nichts** wird blau markiert (keine Auswahlgriffe, keine Lupe). Dasselbe bei einem Geschäft in der Leiste und beim langen Drücken auf Überschriften oder Namen.
 
 ## Neu in Version 2.26: weniger Text im Laden, gesperrt per Gedrückthalten abhaken und Geschäft wechseln
 
