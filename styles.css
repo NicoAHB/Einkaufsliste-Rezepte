@@ -3495,3 +3495,55 @@ html[data-landscape] .turn-hint {
   width:26px;
   height:26px
 }
+
+/* Einstellungen → Vorrat: Vorschläge häufiger Vorräte zum Übernehmen (Chips mit Plus, gestrichelt, je Gruppe) */
+.pantry-suggest {
+  margin-top:6px;
+  padding-top:14px;
+  border-top:1px solid var(--line-strong)
+}
+.suggest-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px
+}
+.suggest-head h4 {
+  margin:0;
+  font-size:1rem
+}
+.suggest-head button {
+  flex:none;
+  width:auto;
+  min-height:40px;
+  padding:0 14px
+}
+.suggest-group {
+  margin-top:12px
+}
+.suggest-title {
+  display:block;
+  margin-bottom:6px;
+  color:var(--muted);
+  font-size:.8rem;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase
+}
+.suggest-chips {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px
+}
+.suggest-chips .chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:0 14px 0 10px;
+  border-style:dashed
+}
+.suggest-chips .chip .icon {
+  width:16px;
+  height:16px;
+  color:var(--accent)
+}
