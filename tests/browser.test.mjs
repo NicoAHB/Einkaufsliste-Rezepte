@@ -1123,7 +1123,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Kassenbon: Text einfügen, prüfen, Preise merken, Zuordnung lernen, Preisänderung rot und grün', async () => {
+  test('Kassenbon: Text einfügen, prüfen, als bezahlte Preise speichern (Originaltext, Sorte, Herkunft), Zuordnung lernen, nie doppelt übernehmen', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const dated = days => { const day = new Date(Date.now() - days * 86400000); return `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`; };
@@ -1135,49 +1135,70 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
       await page.waitForSelector('#receipt-review:not([hidden])');
     };
-    const note = index => page.locator('#receipt-lines .receipt-line').nth(index).locator('.receipt-note');
-    // 1. Erster Bon: Geschäft aus dem Bon, Summenprobe, Zuordnung „Kirschtomaten“ → „Cherrytomaten“ von Hand
+    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
+    const note = index => line(index).locator('.receipt-note');
+    // 1. Erster Bon: Geschäft aus dem Bon, Summenprobe, Originaltext sichtbar, Zuordnung „Kirschtomaten“ → „Cherrytomaten“ (Sorte „Cherry“) von Hand
     await parse(bon(129, 199, 10));
     assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe');
     assert.equal(await page.locator('#receipt-lines .receipt-line').count(), 2);
     assert.match(await page.textContent('#receipt-check'), /Summe stimmt/);
-    assert.match(await note(0).textContent(), /neu in der Preisliste/);
-    await page.locator('#receipt-lines .receipt-line').nth(1).locator('input[name=name]').fill('Cherrytomaten');
+    assert.match(await line(0).locator('.receipt-use').textContent(), /HAFERDRINK BIO 1L/, 'der Originaltext vom Bon steht in der Zeile');
+    assert.match(await note(0).textContent(), /Noch kein bestätigter Kauf/);
+    await line(1).locator('input[name=name]').fill('Cherrytomaten');
+    await line(1).locator('input[name=variant]').fill('Cherry');
     await page.click('#receipt-save');
     await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /2 Preise gemerkt/);
     let data = await stored();
-    const price = name => data.prices.filter(row => row.name === name && row.storeId === 'store-rewe').at(-1);   // neueste Notiz (die Beispieldaten enthalten schon Preise)
+    const price = name => data.prices.filter(row => row.name === name && row.storeId === 'store-rewe').at(-1);   // neueste Notiz (die Beispieldaten enthalten schon ältere, ungeprüfte)
     assert.deepEqual(price('Haferdrink Bio').quote, { cents: 129, quantity: 1, unit: 'l' });
+    assert.equal(price('Haferdrink Bio').src, 'bon', 'geprüfte Bonposition');
+    assert.match(price('Haferdrink Bio').receipt, /HAFERDRINK BIO 1L/);
+    assert.ok(price('Haferdrink Bio').receiptKey.startsWith('store-rewe|'), 'Schlüssel gegen doppeltes Übernehmen');
     assert.deepEqual(price('Cherrytomaten').quote, { cents: 199, quantity: 250, unit: 'g' });
-    assert.ok(data.aliases.some(row => row.from === 'kirschtomaten' && row.name === 'Cherrytomaten'), 'Zuordnung gemerkt');
-    // 2. Zweiter Bon: gemerkte Zuordnung, Milch ist teurer geworden
+    assert.equal(price('Cherrytomaten').variant, 'Cherry');
+    assert.ok(data.aliases.some(row => row.from === 'kirschtomaten' && row.name === 'Cherrytomaten' && row.variant === 'Cherry'), 'Zuordnung samt Sorte gemerkt');
+    assert.equal(data.sync.minRev, 3, 'Preise mit Sorte setzen die Mindestversion');
+    // 2. Derselbe Bon noch einmal: nichts wird doppelt übernommen
+    await parse(bon(129, 199, 10));
+    assert.equal(await page.locator('#receipt-lines input[type=checkbox]:checked').count(), 0, 'beide Zeilen sind schon eingetragen und abgewählt');
+    assert.match(await note(0).textContent(), /Schon eingetragen/);
+    await page.click('#receipt-save');
+    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /mindestens eine Zeile/);
+    await line(0).locator('input[type=checkbox]').check();   // wer sie trotzdem wählt: auch dann wird sie nicht doppelt gespeichert
+    await page.click('#receipt-save');
+    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /schon eingetragen/);
+    assert.equal((await stored()).prices.filter(row => row.src === 'bon').length, 2, 'weiterhin genau zwei bezahlte Preise');
+    await page.keyboard.press('Escape');
+    // 3. Zweiter Bon: gemerkte Zuordnung samt Sorte; der letzte bestätigte Kauf steht zum Vergleichen da, ohne Wertung
     await parse(bon(139, 199, 3));
-    assert.equal(await page.locator('#receipt-lines .receipt-line').nth(1).locator('input[name=name]').inputValue(), 'Cherrytomaten');
+    assert.equal(await line(1).locator('input[name=name]').inputValue(), 'Cherrytomaten');
+    assert.equal(await line(1).locator('input[name=variant]').inputValue(), 'Cherry');
     assert.match(await note(1).textContent(), /Zuordnung gemerkt/);
-    assert.match(await note(0).textContent(), /▲ Teurer: 1,29\s€ → 1,39\s€/);
-    assert.ok(await note(0).evaluate(node => node.classList.contains('trend') && node.classList.contains('up')));
-    assert.ok(!(await note(1).textContent()).includes('Teurer'), 'unveränderter Preis: keine Meldung');
+    assert.match(await note(0).textContent(), /Zuletzt bezahlt: 1,29\s€ pro l \(\d\d\.\d\d\.\d{4}\)/);
+    assert.ok(!/Teurer|Günstiger/.test(await note(0).textContent()), 'keine Preisentwicklung');
     await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /2 Preise gemerkt · 1 teurer/);
-    // 3. Auf der Liste steht der Hinweis rot am Artikel
+    assert.match(await page.textContent('#notice-text'), /^2 Preise gemerkt/);
+    // 4. Auf der Liste (Planen) steht kein Preis, kein Vergleich, keine Entwicklung
     await page.getByRole('tab', { name: /^Rewe/ }).click();
     await page.fill('#item-form input[name=name]', 'Haferdrink Bio'); await page.fill('#item-form input[name=unit]', 'l'); await page.click('#item-form button[type=submit]');
     const row = page.locator('#items .item', { hasText: 'Haferdrink' });
-    assert.match(await row.textContent(), /▲ Teurer: 1,29\s€ → 1,39\s€ je l \(\+8 %\)/);
-    assert.ok(await row.locator('small.trend.up').count() === 1);
-    // 4. Dritter Bon: günstiger, grün; ein Aktionspreis ist keine Änderung
+    assert.ok(!/€|Teurer|Günstiger|ca\./.test(await row.textContent()), 'Planen zeigt keine Preise: ' + await row.textContent());
+    assert.equal(await row.locator('small.trend, small.price-note, .sale-badge').count(), 0);
+    // 5. Dritter Bon: ein Rabatt direkt unter der Zeile wird eingerechnet und zur Kontrolle gemeldet; er bleibt ein damaliger Angebotspreis
     await parse(bon(119, 199, 1).replace('KIRSCHTOMATEN 250G     1,99 B', 'KIRSCHTOMATEN 250G     1,99 B\nPreisvorteil          -0,50'));
-    assert.match(await note(0).textContent(), /▼ Günstiger: 1,39\s€ → 1,19\s€/);
-    assert.ok(await note(0).evaluate(node => node.classList.contains('down')));
-    assert.match(await note(1).textContent(), /Aktion: bezahlt 1,49\s€/);
-    assert.ok(!(await note(1).textContent()).includes('Teurer') && !(await note(1).textContent()).includes('Günstiger'));
-    await page.keyboard.press('Escape');
+    assert.match(await line(1).locator('.receipt-check').textContent(), /Rabatt von 0,50 € direkt unter der Zeile eingerechnet/);
+    assert.match(await note(1).textContent(), /Aktion: bezahlt 1,49\s€ für 250 g/);
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    data = await stored();
+    assert.equal(price('Cherrytomaten').onSale, true);
+    assert.deepEqual(price('Cherrytomaten').quote, { cents: 149, quantity: 250, unit: 'g' }, 'bezahlt');
+    assert.deepEqual(price('Cherrytomaten').regularQuote, { cents: 199, quantity: 250, unit: 'g' }, 'der Normalpreis bleibt erhalten');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
 
-  test('Kassenbon: „Apfeltasche“ bekommt nicht den Preis von „Apfel“; ein falsch notierter Preis lässt sich im Artikel vergessen', async () => {
+  test('Kassenbon: „Apfeltasche“ bekommt nicht den Preis von „Apfel“; ein Vorschlag gilt erst nach ausdrücklicher Bestätigung; „Gala Äpfel“ wird als Sorte erkannt; ohne Mengenangabe bleibt die Menge unbekannt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
@@ -1186,51 +1207,46 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
       await page.waitForSelector('#receipt-review:not([hidden])');
     };
-    const priced = async name => (await stored()).prices.filter(row => !row.deletedAt && row.name === name && row.storeId === 'store-rewe');
-    // 1. „Apfel“ ist bekannt und hat einen Preis
+    const priced = async name => (await stored()).prices.filter(row => !row.deletedAt && row.src === 'bon' && row.name === name && row.storeId === 'store-rewe');
+    const names = () => page.locator('#receipt-lines input[name=name]').evaluateAll(nodes => nodes.map(node => node.value));
+    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
+    const note = index => line(index).locator('.receipt-note');
+    // 1. „Apfel“: auf dem Bon steht keine Menge, sie bleibt unbekannt („Position“) und wird als Hinweis gezeigt
     await parse('REWE Markt GmbH\nApfel 1,29 A\nSUMME 1,29');
     assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfel');
+    assert.equal(await page.inputValue('#receipt-lines input[name=unit]'), 'Position');
+    assert.match(await line(0).locator('.receipt-check').textContent(), /Menge und Einheit stehen nicht auf dem Bon/);
     await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129]);
-    // 2. „Apfeltasche“ (Gebäck) bleibt „Apfeltasche“: kein Vorschlag, kein Preisvergleich mit „Apfel“
+    assert.deepEqual((await priced('Apfel')).map(row => row.quote), [{ cents: 129, quantity: 1, unit: 'Position' }]);
+    // 2. „Apfeltasche“ (Gebäck) bleibt „Apfeltasche“; „Bio Apfel“ ist nur ein Vorschlag: im Feld steht, was auf dem Bon steht
     await parse('REWE Markt GmbH\nApfeltasche 0,69 A\nApfel Saft 1,49 A\nBio Apfel 1,59 A\nSUMME 3,77');
-    const names = () => page.locator('#receipt-lines input[name=name]').evaluateAll(nodes => nodes.map(node => node.value));
-    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Apfel'], 'nur „Bio Apfel“ ist sicher dasselbe wie „Apfel“');
-    const note = index => page.locator('#receipt-lines .receipt-line').nth(index).locator('.receipt-note');
-    assert.ok(!/Vorschlag|Teurer|Günstiger/.test(await note(0).textContent()), 'kein Vorschlag, keine Preisänderung');
-    assert.match(await note(0).textContent(), /neu in der Preisliste/);
-    assert.match(await note(2).textContent(), /Vorschlag aus deiner Liste, bitte prüfen/);
-    assert.match(await note(2).textContent(), /früherer Preis erst nach Bestätigung/, 'bei einem Vorschlag kein früherer Preis');
-    assert.ok(!/Teurer|Günstiger|neu in der Preisliste/.test(await note(2).textContent()));
-    await note(2).getByRole('button', { name: 'Name passt' }).click();
-    assert.ok(!/Vorschlag|früherer Preis/.test(await note(2).textContent()), 'bestätigt: jetzt gilt der Name');
-    await page.locator('#receipt-lines .receipt-line').nth(2).locator('input[type=checkbox]').uncheck();   // „Bio Apfel“ hier nicht übernehmen
+    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Bio Apfel'], 'nichts wird ohne Bestätigung zugeordnet');
+    assert.ok(!/Vorschlag|Als „/.test(await note(0).textContent()), 'kein Vorschlag für die Apfeltasche');
+    assert.equal(await note(0).getByRole('button').count(), 0);
+    assert.equal(await note(1).getByRole('button').count(), 0);
+    assert.match(await note(2).textContent(), /Noch kein bestätigter Kauf/);
+    await note(2).getByRole('button', { name: 'Als „Apfel“ eintragen' }).click();
+    assert.equal(await line(2).locator('input[name=name]').inputValue(), 'Apfel', 'erst nach dem ausdrücklichen Tipp gilt der Name');
+    assert.equal(await note(2).getByRole('button').count(), 0);
+    assert.match(await note(2).textContent(), /Zuletzt bezahlt: 1,29\s€ laut Bon \(Menge unbekannt\)/);
+    await line(2).locator('input[type=checkbox]').uncheck();   // „Bio Apfel“ hier nicht übernehmen
     await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
     assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69]);
+    assert.deepEqual((await priced('Apfel Saft')).map(row => row.quote.cents), [149]);
     assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129], 'der Preis von „Apfel“ bleibt unberührt');
     assert.equal((await stored()).aliases.filter(row => !row.deletedAt && row.from.includes('apfel')).length, 0, 'keine Zuordnung zu „Apfel“ gemerkt');
-    // 3. Ein Artikel „Apfel“ zeigt den Preis von „Apfel“, nicht den der Tasche
-    await page.getByRole('tab', { name: /^Rewe/ }).click();
-    await page.fill('#item-form input[name=name]', 'Apfel'); await page.click('#item-form button[type=submit]');
-    const row = page.locator('#items .item', { hasText: 'Apfel' }).first();
-    assert.match(await row.textContent(), /1,29/);
-    assert.ok(!(await row.textContent()).includes('0,69'));
-    // 4. Falsch notierter Preis: im Artikel „Vergessen“ (mit Rückfrage); das Preisfeld und die Liste zeigen ihn nicht mehr
-    await row.locator('.item-copy').click(); await sheetOpen(page);
-    await page.click('#item-price-fold > summary');   // der Preisvergleich steht im ausklappbaren Bereich „Preis & Angebot“
-    assert.match(await page.textContent('#price-comparison'), /Rewe: 1,29\s€\/Stück/);
-    assert.equal(await page.locator('#price-comparison li button').count(), 1);
-    page.once('dialog', dialog => { assert.match(dialog.message(), /Rewe.*„Apfel“.*vergessen/); dialog.dismiss(); });
-    await page.locator('#price-comparison li button').click();
-    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129], 'abgebrochen: nichts vergessen');
-    page.once('dialog', dialog => dialog.accept());
-    await page.locator('#price-comparison li button').click();
-    await page.waitForFunction(() => /Noch keine vergleichbaren Preise/.test(document.querySelector('#price-comparison').textContent));
-    assert.equal(await page.inputValue('#edit-item-form input[name=priceEuros]'), '', 'das Preisfeld ist leer');
-    assert.deepEqual(await priced('Apfel'), []);
-    assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69], 'andere Preise bleiben');
-    await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-    assert.ok(!/1,29/.test(await page.locator('#items .item', { hasText: 'Apfel' }).first().textContent()), 'kein gemerkter Preis mehr am Artikel');
+    // 3. Eine Sorte wird nur erkannt, wenn der Bon auch das Wort der Gruppe nennt; „Gala“ allein bleibt, was es ist
+    await parse('REWE Markt GmbH\nGALA ÄPFEL 1KG 2,99 A\nPink Lady 0,79 A\nSUMME 3,78');
+    assert.deepEqual(await names(), ['Äpfel', 'Pink Lady']);
+    assert.equal(await line(0).locator('input[name=variant]').inputValue(), 'Gala');
+    assert.match(await note(0).textContent(), /Sorte erkannt: Gala/);
+    assert.equal(await line(1).locator('input[name=variant]').inputValue(), '', 'keine Sorte erfunden');
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    const apples = await priced('Äpfel');
+    assert.equal(apples.length, 1);
+    assert.equal(apples[0].variant, 'Gala');
+    assert.deepEqual(apples[0].quote, { cents: 299, quantity: 1, unit: 'kg' });
+    assert.deepEqual((await priced('Pink Lady')).map(row => row.variant), [undefined], 'ohne Gruppenwort bleibt „Pink Lady“ ein eigenes Produkt ohne Sorte');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -1839,7 +1855,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#receipt-form input[name=spend]').isChecked(), false, 'schon unter Ausgaben');
     await page.locator('#receipt-lines input[type=checkbox]').first().check();
     await page.locator('#receipt-form input[name=spend]').check();
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    await page.click('#receipt-save');
+    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /schon eingetragen/, 'dieselbe Bonposition wird nicht noch einmal übernommen, auch nicht mit gesetztem Häkchen');
+    await page.keyboard.press('Escape'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
     const purchases = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt));
     assert.equal(purchases.length, 1, 'der Betrag wird auch bei gesetztem Häkchen nicht doppelt angelegt');
     assert.equal(purchases[0].cents, 278);
@@ -2078,11 +2096,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Angebote mit „gültig bis“: abgelaufene zählen nicht mehr; Preisvergleich zeigt, wann ein Preis eingetragen wurde', async () => {
+  test('Angebote mit „gültig bis“: abgelaufene zählen nicht mehr in der Schätzung; die Zeile unter „Planen“ zeigt weder Angebot noch Preis', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const day = offset => { const date = new Date(Date.now() + offset * 86400000); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
     const apples = () => page.locator('#items .item', { hasText: 'Äpfel' });
+    const total = async () => Number((await page.textContent('#shopping-total')).match(/Geschätzt ([\d.]+),(\d\d)/).slice(1).join('.').replace('.', '') ) ;
     const edit = async until => {
       await apples().getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
       await page.click('#item-price-fold > summary');   // Preis & Angebot sind zugeklappt
@@ -2092,18 +2111,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       }
       await page.fill('#edit-item-form input[name=saleUntil]', until);
     };
+    const before = await total();
     await edit(day(-1));
-    assert.match(await page.textContent('#price-comparison'), /zuletzt eingetragen am/);
+    assert.equal(await page.locator('#price-comparison').count(), 0, 'kein Preisvergleich im Bearbeiten-Fenster');
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
-    assert.match(await apples().textContent(), /Angebot abgelaufen/);
-    assert.ok(await apples().locator('.sale-badge.expired').count() === 1);
-    assert.doesNotMatch(await apples().textContent(), /Angebot: /, 'der abgelaufene Angebotspreis wird nicht mehr als aktuell gezeigt');
-    const expiredCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
+    assert.equal(await apples().locator('.sale-badge, small.price-note').count(), 0, 'keine Angebotsangaben in der Zeile');
+    assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./);
+    assert.equal(await total(), before, 'ein abgelaufenes Angebot ändert die Schätzung nicht');
     await edit(day(2));
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
-    assert.match(await apples().textContent(), /Im Angebot bis \d{2}\.\d{2}\.\d{2,4}/);
-    const saleCost = await apples().locator('.item-meta', { hasText: 'ca.' }).textContent();
-    assert.notEqual(saleCost, expiredCost, 'solange das Angebot gilt, ist die Schätzung niedriger');
+    assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./, 'auch ein gültiges Angebot steht nicht in der Zeile');
+    assert.ok(await total() < before, 'solange das Angebot gilt, ist die Schätzung niedriger');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -3523,7 +3541,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'paid-details': false, 'storage-details': false, 'display-details': true });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });
@@ -3663,15 +3681,307 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Artikelzeile ist kompakt: Name und Menge in einer Zeile, darunter klein Person und Schätzpreis; der Preisvergleich mit Datum steht im Bearbeiten-Fenster', async () => {
+  // ---- Preisinfo „Zuletzt bezahlt“ im Laden (Version 2.40) ----
+  const paidRow = (id, name, storeId, at, quote, extra = {}) => ({ id, name, storeId, quote, regularQuote: quote, onSale: false, src: 'bon', receipt: name.toUpperCase(), createdAt: `${at}T10:00:00.000Z`, updatedAt: `${at}T10:00:00.000Z`, deletedAt: null, _clock: {}, ...extra });
+  const pq = (cents, quantity = 1, unit = 'Stück') => ({ cents, quantity, unit });
+  const PAID = [
+    paidRow('pa1', 'Äpfel', 'store-edeka', '2026-10-26', pq(59), { variant: 'Gala' }),
+    paidRow('pa2', 'Äpfel', 'store-edeka', '2026-10-12', pq(55), { variant: 'Gala' }),
+    paidRow('pa3', 'Äpfel', 'store-rewe', '2026-10-21', pq(79), { variant: 'Pink Lady', onSale: true }),
+    paidRow('pa4', 'Äpfel', 'store-rewe', '2026-10-01', pq(129, 1, 'Position')),
+    paidRow('pa5', 'Apfeltasche', 'store-rewe', '2026-10-22', pq(149)),
+    paidRow('pa6', 'Apfelsaft', 'store-rewe', '2026-10-22', pq(199, 1, 'l')),
+    paidRow('pa7', 'Tomaten', 'store-edeka', '2026-10-23', pq(298, 1, 'kg'))
+  ];
+  const withPaid = (rows = PAID) => { const data = structuredClone(demo); data.prices.push(...structuredClone(rows)); data.sync.minRev = 3; return data; };
+  // Die Beispieldaten plus bezahlte Preise liegen schon im lokalen Speicher, wenn die App startet.
+  const paidContext = async (options = {}) => {
+    const made = await context(options);
+    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', withPaid()]);
+    return made;
+  };
+  const shopItem = (page, name) => page.locator('#shop-list .shop-item', { hasText: name }).first();
+  // Der Text eines Feldes mit einem Leerzeichen zwischen allen Textteilen (Blöcke haben im Quelltext keine), unabhängig von Großschreibung per CSS
+  const plainText = locator => locator.evaluate(node => { const parts = [], walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); while (walk.nextNode()) { const text = walk.currentNode.textContent.replace(/[\u00a0\s]+/g, ' ').trim(); if (text) parts.push(text); } return parts.join(' '); });
+
+  test('Im Laden: Name oder Pfeil klappt unter dem Artikel „Zuletzt bezahlt“ auf und zu; Sorten getrennt, das gewählte Geschäft zuerst, höchstens ein Feld offen', async () => {
+    const { ctx, page, problems } = await paidContext();
+    await open(page);
+    await inShop(page, 'Rewe');
+    const apples = shopItem(page, 'Äpfel'), toggle = apples.locator('.shop-text'), box = apples.locator('.shop-price');
+    // Zunächst kompakt: Haken, Name, Menge, kleiner Pfeil; keine Preisangabe, kein Feld
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    assert.ok(!/€/.test(await apples.textContent()), 'zunächst keine Preisangabe');
+    assert.ok(await apples.locator('.shop-chevron').isVisible(), 'kleiner Pfeil');
+    assert.ok((await toggle.boundingBox()).height >= 60, 'große Tippfläche');
+    // Ein Tipp auf den Namen öffnet das Feld direkt unter dem Artikel
+    await toggle.locator('.shop-name').click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(await toggle.getAttribute('aria-controls'), await box.getAttribute('id'));
+    const lower = await box.boundingBox(), upper = await toggle.boundingBox();
+    assert.ok(lower.y >= upper.y + upper.height - 1, 'das Feld liegt unter dem Artikel');
+    assert.equal(await itemState(page, 'Äpfel'), false, 'der Namenstipp hakt nichts ab');
+    assert.equal(await box.locator('h3').textContent(), 'Zuletzt bezahlt');
+    const text = await plainText(box);
+    for (const part of ['Bei Rewe', 'Pink Lady 0,79 € pro Stück Rewe · 21.10.2026 Damals im Angebot', 'Äpfel – Sorte unbekannt 1,29 € laut Bon (Menge unbekannt) Rewe · 01.10.2026',
+      'In anderen Geschäften', 'Gala 0,59 € pro Stück Edeka · 26.10.2026', 'Frühere Käufe (1)', 'Vergangene Kaufpreise. Der heutige Preis kann abweichen.']) assert.ok(text.includes(part), `${part} — ${text}`);
+    assert.ok(text.indexOf('Bei Rewe') < text.indexOf('Pink Lady') && text.indexOf('Pink Lady') < text.indexOf('Äpfel – Sorte unbekannt') && text.indexOf('Äpfel – Sorte unbekannt') < text.indexOf('In anderen Geschäften') && text.indexOf('In anderen Geschäften') < text.indexOf('Gala'), text);
+    for (const never of ['Apfeltasche', 'Apfelsaft', '1,49', '1,99', 'am günstigsten', 'günstig', 'teurer']) assert.ok(!text.includes(never), `${never} gehört nicht zu Äpfeln: ${text}`);
+    // Frühere Käufe sind zugeklappt und lassen sich aufklappen
+    assert.equal(await box.locator('.price-older').evaluate(node => node.open), false);
+    assert.equal(await box.locator('.price-older li').isVisible(), false);
+    await box.locator('.price-older summary').click();
+    assert.equal(await plainText(box.locator('.price-older li')), '0,55 € pro Stück · 12.10.2026');
+    // Erneutes Antippen schließt das Feld (auch mit der Tastatur: Fokus auf den Namen, Eingabetaste)
+    await toggle.click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    assert.equal(await shopItem(page, 'Äpfel').locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    await shopItem(page, 'Äpfel').locator('.shop-text').focus(); await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 1);
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('shop-text')), true, 'der Fokus bleibt auf dem Namen');
+    assert.equal(await shopItem(page, 'Äpfel').locator('.price-older').evaluate(node => node.open), false, 'jedes Öffnen beginnt mit zugeklappten früheren Käufen');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: ohne bestätigte Kaufpreise steht ein Hinweis; ungeprüfte alte Notizen zählen nicht; höchstens ein Feld gleichzeitig; im anderen Geschäft stehen dessen Preise zuerst', async () => {
+    const { ctx, page, problems } = await paidContext();
+    await open(page);
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
+    const only = async name => { await shopItem(page, name).locator('.shop-text').click(); return page.locator('#shop-list .shop-price').count(); };
+    // Milch (Lidl) hat nur eine ungeprüfte Notiz aus früheren Versionen: noch kein bestätigter Kaufpreis
+    assert.equal(await only('Milch'), 1);
+    assert.equal(await plainText(page.locator('#shop-list .shop-price')), 'Zuletzt bezahlt Noch keine bestätigten Kaufpreise vorhanden. Vergangene Kaufpreise. Der heutige Preis kann abweichen.');
+    // Ein zweites Feld öffnen schließt das erste
+    assert.equal(await only('Tomaten'), 1);
+    assert.equal(await shopItem(page, 'Milch').locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    assert.equal(await shopItem(page, 'Tomaten').locator('.shop-text').getAttribute('aria-expanded'), 'true');
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Bei Edeka Tomaten – Sorte unbekannt 2,98 € pro kg Edeka · 23\.10\.2026/, 'ein Preis je kg bleibt ein Preis je kg');
+    assert.equal(await only('Äpfel'), 1, 'Äpfel (Rewe) öffnen das Feld, Tomaten schließt');
+    assert.equal(await shopItem(page, 'Tomaten').locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    // Ein Artikel eines anderen Geschäfts zuerst mit dessen Preisen: Äpfel gehören zu Rewe
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /^Zuletzt bezahlt Bei Rewe/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: der Haken hakt nur ab und öffnet nichts; Abhaken schließt das Feld des Artikels; Geschäftswechsel und Verlassen schließen es', async () => {
+    const { ctx, page, problems } = await paidContext();
+    await open(page);
+    await inShop(page, 'Rewe');
+    const apples = () => shopItem(page, 'Äpfel');
+    // Der Haken öffnet nichts
+    await shopTap(page, 'Äpfel').click();
+    assert.equal(await itemState(page, 'Äpfel'), true);
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'der Haken öffnet kein Feld');
+    await page.click('#notice-undo'); assert.equal(await itemState(page, 'Äpfel'), false);
+    // Offen, dann abhaken: Feld zu, Artikel abgehakt; Rückgängig öffnet es nicht von selbst wieder
+    await apples().locator('.shop-text').click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 1);
+    await shopTap(page, 'Äpfel').click();
+    assert.equal(await itemState(page, 'Äpfel'), true);
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'beim Abhaken schließt sich das Feld');
+    await page.click('#notice-undo');
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    // Geschäftswechsel schließt, Zurückwechseln öffnet nichts
+    await apples().locator('.shop-text').click();
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    // Auch „Alle“ ist ein anderer Reiter: Derselbe Artikel steht dort, sein Feld bleibt aber zu
+    await apples().locator('.shop-text').click();
+    await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'beim Wechsel zu „Alle“ schließt das Feld, obwohl der Artikel dort ebenfalls steht');
+    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    // Verlassen von „Im Laden“ schließt
+    await apples().locator('.shop-text').click();
+    await page.click('#shop-back'); await page.click('#mode-shop');
+    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Halten am Kreis hakt weiter ab; ein offenes Feld bleibt lesbar', async () => {
+    const { ctx, page, problems } = await paidContext();
+    await open(page);
+    await inShop(page, 'Rewe');
+    const apples = () => shopItem(page, 'Äpfel');
+    await apples().locator('.shop-text').click();
+    await apples().locator('.price-older summary').click();
+    assert.equal(await apples().locator('.price-older').evaluate(node => node.open), true);
+    await apples().locator('.shop-text').click();   // zu
+    await page.click('#shop-lock');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
+    await apples().locator('.shop-text').click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'gesperrt öffnet ein Tipp nichts');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'der Knopf zum Entsperren leuchtet auf');
+    await apples().locator('.shop-chevron').click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'auch der Pfeil öffnet gesperrt nichts');
+    assert.equal(await itemState(page, 'Äpfel'), false);
+    // Das Halten am Kreis geht weiter
+    await pressAndHold(page, '#shop-list .shop-item:has-text("Äpfel") .shop-tap', 650); await page.mouse.up();
+    assert.equal(await itemState(page, 'Äpfel'), true, 'durch Halten abgehakt');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden: das offene Feld bleibt beim automatischen Abgleich erhalten (Scrollposition und Fokus springen nicht); verschwindet der Artikel, schließt es; ohne Verbindung geht es aus den gespeicherten Daten', async () => {
+    const data = withPaid();
+    for (let index = 0; index < 18; index++) data.items.push({ id: `fill-${index}`, storeId: 'store-rewe', name: `Füllartikel ${String(index).padStart(2, '0')}`, quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {}, onSale: false });
+    const remote = github(data);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    const apples = () => shopItem(page, 'Äpfel');
+    await apples().locator('.shop-text').click();
+    await apples().locator('.price-older summary').click().catch(() => {});   // Rewe-Äpfel haben keine früheren Käufe; der Aufruf ist nur ein Versuch
+    await page.evaluate(() => window.scrollTo(0, 60));
+    await page.waitForTimeout(150);
+    const mark = () => page.evaluate(() => { const node = document.querySelector('#shop-list .shop-item .shop-text[aria-expanded=true]'); return { top: Math.round(node.getBoundingClientRect().top), scroll: Math.round(scrollY), focus: document.activeElement?.dataset?.focusKey || '' }; });
+    await apples().locator('.shop-text').focus();
+    const before = await mark();
+    assert.ok(before.scroll > 0, `die Seite ist gescrollt (${before.scroll})`);
+    assert.match(before.focus, /^info:/);
+    // Der Partner fügt einen Artikel hinzu und ändert die Menge der Äpfel: Das Feld bleibt offen, nichts springt
+    remote.remoteChange(content => {
+      content.items.push({ id: 'item-partner', storeId: 'store-rewe', name: 'Zucchini', quantity: 2, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: content.updatedAt, updatedAt: content.updatedAt, deletedAt: null, _clock: {}, onSale: false });
+      content.items.find(row => row.name === 'Äpfel').quantity = 6;
+    });
+    await pollNow(page);
+    await page.waitForFunction(() => document.querySelector('#shop-list').textContent.includes('Zucchini'));
+    const after = await mark();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 1, 'das Feld ist weiter offen');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'true');
+    assert.match(await plainText(apples().locator('.shop-qty')), /^6/, 'die neue Menge steht schon da');
+    assert.deepEqual(after, before, 'Scrollposition, Lage und Fokus bleiben');
+    // Ohne Verbindung: öffnen, schließen und ein anderes Feld öffnen kommt ohne Netz aus den gespeicherten Daten
+    await ctx.setOffline(true);
+    const requests = []; page.on('request', request => { if (!request.url().startsWith('data:')) requests.push(request.url()); });
+    await apples().locator('.shop-text').click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    await apples().locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Pink Lady 0,79 € pro Stück Rewe · 21\.10\.2026/);
+    assert.deepEqual(requests, [], 'das Aufklappen braucht kein Netz');
+    await ctx.setOffline(false);
+    // Verschwindet der Artikel, schließt das Feld und es bleibt nichts zurück
+    remote.remoteChange(content => { content.items.find(row => row.name === 'Äpfel').deletedAt = new Date().toISOString(); });
+    await pollNow(page);
+    await page.waitForFunction(() => !document.querySelector('#shop-list').textContent.includes('Äpfel'));
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    // Ein von der anderen Person abgehakter Artikel steht unter „Erledigt“, ohne offenes Feld
+    await shopItem(page, 'Zucchini').locator('.shop-text').click();
+    remote.remoteChange(content => { const row = content.items.find(entry => entry.name === 'Zucchini'); row.checked = true; });
+    await pollNow(page);
+    await page.waitForFunction(() => !document.querySelector('#shop-list .shop-price'));
+    assert.deepEqual(problems.filter(text => !/Failed to load resource|net::ERR/.test(text)), []);
+    await ctx.close();
+  });
+
+  test('Bezahlte Preise prüfen (Einstellungen): ungeprüfte Notizen zählen im Laden nicht; „Stimmt“ bestätigt, „Ändern“ korrigiert Name, Sorte und Preis, „Vergessen“ entfernt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const rows = () => page.locator('#paid-review .paid-note');
+    await openSettings(page);
+    assert.match(await page.textContent('#paid-details summary'), /Bezahlte Preise \(8 zu prüfen\)/);
+    await page.click('#paid-details > summary');
+    assert.equal(await rows().count(), 8);
+    assert.match(await page.textContent('#paid-review'), /Es ist nicht sicher, ob der Preis bezahlt wurde/);
+    // Im Laden ist die Milch von Lidl noch nicht bestätigt
+    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
+    await shopItem(page, 'Milch').locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Noch keine bestätigten Kaufpreise vorhanden/);
+    await page.click('#shop-back'); await openSettings(page);
+    // „Stimmt“: die Notiz wird zu einem bezahlten Preis
+    const milkLidl = rows().filter({ hasText: 'Milch – Sorte unbekannt' }).filter({ hasText: 'Lidl' });
+    assert.equal(await milkLidl.count(), 1);
+    await milkLidl.getByRole('button', { name: /Stimmt/ }).click();
+    assert.equal((await stored()).prices.find(row => row.id === 'price-demo-milch-lidl').src, 'bon');
+    assert.equal(await rows().count(), 7);
+    assert.match(await page.textContent('#paid-list'), /Milch – Sorte unbekannt/);
+    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
+    await shopItem(page, 'Milch').locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Milch – Sorte unbekannt 0,99 € pro l Lidl · 25\.10\.2026/);
+    await page.click('#shop-back'); await openSettings(page);
+    // „Ändern“: falsch zugeordnet (Äpfel bei Rewe waren Gala), Name, Sorte und Preis korrigieren; danach bestätigt
+    const apples = rows().filter({ hasText: 'Äpfel' });
+    await apples.getByRole('button', { name: /Ändern/ }).click(); await sheetOpen(page);
+    assert.match(await page.textContent('#note-origin'), /Noch nicht bestätigt/);
+    await page.fill('#note-form input[name=variant]', 'Gala'); await page.fill('#note-form input[name=price]', '0,65'); await page.fill('#note-form input[name=quantity]', '1'); await page.fill('#note-form input[name=unit]', 'Stück');
+    await page.click('#note-form button[type=submit]'); await page.waitForSelector('#note-dialog', { state: 'hidden' });
+    const fixed = (await stored()).prices.find(row => row.id === 'price-demo-aepfel-rewe');
+    assert.deepEqual([fixed.src, fixed.variant, fixed.name, fixed.quote], ['bon', 'Gala', 'Äpfel', { cents: 65, quantity: 1, unit: 'Stück' }]);
+    assert.equal((await stored()).sync.minRev, 3);
+    assert.match(await page.textContent('#paid-list'), /Gala/);
+    // „Vergessen“ mit Rückfrage
+    page.once('dialog', dialog => dialog.dismiss());
+    await rows().first().getByRole('button', { name: /Vergessen/ }).click();
+    assert.equal(await rows().count(), 6, 'abgebrochen: nichts vergessen');
+    const firstId = await rows().first().evaluate(node => node.textContent);
+    page.once('dialog', dialog => dialog.accept());
+    await rows().first().getByRole('button', { name: /Vergessen/ }).click();
+    assert.equal(await rows().count(), 5);
+    assert.ok((await stored()).prices.some(row => row.deletedAt), `vergessen: ${firstId.slice(0, 30)}`);
+    // Alle ungeprüften vergessen
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: 'Alle zu prüfenden vergessen' }).click();
+    assert.equal(await rows().count(), 0);
+    assert.ok(!/zu prüfen/.test(await page.textContent('#paid-details summary')));
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const [width, scheme] of [[390, 'light'], [390, 'dark'], [320, 'light'], [280, 'dark']]) {
+    test(`Preisinfo im Laden: passt in ${width} px Breite ohne Überlauf, mit Symbol und Pfeil, gut lesbar (${scheme})`, async () => {
+      const { ctx, page, problems } = await paidContext({ context: { viewport: { width, height: 700 }, colorScheme: scheme }, config: { productImages: true } });
+      await open(page);
+      await inShop(page, 'Rewe');
+      const apples = shopItem(page, 'Äpfel');
+      await apples.locator('.shop-text').click();
+      await apples.locator('.price-older summary').click().catch(() => {});
+      assert.equal(await horizontalOverflow(page), 0);
+      const fit = await page.evaluate(() => {
+        const boxNode = document.querySelector('.shop-price'), listItem = document.querySelector('.shop-item.info-open').getBoundingClientRect();
+        const clipped = [...boxNode.querySelectorAll('*')].filter(node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.right > boxNode.getBoundingClientRect().right + 0.5; }).map(node => node.className || node.tagName);
+        const box = boxNode.getBoundingClientRect(), row = document.querySelector('.shop-item.info-open .shop-text').getBoundingClientRect(), chevron = document.querySelector('.shop-item.info-open .shop-chevron').getBoundingClientRect();
+        const thumb = document.querySelector('.shop-item.info-open .item-thumb');
+        const parse = text => (text.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+        const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+        const bg = parse(getComputedStyle(document.querySelector('.shop-price')).backgroundColor);
+        const colors = ['.price-title', '.price-amount', '.price-meta', '.price-foot', 'h3'].map(selector => [selector, Math.round(contrast(parse(getComputedStyle(document.querySelector(`.shop-price ${selector}`)).color), bg) * 10) / 10]);
+        return { boxRight: box.right, boxLeft: box.left, listLeft: listItem.left, listRight: listItem.right, clipped, width: innerWidth, rowHeight: row.height, chevronRight: chevron.right, chevronVisible: chevron.width > 0 && chevron.right <= innerWidth, thumbShown: Boolean(thumb) && getComputedStyle(thumb).display !== 'none', colors };
+      });
+      assert.ok(fit.boxLeft >= 0 && fit.boxRight <= fit.width, JSON.stringify(fit));
+      assert.ok(fit.boxLeft >= fit.listLeft - 0.5 && fit.boxRight <= fit.listRight + 0.5, `das Feld liegt innerhalb der Artikelzeile: ${JSON.stringify(fit)}`);
+      assert.deepEqual(fit.clipped, [], 'nichts im Feld ragt über den Rand');
+      assert.ok(fit.rowHeight >= 60 && fit.chevronVisible, JSON.stringify(fit));
+      assert.equal(fit.thumbShown, width > 340, 'das Symbol steht bei schmalen Bildschirmen nicht im Weg');
+      for (const [selector, ratio] of fit.colors) assert.ok(ratio >= 4.5, `${selector} Kontrast ${ratio} (${scheme}, ${width} px)`);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
+  test('Artikelzeile ist kompakt: Name und Menge in einer Zeile, darunter klein die Person; unter „Planen“ steht in der Zeile kein Preis, Vergleich oder Entwicklung', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
     await open(page);
     const row = page.locator('#items .item', { hasText: 'Tomaten' });
     assert.equal(await row.locator('strong').textContent(), 'Tomaten');
     assert.match(await row.locator('.item-qty').textContent(), /^500\sg$/);
-    assert.match(await row.locator('small.item-meta').textContent(), /^Nico · ca\. [\d,]+\s€$/);
-    assert.equal(await row.locator('small.price-note').count(), 0, 'keine Preisvergleichszeile mehr in der Liste');
-    assert.doesNotMatch(await row.textContent(), /günstigsten|\d\d\.\d\d\.\d\d/);
+    assert.equal(await row.locator('small.item-meta').textContent(), 'Nico', 'nur die Person, kein geschätzter Preis');
+    assert.equal(await row.locator('small.price-note, small.trend, .sale-badge').count(), 0, 'keine Preisvergleichs- oder Entwicklungszeile in der Liste');
+    assert.doesNotMatch(await row.textContent(), /€|ca\.|günstig|teurer|Angebot|\d\d\.\d\d\.\d\d/i);
     // Zwei Zeilen: Name samt Menge, kleine Zeile; nicht mehr vier oder fünf
     const lines = await row.locator('.item-copy').evaluate(node => Math.round(node.getBoundingClientRect().height / parseFloat(getComputedStyle(node).lineHeight)));
     assert.ok(lines <= 3, `höchstens zwei Zeilen Text plus Rand (${lines})`);
@@ -3679,9 +3989,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Name und Menge sind deutlich, die kleine Zeile ist kleiner und gedämpft
     const sizes = await row.evaluate(node => ({ name: parseFloat(getComputedStyle(node.querySelector('strong')).fontSize), qty: parseFloat(getComputedStyle(node.querySelector('.item-qty')).fontSize), meta: parseFloat(getComputedStyle(node.querySelector('.item-meta')).fontSize) }));
     assert.ok(sizes.qty >= sizes.name - 0.5 && sizes.meta < sizes.name, JSON.stringify(sizes));
-    // Der ausführliche Preisvergleich mit Datum steht im Bearbeiten-Fenster, im ausklappbaren Bereich „Preis & Angebot“
+    // Der eigene Schätzpreis steht im Bearbeiten-Fenster, im ausklappbaren Bereich „Preis & Angebot“; einen Preisvergleich gibt es dort nicht mehr
     await row.getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
-    assert.match(await page.textContent('#price-comparison'), /zuletzt eingetragen am \d\d\.\d\d\.\d\d/);
+    assert.equal(await page.locator('#price-comparison').count(), 0);
     assert.equal(await page.locator('#item-price-fold').evaluate(node => node.open), false, 'zugeklappt');
     assert.match(await page.textContent('#item-price-summary'), /€ für 500 g/);
     assert.deepEqual(problems, []);

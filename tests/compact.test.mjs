@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { AUTO_BYTES, LIMIT_BYTES, POLICY, cleanMarks, compact, due, sizeOf } from '../compact.js';
 import { suggestCategory } from '../categories.js';
-import { active, merge, operation, suggestItemNames, uid, validate } from '../data.js';
+import { SCHEMA_REV, active, merge, operation, suggestItemNames, uid, validate } from '../data.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
 const NOW = new Date('2027-03-01T12:00:00.000Z');
@@ -59,13 +59,24 @@ test('Wochenplan: vergangene Gerichte nach 120 Tagen weg, aktuelle bleiben', () 
   assert.deepEqual(compact(data, NOW).data.meals.map(row => row.id), ['neu']);
 });
 
-test('Gemerkte Preise: nur die neuesten je Geschäft, Produkt und Einheitengruppe', () => {
+test('Bezahlte Preise: nur die neuesten vier je Geschäft, Produkt, Sorte und Einheitengruppe', () => {
   const quote = cents => ({ cents, quantity: 1, unit: 'kg' });
-  const prices = Array.from({ length: 6 }, (_, index) => op('prices', `p${index}`, { storeId: 'store-edeka', name: 'Mehl', quote: quote(100 + index) }, ago(60 - index)));
-  prices.push(op('prices', 'andere', { storeId: 'store-lidl', name: 'Mehl', quote: quote(90) }, ago(60)));
+  const prices = Array.from({ length: 6 }, (_, index) => op('prices', `p${index}`, { storeId: 'store-edeka', name: 'Mehl', quote: quote(100 + index), src: 'bon' }, ago(60 - index)));
+  prices.push(op('prices', 'andere', { storeId: 'store-lidl', name: 'Mehl', quote: quote(90), src: 'bon' }, ago(60)));
   const out = compact(merge(base(), prices), NOW).data;
   const kept = out.prices.filter(row => row.name === 'Mehl').map(row => row.id).sort();
-  assert.deepEqual(kept, ['andere', 'p4', 'p5']);
+  assert.deepEqual(kept, ['andere', 'p2', 'p3', 'p4', 'p5']);
+});
+
+test('Aufräumen wirft Sorten nie zusammen (Gala und Pink Lady behalten je ihre Käufe) und ungeprüfte Notizen verdrängen keinen bezahlten Preis', () => {
+  const quote = cents => ({ cents, quantity: 1, unit: 'Stück' });
+  const prices = [
+    ...['gala', 'lady'].flatMap(variant => Array.from({ length: 4 }, (_, index) => op('prices', `${variant}${index}`, { storeId: 'store-edeka', name: 'Äpfel', variant, quote: quote(50 + index), src: 'bon' }, ago(60 - index)))),
+    ...Array.from({ length: 6 }, (_, index) => op('prices', `alt${index}`, { storeId: 'store-edeka', name: 'Äpfel', quote: quote(40 + index) }, ago(30 - index))),   // ungeprüft, neuer als alles andere
+  ];
+  const out = compact(merge(base(), prices), NOW).data;
+  const kept = out.prices.filter(row => row.name === 'Äpfel' && row.storeId === 'store-edeka').map(row => row.id).sort();
+  assert.deepEqual(kept, ['alt2', 'alt3', 'alt4', 'alt5', 'gala0', 'gala1', 'gala2', 'gala3', 'lady0', 'lady1', 'lady2', 'lady3']);
 });
 
 const ids = (count, from = 0) => Array.from({ length: count }, (_, index) => `op-${from + index}`);
@@ -132,9 +143,21 @@ test('Aufgeräumte Dateien tragen minRev 2 (alte Apps ohne das Feld ignorieren e
   const out = compact(data, NOW).data;
   assert.equal(out.sync.minRev, 2);
   assert.doesNotThrow(() => validate(out));
-  assert.throws(() => validate({ ...out, sync: { ...out.sync, minRev: 3 } }), /zu alt/);
+  assert.throws(() => validate({ ...out, sync: { ...out.sync, minRev: SCHEMA_REV + 1 } }), /zu alt/);
   assert.throws(() => validate({ ...out, sync: { ...out.sync, minRev: 'x' } }), /beschädigt/);
   assert.doesNotThrow(() => validate({ ...out, sync: { ...out.sync, minRev: undefined } }));
+});
+
+test('Ein bezahlter Preis mit Sorte setzt minRev 3: eine ältere App würde Sorten beim Aufräumen zusammenwerfen und liest die Datei nicht mehr', () => {
+  assert.equal(SCHEMA_REV, 3);
+  const plain = merge(base(), [op('prices', 'p0', { storeId: 'store-edeka', name: 'Mehl', quote: { cents: 100, quantity: 1, unit: 'kg' } }, ago(5))]);
+  assert.equal(plain.sync.minRev, undefined, 'eine gewöhnliche Preisnotiz ändert nichts');
+  for (const patch of [{ src: 'bon' }, { variant: 'Gala' }, { receipt: 'GALA 1,29' }, { receiptKey: 'k' }]) {
+    const out = merge(base(), [op('prices', 'p1', { storeId: 'store-edeka', name: 'Äpfel', quote: { cents: 100, quantity: 1, unit: 'kg' }, ...patch }, ago(5))]);
+    assert.equal(out.sync.minRev, 3, JSON.stringify(patch));
+    assert.doesNotThrow(() => validate(out));
+  }
+  assert.equal(merge(base(), [op('aliases', 'a1', { from: 'gala', name: 'Äpfel', variant: 'Gala' }, ago(5))]).sync.minRev, 3);
 });
 
 test('Zeitstempel je Feld werden durch eine Sammelmarke ersetzt; neuere Änderungen gewinnen weiter, ältere nicht', () => {

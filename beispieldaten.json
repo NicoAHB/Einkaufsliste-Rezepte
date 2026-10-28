@@ -40,7 +40,12 @@
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
       "_clock": {},
-      "onSale": false
+      "onSale": false,
+      "price": {
+        "cents": 249,
+        "quantity": 500,
+        "unit": "g"
+      }
     },
     {
       "id": "item-nudeln",
@@ -54,7 +59,12 @@
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
       "_clock": {},
-      "onSale": true
+      "onSale": true,
+      "price": {
+        "cents": 129,
+        "quantity": 500,
+        "unit": "g"
+      }
     },
     {
       "id": "item-milch",
@@ -68,7 +78,12 @@
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
       "_clock": {},
-      "onSale": false
+      "onSale": false,
+      "price": {
+        "cents": 99,
+        "quantity": 1,
+        "unit": "l"
+      }
     },
     {
       "id": "item-aepfel",
@@ -82,7 +97,12 @@
       "updatedAt": "2026-10-25T00:00:00.000Z",
       "deletedAt": null,
       "_clock": {},
-      "onSale": false
+      "onSale": false,
+      "price": {
+        "cents": 199,
+        "quantity": 4,
+        "unit": "Stück"
+      }
     }
   ],
   "recipes": [

@@ -27,7 +27,7 @@ test('Unterschiedliche Einheiten werden nie verrechnet', () => {
 
 test('Gleicher Name im selben Geschäft: Menge wird erhöht statt eines zweiten Eintrags', () => {
   const items = [row('a', 'Zwiebeln', 2, 'Stück')];
-  const result = addToList([{ name: ' zwiebeln', quantity: 3, unit: 'Stück' }], 'store-edeka', 'Nico', AT, [], items);
+  const result = addToList([{ name: ' zwiebeln', quantity: 3, unit: 'Stück' }], 'store-edeka', 'Nico', AT, items);
   assert.equal(result.added, 0);
   assert.deepEqual(result.counted, [{ id: 'a', name: 'Zwiebeln', add: { quantity: 3, unit: 'Stück' }, after: { quantity: 5, unit: 'Stück' } }]);
   assert.equal(result.ops.length, 1);
@@ -68,7 +68,7 @@ test('Zutat „nach Bedarf“: nicht erneut aufschreiben, wenn schon vorhanden',
 
 test('addToList: neue Artikel, vorhandene erhöht, alles gültig', () => {
   const items = [row('a', 'Nudeln', 500, 'g')];
-  const result = addToList([{ name: 'Nudeln', quantity: 250, unit: 'g' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }], 'store-edeka', 'Nico', AT, [], items);
+  const result = addToList([{ name: 'Nudeln', quantity: 250, unit: 'g' }, { name: 'Äpfel', quantity: 6, unit: 'Stück' }], 'store-edeka', 'Nico', AT, items);
   assert.equal(result.added, 1);
   assert.equal(result.counted.length, 1);
   const out = merge(open(items), result.ops);

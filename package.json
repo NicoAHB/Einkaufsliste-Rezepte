@@ -5,7 +5,7 @@
   "description": "Die App braucht weder Build noch Abhängigkeiten. Diese Datei dient nur den Tests (npm test).",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",
-    "test:logic": "node --test tests/brand.test.mjs tests/categories.test.mjs tests/compact.test.mjs tests/concurrent.test.mjs tests/cookable.test.mjs tests/cook.test.mjs tests/daily.test.mjs tests/data.test.mjs tests/dragdelete.test.mjs tests/emoji.test.mjs tests/list.test.mjs tests/names.test.mjs tests/news.test.mjs tests/offers.test.mjs tests/page-source.test.mjs tests/pantry-suggestions.test.mjs tests/photos.test.mjs tests/plan.test.mjs tests/prices.test.mjs tests/receipt.test.mjs tests/recipe-import.test.mjs tests/recipe-maker.test.mjs tests/shell.test.mjs tests/shop.test.mjs tests/spending.test.mjs tests/templates.test.mjs tests/trend.test.mjs tests/zip.test.mjs",
+    "test:logic": "node --test tests/aliases.test.mjs tests/brand.test.mjs tests/categories.test.mjs tests/compact.test.mjs tests/concurrent.test.mjs tests/cookable.test.mjs tests/cook.test.mjs tests/daily.test.mjs tests/data.test.mjs tests/dragdelete.test.mjs tests/emoji.test.mjs tests/history.test.mjs tests/list.test.mjs tests/names.test.mjs tests/news.test.mjs tests/offers.test.mjs tests/page-source.test.mjs tests/pantry-suggestions.test.mjs tests/photos.test.mjs tests/plan.test.mjs tests/prices.test.mjs tests/receipt.test.mjs tests/recipe-import.test.mjs tests/recipe-maker.test.mjs tests/shell.test.mjs tests/shop.test.mjs tests/spending.test.mjs tests/templates.test.mjs tests/zip.test.mjs",
     "test:browser": "node --test tests/browser.test.mjs"
   }
 }

@@ -20,7 +20,7 @@ export const POLICY = {
   keepApplied: 600,      // Liste bereits angewendeter Änderungen (nur gegen doppeltes Senden nötig): so viele bleiben mindestens
   appliedDays: 45,       // … und alle, die jünger als das sind (Marken, siehe `trimApplied`); ein Gerät, dessen Antwort verloren ging, sendet sonst alte Änderungen erneut
   maxApplied: 2500,      // Obergrenze (etwa 100 KB), danach fallen die ältesten weg
-  keepPrices: 2,         // gemerkte Preise je Geschäft, Produkt und Einheitengruppe
+  keepPrices: 4,         // bezahlte Preise je Geschäft, Produkt, Sorte und Einheitengruppe (der neueste steht im Laden, die übrigen sind „frühere Käufe“)
   maxNames: 300,         // Namensgedächtnis für Vorschläge
   maxAliases: 400,       // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
   purchaseMonths: 36     // Ausgaben (Einkaufsbeträge) bleiben so viele Monate in der Datei; ältere liegen weiter im Git-Verlauf
@@ -103,10 +103,10 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // 3b. Ausgaben: nach 36 Monaten aus der Datei (Auswertung und Diagramm brauchen nur die letzten Monate).
   const purchaseCutoff = new Date(now.getFullYear(), now.getMonth() - (policy.purchaseMonths ?? POLICY.purchaseMonths), 1, 12).toISOString().slice(0, 10);
   next.purchases = next.purchases.filter(row => { const drop = row.date < purchaseCutoff; if (drop) removed.purchases++; return !drop; });
-  // 4. Gemerkte Preise: je Geschäft, Produkt und Einheitengruppe nur die neuesten (Vergleich und Vorschläge nutzen nur die neuesten).
+  // 4. Gemerkte Preise: je Geschäft, Produkt, Sorte und Einheitengruppe nur die neuesten. Bestätigte (`src: 'bon'`) und ungeprüfte Notizen zählen getrennt: Eine neue ungeprüfte Notiz verdrängt keinen bezahlten Preis.
   const groups = new Map();
   for (const row of next.prices) {
-    const id = `${row.storeId}|${productKey(row.name)}|${unitSpec(row.quote?.unit ?? '').group}`;
+    const id = `${row.src || ''}|${row.storeId}|${productKey(row.name)}|${productKey(row.variant || '')}|${unitSpec(row.quote?.unit ?? '').group}`;
     groups.set(id, [...(groups.get(id) || []), row]);
   }
   const doomed = new Set();

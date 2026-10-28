@@ -1,5 +1,6 @@
 import { active, addToList, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
-import { activeTrend, comparePrices, defaultOfferUrl, effectiveQuote, itemCost, itemQuote, localDay, offerUrl, parseCents, productKey, rememberedPrice, saleExpired, shoppingTotal, storeOfferUrl, trendFor, unitRate, unitSpec } from './prices.js';
+import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from './prices.js';
+import { dateText, hasReceiptKey, lastPaid, paidEntries, paidRows, priceText, receiptKeyOf, reviewRows, titleOf, variantOf } from './history.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, defaultSymbol, symbolOf } from './brand.js';
@@ -232,7 +233,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderPaidNotes(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#cookable-dialog').open) renderCookable();
   renderDailyButton();
@@ -355,19 +356,10 @@ function itemRow(item, withStore = false) {
     row._mark = mark; mark();
     copy.addEventListener('click', event => { event.stopImmediatePropagation(); toggleSelected(item.id, row); }, true);
   }
-  // Erste Zeile: Name und Menge, deutlich. Zweite Zeile klein: Person, geschätzter Preis (und das Geschäft in der Gesamtliste). Der Preisvergleich mit Datum steht im Bearbeiten-Fenster.
-  const cost = itemCost(item, state.prices);
+  // Erste Zeile: Name und Menge, deutlich. Zweite Zeile klein: Person (und das Geschäft in der Gesamtliste). Unter „Planen“ stehen in der Zeile keine Preise, Vergleiche oder
+  // Preisentwicklungen; frühere Kaufpreise gibt es nur im Modus „Im Laden“ (Artikelname antippen).
   copy.append(element('strong', item.name), element('span', `${format(item.quantity)} ${item.unit}`, 'item-qty'),
-    element('small', [item.createdBy || 'Unbekannt', ...(cost !== null ? [`ca. ${euros(cost)}`] : []), ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
-  const expired = saleExpired(item);
-  if (item.onSale) copy.append(element('span', expired ? `Angebot abgelaufen (${dayLabel(item.saleUntil)})` : item.saleUntil ? `Im Angebot bis ${dayLabel(item.saleUntil)}` : 'Im Angebot', `sale-badge${expired ? ' expired' : ''}`));
-  if (item.onSale && item.salePrice) {
-    copy.append(element('small', expired ? `Angebot war ${quoteLabel(item.salePrice)}. Es gilt der normale Preis.` : `Angebot: ${quoteLabel(item.salePrice)}`, 'price-note'));
-    const normal = itemQuote(item, state.prices);
-    if (normal) copy.append(element('small', `Normal: ${quoteLabel(normal)}`));
-  }
-  const trend = activeTrend(item, state.prices);
-  if (trend) copy.append(element('small', trendLabel(trend), `trend ${trend.direction}`));
+    element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   row.append(pick || check, copy);
   if (imagesOn()) row.append(thumbFor(item));
   return row;
@@ -493,7 +485,7 @@ function renderShoppingInfo() {
   $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
   if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
   else $('#offers-link').removeAttribute('href');
-  const total = shoppingTotal(visibleItems(true).filter(inView), state.prices);
+  const total = shoppingTotal(visibleItems(true).filter(inView));
   const box = $('#shopping-total'); box.replaceChildren();
   // Eine Zeile, die Geschäftsauswahl darüber sagt schon, wofür die Summe gilt.
   if (!total.count) box.append(element('strong', 'Alles erledigt'));
@@ -502,12 +494,6 @@ function renderShoppingInfo() {
     box.append(element('strong', `Geschätzt ${euros(total.cents)}`));
     if (total.missing) box.append(element('small', `${total.missing} ohne Preis, nicht eingerechnet`));
   }
-}
-const perLabel = quote => quote.quantity === 1 ? `je ${quote.unit}` : `je ${format(quote.quantity)} ${quote.unit}`;
-// „▲ Teurer: 1,29 € → 1,39 € je Stück (+8 %)“: Pfeil und Wort, nicht nur die Farbe.
-function trendLabel(trend) {
-  const percent = `${trend.percent > 0 ? '+' : '−'}${format(Math.round(Math.abs(trend.percent)))} %`;
-  return `${trend.direction === 'up' ? '▲ Teurer' : '▼ Günstiger'}: ${euros(trend.before)} → ${euros(trend.now.cents)} ${perLabel(trend.now)} (${percent}) seit ${shortDate(trend.since)}`;
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
 function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
@@ -547,13 +533,10 @@ function rememberPriceInForm() {
   const form = $('#item-form');
   categoryHint(form.elements.category, form.elements.name.value);
   if (form.dataset.manualPrice === 'yes') return;
-  const name = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
-  const store = form.elements.storeId.value, quote = store ? rememberedPrice(state.prices, store, name, unit) : null;
-  setQuoteFields(form, quote, unit);
+  // Ein früher bezahlter Preis wird nie von selbst eingetragen: Das Preisfeld ist nur für eine eigene Schätzung (Summe), frühere Kaufpreise gibt es im Modus „Im Laden“.
+  setQuoteFields(form, null, form.elements.unit.value.trim());
   setSaleFields(form);
-  form.querySelector('[data-price-hint]').textContent = quote ? `Für dieses Geschäft gemerkt: ${quoteLabel(quote)}. Du kannst den Vorschlag ändern oder leeren.` :
-    store ? 'Beispiel: 1,99 € für 500 g. Ein gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.' :
-    'Beispiel: 1,99 € für 500 g. Gemerkte Preise gibt es erst, wenn ein Geschäft gewählt ist.';
+  form.querySelector('[data-price-hint]').textContent = 'Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe. Frühere Kaufpreise siehst du im Modus „Im Laden“, wenn du den Artikelnamen antippst.';
 }
 function readQuote(form, prefix = 'price') {
   const value = form.elements[`${prefix}Euros`].value.trim();
@@ -573,67 +556,23 @@ function readPricing(form) {
   }
   return { price, salePrice, onSale, saleUntil: form.elements.saleUntil.value || null };
 }
-function priceOperation(item) {
-  // Jeder notierte Preis ist ein eigener Datensatz: gleichzeitige Einträge
-  // verschiedener Geräte bleiben erhalten, der neueste passende wird verwendet.
-  const sale = Boolean(item.onSale) && !saleExpired(item);
-  const row = { storeId: item.storeId, name: item.name,
-    quote: clone(effectiveQuote(item, state.prices)), regularQuote: clone(itemQuote(item, state.prices) || null), onSale: sale, ...(sale && item.saleUntil ? { saleUntil: item.saleUntil } : {}) };
-  const trend = trendFor(state.prices, row);
-  return nextOp('prices', uid(), trend ? { ...row, trend } : row);
-}
-function showComparison(item) {
-  const box = $('#price-comparison'); box.replaceChildren();
-  const rows = comparePrices(item, state.stores, state.prices);
-  if (!unitSpec(item.unit).comparable) {
-    box.append(element('p', 'Für einen fairen Geschäftsvergleich bitte g/kg, ml/l oder Stück verwenden. Bei Packungen ist die Größe unbekannt.', 'hint')); return;
-  }
-  if (!rows.length) { box.append(element('p', 'Noch keine vergleichbaren Preise für diesen Artikelnamen notiert.', 'hint')); return; }
-  box.append(element('h3', 'Zuletzt notierte Preise'));
-  const list = element('ul', undefined, 'comparison-list');
-  for (const row of rows) {
-    const line = element('li');
-    const sale = row.expired ? ` · Angebot abgelaufen${row.saleUntil ? ` (${dayLabel(row.saleUntil)})` : ''}, es gilt der Normalpreis` : row.onSale ? (row.saleUntil ? ` · Angebot bis ${dayLabel(row.saleUntil)}` : ' · damals im Angebot') : '';
-    const text = element('div'); text.append(element('strong', `${row.storeName}: ${euros(row.rate)}/${row.unit}`),
-      element('small', `${quoteLabel(row.quote)} · zuletzt eingetragen am ${shortDate(row.at)}${row.old ? ' (über zwei Monate her)' : ''}${sale}`, row.old || row.expired ? 'stale' : undefined));
-    const forget = button('Vergessen', () => guard(() => forgetPrice(item, row)), 'text-button small');
-    forget.setAttribute('aria-label', `Notierten Preis von ${row.storeName} für ${item.name} vergessen`);
-    line.append(text, forget);
-    list.append(line);
-  }
-  const storeCount = active(state.stores).length;
-  box.append(list, element('p', `Für ${rows.length} von ${storeCount} Geschäften liegt ein passender Preis vor. Vergleich nur bei gleichem Artikelnamen und passender Einheit. Keine aktuellen Händlerpreise; Marke und Qualität bitte selbst berücksichtigen.`, 'hint'));
-}
-// Falsch notierter Preis (z. B. dem falschen Artikel zugeordnet): alle Notizen dieses Geschäfts zu diesem Namen vergessen. Der Artikel zeigt dann keinen gemerkten Preis mehr.
-function forgetPrice(item, row) {
-  const rows = state.prices.filter(entry => !entry.deletedAt && entry.storeId === row.storeId && productKey(entry.name) === productKey(item.name));
-  if (!confirm(`Den notierten Preis von ${row.storeName} für „${item.name}“ vergessen?`)) return;
-  const form = $('#edit-item-form'), own = state.items.find(entry => entry.id === item.id && !entry.deletedAt), ops = deleteOps('prices', rows.map(entry => entry.id));
-  // Hat der Artikel den Preis als eigenen Preis übernommen (beim Anlegen aus dem Gedächtnis), wird auch der entfernt; ein anderer, selbst eingegebener Preis bleibt.
-  const same = quote => quote && own?.price && quote.cents === own.price.cents && quote.quantity === own.price.quantity && productKey(quote.unit) === productKey(own.price.unit);
-  if (rows.some(entry => same(entry.regularQuote === undefined ? entry.quote : entry.regularQuote))) ops.push(nextOp('items', own.id, { price: null }));
-  commit(ops);
-  const left = own ? itemQuote(state.items.find(entry => entry.id === own.id), state.prices) : null;
-  setQuoteFields(form, left, item.unit); itemBaseline.price = left;   // das Preisfeld zeigte den vergessenen Preis
-  showComparison(item);
-}
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  itemBaseline = clone({ ...item, price: itemQuote(item, state.prices), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
+  itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true);
-  setQuoteFields(form, itemQuote(item, state.prices), item.unit);
+  setQuoteFields(form, itemQuote(item), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice, item.saleUntil);
-  form.querySelector('[data-price-hint]').textContent = 'Preise werden nur für dieses Geschäft gemerkt. Der Vergleich verwendet die zuletzt notierten Preise.';
+  form.querySelector('[data-price-hint]').textContent = 'Nur eine eigene Schätzung für die Summe. Frühere Kaufpreise siehst du im Modus „Im Laden“, wenn du den Artikelnamen antippst.';
   // Preis & Angebot sind zugeklappt (Name, Menge, Einheit, Geschäft stehen oben); die Zeile verrät den Stand.
-  const quote = itemQuote(item, state.prices), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
+  const quote = itemQuote(item), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
-  showComparison(item); message(); $('#item-dialog').showModal();
+  message(); $('#item-dialog').showModal();
 }
 function deleteOps(collection, ids) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
@@ -1698,7 +1637,7 @@ let shopStore = '', shopDoneOpen = false;
 const shopChecked = new Map();   // Artikel ohne Geschäft, die in dieser Sitzung in einem Geschäft abgehakt wurden: Kennung → Geschäft
 const shopOn = () => config.shopMode === true;
 // Beim Öffnen von „Im Laden“ (ein Tipp der Person) wird der Bildschirm neu angefordert, auch wenn es vorher nicht klappte; ebenso beim Zurückkehren in die App.
-function setShopMode(on) { awake.shop.failed = false; if (on && selecting) setSelecting(false); saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
+function setShopMode(on) { awake.shop.failed = false; closePriceInfo(); if (on && selecting) setSelecting(false); saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
 function applyMode() {
   const on = shopOn();
   $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
@@ -1817,18 +1756,70 @@ $('#shop-lock').addEventListener('click', () => guard(() => setLocked(true)));
 $('#shop-autolock').addEventListener('change', () => guard(() => { saveConfig({ ...config, shopLock: Number($('#shop-autolock').value) }); armLock(); }));
 holdToConfirm($('#shop-unlock'), HOLD_UNLOCK_MS, () => setLocked(false));
 
-// Abgehakt wird nur über den Kreis links (große Tippfläche); Tippen auf den Namen bewirkt nichts. So hakt man nicht aus Versehen etwas ab, wenn man das Handy anfasst.
+/* Preisinfo „Zuletzt bezahlt“ (Version 2.40): Ein Tipp auf den Artikelnamen (oder den kleinen Pfeil) klappt unter dem Artikel ein Feld mit den bestätigten Kaufpreisen auf, ein
+   zweiter Tipp klappt es zu. Es ist höchstens eins offen. Der Kreis links dient nur zum Abhaken und öffnet nichts; beim Abhaken schließt sich das Feld. Gesperrt öffnet ein Tipp
+   nichts (die Sperre fängt ihn ab). Der offene Artikel wird gemerkt, nicht das Element: Beim Abgleich wird die Liste neu gezeichnet, das Feld bleibt dabei offen. */
+let priceOpen = '', priceStore = null;
+const priceMore = new Set();   // aufgeklappte „Frühere Käufe“ (Artikel und Eintrag), bleiben beim Neuzeichnen offen
+function closePriceInfo() { priceOpen = ''; priceStore = null; priceMore.clear(); }
+function togglePriceInfo(id) {
+  if (isLocked()) return;
+  priceOpen = priceOpen === id ? '' : id;
+  priceMore.clear();
+  renderShop();
+}
+function priceBox(item) {
+  const box = element('div', undefined, 'shop-price'); box.id = `price-${item.id}`; box.setAttribute('role', 'group'); box.setAttribute('aria-label', `Zuletzt bezahlt: ${item.name}`);
+  box.append(element('h3', 'Zuletzt bezahlt'));
+  const stores = active(state.stores), here = shopStore === ALL_STORES ? (item.storeId || '') : shopStore, hereName = stores.find(store => store.id === here)?.name || '';
+  const entries = paidEntries(state.prices, item.name, stores, here);
+  if (!entries.length) box.append(element('p', 'Noch keine bestätigten Kaufpreise vorhanden.', 'price-empty'));
+  const node = entry => {
+    const line = element('div', undefined, 'price-entry'), row = entry.latest;
+    line.append(element('strong', entry.title, 'price-title'), element('span', priceText(row.quote), 'price-amount'),
+      element('span', `${entry.storeName} · ${dateText(row.createdAt)}`, 'price-meta'));
+    if (row.onSale) line.append(element('span', 'Damals im Angebot', 'price-sale'));
+    if (entry.older.length) {
+      const key = `${item.id}|${row.storeId}|${row.id}`, more = element('details', undefined, 'price-older'), summary = element('summary', `Frühere Käufe (${entry.older.length})`), list = element('ul');
+      more.open = priceMore.has(key); summary.dataset.focusKey = `more:${key}`;
+      more.addEventListener('toggle', () => { if (more.open) priceMore.add(key); else priceMore.delete(key); });
+      for (const old of entry.older) list.append(element('li', `${priceText(old.quote)} · ${dateText(old.createdAt)}${old.onSale ? ' · damals im Angebot' : ''}`));
+      more.append(summary, list); line.append(more);
+    }
+    return line;
+  };
+  // Das gewählte Geschäft zuerst, andere Geschäfte klar getrennt darunter (ohne gewähltes Geschäft eine einzige Liste).
+  const mine = entries.filter(entry => entry.here), others = entries.filter(entry => !entry.here);
+  if (hereName && entries.length) {
+    box.append(element('h4', `Bei ${hereName}`));
+    if (!mine.length) box.append(element('p', `Hier noch kein bestätigter Kauf.`, 'price-empty'));
+    mine.forEach(entry => box.append(node(entry)));
+    if (others.length) { box.append(element('h4', 'In anderen Geschäften')); others.forEach(entry => box.append(node(entry))); }
+  } else entries.forEach(entry => box.append(node(entry)));
+  box.append(element('p', 'Vergangene Kaufpreise. Der heutige Preis kann abweichen.', 'price-foot'));
+  return box;
+}
+// Abgehakt wird nur über den Kreis links (große Tippfläche). Der Name (mit kleinem Pfeil) öffnet nur die Preisinfo, sonst nichts. So hakt man nicht aus Versehen etwas ab, wenn man das Handy anfasst.
 function shopRow(item) {
-  const row = element('li', undefined, `shop-item${item.checked ? ' checked' : ''}`);
-  const tap = element('button', undefined, 'shop-tap'); tap.type = 'button';
+  if (item.checked && priceOpen === item.id) priceOpen = '';   // Abgehaktes hat kein offenes Feld
+  const open = priceOpen === item.id;
+  const row = element('li', undefined, `shop-item${item.checked ? ' checked' : ''}${open ? ' info-open' : ''}`); row.dataset.id = item.id;
+  const tap = element('button', undefined, 'shop-tap'); tap.type = 'button'; tap.dataset.focusKey = `tap:${item.id}`;
   const mark = element('span', undefined, 'shop-mark'); if (item.checked) mark.append(icon('check'));
   tap.append(mark);
-  const text = element('div', undefined, 'shop-text'); text.append(element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
+  const text = element('button', undefined, 'shop-text'); text.type = 'button'; text.dataset.focusKey = `info:${item.id}`;
+  text.append(element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
+  if (imagesOn()) text.append(thumbFor(item));
+  const chevron = element('span', undefined, 'shop-chevron'); chevron.append(icon('chevron')); text.append(chevron);
+  text.setAttribute('aria-expanded', String(open)); text.setAttribute('aria-controls', `price-${item.id}`);
+  text.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: Zuletzt bezahlt ${open ? 'ausblenden' : 'anzeigen'}`);
+  text.addEventListener('click', () => guard(() => togglePriceInfo(item.id)));
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
   tap.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   tap.addEventListener('click', () => guard(() => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
+    if (priceOpen === item.id) priceOpen = '';   // beim Abhaken (und beim Zurücknehmen) schließt sich das Feld dieses Artikels
     // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
     if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
     commit([nextOp('items', item.id, { checked: !latest.checked })]);
@@ -1840,6 +1831,7 @@ function shopRow(item) {
     });
   }));
   row.append(tap, text);
+  if (open) row.append(priceBox(item));
   return row;
 }
 function shopNewsRow(entry) {
@@ -1850,6 +1842,14 @@ function shopNewsRow(entry) {
   return row;
 }
 function renderShop() {
+  // Fokus (und damit die Bildschirmlesereinstellung) bleibt beim Neuzeichnen erhalten: Der Abgleich zeichnet die Liste neu, ohne dass die Auswahl springt.
+  const focused = document.activeElement?.closest?.('#shop-list') ? document.activeElement.dataset.focusKey : '';
+  drawShop();
+  if (priceOpen && !document.querySelector(`#shop-list [data-id="${CSS.escape(priceOpen)}"]`)) closePriceInfo();   // der Artikel ist nicht mehr zu sehen: Feld zu
+  if (focused) document.querySelector(`#shop-list [data-focus-key="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+}
+function drawShop() {
+  if (priceStore !== shopStore) { if (priceStore !== null) { priceOpen = ''; priceMore.clear(); } priceStore = shopStore; }   // anderes Geschäft: Feld zu
   const stores = active(state.stores), everything = visibleItems(true);
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = '';
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
@@ -1882,7 +1882,7 @@ function renderShop() {
   const shop = shopView(items, shopStore, shopChecked, takesAnywhere(stores.find(store => store.id === shopStore))), here = [...shop.open, ...shop.anywhere];
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory(), aislesOf(shopStore));
-  const total = shoppingTotal(here, state.prices);
+  const total = shoppingTotal(here);
   $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : `Alles erledigt bei ${storeName(shopStore)}.`;
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const group of groups(shop.open)) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
@@ -1908,7 +1908,7 @@ function appendShopDone(list, rows) {
 function renderShopAll(list, items, stores) {
   const all = shopAllView(items, stores), here = all.sections.flatMap(section => section.open);
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
-  const total = shoppingTotal(here, state.prices);
+  const total = shoppingTotal(here);
   $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : 'Alles erledigt.';
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const section of all.sections) {
@@ -1937,7 +1937,7 @@ function finishShopping(withReceipt, amount = '') {
   const storeId = shopStore === ALL_STORES ? '' : shopStore;   // „Alle“ ist kein Geschäft: der Betrag wird dann ohne Geschäft gespeichert
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
-    estimate: estimateOf(checked, state.prices) }, isoDate()) : null;
+    estimate: estimateOf(checked) }, isoDate()) : null;
   const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   shopChecked.clear();
   $('#finish-dialog').close();
@@ -2023,27 +2023,34 @@ function receiptQuote(line) {
   if (!euros || !quantity || !unit) throw new Error(`Bitte Preis, Menge und Einheit für „${line.inputs.name.value.trim() || line.item.name}“ ausfüllen.`);
   return { cents: receiptCents(euros), quantity: positive(quantity), unit };
 }
-// Vorschau je Zeile: gemerkt/Vorschlag, schon eingetragen, Aktion, Entwicklung gegenüber dem letzten Preis.
+// Schon übernommen? Dieselbe Bonposition (Geschäft, Tag, Text, Betrag) trägt denselben Schlüssel; Notizen aus früheren Versionen (ohne Schlüssel) erkennt man am gleichen Tag, Namen und Preis.
+function receiptDuplicate(line) {
+  const form = $('#receipt-form'), storeId = form.elements.storeId.value, day = form.elements.date.value;
+  if (!storeId || !day) return false;
+  if (hasReceiptKey(state.prices, receiptKeyOf(storeId, day, line.item.text, line.item.totalCents))) return true;
+  const name = line.inputs.name.value.trim();
+  return Boolean(name) && state.prices.some(row => !row.deletedAt && !row.receiptKey && row.storeId === storeId && productKey(row.name) === productKey(name) &&
+    row.createdAt.slice(0, 10) === day && (row.regularQuote || row.quote)?.cents === (line.item.regularQuote || line.item.quote).cents);
+}
+// Vorschau je Zeile: gemerkt/erkannt, schon eingetragen, Aktion und der letzte bestätigte Kauf derselben Sorte (zum Vergleichen mit dem, was gleich gespeichert wird).
 function refreshReceiptLine(line) {
   const note = line.note; note.className = 'receipt-note hint'; note.textContent = '';
   const parts = [];
-  if (line.how) parts.push(line.how === 'gemerkt' ? 'Zuordnung gemerkt (unter Einstellungen → Gemerkte Namen änderbar)' : 'Vorschlag aus deiner Liste, bitte prüfen');
+  if (line.how === 'gemerkt') parts.push('Zuordnung gemerkt (unter Einstellungen → Gemerkte Namen änderbar)');
+  if (line.how === 'Sorte') parts.push(`Sorte erkannt: ${line.inputs.variant.value}. Bitte prüfen`);
   try {
-    const form = $('#receipt-form'), storeId = form.elements.storeId.value, name = line.inputs.name.value.trim();
+    const form = $('#receipt-form'), storeId = form.elements.storeId.value, name = line.inputs.name.value.trim(), variant = line.inputs.variant.value.trim().replace(/\s+/g, ' ');
     const quote = receiptQuote(line);
-    if (line.item.onSale) parts.push(`Aktion: bezahlt ${euros(line.item.quote.cents)} ${perLabel(line.item.quote)}`);
-    // Bei einem Vorschlag ist die App unsicher: Es wird kein früherer Preis gezeigt, bis der Name bestätigt („Name passt“) oder geändert ist.
-    if (name && line.how === 'Vorschlag') parts.push('früherer Preis erst nach Bestätigung');
-    else if (name) {
-      const at = receiptTime(form), fresh = { storeId, name, quote: line.item.onSale ? line.item.quote : quote, regularQuote: quote, onSale: line.item.onSale };
-      const trend = trendFor(state.prices, fresh, at);
-      const before = trend && activeTrend({ storeId, name, unit: quote.unit }, [{ ...fresh, id: 'vorschau', createdAt: at, trend }], new Date(at));
-      if (before) { note.classList.add('trend', before.direction); parts.unshift(trendLabel(before)); }
-      else if (!state.prices.some(row => !row.deletedAt && row.storeId === storeId && productKey(row.name) === productKey(name))) parts.push('neu in der Preisliste');
+    if (receiptDuplicate(line)) parts.unshift('Schon eingetragen');
+    if (line.item.onSale) parts.push(`Aktion: bezahlt ${priceText(line.item.quote)}`);
+    if (name && storeId) {
+      const last = lastPaid(state.prices, { storeId, name, variant, quote }, receiptTime(form));
+      parts.push(last ? `Zuletzt bezahlt: ${priceText(last.quote)} (${dateText(last.createdAt)})` : 'Noch kein bestätigter Kauf mit dieser Sorte und Menge');
     }
   } catch (error) { parts.push(error.message); }
   note.textContent = parts.join(' · ');
-  if (line.how === 'Vorschlag') note.append(' ', button('Name passt', () => { line.how = ''; refreshReceiptLine(line); }, 'text-button small'));
+  // Eine unsichere Zuordnung wird nie von selbst angewendet: Der Name bleibt der Bontext, bis die Person sie ausdrücklich übernimmt.
+  if (line.suggestion) note.append(' ', button(`Als „${line.suggestion}“ eintragen`, () => { line.inputs.name.value = line.suggestion; line.suggestion = ''; refreshReceiptLine(line); }, 'text-button small'));
 }
 function receiptTime(form) {
   const day = form.elements.date.value;
@@ -2069,21 +2076,21 @@ function parseReceiptText() {
     check.type = 'checkbox'; check.checked = true; use.append(check, element('span', item.text));
     const label = (text, input) => { const node = element('label', text); node.append(input); return node; };
     const input = (name, value, extra = {}) => { const node = element('input'); node.name = name; node.value = value; Object.assign(node, extra); return node; };
-    const inputs = { name: input('name', guess.name, { maxLength: 120, autocomplete: 'off' }), price: input('price', (((item.regularQuote || item.quote).cents) / 100).toFixed(2).replace('.', ','), { inputMode: 'decimal', maxLength: 10 }),
+    // Ein unsicherer Vorschlag („Bio Äpfel“ → „Äpfel“) wird nicht eingesetzt, sondern nur angeboten; gemerkte und eindeutig erkannte Zuordnungen schon.
+    const unsure = guess.how === 'Vorschlag';
+    const inputs = { name: input('name', unsure ? item.name : guess.name, { maxLength: 120, autocomplete: 'off' }), variant: input('variant', guess.variant || '', { maxLength: 80, autocomplete: 'off', placeholder: 'z. B. Gala' }), price: input('price', (((item.regularQuote || item.quote).cents) / 100).toFixed(2).replace('.', ','), { inputMode: 'decimal', maxLength: 10 }),
       quantity: input('quantity', plain((item.regularQuote || item.quote).quantity), { inputMode: 'decimal', maxLength: 16 }), unit: input('unit', (item.regularQuote || item.quote).unit, { maxLength: 30 }) };
     inputs.name.setAttribute('list', 'receipt-names'); inputs.unit.setAttribute('list', 'units');
     const grid = element('div', undefined, 'price-grid unit-grid'); grid.append(label('Preis (€)', inputs.price), label('Menge', inputs.quantity), label('Einheit', inputs.unit));
     const note = element('p', undefined, 'receipt-note hint');
-    box.append(use, label('Name in der App', inputs.name), grid, note);
-    const line = { item, inputs, check, box, note, how: guess.how, key: guess.key, suggested: guess.name };
-    for (const node of Object.values(inputs)) node.addEventListener('input', () => { line.how = ''; refreshReceiptLine(line); });
+    box.append(use, label('Name in der App', inputs.name), label('Sorte oder genaue Bezeichnung (optional)', inputs.variant), grid, ...(item.checks || []).map(text => element('p', text, 'receipt-check')), note);
+    const line = { item, inputs, check, box, note, how: guess.how, key: guess.key, suggestion: unsure ? guess.name : '' };
+    for (const node of Object.values(inputs)) node.addEventListener('input', () => { line.how = ''; if (node === inputs.name || node === inputs.variant) line.suggestion = ''; refreshReceiptLine(line); });
     check.addEventListener('change', () => box.classList.toggle('off', !check.checked));
-    // Schon eingetragen (gleicher Tag, gleiche Zeile): nicht noch einmal vorschlagen.
-    const done = state.prices.some(row => !row.deletedAt && row.storeId === form.elements.storeId.value && productKey(row.name) === productKey(guess.name) &&
-      row.createdAt.slice(0, 10) === form.elements.date.value && (row.regularQuote || row.quote)?.cents === (item.regularQuote || item.quote).cents);
+    // Schon eingetragen (dieselbe Bonposition): nicht noch einmal vorschlagen.
+    const done = receiptDuplicate(line);
     if (done) { check.checked = false; box.classList.add('off'); line.how = ''; }
     receiptLines.push(line); list.append(box); refreshReceiptLine(line);
-    if (done) line.note.textContent = `Schon eingetragen · ${line.note.textContent}`;
   }
   $('#receipt-check').textContent = parsed.total === null ? `${parsed.items.length} Zeilen erkannt. Eine Summe wurde im Text nicht gefunden.` :
     parsed.sum === parsed.total ? `${parsed.items.length} Zeilen erkannt. Die Summe stimmt mit dem Bon überein (${euros(parsed.total)}).` :
@@ -2104,44 +2111,43 @@ function parseReceiptText() {
 function saveReceipt() {
   const form = $('#receipt-form'), storeId = currentStore(form.elements.storeId.value);
   if (!storeId) throw new Error('Bitte ein Geschäft wählen.');
-  const base = Date.parse(receiptTime(form)), chosen = new Map();
+  const base = Date.parse(receiptTime(form)), day = form.elements.date.value || isoDate(), chosen = new Map();
+  let already = 0;
   receiptLines.forEach((line, index) => {
     if (!line.check.checked) return;
-    const name = line.inputs.name.value.trim().replace(/\s+/g, ' ');
+    if (receiptDuplicate(line)) { already++; return; }   // dieselbe Bonposition nie ein zweites Mal übernehmen
+    const name = line.inputs.name.value.trim().replace(/\s+/g, ' '), variant = line.inputs.variant.value.trim().replace(/\s+/g, ' ');
     if (!name) throw new Error('Bitte für jede ausgewählte Zeile einen Namen angeben.');
     const quote = receiptQuote(line), sale = line.item.onSale;
     // Bei einer Aktion bleibt das Verhältnis von bezahltem Preis zu Normalpreis erhalten, auch wenn Menge oder Einheit korrigiert wurden.
     const paid = sale ? { ...quote, cents: Math.round(quote.cents * line.item.quote.cents / line.item.regularQuote.cents) } : quote;
-    const entry = { line, name, storeId, quote: paid, regularQuote: quote, onSale: sale, at: new Date(base + index).toISOString() };
-    chosen.set(`${productKey(name)}|${unitSpec(quote.unit).group}`, entry);   // gleicher Artikel zweimal auf dem Bon: die letzte Zeile gilt
+    const entry = { line, name, variant, storeId, quote: paid, regularQuote: quote, onSale: sale, at: new Date(base + index).toISOString() };
+    chosen.set(`${productKey(name)}|${productKey(variant)}|${unitSpec(quote.unit).group}:${quote.quantity}`, entry);   // gleiche Sorte und Packung zweimal auf dem Bon: die letzte Zeile gilt
   });
   const entries = [...chosen.values()].sort((a, b) => a.at.localeCompare(b.at));
-  if (!entries.length) throw new Error('Bitte mindestens eine Zeile auswählen.');
-  const ops = [], fresh = [], aliases = active(state.aliases || []), actor = config.actor || 'Unbekannt';
-  let up = 0, down = 0;
+  if (!entries.length) throw new Error(already ? 'Diese Zeilen sind schon eingetragen.' : 'Bitte mindestens eine Zeile auswählen.');
+  const ops = [], aliases = active(state.aliases || []), actor = config.actor || 'Unbekannt';
   for (const entry of entries) {
-    const row = { storeId, name: entry.name, quote: clone(entry.quote), regularQuote: clone(entry.regularQuote), onSale: entry.onSale };
-    const trend = trendFor([...state.prices, ...fresh], row, entry.at);
-    if (trend) row.trend = trend;
-    const op = operation('prices', uid(), row, actor, entry.at);
-    ops.push(op); fresh.push({ ...row, id: op.id, createdAt: entry.at });
-    const shown = trend && activeTrend({ storeId, name: entry.name, unit: entry.quote.unit }, [fresh.at(-1)], new Date(entry.at));
-    if (shown?.direction === 'up' && trend.at === entry.at) up++; else if (shown?.direction === 'down' && trend.at === entry.at) down++;
-    // Zuordnung merken, wenn der Name von dem abweicht, was die App aus dem Bon gemacht hätte
-    if (entry.line.key && productKey(entry.name) !== productKey(entry.line.item.name)) {
+    const item = entry.line.item;
+    // Ein bezahlter Preis: geprüft von der Person (`src: 'bon'`), mit Sorte, Originaltext der Bonzeile und Schlüssel gegen doppeltes Übernehmen.
+    const row = { storeId, name: entry.name, quote: clone(entry.quote), regularQuote: clone(entry.regularQuote), onSale: entry.onSale, src: 'bon', receipt: String(item.text).slice(0, 200),
+      receiptKey: receiptKeyOf(storeId, day, item.text, item.totalCents), ...(entry.variant ? { variant: entry.variant } : {}) };
+    ops.push(operation('prices', uid(), row, actor, entry.at));
+    // Zuordnung merken, wenn Name oder Sorte von dem abweichen, was die App aus dem Bon gemacht hätte
+    if (entry.line.key && (productKey(entry.name) !== productKey(item.name) || entry.variant)) {
       const known = aliases.find(alias => alias.from === entry.line.key);
-      if (!known) ops.push(operation('aliases', uid(), { from: entry.line.key, name: entry.name }, actor, entry.at));
-      else if (known.name !== entry.name) ops.push(operation('aliases', known.id, { name: entry.name }, actor, entry.at));
+      if (!known) ops.push(operation('aliases', uid(), { from: entry.line.key, name: entry.name, ...(entry.variant ? { variant: entry.variant } : {}) }, actor, entry.at));
+      else if (known.name !== entry.name || (known.variant || '') !== entry.variant) ops.push(operation('aliases', known.id, { name: entry.name, variant: entry.variant }, actor, entry.at));
     }
   }
   // Gesamtbetrag unter „Ausgaben“, wenn gewünscht und dort noch nicht vorhanden.
-  const found = receiptAmount(receiptParsed), day = form.elements.date.value || isoDate();
+  const found = receiptAmount(receiptParsed);
   let spent = 0;
   if (found && form.elements.spend.checked && !hasPurchase(day, storeId, found.cents)) {
     const storeName = active(state.stores).find(store => store.id === storeId)?.name || '';
     ops.push(nextOp('purchases', uid(), purchaseFields({ amount: formatAmount(found.cents), date: day, storeId, storeName, source: 'bon' }, isoDate()))); spent = found.cents;
   }
-  const parts = [`${entries.length} Preise gemerkt`, up && `${up} teurer`, down && `${down} günstiger`, spent && `${euros(spent)} unter Ausgaben`].filter(Boolean);
+  const parts = [`${entries.length} Preise gemerkt`, already && `${already} schon vorhanden`, spent && `${euros(spent)} unter Ausgaben`].filter(Boolean);
   commit(ops, parts.join(' · ') + (spent ? budgetNote(monthTotalWith(monthOf(day), spent)) : ''));
   $('#receipt-dialog').close();
 }
@@ -2348,10 +2354,67 @@ function renderAliases() {
   $('#alias-count').textContent = rows.length ? ` (${rows.length})` : '';
   if (!rows.length) list.append(element('li', 'Noch nichts gemerkt.', 'empty'));
   for (const row of rows) {
-    const entry = element('li'); entry.append(element('span', `${row.from} → ${row.name}`), iconButton('x', `Zuordnung ${row.from} zu ${row.name} entfernen`, () => removeRows('aliases', [row.id])));
+    const target = row.variant ? `${row.name} (${row.variant})` : row.name;
+    const entry = element('li'); entry.append(element('span', `${row.from} → ${target}`), iconButton('x', `Zuordnung ${row.from} zu ${target} entfernen`, () => removeRows('aliases', [row.id])));
     list.append(entry);
   }
 }
+/* ---------- Bezahlte Preise prüfen ---------- */
+// Notizen aus früheren Versionen (ohne Herkunft) erscheinen nie als „Zuletzt bezahlt“, bis die Person sie bestätigt; bestätigte Preise lassen sich ändern oder vergessen.
+const PAID_SHOWN = 60;
+function paidNoteItem(row, review) {
+  const store = state.stores.find(entry => entry.id === row.storeId && !entry.deletedAt)?.name || 'entferntes Geschäft', title = titleOf(row), when = dateText(row.createdAt);
+  const li = element('li', undefined, 'paid-note'), text = element('div', undefined, 'paid-text');
+  text.append(element('strong', title), element('span', priceText(row.quote)), element('small', `${store} · ${when}${row.onSale ? ' · damals im Angebot' : ''}`));
+  if (variantOf(row)) text.append(element('small', `Produktgruppe: ${row.name}`));
+  if (row.receipt) text.append(element('small', `Bon: ${row.receipt}`, 'paid-receipt'));
+  const actions = element('div', undefined, 'paid-actions'), label = `${title}, ${store}, ${when}`;
+  const act = (name, action, className) => { const node = button(name, action, `secondary small ${className || ''}`.trim()); node.setAttribute('aria-label', `${label}: ${name}`); return node; };
+  if (review) actions.append(act('Stimmt', () => commit([nextOp('prices', row.id, { src: 'bon' })], 'Als bezahlter Preis bestätigt')));
+  actions.append(act('Ändern', () => openNote(row.id)), act('Vergessen', () => { if (confirm(`Den Preis „${label}“ vergessen?`)) removeRows('prices', [row.id]); }, 'danger'));
+  li.append(text, actions);
+  return li;
+}
+function renderPaidNotes() {
+  const review = reviewRows(state.prices), paid = paidRows(state.prices);
+  $('#paid-count').textContent = review.length ? ` (${review.length} zu prüfen)` : paid.length ? ` (${paid.length})` : '';
+  const box = $('#paid-review'), list = $('#paid-list'); box.replaceChildren(); list.replaceChildren();
+  const section = (target, title, rows, isReview) => {
+    if (!rows.length) return;
+    const head = element('h4', `${title} (${rows.length})`), ul = element('ul', undefined, 'paid-list');
+    target.append(head);
+    if (isReview) target.append(element('p', 'Diese Notizen stammen aus früheren Versionen. Es ist nicht sicher, ob der Preis bezahlt wurde und ob der Name stimmt. Sie erscheinen im Laden erst, wenn du sie mit „Stimmt“ bestätigst.', 'hint'));
+    rows.slice(0, PAID_SHOWN).forEach(row => ul.append(paidNoteItem(row, isReview)));
+    target.append(ul);
+    if (rows.length > PAID_SHOWN) target.append(element('p', `Es werden die neuesten ${PAID_SHOWN} gezeigt, ${rows.length - PAID_SHOWN} weitere sind vorhanden.`, 'hint'));
+    if (isReview) target.append(button('Alle zu prüfenden vergessen', () => { if (confirm(`Alle ${rows.length} ungeprüften Preisnotizen vergessen?`)) removeRows('prices', rows.map(row => row.id)); }, 'secondary small danger'));
+  };
+  section(box, 'Zu prüfen', review, true);
+  section(list, 'Bestätigt', paid, false);
+  if (!review.length && !paid.length) list.append(element('p', 'Noch keine bezahlten Preise. Sie entstehen, wenn du die Zeilen eines Kassenbons prüfst und übernimmst.', 'hint'));
+}
+function openNote(id) {
+  const row = state.prices.find(entry => entry.id === id && !entry.deletedAt);
+  if (!row) throw new Error('Dieser Preis wurde inzwischen vergessen.');
+  const form = $('#note-form'); form.reset();
+  form.elements.id.value = id; form.elements.name.value = row.name; form.elements.variant.value = variantOf(row);
+  form.elements.price.value = (row.quote.cents / 100).toFixed(2).replace('.', ','); form.elements.quantity.value = plain(row.quote.quantity); form.elements.unit.value = row.quote.unit;
+  storeOptions(form.elements.storeId, row.storeId, false); form.elements.onSale.checked = Boolean(row.onSale);
+  $('#note-origin').textContent = `Notiert am ${dateText(row.createdAt)}.${row.receipt ? ` Bon: ${row.receipt}.` : ''}${row.src === 'bon' ? '' : ' Noch nicht bestätigt.'}`;
+  $('#note-dialog').showModal();
+}
+function saveNote() {
+  const form = $('#note-form'), row = state.prices.find(entry => entry.id === form.elements.id.value && !entry.deletedAt);
+  if (!row) throw new Error('Dieser Preis wurde inzwischen vergessen.');
+  const name = form.elements.name.value.trim().replace(/\s+/g, ' '), variant = form.elements.variant.value.trim().replace(/\s+/g, ' '), unit = form.elements.unit.value.trim();
+  if (!name || !unit) throw new Error('Bitte Name und Einheit eingeben.');
+  const quote = { cents: receiptCents(form.elements.price.value.trim()), quantity: positive(form.elements.quantity.value), unit }, onSale = form.elements.onSale.checked;
+  const patch = { name, variant, quote, regularQuote: onSale && validRegular(row) ? row.regularQuote : quote, onSale, storeId: currentStore(form.elements.storeId.value), src: 'bon' };
+  const delta = changed(patch, { ...row, variant: variantOf(row) });
+  if (Object.keys(delta).length) commit([nextOp('prices', row.id, delta)], 'Bezahlter Preis gespeichert');
+  $('#note-dialog').close();
+}
+const validRegular = row => Boolean(row.regularQuote && Number.isSafeInteger(row.regularQuote.cents));
 function renderPantry() {
   const list = $('#pantry-list'); list.replaceChildren();
   const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
@@ -2425,7 +2488,7 @@ function useTemplate(id) {
   const ops = [], total = { added: 0, counted: 0, skipped: 0 };
   for (const [storeId, rows] of groups) {
     lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-    const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+    const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), itemHistory());
     ops.push(...result.ops); total.added += result.added; total.counted += result.counted.length; total.skipped += result.skipped;
   }
   if (!ops.length) throw new Error('Alles davon steht schon auf der Liste.');
@@ -2598,7 +2661,7 @@ $('#set-offers').addEventListener('click', () => openStoresDialog(view));   // d
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
 function addRows(rows, storeId, unchecked = [], remember = false) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), itemHistory());
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length) throw new Error('Alles davon steht schon auf der Liste.');
   const pantryOps = stocked.map(name => nextOp('pantry', uid(), { name }));
@@ -2625,7 +2688,6 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
     commit([nextOp('items', same.id, { add: same.add })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
-    if (item.storeId && effectiveQuote(item, state.prices) && form.dataset.manualPrice === 'yes') ops.push(priceOperation(item));
     // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
     commit(ops, inView(item) ? renamed : `${renamed ? `${renamed}; ` : ''}„${name}“ steht bei „${storeName(item.storeId)}“`);
   }
@@ -2758,8 +2820,6 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
-  const edited = { ...item, ...delta };
-  if (edited.storeId && effectiveQuote(edited, state.prices) && ['price', 'salePrice', 'name', 'unit', 'onSale'].some(key => key in delta)) ops.push(priceOperation(edited));
   commit(ops); $('#item-dialog').close();
 }); });
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
@@ -2926,6 +2986,13 @@ $('#receipt-back').addEventListener('click', () => { $('#receipt-input').hidden 
 $('#receipt-form').addEventListener('submit', event => { event.preventDefault(); guard(saveReceipt); });
 $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
 $('#spending-first').addEventListener('click', () => guard(() => openPurchase()));
+$('#note-form').addEventListener('submit', event => { event.preventDefault(); guard(saveNote); });
+$('#note-forget').addEventListener('click', () => guard(() => {
+  const id = $('#note-form').elements.id.value, row = state.prices.find(entry => entry.id === id && !entry.deletedAt);
+  if (!row) { $('#note-dialog').close(); return; }
+  if (!confirm(`Den Preis „${titleOf(row)}“ vergessen?`)) return;
+  $('#note-dialog').close(); removeRows('prices', [id]);
+}));
 $('#budget-form').addEventListener('submit', event => { event.preventDefault(); guard(saveBudget); });
 $('#budget-remove').addEventListener('click', () => guard(() => { $('#budget-dialog').close(); commit([nextOp('budgets', 'monthly', { cents: 0 })], 'Monatsbudget entfernt'); }));
 $('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });
@@ -2990,7 +3057,7 @@ function addFromLink({ text, store }) {
   if (!rows.length) throw new Error('Im Link stand nichts zum Hinzufügen.');
   const wanted = productKey(store), match = wanted ? active(state.stores).find(row => productKey(row.name).includes(wanted)) : null;
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const result = addToList(rows, match?.id || '', config.actor || 'Unbekannt', new Date(lastTime).toISOString(), state.prices, itemHistory(), state.items);
+  const result = addToList(rows, match?.id || '', config.actor || 'Unbekannt', new Date(lastTime).toISOString(), itemHistory());
   commit(result.ops, `Hinzugefügt: ${rows.map(row => row.name).join(', ')}${match ? ` (${match.name})` : ''}${connected() ? '' : ' · nur auf diesem Gerät: hier ist GitHub nicht verbunden'}`);
 }
 function incomingLink() {

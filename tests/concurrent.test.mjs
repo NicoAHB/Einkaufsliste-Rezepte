@@ -14,8 +14,8 @@ const qty = (data, id = 'milch') => data.items.find(row => row.id === id).quanti
 test('Zwei Personen legen unabhängig je +1 auf einen Artikel mit Menge 1: Ergebnis 3, nicht 2', () => {
   const shared = base();
   assert.equal(qty(shared), 1);
-  const nico = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Nico', t(10), [], shared.items).ops;
-  const anna = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Anna', t(11), [], shared.items).ops;
+  const nico = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Nico', t(10), shared.items).ops;
+  const anna = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Anna', t(11), shared.items).ops;
   assert.equal(nico[0].patch.add.quantity, 1, 'gespeichert wird der Zuwachs, nicht die neue Gesamtmenge');
   // Gerät 1 gleicht zuerst ab, Gerät 2 danach (später, offline gewesen)
   const afterNico = merge(shared, nico);
@@ -30,7 +30,7 @@ test('Zwei Personen legen unabhängig je +1 auf einen Artikel mit Menge 1: Ergeb
 });
 
 test('Wiederholtes Senden derselben Änderung zählt nur einmal', () => {
-  const ops = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Nico', t(10), [], base().items).ops;
+  const ops = addToList([{ name: 'Quark', quantity: 1, unit: 'Stück' }], 'store-lidl', 'Nico', t(10), base().items).ops;
   const once = merge(base(), ops);
   assert.equal(qty(merge(once, ops)), 2);
   assert.equal(qty(merge(base(), [...ops, ...ops])), 2);

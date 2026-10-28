@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.40
+# Einkauf & Rezepte – Version 2.41
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,48 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.41: Verlauf bezahlter Preise („Zuletzt bezahlt“) nur im Modus „Im Laden“
+
+Die Preisfunktion wurde umgebaut. Ziel ist ein zuverlässiger Verlauf **tatsächlich bezahlter** Preise, der nur im Laden und nur auf Wunsch sichtbar wird. Er **ersetzt** Preisvergleich, Preisentwicklung („▲ Teurer / ▼ Günstiger“) und die selbst eingetragenen gemerkten Preise aus den Versionen 1.5 bis 1.9. Architektur, Offline-Nutzung und gemeinsame Synchronisierung sind unverändert (Sammlung `prices`, neues Modul `history.js`).
+
+**Darstellung**
+- **Planen:** In der Artikelzeile stehen nur Name, Menge, Person (und Symbol). Keine Preisangabe, kein Preisvergleich, keine Preisentwicklung, kein Angebotshinweis. Die geschätzte Summe oben bleibt (sie rechnet nur mit Preisen, die du selbst am Artikel eingetragen hast).
+- **Im Laden:** Haken, Name, Menge, vorhandenes Produktsymbol und ein kleiner Pfeil. Ein Tipp auf **Namen oder Pfeil** (eine große Tippfläche, `aria-expanded`/`aria-controls`) öffnet direkt unter dem Artikel das Feld **„Zuletzt bezahlt“**, ein zweiter Tipp schließt es. Es ist **höchstens eins** offen. Der **Haken links** hakt nur ab und öffnet nichts; beim Abhaken schließt sich das Feld. **Gesperrt** öffnet ein Tipp nichts (die Sperre fängt ihn ab, der Knopf zum Entsperren leuchtet auf), das Halten am Kreis, am Geschäft und an „Erledigt“ geht weiter. Beim automatischen Abgleich bleibt das Feld offen (gemerkt wird der Artikel, nicht das Element), Scrollposition und Fokus springen nicht; verschwindet der Artikel, schließt es. Beim Wechsel des Geschäfts und beim Verlassen von „Im Laden“ ist es zu.
+- **Inhalt:** je **Sorte, Geschäft und Packung** der neueste bestätigte Kauf mit Bezeichnung, Preis („0,59 € pro Stück“, „3,98 € pro kg“, „1,29 € für 500 g“), Geschäft, Datum und „Damals im Angebot“; **Frühere Käufe** klappst du bei Bedarf auf. Das gewählte Geschäft steht zuerst („Bei Rewe“), andere Geschäfte darunter („In anderen Geschäften“). Ohne Einträge: „Noch keine bestätigten Kaufpreise vorhanden.“ Abschluss: „Vergangene Kaufpreise. Der heutige Preis kann abweichen.“ Aus alten Preisen wird nie „hier am günstigsten“ abgeleitet. Alles kommt aus den gespeicherten Daten, es ist kein Netz nötig.
+
+**Zuordnung (Produktgruppe, Sorte, Produkt)**
+- „Äpfel“ ist eine Produktgruppe, „Gala“ und „Pink Lady“ sind **Sorten** davon (`prices.variant`). „Apfeltasche“, „Apfelsaft“, „Hafermilch“ sind eigene Produkte; zugeordnet wird nur über den **gleichen Namen**, nie über ein Wortstück.
+- Eine **Sorte wird nur erkannt**, wenn der Bon auch das Wort der Gruppe nennt („Gala Äpfel“, „Äpfel Pink Lady Bio“, Äpfel und Birnen, `receipt.js`); „Gala“ allein, „Apfel Saft“ oder „Apfeltasche“ bleiben, wie sie sind. Gemerkte Zuordnungen (`aliases`) tragen die Sorte mit.
+- Ein **unsicherer Vorschlag** („Bio Apfel“ → „Apfel“) wird **nicht** ins Feld gesetzt: Dort steht, was auf dem Bon steht; der Knopf „Als „Apfel“ eintragen“ übernimmt ihn ausdrücklich. Steht auf dem Bon nur „Äpfel“, zeigt der Verlauf „Äpfel – Sorte unbekannt“.
+- **Packungen:** verschiedene Mengen und Einheiten werden nicht gleichgesetzt (500 g, 1 kg, 6 Stück sind eigene Einträge); ein Preis je kg bleibt ein Preis je kg (nie ein Stückpreis).
+
+**Kassenbon**
+- Jede Zeile zeigt den **Originaltext vom Bon** und lässt **Name, Sorte, Preis, Menge und Einheit** korrigieren. Gespeichert werden `src: 'bon'` (von dir geprüft), `variant`, `receipt` (Originaltext) und `receiptKey` (Geschäft, Tag, Text, Betrag).
+- **Doppelt übernehmen geht nicht:** dieselbe Bonposition (gleicher Schlüssel) wird abgewählt und beim Speichern übersprungen („schon eingetragen“).
+- **Menge:** Steht auf dem Bon keine Stückzahl, kein Gewicht und keine Packungsgröße, ist sie **unbekannt** (Einheit „Position“, Anzeige „laut Bon (Menge unbekannt)“) statt „1 Stück“.
+- **Rabatt:** nur ein Rabatt **direkt unter der Zeile** und ohne Coupon-, Gutschein-, Bonus-, Payback- oder Kundenkarten-Wort wird eingerechnet (bezahlter Preis, der Normalpreis bleibt erhalten, „Damals im Angebot“, mit Hinweis zur Kontrolle). Alles andere steht in „Nicht als Artikel erkannt“ und wird nicht eingerechnet. **Pfand** ist nie ein Artikel.
+
+**Bestehende Daten und Schätzungen (Datenmigration)**
+- Die Datei bleibt lesbar; neue Felder sind optional. Sobald ein bezahlter Preis mit Sorte gespeichert wird, setzt die App `sync.minRev` auf **3** (`SCHEMA_REV = 3`): Eine ältere App liest die Datei dann nicht mehr und verweist auf „App ganz schließen und neu öffnen“. Sie würde Sorten beim Aufräumen zusammenwerfen.
+- **Alte Preisnotizen** (ohne `src`) werden **nicht gelöscht, aber nie als bezahlt gezeigt.** Unter **Einstellungen → Bezahlte Preise → Zu prüfen** bestätigst du sie mit **Stimmt**, korrigierst sie mit **Ändern** (Name, Sorte, Preis, Menge, Einheit, Geschäft) oder vergisst sie (einzeln oder alle). Bestätigte Preise lassen sich dort ebenfalls ändern und vergessen.
+- **Schätzung:** Ein Artikel hat nur noch den Preis, den du **selbst** am Artikel eingetragen hast. Früher notierte oder bezahlte Preise werden **nie** automatisch übernommen oder in die Summe eingerechnet (auch nicht, wenn das Feld `price` fehlt, und nicht mehr bei neuen Artikeln aus Rezepten, Vorlagen und Siri-Links). Wer seine Summe früher aus gemerkten Preisen bekam, sieht „ohne Preis, nicht eingerechnet“, bis er den Preis am Artikel einträgt. Beim Eintragen eines Artikelpreises entsteht keine Preisnotiz mehr.
+- **Ausgaben** und Bon-Gesamtbeträge laufen unabhängig vom Artikelpreisverlauf weiter. Es gibt keine Händlerabfragen.
+- **Aufräumen:** je Geschäft, Produkt, **Sorte** und Einheitengruppe bleiben die neuesten **vier** (vorher zwei); bestätigte und ungeprüfte Notizen zählen getrennt.
+- Die Beispieldaten tragen die Preise der vier Beispielartikel jetzt am Artikel; ihre acht Preisnotizen sind „zu prüfen“.
+
+**Tests:** `tests/history.test.mjs` (Gala, Pink Lady, Apfeltasche, Apfelsaft, Hafermilch, Milch, verschiedene Einheiten, Doppelimport, Datenmodell), `tests/receipt.test.mjs` (Menge, Rabatt, Pfand, Sorten), `tests/compact.test.mjs` (Sorten bleiben getrennt, minRev) und im Browser: Auf- und Zuklappen, getrenntes Abhaken, höchstens ein Feld, Sperrzustand, automatischer Abgleich (Scrollposition, Fokus), Offline ohne Netzwerkzugriff, Prüfliste, Layout in 390/320/280 px hell und dunkel mit Kontrastprüfung. Elf eingebaute Fehler wurden erkannt. Nicht getestet: das Verhalten auf einem echten iPhone (geprüft im Chromium-Browser mit iPhone-13-Emulation).
+
+Testpunkte für Version 2.41 (iPhone):
+
+- [ ] Planen: keine Preise in den Artikelzeilen (kein „ca. …“, kein Angebot, kein „Teurer“).
+- [ ] Im Laden: Name oder Pfeil antippen öffnet unter dem Artikel „Zuletzt bezahlt“; erneut antippen schließt; ein zweiter Artikel schließt den ersten.
+- [ ] Der Haken links hakt nur ab (öffnet nichts); nach dem Abhaken ist das Feld zu.
+- [ ] Gesperrt: Tipp auf den Namen öffnet nichts (Entsperren-Knopf leuchtet); Halten am Kreis hakt weiter ab.
+- [ ] Feld offen lassen, in der anderen App kurz etwas ändern lassen: Das Feld bleibt, die Liste springt nicht.
+- [ ] Flugmodus: Das Feld lässt sich weiter öffnen.
+- [ ] Kassenbon: Originaltext, Sorte, Menge/Einheit sichtbar und änderbar; derselbe Bon ein zweites Mal wird abgewählt („Schon eingetragen“); „Gala Äpfel“ erkennt die Sorte, „Apfeltasche“ bleibt eigen.
+- [ ] Einstellungen → Bezahlte Preise: alte Notizen mit „Stimmt“ bestätigen, mit „Ändern“ korrigieren, mit „Vergessen“ entfernen.
 
 ## Neu in Version 2.40: Überschrift scrollt mit, Tipp außerhalb schließt das Fenster
 
@@ -767,7 +809,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `history.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

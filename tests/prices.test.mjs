@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { comparePrices, itemCost, offerUrl, parseCents, productKey, rememberedPrice, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from '../prices.js';
+import { itemCost, itemQuote, offerUrl, parseCents, productKey, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from '../prices.js';
 
 test('Preise in Euro werden zu ganzen Cent', () => {
   assert.equal(parseCents('1,99'), 199);
@@ -36,24 +36,14 @@ test('Summe: erledigte und gelöschte Artikel zählen nicht, fehlende Preise wer
   assert.deepEqual(shoppingTotal(items), { cents: 200, missing: 1, count: 2, priced: 1 });
 });
 
-test('Gemerkter Preis: neuester passender Eintrag des Geschäfts, Aktionspreis wird kein Normalpreis', () => {
-  const row = (id, createdAt, quote, regularQuote, extra = {}) => ({ id, createdAt, storeId: 's1', name: 'Milch', quote, regularQuote, deletedAt: null, ...extra });
-  const normal = { cents: 120, quantity: 1, unit: 'l' }, sale = { cents: 99, quantity: 1, unit: 'l' };
-  const history = [row('a', '2026-01-01', normal, normal), row('b', '2026-02-01', sale, normal, { onSale: true })];
-  assert.deepEqual(rememberedPrice(history, 's1', ' milch ', 'l'), normal);
-  assert.equal(rememberedPrice(history, 's2', 'Milch', 'l'), null);
-  assert.equal(rememberedPrice(history, 's1', 'Milch', 'kg'), null);
+test('Der Preis eines Artikels ist nur der eigene: nie ein früher bezahlter oder notierter Preis (auch nicht bei Altbestand ohne Feld)', () => {
+  assert.equal(itemQuote({ name: 'Milch', unit: 'l' }), null, 'fehlendes Feld heißt kein Preis');
+  assert.equal(itemQuote({ name: 'Milch', unit: 'l', price: null }), null);
+  assert.equal(itemQuote({ name: 'Milch', unit: 'l', price: { cents: -1, quantity: 1, unit: 'l' } }), null, 'ungültiger Preis zählt nicht');
+  const own = { cents: 120, quantity: 1, unit: 'l' };
+  assert.deepEqual(itemQuote({ name: 'Milch', unit: 'l', price: own }), own);
+  assert.equal(shoppingTotal([{ name: 'Milch', quantity: 1, unit: 'l' }]).priced, 0);
   assert.equal(productKey('  Äpfel  Rot '), 'äpfel rot');
-});
-
-test('Geschäftsvergleich: günstigster Preis je kg zuerst', () => {
-  const stores = [{ id: 'a', name: 'Edeka' }, { id: 'b', name: 'Lidl' }, { id: 'c', name: 'Weg', deletedAt: '2026-01-01' }];
-  const history = [{ id: '1', createdAt: '1', storeId: 'a', name: 'Nudeln', quote: { cents: 199, quantity: 500, unit: 'g' } },
-    { id: '2', createdAt: '2', storeId: 'b', name: 'Nudeln', quote: { cents: 150, quantity: 500, unit: 'g' } },
-    { id: '3', createdAt: '3', storeId: 'c', name: 'Nudeln', quote: { cents: 1, quantity: 500, unit: 'g' } }];
-  const rows = comparePrices({ name: 'Nudeln', unit: 'kg' }, stores, history);
-  assert.deepEqual(rows.map(row => [row.storeName, row.rate]), [['Lidl', 300], ['Edeka', 398]]);
-  assert.deepEqual(comparePrices({ name: 'Nudeln', unit: 'Packung' }, stores, history), []);
 });
 
 test('Angebotslinks: nur https ohne Zugangsdaten; Standardlinks für bekannte Händler', () => {

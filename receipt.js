@@ -2,8 +2,10 @@
    Der Text eines Bons (aus der App oder dem PDF des Marktes kopiert) wird in Artikelzeilen zerlegt. Erkannt werden Preis, Stückzahl
    („2 x 0,79“), Gewicht („0,432 kg x 3,99 EUR/kg“), Packungsgröße im Namen („250g“, „1L“, „10 St“), Rabattzeilen und Pfand. Die
    Summe laut Bon wird mit der Summe der erkannten Zeilen verglichen, so fällt eine nicht gelesene Zeile auf. Nichts wird gespeichert, bevor
-   die Person die Zeilen geprüft hat: Das hier liefert nur Vorschläge. */
+   die Person die Zeilen geprüft hat: Das hier liefert nur Vorschläge. Was nicht auf dem Bon steht, wird nicht erfunden: Ohne Stückzahl, Gewicht oder
+   Packungsgröße ist die Menge unbekannt (Einheit `Position`), ein Rabatt wird nur eingerechnet, wenn er eindeutig zur Zeile davor gehört. */
 import { productKey } from './prices.js';
+import { UNKNOWN_UNIT } from './history.js';
 
 const AMOUNT = String.raw`(-?)(\d{1,5}),(\d{2})(-?)`;
 const TAX = String.raw`(?:\s*[A-Z1-9*]{1,2})?`;                                  // Steuerkennzeichen am Zeilenende (A, B, 1, 2, *)
@@ -16,6 +18,8 @@ const WEIGHT_END = /\s+(\d{1,3}(?:,\d{1,3})?)\s*(kg|g|l)\s*[x×*]\s*(\d{1,5}),(\
 const STOP = /^(summe|gesamtsumme|gesamt|total|zu zahlen|zahlbetrag|endbetrag|betrag)\b/iu;
 const SKIP = /zwischensumme|übertrag|subtotal|netto|brutto|mwst|mehrwertsteuer|ust-?id|steuer/iu;
 const DEPOSIT = /pfand|leergut/iu;
+// Rabatte, die erkennbar nicht zu einer einzelnen Position gehören (Coupon, Gutschein, Bonuspunkte, Kundenkarte, Warenkorb): nie in einen Artikelpreis eingerechnet.
+const BASKET_DISCOUNT = /coupon|gutschein|bonus|payback|punkte|kundenkarte|treue|warenkorb|einkauf|gesamt/iu;
 const SIZE_MULTI = /(\d{1,2})\s*[x×]\s*(\d+(?:,\d+)?)\s*(kg|g|ml|cl|l)\b\.?/iu;
 const SIZE_ONE = /(\d+(?:,\d+)?)\s*(kg|g|ml|cl|ltr|liter|l|stk|st)\b\.?/iu;
 const CHAINS = /\b(rewe|lidl|edeka|aldi|kaufland|penny|netto|dm|rossmann|marktkauf|famila|globus|real)\b/iu;
@@ -115,8 +119,9 @@ export function parseReceipt(input) {
       if (DEPOSIT.test(name)) { sum += value; skipped.push({ text: line, why: 'Pfand' }); last = null; pending = null; continue; }
       if (value < 0) {   // Rabatt, Coupon oder Gutschein
         sum += value;
-        if (last && Math.abs(value) <= last.totalCents) { last.discountCents += Math.abs(value); last.text += ` ${line}`; }
-        else skipped.push({ text: line, why: 'Rabatt auf den ganzen Einkauf' });
+        // Nur ein Rabatt direkt unter einer Position und ohne Hinweis auf Coupon oder Gutschein gehört eindeutig zu ihr; alles andere bleibt unberücksichtigt und steht in der Liste „Nicht als Artikel erkannt“.
+        if (last && !BASKET_DISCOUNT.test(name) && Math.abs(value) <= last.totalCents) { last.discountCents += Math.abs(value); last.text += ` ${line}`; }
+        else skipped.push({ text: line, why: 'Rabatt oder Gutschein, keiner Position eindeutig zugeordnet (nicht eingerechnet)' });
         pending = null; continue;
       }
       if ((name.match(/\p{L}/gu) || []).length < 2) { skipped.push({ text: line, why: 'keine Artikelzeile' }); continue; }
@@ -140,12 +145,18 @@ export function parseReceipt(input) {
     if (item.rate) quote = { cents: item.rate.cents, quantity: 1, unit: item.rate.unit === 'g' ? 'g' : item.rate.unit };
     else {
       const each = item.unitCents !== null && Math.abs(item.unitCents * count - item.totalCents) <= count ? item.unitCents : Math.round(item.totalCents / count);
-      quote = size ? { cents: each, quantity: size.quantity, unit: size.unit } : { cents: each, quantity: 1, unit: 'Stück' };
+      // Eine Stückzahl steht nur dann auf dem Bon, wenn dort „2 x 0,79“ o. ä. steht; sonst ist die Menge unbekannt und wird nicht als „1 Stück“ erfunden.
+      const counted = item.unitCents !== null || count > 1;
+      quote = size ? { cents: each, quantity: size.quantity, unit: size.unit } : counted ? { cents: each, quantity: 1, unit: 'Stück' } : { cents: each, quantity: 1, unit: UNKNOWN_UNIT };
     }
     const onSale = item.discountCents > 0 && item.discountCents < item.totalCents;
     // Mit Rabatt: bezahlt wurde weniger. Der Normalpreis bleibt als Normalpreis erhalten (ein Aktionspreis wird nie zum neuen Normalpreis).
     const paid = onSale ? { ...quote, cents: Math.max(0, Math.round(quote.cents * (item.totalCents - item.discountCents) / item.totalCents)) } : quote;
-    return { text: item.text, name, quote: paid, regularQuote: onSale ? quote : null, onSale, count, weight: item.weight, discountCents: item.discountCents, totalCents: item.totalCents };
+    // Hinweise zur Kontrolle: Was die App nicht sicher weiß oder selbst eingerechnet hat, soll die Person ansehen.
+    const checks = [];
+    if (quote.unit === UNKNOWN_UNIT) checks.push('Menge und Einheit stehen nicht auf dem Bon. Bitte ergänzen oder so lassen (der Preis gilt dann für die ganze Position).');
+    if (item.discountCents > 0) checks.push(`Rabatt von ${(item.discountCents / 100).toFixed(2).replace('.', ',')} € direkt unter der Zeile eingerechnet (damals im Angebot). Bitte prüfen.`);
+    return { text: item.text, name, quote: paid, regularQuote: onSale ? quote : null, onSale, count, weight: item.weight, discountCents: item.discountCents, totalCents: item.totalCents, checks };
   }).filter(item => item.quote.cents > 0);
   return { items: result, skipped, total, sum, date, chain };
 }
@@ -158,6 +169,24 @@ const closeWord = (word, token) => word === token || (word.length >= 3 && word.l
 // Beigaben, die das Produkt nicht ändern („Bio Äpfel“ ist „Äpfel“). Jedes andere zusätzliche Wort macht den Vorschlag unsicher.
 const FILLER = new Set(['bio', 'frisch', 'frische', 'lose']);
 
+/* Sorten, die ein Wort (oder eine feste Wortfolge) für sich nur diese eine Bedeutung haben. Erkannt werden sie nur, wenn der Bon auch das Wort der Produktgruppe nennt
+   („Äpfel Gala“, „Pink Lady Apfel Bio“) und sonst nichts Weiteres: „Gala“ allein, „Apfel Saft“ oder „Apfeltasche“ werden nie einer Sorte oder Gruppe zugeordnet. */
+const VARIETIES = [
+  { group: ['äpfel', 'apfel'], names: ['gala', 'royal gala', 'pink lady', 'cripps pink', 'elstar', 'braeburn', 'granny smith', 'jonagold', 'boskoop', 'golden delicious', 'fuji', 'topaz', 'kanzi', 'santana', 'cox orange', 'red delicious'] },
+  { group: ['birnen', 'birne'], names: ['williams christ', 'conference', 'abate fetel', 'alexander lucas', 'forelle', 'santa maria', 'rocha'] }
+];
+const capital = text => text.split(' ').map(word => word.charAt(0).toLocaleUpperCase('de') + word.slice(1)).join(' ');
+function varietyOf(words) {
+  for (const { group, names } of VARIETIES) {
+    const head = words.find(word => group.includes(word));
+    if (!head) continue;
+    const rest = words.filter(word => word !== head && !FILLER.has(word)).join(' ');
+    if (!names.includes(rest)) return null;
+    return { name: capital(head), variant: `${capital(rest)}${words.includes('bio') ? ' Bio' : ''}` };
+  }
+  return null;
+}
+
 /* Name in der App für eine Bonzeile. 1. Was ihr schon einmal zugeordnet habt („gemerkt“), 2. ein bekannter Name, wenn die Bonzeile sicher dasselbe Produkt ist
    („Vorschlag“): alle Wörter des Namens kommen vor (gleich oder abgekürzt) und die Bonzeile enthält nichts anderes außer Beigaben wie „Bio“, 3. der aufgeräumte Bontext.
    Im Zweifel gibt es keinen Vorschlag: Der Preis gehört zum Namen, ein falscher Treffer würde einem anderen Produkt den Preis geben.
@@ -165,8 +194,10 @@ const FILLER = new Set(['bio', 'frisch', 'frische', 'lose']);
 export function suggestName(item, aliases = [], known = []) {
   const key = aliasKey(item.name);
   const hit = aliases.find(row => !row.deletedAt && row.from === key);
-  if (hit) return { name: hit.name, how: 'gemerkt', key };
+  if (hit) return { name: hit.name, variant: String(hit.variant || ''), how: 'gemerkt', key };
   const words = key.split(' ').filter(Boolean);
+  const kind = varietyOf(words);
+  if (kind) return { name: kind.name, variant: kind.variant, how: 'Sorte', key };
   let best = null;
   for (const name of known) {
     const tokens = wordsOf(name);
@@ -176,7 +207,7 @@ export function suggestName(item, aliases = [], known = []) {
     if (!best || better(rank, best.rank)) best = { name, rank };
   }
   // Derselbe Name (nur anders geschrieben, z. B. GROSSBUCHSTABEN) ist kein Vorschlag, den man prüfen müsste.
-  return best ? { name: best.name, how: productKey(best.name) === productKey(item.name) ? '' : 'Vorschlag', key } : { name: item.name, how: '', key };
+  return best ? { name: best.name, variant: '', how: productKey(best.name) === productKey(item.name) ? '' : 'Vorschlag', key } : { name: item.name, variant: '', how: '', key };
 }
 
 // Welches Geschäft der App passt zum Namen auf dem Bon („rewe“ → „Rewe“)? Gibt die Kennung oder '' zurück.

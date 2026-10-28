@@ -872,52 +872,9 @@ button.item-copy strong {
   min-height:44px;
   padding:0 14px
 }
-.sale-badge.expired {
-  background:var(--danger-soft);
-  color:var(--danger)
-}
-.stale,.item small.stale,.comparison-list small.stale {
-  color:var(--danger)
-}
-.sale-badge {
-  display:inline-block;
-  margin-top:4px;
-  padding:1px 8px;
-  border-radius:6px;
-  background:var(--accent-soft);
-  color:var(--accent);
-  font-size:.75rem;
-  font-weight:700
-}
-.item .price-note {
-  color:var(--accent)
-}
 .empty {
   padding:28px 16px;
   text-align:center;
-  color:var(--muted)
-}
-.comparison-list {
-  list-style:none;
-  padding:0;
-  margin:0
-}
-.comparison-list li {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  padding:10px 0;
-  border-bottom:1px solid var(--line)
-}
-.comparison-list li>div {
-  min-width:0
-}
-.comparison-list li>button {
-  flex:none
-}
-.comparison-list small {
-  display:block;
   color:var(--muted)
 }
 
@@ -1718,6 +1675,7 @@ body.in-store .tabs {
 }
 .shop-item {
   display:flex;
+  flex-wrap:wrap;
   align-items:stretch;
   border-bottom:1px solid var(--line)
 }
@@ -1737,17 +1695,142 @@ body.in-store .tabs {
   background:transparent;
   color:var(--text)
 }
+/* Name, Menge, Symbol und kleiner Pfeil sind eine einzige große Tippfläche: Sie öffnet nur die Preisinfo (Version 2.40). */
 .shop-text {
   display:flex;
   align-items:center;
+  justify-content:flex-start;
   flex:1;
   min-width:0;
-  gap:16px;
-  padding:12px 16px 12px 0;
+  min-height:68px;
+  gap:14px;
+  padding:12px 8px 12px 0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:var(--text);
   font-size:1.3rem;
+  font-weight:inherit;
+  text-align:left;
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none
+}
+.shop-text:active {
+  transform:none
+}
+.shop-text .item-thumb {
+  width:44px;
+  height:44px;
+  margin:0;
+  border-radius:12px
+}
+.shop-text .item-thumb .emoji {
+  font-size:26px
+}
+@media (max-width:340px) {
+  .shop-text .item-thumb {
+    display:none
+  }
+}
+.shop-chevron {
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:36px;
+  height:36px;
+  color:var(--muted);
+  transition:transform .15s ease
+}
+.shop-chevron .icon {
+  width:22px;
+  height:22px
+}
+.shop-text[aria-expanded=true] .shop-chevron {
+  transform:rotate(180deg);
+  color:var(--accent)
+}
+/* Das aufgeklappte Preisfeld liegt direkt unter dem Artikel, über die ganze Breite */
+.shop-item.info-open {
+  background:var(--accent-soft)
+}
+.shop-price {
+  flex:1 0 calc(100% - 24px);
+  box-sizing:border-box;
+  max-width:calc(100% - 24px);
+  margin:0 12px 12px;
+  padding:12px 14px;
+  overflow-wrap:anywhere;
+  border:1px solid var(--line-strong);
+  border-radius:14px;
+  background:var(--card);
+  color:var(--text);
+  font-size:1rem
+}
+.shop-price h3 {
+  margin:0 0 6px;
+  font-size:1.05rem
+}
+.shop-price h4 {
+  margin:12px 0 4px;
+  color:var(--muted);
+  font-size:.8rem;
+  font-weight:750;
+  letter-spacing:.06em;
+  text-transform:uppercase
+}
+.shop-price p {
+  margin:6px 0
+}
+.shop-price .price-empty,.shop-price .price-foot {
+  color:var(--muted);
+  font-size:.92rem
+}
+.price-entry {
+  display:grid;
+  gap:1px;
+  padding:8px 0;
+  border-top:1px solid var(--line)
+}
+.price-entry:first-of-type {
+  border-top:0
+}
+.price-title {
+  font-size:1.05rem
+}
+.price-amount {
+  font-weight:650
+}
+.price-meta {
+  color:var(--muted);
+  font-size:.92rem
+}
+.price-sale {
+  justify-self:start;
+  margin-top:2px;
+  padding:1px 8px;
+  border-radius:999px;
+  background:var(--news);
+  color:var(--news-text);
+  font-size:.82rem;
+  font-weight:650
+}
+.price-older {
+  margin-top:4px;
+  font-size:.92rem
+}
+.price-older summary {
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  color:var(--accent);
+  font-weight:650;
+  cursor:pointer
+}
+.price-older ul {
+  margin:0;
+  padding:0 0 4px 18px;
+  color:var(--muted)
 }
 .shop-mark {
   display:grid;
@@ -1932,6 +2015,47 @@ body.in-store .tabs {
   margin:0;
   font-size:.86rem
 }
+/* Hinweise zur Kontrolle einer Bonzeile (fehlende Menge, eingerechneter Rabatt) */
+.receipt-line .receipt-check {
+  margin:0;
+  padding:6px 10px;
+  border-radius:10px;
+  background:var(--news);
+  color:var(--news-text);
+  font-size:.86rem
+}
+/* Einstellungen → Bezahlte Preise: ungeprüfte und bestätigte Preisnotizen */
+#paid-card h4 {
+  margin:14px 0 4px
+}
+.paid-list {
+  margin:0 0 8px;
+  padding:0;
+  list-style:none
+}
+.paid-note {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 12px;
+  padding:10px 0;
+  border-bottom:1px solid var(--line)
+}
+.paid-text {
+  display:grid;
+  flex:1 1 200px;
+  gap:1px;
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.paid-text small {
+  color:var(--muted)
+}
+.paid-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px
+}
 .trend {
   font-weight:600
 }
@@ -1939,12 +2063,6 @@ body.in-store .tabs {
   color:var(--danger)
 }
 .trend.down {
-  color:var(--accent)
-}
-.item small.trend.up {
-  color:var(--danger)
-}
-.item small.trend.down {
   color:var(--accent)
 }
 .inline-form {
