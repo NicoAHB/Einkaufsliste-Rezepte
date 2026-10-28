@@ -5442,6 +5442,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await page.locator('#sheet-close').boundingBox(), close, 'es bleibt beim Scrollen stehen');
     await page.click('#sheet-close');
     assert.equal(await page.locator('#sheet-dialog[open]').count(), 0);
+    // Aufgeräumt wird im „close“-Ereignis des Fensters, das erst nach dem Schließen läuft: darauf warten, nicht nachsehen
+    await page.waitForFunction(() => document.querySelector('#sheet-pages').children.length === 0, null, { timeout: 5000 }).catch(() => {});
     assert.equal(await page.locator('#sheet-pages').evaluate(node => node.children.length), 0, 'beim Schließen wird aufgeräumt');
     // Vier statt zwei Portionen: die Mengen verdoppeln sich
     await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('summary').click();
