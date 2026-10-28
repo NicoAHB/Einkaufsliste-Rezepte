@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.33
+# Einkauf & Rezepte – Version 2.34
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,17 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.34: im Laden keine Leiste unten
+
+- **Unter „Im Laden“ ist die Leiste mit Einkauf, Rezepte, Plan, Ausgaben, Einstellungen ausgeblendet** (auch mit Glas-Design). Zurück zu den anderen Bereichen geht es mit **Planen** oben rechts.
+- **Der Knopf „Zum Entsperren gedrückt halten“ sitzt dafür ganz unten**, dort, wo die Leiste war. Meldungen (z. B. „abgehakt · Rückgängig“) und der Platz unter der Liste richten sich danach aus; ohne Sperre endet die Seite unten direkt unter „Einkauf beenden“.
+- Technisch: `body.in-store` setzt `--tabs-h` auf 0 und blendet die Leiste aus; alles, was sich an der Leiste ausrichtet, rutscht von selbst nach unten. Unter „Planen“ und in allen anderen Bereichen steht die Leiste wie bisher.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone (Sicherheitsabstand unten, Home-Balken) oder Android-Gerät; geprüft nur im Chromium-Browser mit iPhone-13-Emulation, mit und ohne Glas-Design.
+
+Weiterer Testpunkt für Version 2.34:
+
+- [ ] „Im Laden“ öffnen: Unten steht keine Leiste. Sperren: Der Knopf „Zum Entsperren gedrückt halten“ sitzt am unteren Rand des Bildschirms, nicht darüber, und die Liste lässt sich bis „Einkauf beenden“ scrollen, ohne dass etwas verdeckt wird.
 
 ## Neu in Version 2.33: Sperre nach 10 Sekunden, Bildschirm anlassen an, Geschäfte aufklappbar, Start unter „Planen“
 

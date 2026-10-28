@@ -1703,6 +1703,14 @@ body.in-store .topbar {
 body.in-store main {
   padding-top:10px
 }
+/* Im Laden gibt es unten keine Leiste (Einkauf, Rezepte, Plan, Ausgaben, Einstellungen): zurück geht es mit „Planen“ oben. Alles, was sich an der Leiste ausrichtet
+   (Sperre, Meldungen, Platz unter der Liste), richtet sich an `--tabs-h` aus und rutscht dadurch an den unteren Rand. */
+body.in-store {
+  --tabs-h:0px
+}
+body.in-store .tabs {
+  display:none
+}
 .shop-list {
   margin:0 0 14px;
   padding:0;
