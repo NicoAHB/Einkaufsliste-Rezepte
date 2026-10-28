@@ -2559,10 +2559,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.locator('[data-tab=recipes]').isHidden(), true);
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--tabs-h').trim()), '0px');
       const view = page.viewportSize();
-      // Entsperrt endet die Seite unten ohne Lücke für die Leiste: „Einkauf beenden“ ist nach dem Scrollen nahe am unteren Rand
-      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-      const finish = await page.locator('#shop-finish').boundingBox();
-      assert.ok(view.height - (finish.y + finish.height) < 60, `kein leerer Platz für die Leiste unter „Einkauf beenden“ (${Math.round(view.height - finish.y - finish.height)} px)`);
+      // Entsperrt endet die Seite unten ohne Lücke für die Leiste (früher 92 px Platz unter dem Inhalt, jetzt nur noch der Rand)
+      const padding = await page.evaluate(() => parseFloat(getComputedStyle(document.body).paddingBottom));
+      assert.ok(padding < 40, `kein Platz mehr für die Leiste unter dem Inhalt (${padding} px)`);
       // Gesperrt: der Knopf zum Entsperren sitzt dort, wo die Leiste war
       await page.click('#shop-lock');
       const lockbar = await page.locator('#shop-lockbar').boundingBox();
@@ -2895,8 +2894,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const box = await page.locator('.shop-tap').first().boundingBox();
     await page.mouse.move(box.x + 40, box.y + 20); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
     assert.equal(await page.locator('#move-dialog[open]').count(), 0);
-    // Ausgaben: Halten und Loslassen öffnet kein Verschieben
-    await page.click('[data-tab=spending]');
+    // Ausgaben: Halten und Loslassen öffnet kein Verschieben (im Laden ist die Leiste unten ausgeblendet: Reiterwechsel per Skript)
+    await goTab(page, 'spending');
     assert.equal(await page.locator('#move-dialog[open]').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -4046,8 +4045,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
       assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
       assert.equal(await horizontalOverflow(page), 0);
-      // Der Weg zurück steht neben den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da
-      await page.click('[data-tab=recipes]');
+      // Der Weg zurück steht neben den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da (im Laden ist die Leiste unten ausgeblendet: Reiterwechsel per Skript)
+      await goTab(page, 'recipes');
       assert.equal(await page.locator('.topbar').isVisible(), true);
       await page.click('[data-tab=shopping]');
       assert.equal(await page.locator('.topbar').isHidden(), true, 'zurück im Laden-Modus');
