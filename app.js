@@ -1576,16 +1576,18 @@ function armLock() {
 }
 // Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
 for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
-// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Zwei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
-// den Kreis eines Artikels (abhaken) und ein Geschäft (wechseln).
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Drei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
+// den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
-const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip';
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
 document.addEventListener('click', event => {
   if (!isLocked() || lockBypass || event.target.closest?.('#shop-lockbar, #notice-undo')) return;   // „Rückgängig“ nach dem Abhaken geht auch gesperrt
   event.preventDefault(); event.stopPropagation();
   if (Date.now() - lockHint > 3000) {
     lockHint = Date.now();
-    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln' : 'Gesperrt · unten gedrückt halten zum Entsperren');
+    const done = event.target.closest?.('#shop-list .shop-done summary');
+    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln'
+      : done ? `Gesperrt · „Erledigt“ gedrückt halten zum ${done.parentElement.open ? 'Schließen' : 'Öffnen'}` : 'Gesperrt · unten gedrückt halten zum Entsperren');
   }
 }, true);
 function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
@@ -1600,6 +1602,7 @@ document.addEventListener('pointerdown', event => {
   node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
   lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
     const target = node; endLockHold(); clearSelection(); navigator.vibrate?.(15);
+    lockHint = Date.now();   // das Loslassen danach ist ein Klick auf dasselbe Element (bleibt es stehen, wie „Erledigt“): er wird verschluckt, ohne zu melden
     lockBypass = true; try { target.click(); } finally { lockBypass = false; }
   }, HOLD_ITEM_MS) };
 }, true);
@@ -2291,6 +2294,16 @@ function syncKeyboard() {
   document.body.classList.toggle('typing', open && Boolean(typing(document.activeElement)));
 }
 viewport?.addEventListener('resize', syncKeyboard);
+// Die App steht immer hochkant, ohne Einstellung. Wo Webseiten die Drehung sperren dürfen (Android, als App installiert: Manifest und lock()), kommt das Querformat gar nicht erst vor.
+// Auf dem iPhone geht das nicht; dort verdeckt im Querformat ein Hinweis die Ansicht, bis das Handy wieder hochkant gehalten wird (Tablets und Computer drehen frei).
+// Erkannt wird die Drehung des Geräts, nicht das Seitenverhältnis des Fensters: Eine offene Tastatur macht das Fenster auch hochkant breiter als hoch.
+try { screen.orientation?.lock?.('portrait')?.catch(() => { /* nicht erlaubt (Browser-Tab, iPhone): der Hinweis übernimmt */ }); } catch { /* ältere Browser */ }
+const deviceLandscape = () => screen.orientation ? screen.orientation.type.startsWith('landscape') : Math.abs(Number(window.orientation)) === 90;
+const phoneScreen = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+function syncTurned() { document.documentElement.toggleAttribute('data-landscape', phoneScreen() && deviceLandscape()); }
+screen.orientation?.addEventListener?.('change', syncTurned);
+for (const type of ['orientationchange', 'resize']) window.addEventListener(type, syncTurned);
+syncTurned();
 document.addEventListener('focusin', () => setTimeout(syncKeyboard, 350));
 document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 // Ein Tipp auf leere Fläche (nicht auf Eingaben, Knöpfe, Links oder Beschriftungen) nimmt dem Feld den Fokus, damit sich die Tastatur schließt:

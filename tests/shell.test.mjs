@@ -24,6 +24,11 @@ test('jede importierte Datei und jede in der Seite eingebundene Datei steckt im 
   for (const icon of JSON.parse(manifest).icons) assert.ok(files.includes(icon.src), `Symbol ${icon.src} aus dem Manifest fehlt im Offline-Paket`);
 });
 
+test('die App ist fest im Hochformat (Manifest), und es gibt keine Einstellung dafür', async () => {
+  assert.equal(JSON.parse(manifest).orientation, 'portrait');
+  assert.ok(!/orientation|hochkant|querformat/i.test((await read('index.html')).replace(/<!--[\s\S]*?-->/g, '').replace(/<div id="turn-hint"[\s\S]*?<\/div>/, '').replace(/<symbol id="i-phone"[\s\S]*?<\/symbol>/, '')), 'in den Einstellungen gibt es keinen Schalter für die Ausrichtung');
+});
+
 test('die Seite verlinkt keine Dateien der App selbst als Text (kein Weg zurück in der Home-Bildschirm-App)', () => {
   for (const match of html.matchAll(/href="([^"]+)"/g)) {
     assert.ok(!/^(?![a-z]+:)[^#]*\.(md|txt|json)$/i.test(match[1]), `index.html verlinkt ${match[1]}: Dateien öffnen in der App ohne Schließen-Knopf, bitte ein Fenster in der App benutzen`);
