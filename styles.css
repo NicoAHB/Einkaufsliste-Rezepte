@@ -3317,3 +3317,34 @@ body.shop-locked .toast {
   -webkit-user-select:auto;
   user-select:auto
 }
+
+/* Die App steht immer hochkant: Im Querformat auf einem Handy (app.js setzt data-landscape) verdeckt ein Hinweis die Ansicht; Fenster und Meldungen werden mit ausgeblendet und kommen beim Zurückdrehen unverändert wieder */
+.turn-hint {
+  display:none
+}
+html[data-landscape] body>:not(.turn-hint) {
+  visibility:hidden
+}
+html[data-landscape] .turn-hint {
+  position:fixed;
+  inset:0;
+  z-index:2147483647;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:18px;
+  padding:16px calc(24px + env(safe-area-inset-right)) 16px calc(24px + env(safe-area-inset-left));
+  background:var(--bg);
+  color:var(--text);
+  text-align:center
+}
+.turn-hint .icon {
+  width:56px;
+  height:56px;
+  color:var(--accent)
+}
+.turn-hint p {
+  margin:0;
+  font-size:1.25rem;
+  font-weight:650
+}

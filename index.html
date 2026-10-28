@@ -49,6 +49,7 @@
     <symbol id="i-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></symbol>
     <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
   </svg>
 
@@ -219,7 +220,7 @@
         </div>
         <button id="export" class="secondary" type="button">Alle Daten als JSON sichern</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Backups vertraulich aufbewahren.</p>
-        <p class="hint">Version 2.28 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.29 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -379,5 +380,7 @@
   <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="sheet-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p>Wähle ab, was du schon zu Hause hast.</p><div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label></div><div id="transfer-ingredients"></div><label class="checkbox-label"><input name="rememberPantry" type="checkbox"> Abgewählte Zutaten als Vorrat merken</label><button>Ausgewählte Zutaten hinzufügen</button></form></dialog>
   <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
   <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
+  <!-- Nur im Querformat auf Handys sichtbar (siehe syncTurned in app.js): die App steht immer hochkant -->
+  <div id="turn-hint" class="turn-hint" role="status"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><p>Bitte das Handy hochkant halten</p></div>
 </body>
 </html>

@@ -2248,6 +2248,56 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- Immer hochkant (Version 2.29) ----
+  test('Immer hochkant: die App sperrt die Drehung, wo erlaubt; im Querformat auf dem Handy bleibt nur ein Hinweis (Fenster bleiben erhalten), hochkant ist alles wieder da', async () => {
+    for (const lock of ['resolve', 'reject']) {   // erlaubt (Android, installiert) und verweigert (Browser-Tab, iPhone): beides darf nichts stören
+      const { ctx, page, problems } = await context();
+      await ctx.addInitScript(mode => { window.__locks = []; ScreenOrientation.prototype.lock = function (type) { window.__locks.push(type); return mode === 'resolve' ? Promise.resolve() : Promise.reject(new DOMException('nicht erlaubt', 'NotSupportedError')); }; }, lock);
+      await open(page);
+      assert.deepEqual(await page.evaluate(() => window.__locks), ['portrait'], 'die App will hochkant');
+      assert.equal(await page.locator('#turn-hint').isVisible(), false, 'hochkant: kein Hinweis');
+      assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-landscape')), false);
+      await page.click('#manage-stores'); await sheetOpen(page);
+      assert.equal(await page.locator('dialog[open]').isVisible(), true);
+      // Gedreht: nur der Hinweis, nichts anderes (auch das offene Fenster nicht) ist zu sehen
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForSelector('html[data-landscape]');
+      assert.equal(await page.locator('#turn-hint').isVisible(), true);
+      assert.match(await page.textContent('#turn-hint'), /Bitte das Handy hochkant halten/);
+      const hint = await page.locator('#turn-hint').boundingBox();
+      assert.deepEqual([hint.x, hint.y, hint.width, hint.height], [0, 0, 844, 390], 'der Hinweis füllt den Bildschirm');
+      assert.equal(await page.locator('dialog[open]').isVisible(), false, 'ein offenes Fenster ist verdeckt');
+      assert.equal(await page.locator('.tabs, nav.tabs, [data-tab=settings]').first().isVisible(), false, 'auch die Reiter');
+      assert.equal(await page.locator('#turn-hint .icon').isVisible(), true);
+      // Zurückgedreht: alles unverändert, das Fenster ist noch offen
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-landscape'));
+      assert.equal(await page.locator('#turn-hint').isVisible(), false);
+      assert.equal(await page.locator('dialog[open]').isVisible(), true, 'das Fenster wartet noch');
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
+  });
+
+  test('Immer hochkant: eine offene Tastatur (Fenster breiter als hoch) und Tablets lösen den Hinweis nicht aus', async () => {
+    // Handy hochkant, aber nur 380 px hoch (Tastatur offen): das Gerät steht weiter hochkant
+    let { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 380 } } });
+    await open(page);
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-landscape')), false);
+    assert.equal(await page.locator('#turn-hint').isVisible(), false);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+    // Tablet quer: dreht frei
+    ({ ctx, page, problems } = await context({ context: { viewport: { width: 1024, height: 768 }, screen: { width: 1024, height: 768 } } }));
+    await open(page);
+    assert.equal(await page.evaluate(() => screen.orientation.type.startsWith('landscape')), true, 'Vorbereitung: das Gerät liegt quer');
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-landscape')), false, 'Tablets drehen frei');
+    assert.equal(await page.locator('[data-tab=settings]').isVisible(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

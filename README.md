@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.28
+# Einkauf & Rezepte – Version 2.29
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.29: die App steht immer hochkant
+
+- **Keine Einstellung dafür:** Die App ist immer im Hochformat; es gibt keinen Schalter.
+- **Android (als App installiert):** Das Manifest legt `"orientation": "portrait"` fest, zusätzlich sperrt die App die Drehung mit `screen.orientation.lock('portrait')`, wo der Browser es erlaubt. Das Querformat kommt dann gar nicht vor.
+- **iPhone:** iOS kennt weder die Manifest-Angabe noch das Sperren aus einer Web-App. Deshalb zeigt die App im **Querformat auf Handys** nur den Hinweis „Bitte das Handy hochkant halten“. Fenster, Eingaben und Listen bleiben dabei unverändert erhalten und sind beim Zurückdrehen sofort wieder da. Zusätzlich hilft die Hochformatsperre im Kontrollzentrum des iPhones.
+- Erkannt wird die **Drehung des Geräts**, nicht die Fenstergröße: Eine offene Tastatur macht das Fenster nicht zum Querformat. **Tablets und Computer** drehen frei (der Hinweis gilt nur für Touch-Geräte mit einer kurzen Bildschirmseite unter 600 px).
+- **Nicht getestet:** das Verhalten auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, einschließlich simulierter Drehung).
+
+Weiterer Testpunkt für Version 2.29:
+
+- [ ] Handy im geöffneten App-Fenster ins **Querformat** drehen (ohne Hochformatsperre): Es erscheint nur „Bitte das Handy hochkant halten“. Zurückdrehen: alles wie vorher, auch ein geöffnetes Fenster. Auf Android sollte sich die installierte App gar nicht erst drehen.
 
 ## Neu in Version 2.28: gesperrt „Erledigt“ öffnen
 

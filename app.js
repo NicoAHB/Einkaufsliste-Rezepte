@@ -2294,6 +2294,16 @@ function syncKeyboard() {
   document.body.classList.toggle('typing', open && Boolean(typing(document.activeElement)));
 }
 viewport?.addEventListener('resize', syncKeyboard);
+// Die App steht immer hochkant, ohne Einstellung. Wo Webseiten die Drehung sperren dürfen (Android, als App installiert: Manifest und lock()), kommt das Querformat gar nicht erst vor.
+// Auf dem iPhone geht das nicht; dort verdeckt im Querformat ein Hinweis die Ansicht, bis das Handy wieder hochkant gehalten wird (Tablets und Computer drehen frei).
+// Erkannt wird die Drehung des Geräts, nicht das Seitenverhältnis des Fensters: Eine offene Tastatur macht das Fenster auch hochkant breiter als hoch.
+try { screen.orientation?.lock?.('portrait')?.catch(() => { /* nicht erlaubt (Browser-Tab, iPhone): der Hinweis übernimmt */ }); } catch { /* ältere Browser */ }
+const deviceLandscape = () => screen.orientation ? screen.orientation.type.startsWith('landscape') : Math.abs(Number(window.orientation)) === 90;
+const phoneScreen = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+function syncTurned() { document.documentElement.toggleAttribute('data-landscape', phoneScreen() && deviceLandscape()); }
+screen.orientation?.addEventListener?.('change', syncTurned);
+for (const type of ['orientationchange', 'resize']) window.addEventListener(type, syncTurned);
+syncTurned();
 document.addEventListener('focusin', () => setTimeout(syncKeyboard, 350));
 document.addEventListener('focusout', () => setTimeout(syncKeyboard, 100));
 // Ein Tipp auf leere Fläche (nicht auf Eingaben, Knöpfe, Links oder Beschriftungen) nimmt dem Feld den Fokus, damit sich die Tastatur schließt:
