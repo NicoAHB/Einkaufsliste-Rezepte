@@ -16,6 +16,9 @@ import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
+import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
+import { jpegInfo, makePdf } from './pdf.js';
+import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes } from './cookable.js';
 import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel as spendDay, estimateOf, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
@@ -731,7 +734,8 @@ function recipeCard(recipe, ingredients) {
   const actions = element('div', undefined, 'actions');
   actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), 'primary-action'),
     button('Kochen', () => openCook(recipe.id, positive(servingInput.value)), 'secondary'),
-    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })));
+    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })),
+    iconButton('text', `${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id, positive(servingInput.value))));
   card.append(actions);
   return card;
 }
@@ -1026,16 +1030,15 @@ function openMeal(options = {}) {
   const meal = options.id ? state.meals.find(row => row.id === options.id && !row.deletedAt) : null;
   if (options.id && !meal) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
   mealBaseline = meal ? clone(meal) : null;
-  const select = form.elements.recipeId; select.replaceChildren(new Option('Rezept wählen …', ''));
   const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
-  for (const recipe of recipes) select.add(new Option(`${recipe.favorite ? '★ ' : ''}${recipe.name}`, recipe.id));
-  select.add(new Option('Eigenes Gericht (ohne Rezept) …', '__custom'));
+  fillRecipePick(recipes);
   form.elements.id.value = options.id || '';
   form.elements.date.value = meal?.date || options.date || isoDate();
-  select.value = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
-  if (!select.value && meal) select.value = '__custom';
+  let choice = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
+  if (choice && choice !== '__custom' && !recipes.some(recipe => recipe.id === choice)) choice = meal ? '__custom' : '';   // das Rezept gibt es nicht mehr
+  setRecipeChoice(choice);
   form.elements.title.value = meal?.title || '';
-  form.elements.servings.value = plain(meal?.servings || options.servings || recipes.find(recipe => recipe.id === select.value)?.servings || 2);
+  form.elements.servings.value = plain(meal?.servings || options.servings || recipes.find(recipe => recipe.id === choice)?.servings || 2);
   syncMealForm(false);
   // Kommt man von einem Tag (＋ am Tag, Bearbeiten), steht der Tag in der Überschrift und lässt sich hier nicht noch einmal wählen. Nur von der Rezeptkarte aus (noch kein Tag) gibt es die Tagesauswahl.
   const fixedDay = Boolean(meal || options.date), day = form.elements.date.value;
@@ -1043,6 +1046,7 @@ function openMeal(options = {}) {
   const title = $('#meal-title'); title.textContent = meal ? 'Gericht ändern' : 'Gericht planen';
   if (fixedDay) title.append(' – ', element('span', `${dayName(day)} ${dayMonthLabel(day)}`));
   $('#meal-dialog').showModal();
+  $('#recipe-pick').querySelector('[aria-pressed=true]')?.scrollIntoView({ block: 'nearest' });
 }
 function syncMealForm(changedRecipe) {
   const form = $('#meal-form'), choice = form.elements.recipeId.value;
@@ -1887,6 +1891,142 @@ function finishShopping(amount = '') {
   setShopMode(false);   // auf jedem Weg, den Einkauf zu beenden: zurück zur Liste („Planen“)
 }
 
+/* ---------- Rezeptblatt (PDF) ---------- */
+/* Ein Rezept als schön gestaltetes Blatt (recipe-sheet.js): zuerst die Vorschau, daraus „PDF speichern“ und „Teilen“. Erreichbar über das Download-Symbol an der Rezeptkarte und im Fenster
+   „Gericht planen“: Dort zeigt langes Drücken auf ein Rezept in der Auswahl das Blatt. Die Vorschau schließt das „×“ oben rechts oder langes Drücken irgendwo auf dem Blatt. */
+const HOLD_SHEET_MS = 600;
+// Gedrückthalten, ohne zu wackeln: ruft `handler` auf, wenn ein Finger (oder die Maus) `ms` lang auf einem Element von `selector` still liegt. Bewegen, Loslassen, Scrollen
+// oder ein zweiter Finger (Zoomen) brechen ab.
+function holdOn(root, selector, ms, handler) {
+  let timer = 0, start = null;
+  const stop = () => { clearTimeout(timer); timer = 0; start = null; };
+  root.addEventListener('pointerdown', event => {
+    stop();
+    const node = event.target.closest?.(selector);
+    if (!node || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    start = { x: event.clientX, y: event.clientY };
+    timer = setTimeout(() => { stop(); handler(node, event); }, ms);
+  });
+  root.addEventListener('pointermove', event => { if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) stop(); });
+  for (const type of ['pointerup', 'pointercancel', 'scroll']) root.addEventListener(type, stop, true);
+}
+// Das Foto eines Rezepts als JPEG-Bytes (lokal, sonst aus dem Daten-Repository), oder null
+async function photoForPdf(id) {
+  let blob = await readPhoto(id);
+  if (!blob && connected()) { blob = await downloadPhoto(id); if (blob) await storePhoto(id, blob).catch(() => {}); }
+  if (!blob) return null;
+  const bytes = new Uint8Array(await blob.arrayBuffer()), info = jpegInfo(bytes);
+  return info ? { bytes, ...info } : null;
+}
+async function recipeLayout(recipeId, servings) {
+  const recipe = active(state.recipes).find(row => row.id === recipeId);
+  if (!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
+  const count = servings > 0 ? servings : recipe.servings, source = webUrl(recipe.sourceUrl);
+  const rows = active(state.ingredients).filter(row => row.recipeId === recipeId);
+  const photo = recipe.photoId ? await photoForPdf(recipe.photoId) : null;
+  return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: recipe.tags, sourceHost: source ? hostLabel(source) : '', sourceUrl: source },
+    ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo });
+}
+let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
+const canShareFiles = () => { try { return Boolean(navigator.canShare?.({ files: [new File(['%PDF'], 'rezept.pdf', { type: 'application/pdf' })] })); } catch { return false; } };
+function sheetStatus(text = '', error = false) { const node = $('#sheet-status'); node.textContent = text; node.classList.toggle('error', error); }
+// Die Größe der Seiten: 1 = Breite des Bildschirms, 2 und 3 = größer (zum Lesen). Die Mitte des gerade Sichtbaren bleibt dabei in der Mitte.
+function setSheetZoom(level) {
+  const pages = $('#sheet-pages'), scroll = $('#sheet-scroll');
+  const centerX = (scroll.scrollLeft + scroll.clientWidth / 2) / (scroll.scrollWidth || 1), centerY = (scroll.scrollTop + scroll.clientHeight / 2) / (scroll.scrollHeight || 1);
+  pages.dataset.zoom = String(level);
+  $('#sheet-zoom').setAttribute('aria-label', level >= 3 ? 'Kleiner anzeigen' : 'Größer anzeigen');
+  scroll.scrollLeft = Math.max(0, centerX * scroll.scrollWidth - scroll.clientWidth / 2);
+  scroll.scrollTop = Math.max(0, centerY * scroll.scrollHeight - scroll.clientHeight / 2);
+}
+async function openSheet(recipeId, servings) {
+  const layout = await recipeLayout(recipeId, servings);
+  sheet?.release();
+  sheet = { layout, release: renderSheet(layout, $('#sheet-pages')) };
+  sheetStatus();
+  $('#sheet-share').hidden = !canShareFiles();
+  const dialog = $('#sheet-dialog');
+  if (!dialog.open) dialog.showModal();
+  setSheetZoom(1);
+  $('#sheet-scroll').scrollTop = 0;
+}
+const pdfName = title => `${String(title).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Rezept'}.pdf`;
+function sheetFile() {
+  const { layout } = sheet;
+  return new File([makePdf(layout.pages, { title: layout.title, subject: 'Rezept' })], pdfName(layout.title), { type: 'application/pdf' });
+}
+async function shareSheet() {
+  const file = sheetFile();
+  try { await navigator.share({ files: [file], title: sheet.layout.title }); sheetStatus('Geteilt.'); }
+  catch (error) { if (error?.name !== 'AbortError') throw error; }
+}
+// Speichern: eine Datei herunterladen. In einer Homescreen-App auf dem iPhone führt ein Download oft in eine Seite ohne Rückweg; dort ist der Teilen-Dialog („In Dateien sichern“) der sichere Weg.
+async function saveSheet() {
+  if (navigator.standalone === true && canShareFiles()) return shareSheet();
+  const file = sheetFile(), url = URL.createObjectURL(file), link = element('a');
+  link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  sheetStatus(`„${file.name}“ wird gespeichert.`);
+}
+const sheetAction = action => async () => { sheetStatus(); try { await action(); } catch (error) { sheetStatus(error.message || 'Das hat nicht geklappt.', true); } };
+$('#sheet-save').addEventListener('click', sheetAction(saveSheet));
+$('#sheet-share').addEventListener('click', sheetAction(shareSheet));
+$('#sheet-zoom').addEventListener('click', () => setSheetZoom(Number($('#sheet-pages').dataset.zoom) % 3 + 1));
+$('#sheet-dialog').addEventListener('close', () => { sheet?.release(); sheet = null; $('#sheet-pages').replaceChildren(); });
+holdOn($('#sheet-scroll'), '*', HOLD_SHEET_MS, () => { navigator.vibrate?.(15); $('#sheet-dialog').close(); });
+$('#sheet-scroll').addEventListener('contextmenu', event => event.preventDefault());
+// Doppeltippen: größer und wieder zurück. Der Browser meldet auf dem iPhone kein „dblclick“, deshalb zählt die App zwei kurze Tipps selbst.
+{
+  let down = null, lastTap = null;
+  const scroll = $('#sheet-scroll');
+  scroll.addEventListener('pointerdown', event => { down = event.isPrimary ? { x: event.clientX, y: event.clientY, at: Date.now() } : null; if (!event.isPrimary) lastTap = null; });
+  scroll.addEventListener('pointerup', event => {
+    const start = down; down = null;
+    if (!start || !event.isPrimary || Date.now() - start.at > 350 || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) { lastTap = null; return; }
+    if (lastTap && Date.now() - lastTap.at < 400 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 30) { lastTap = null; setSheetZoom(Number($('#sheet-pages').dataset.zoom) >= 2 ? 1 : 2); }
+    else lastTap = { x: event.clientX, y: event.clientY, at: Date.now() };
+  });
+  scroll.addEventListener('pointercancel', () => { down = null; lastTap = null; });
+}
+// Die Auswahl „Rezept“ im Fenster „Gericht planen“: eine Liste statt einer Auswahlbox, damit sich ein Rezept lange drücken lässt
+function fillRecipePick(recipes) {
+  const list = $('#recipe-pick'); list.replaceChildren();
+  const row = (value, title, meta, custom) => {
+    const node = element('button', undefined, `pick-row${custom ? ' custom' : ''}`); node.type = 'button'; node.dataset.value = value;
+    node.append(element('strong', title)); if (meta) node.append(element('small', meta));
+    list.append(node);
+  };
+  for (const recipe of recipes) row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen`, false);
+  row('__custom', 'Eigenes Gericht (ohne Rezept)', '', true);
+}
+function setRecipeChoice(value) {
+  $('#meal-form').elements.recipeId.value = value;
+  $('#recipe-pick').querySelectorAll('.pick-row').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.value === value)));
+}
+let pickOpenedAt = 0, pickHeld = false;   // pickHeld: Der Finger liegt nach dem langen Drücken noch auf der Zeile; sein Loslassen wählt nichts
+function openPickedSheet(node) {
+  const id = node.dataset.value;
+  if (!id || id === '__custom') return;
+  const form = $('#meal-form'), shown = form.elements.recipeId.value === id ? positive(form.elements.servings.value) : 0;   // gewählt: die eingestellten Portionen, sonst die des Rezepts
+  pickOpenedAt = Date.now(); pickHeld = true; navigator.vibrate?.(15);
+  guard(() => openSheet(id, shown));
+}
+$('#recipe-pick').addEventListener('pointerdown', () => { pickHeld = false; }, true);
+$('#recipe-pick').addEventListener('keydown', () => { pickHeld = false; }, true);
+holdOn($('#recipe-pick'), '.pick-row', HOLD_ITEM_MS, openPickedSheet);
+$('#recipe-pick').addEventListener('click', event => {
+  const node = event.target.closest('.pick-row');
+  if (!node) return;
+  if (pickHeld) { pickHeld = false; event.preventDefault(); return; }
+  setRecipeChoice(node.dataset.value); syncMealForm(true);
+});
+// Mit der rechten Maustaste, dem Menü-Knopf der Tastatur oder (Android) langem Drücken meldet der Browser ein Kontextmenü: Das öffnet ebenfalls das Blatt.
+$('#recipe-pick').addEventListener('contextmenu', event => {
+  const node = event.target.closest('.pick-row');
+  if (!node) return;
+  event.preventDefault();
+  if (Date.now() - pickOpenedAt > 900) openPickedSheet(node);
+});
+
 /* ---------- Kochmodus ---------- */
 // Haken in Zutaten und Schritten gelten nur für dieses Öffnen der App; sie werden nicht gespeichert und nicht abgeglichen.
 const cooked = new Map();
@@ -2581,7 +2721,6 @@ $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
 $('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
 $('#meal-form').addEventListener('submit', saveMeal);
-$('#meal-form').elements.recipeId.addEventListener('change', () => syncMealForm(true));
 $('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
 $('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);

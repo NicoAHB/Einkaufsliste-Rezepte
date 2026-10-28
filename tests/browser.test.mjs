@@ -170,7 +170,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         ['Was kann ich kochen?', async () => { await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); }],
         ['Einkauf eintragen', async () => { await page.click('[data-tab=spending]'); await page.click('#add-purchase'); }],
         ['Gericht planen', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); }],
-        ['Einkauf für die Woche', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); await page.selectOption('#meal-form select[name=recipeId]', { index: 1 }); await page.click('#meal-form button[type=submit]'); await page.click('#plan-shopping'); }]]) {
+        ['Einkauf für die Woche', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); await page.locator('#recipe-pick .pick-row').first().click(); await page.click('#meal-form button[type=submit]'); await page.click('#plan-shopping'); }]]) {
         await setup();
         await sheetOpen(page);
         assert.ok(await fits(), `Überlauf im Dialog ${label}`);
@@ -1114,7 +1114,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['olivenöl']);
     // Wochenliste: Vorrat ebenfalls gekennzeichnet
     await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
-    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Tomaten-Pasta' }); await page.click('#meal-form button[type=submit]');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
     await page.click('#plan-shopping'); await sheetOpen(page);
     assert.equal(await page.locator('#week-ingredients .transfer-row', { hasText: 'Olivenöl' }).locator('input').isChecked(), false);
     assert.equal(await page.locator('#week-ingredients .pantry-badge').count(), 1);
@@ -3219,7 +3219,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openList();
     await cards().first().getByRole('button', { name: /im Wochenplan einplanen/ }).click();
     await page.waitForSelector('#meal-dialog[open]');
-    assert.equal(await page.inputValue('#meal-form select[name=recipeId]'), 'recipe-pasta');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
     await page.keyboard.press('Escape');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -4743,7 +4743,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     await page.setViewportSize({ width: 390, height: 844 });
     // Speichern legt das Gericht auf diesen Tag
-    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Tomaten-Pasta' }); await page.click('#meal-form button[type=submit]');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
     await page.waitForSelector('#meal-dialog', { state: 'hidden' });
     assert.match(await page.locator('.day').nth(3).textContent(), /Tomaten-Pasta/);
     assert.equal(await page.locator('.meal').count(), 1, 'Nur Donnerstag hat ein Gericht');
@@ -4777,7 +4777,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-tab=recipes]');
     await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click();
     await sheetOpen(page);
-    assert.equal(await page.inputValue('#meal-form select[name=recipeId]') !== '', true, 'Rezept ist vorausgewählt');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]') !== '', true, 'Rezept ist vorausgewählt');
     assert.equal(await page.inputValue('#meal-form input[name=servings]'), '2');
     await page.click('#meal-form button[type=submit]');
     await page.waitForSelector('#plan:not([hidden])');
@@ -4785,10 +4785,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await today.textContent(), /Tomaten-Pasta[\s\S]*2 Portionen/);
     // zweites Gericht und ein eigenes
     await today.locator('.day-head .icon-button').click();
-    await page.selectOption('#meal-form select[name=recipeId]', { label: 'Kichererbsen-Curry' });
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Kichererbsen-Curry' }).first().click();
     await page.fill('#meal-form input[name=servings]', '4'); await page.click('#meal-form button[type=submit]');
     await today.locator('.day-head .icon-button').click();
-    await page.selectOption('#meal-form select[name=recipeId]', '__custom');
+    await page.locator('#recipe-pick .pick-row.custom').click();
     assert.ok(await page.locator('#meal-form [data-custom]').isVisible());
     await page.fill('#meal-form input[name=title]', 'Pizza bestellen'); await page.click('#meal-form button[type=submit]');
     assert.equal(await today.locator('.meal').count(), 3);
@@ -5393,6 +5393,367 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await ctx.close();
     });
   }
+
+  /* ---------- Rezeptblatt (PDF): Vorschau, Speichern, Teilen, Auswahl im Plan ---------- */
+  const TINY_JPEG = '/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAMABADASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAMF/8QAGRAAAQUAAAAAAAAAAAAAAAAAAAISFFFh/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAP/xAAYEQACAwAAAAAAAAAAAAAAAAAAAQITFP/aAAwDAQACEQMRAD8AnJ0SdM16rD1WMsSl7P/Z';
+  const PHOTO_ID = '0123456789abcdef0123456789abcdef';
+  // Beispieldaten mit Lieblingsrezept und einem Foto am ersten Rezept; das Foto liegt schon im Gerätespeicher
+  const sheetData = () => { const data = structuredClone(demo); data.recipes.find(row => row.id === 'recipe-curry').favorite = true; data.recipes.find(row => row.id === 'recipe-pasta').photoId = PHOTO_ID; return data; };
+  const sheetContext = async (options = {}) => {
+    const made = await context(options);
+    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', sheetData()]);
+    return made;
+  };
+  const storePhotoInPage = (page, base64 = TINY_JPEG) => page.evaluate(async ([id, data]) => {
+    const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+    await (await caches.open('einkauf-photos-v1')).put(new Request(new URL(`./photo/${id}`, location.href)), new Response(new Blob([bytes], { type: 'image/jpeg' }), { headers: { 'Content-Type': 'image/jpeg' } }));
+  }, [PHOTO_ID, base64]);
+  const sheetText = page => page.evaluate(() => [...document.querySelectorAll('#sheet-pages text')].map(node => node.textContent).join('\n'));
+  const openCardSheet = async (page, name = 'Tomaten-Pasta') => {
+    await goTab(page, 'recipes');
+    await page.getByRole('button', { name: new RegExp(`^${name}: Rezeptblatt`) }).click();
+    await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await sheetOpen(page);
+  };
+  const openMealPicker = async page => { await goTab(page, 'plan'); await page.locator('.day-head .icon-button').first().click(); await page.waitForSelector('#meal-dialog[open]'); await sheetOpen(page); };
+  const pdfBytesOf = async download => { const path = await download.path(); return (await import('node:fs/promises')).readFile(path); };
+  const checkPdf = bytes => {
+    const body = bytes.toString('latin1');
+    assert.ok(body.startsWith('%PDF-1.4\n') && body.endsWith('%%EOF\n'));
+    const start = Number(/startxref\n(\d+)\n%%EOF\n$/.exec(body)[1]);
+    assert.ok(body.startsWith('xref', start), 'das Kreuzverzeichnis steht, wo startxref hinzeigt');
+    return body;
+  };
+
+  test('Rezeptblatt: das Dokument-Symbol an der Rezeptkarte öffnet die Vorschau mit Titel, Zutaten und Schritten; „×“ oben rechts schließt; Portionen rechnen die Mengen um', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await goTab(page, 'recipes');
+    const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
+    assert.equal(await card.getByRole('button', { name: /Tomaten-Pasta: Rezeptblatt \(PDF\) ansehen, speichern oder teilen/ }).count(), 1);
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1);
+    const text = await sheetText(page);
+    for (const part of ['REZEPT', 'Tomaten-Pasta', 'PORTIONEN', 'ZUTATEN', 'ZUBEREITUNG', '200 g', 'Nudeln', '400 g', 'Tomaten', '1.', 'Nudeln in Salzwasser kochen.', 'schnell, vegetarisch', 'Eigenes Rezept']) assert.ok(text.includes(part), `${part} fehlt auf dem Blatt`);
+    assert.equal(await page.locator('#sheet-pages image').count(), 0, 'ohne Foto kein Bild');
+    // „×“ oben rechts, immer erreichbar
+    const viewport = page.viewportSize(), close = await page.locator('#sheet-close').boundingBox();
+    assert.ok(close.x + close.width <= viewport.width && close.x + close.width / 2 > viewport.width * 0.8 && close.y < 60 && close.width >= 44, 'das „×“ sitzt oben rechts');
+    await page.evaluate(() => document.querySelector('#sheet-scroll').scrollTo(0, 400));
+    assert.deepEqual(await page.locator('#sheet-close').boundingBox(), close, 'es bleibt beim Scrollen stehen');
+    await page.click('#sheet-close');
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 0);
+    assert.equal(await page.locator('#sheet-pages').evaluate(node => node.children.length), 0, 'beim Schließen wird aufgeräumt');
+    // Vier statt zwei Portionen: die Mengen verdoppeln sich
+    await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('summary').click();
+    await page.getByLabel('Portionen für Tomaten-Pasta').fill('4');
+    await openCardSheet(page);
+    const doubled = await sheetText(page);
+    assert.ok(doubled.includes('400 g') && doubled.includes('800 g') && doubled.includes('2 EL'), doubled);
+    assert.match(doubled, /PORTIONEN\s*\n?4/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptblatt: „PDF speichern“ lädt eine gültige PDF-Datei mit dem Rezeptnamen herunter; mit Foto steckt das JPEG in der Datei und die Vorschau zeigt es', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await storePhotoInPage(page);
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages image').count(), 1, 'das Foto steht auf dem Blatt');
+    assert.match(await page.locator('#sheet-pages image').getAttribute('href'), /^blob:/);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    assert.equal(download.suggestedFilename(), 'Tomaten-Pasta.pdf');
+    const body = checkPdf(await pdfBytesOf(download));
+    assert.ok(body.includes('/DCTDecode') && body.includes('/Count 1 ') && body.includes('/BaseFont /Times-Bold'));
+    assert.match(await page.textContent('#sheet-status'), /„Tomaten-Pasta\.pdf“ wird gespeichert/);
+    // ohne Foto kein Bild in der Datei
+    await page.click('#sheet-close');
+    await page.evaluate(() => caches.delete('einkauf-photos-v1'));
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages image').count(), 0);
+    const [again] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    assert.ok(!checkPdf(await pdfBytesOf(again)).includes('/DCTDecode'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptblatt: „Teilen“ gibt es nur, wo der Browser Dateien teilen kann; die PDF-Datei geht an den Teilen-Dialog; Abbrechen ist still, ein Fehler steht im Fenster', async () => {
+    const plain = await sheetContext();
+    await open(plain.page);
+    await openCardSheet(plain.page);
+    assert.equal(await plain.page.locator('#sheet-share').isHidden(), true, 'Chromium ohne Teilen-Dialog: kein Knopf');
+    await plain.ctx.close();
+    const { ctx, page, problems } = await sheetContext();
+    await ctx.addInitScript(() => {
+      window.__shared = []; window.__shareMode = 'ok';
+      navigator.canShare = data => Boolean(data?.files?.length) && data.files.every(file => file.type === 'application/pdf');
+      navigator.share = async data => {
+        if (window.__shareMode === 'cancel') throw Object.assign(new Error('abgebrochen'), { name: 'AbortError' });
+        if (window.__shareMode === 'fail') throw Object.assign(new Error('Der Teilen-Dialog ist nicht erlaubt.'), { name: 'NotAllowedError' });
+        window.__shared.push({ name: data.files[0].name, type: data.files[0].type, size: data.files[0].size, title: data.title });
+      };
+    });
+    await open(page);
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-share').isVisible(), true);
+    await page.click('#sheet-share');
+    await page.waitForFunction(() => window.__shared.length === 1);
+    const [shared] = await page.evaluate(() => window.__shared);
+    assert.deepEqual([shared.name, shared.type, shared.title], ['Tomaten-Pasta.pdf', 'application/pdf', 'Tomaten-Pasta']);
+    assert.ok(shared.size > 2000);
+    assert.equal(await page.textContent('#sheet-status'), 'Geteilt.');
+    await page.evaluate(() => { window.__shareMode = 'cancel'; });
+    await page.click('#sheet-share');
+    await page.waitForTimeout(150);
+    assert.equal(await page.textContent('#sheet-status'), '', 'Abbrechen ist kein Fehler');
+    await page.evaluate(() => { window.__shareMode = 'fail'; });
+    await page.click('#sheet-share');
+    await page.waitForFunction(() => document.querySelector('#sheet-status').classList.contains('error'));
+    assert.equal(await page.textContent('#sheet-status'), 'Der Teilen-Dialog ist nicht erlaubt.');
+    // Homescreen-App auf dem iPhone (navigator.standalone): „PDF speichern“ nimmt den Teilen-Dialog statt eines Downloads
+    await page.evaluate(() => { window.__shareMode = 'ok'; window.__shared.length = 0; Object.defineProperty(navigator, 'standalone', { value: true, configurable: true }); });
+    await page.click('#sheet-save');
+    await page.waitForFunction(() => window.__shared.length === 1);
+    assert.equal(await page.textContent('#sheet-status'), 'Geteilt.');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: die Rezeptauswahl ist eine Liste (Lieblingsrezepte zuerst); ein Tipp wählt aus und übernimmt die Portionen, „Eigenes Gericht“ zeigt das Namensfeld; gespeichert wird wie vorher', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await openMealPicker(page);
+    assert.equal(await page.locator('#meal-form select').count(), 0, 'keine Auswahlbox mehr');
+    const labels = await page.locator('#recipe-pick .pick-row strong').allTextContents();
+    assert.deepEqual(labels, ['★ Kichererbsen-Curry', 'Apfel-Pfannkuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), '');
+    assert.equal(await page.locator('#recipe-pick [aria-pressed=true]').count(), 0);
+    await page.fill('#meal-form input[name=servings]', '5');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).click();
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
+    assert.equal(await page.locator('#recipe-pick [aria-pressed=true]').count(), 1);
+    assert.equal(await page.inputValue('#meal-form input[name=servings]'), '2', 'die Portionen des Rezepts');
+    await page.locator('#recipe-pick .pick-row.custom').click();
+    assert.ok(await page.locator('#meal-form [data-custom]').isVisible());
+    await page.fill('#meal-form input[name=title]', 'Pizza bestellen');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Kichererbsen-Curry' }).click();
+    assert.ok(await page.locator('#meal-form [data-custom]').isHidden());
+    await page.click('#meal-form button[type=submit]');
+    assert.match(await page.textContent('#plan-days'), /Kichererbsen-Curry/);
+    // Beim Ändern ist das gewählte Rezept markiert
+    await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).first().click();
+    await page.waitForSelector('#meal-dialog[open]');
+    assert.equal(await page.locator('#recipe-pick [aria-pressed=true]').count(), 1);
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-curry');
+    assert.match(await page.locator('#recipe-pick [aria-pressed=true]').textContent(), /Kichererbsen-Curry/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: ein Rezept in der Auswahl lange drücken zeigt das Rezeptblatt (Maus), ohne es zu wählen; „×“ oder Escape schließen es, das Fenster dahinter bleibt; danach wählt ein Tipp wieder', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await openMealPicker(page);
+    const row = page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }), box = await row.boundingBox();
+    // zu kurz: nur ein Tipp (wählt)
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(150); await page.mouse.up();
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 0);
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).click();
+    // lang: öffnet das Blatt des gedrückten Rezepts
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down();
+    await page.waitForSelector('#sheet-dialog[open] .sheet-page', { timeout: 3000 });
+    assert.ok((await sheetText(page)).includes('Tomaten-Pasta'));
+    await page.mouse.up();
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pfannkuchen', 'das lange Drücken wählt nicht aus');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 1, 'das Loslassen schließt nichts');
+    await page.click('#sheet-close');
+    assert.equal(await page.locator('#meal-dialog[open]').count(), 1, 'das Fenster „Gericht planen“ bleibt');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pfannkuchen');
+    // ein Tipp danach wählt wieder (das Loslassen nach dem langen Drücken wurde nicht „gemerkt“)
+    await row.click();
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
+    // Escape schließt nur das Blatt
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down(); await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await page.mouse.up();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 0);
+    assert.equal(await page.locator('#meal-dialog[open]').count(), 1);
+    // Wackeln während des Drückens bricht ab
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + 90, box.y + box.height / 2 + 4, { steps: 4 }); await page.waitForTimeout(800); await page.mouse.up();
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 0, 'Bewegen ist kein langes Drücken');
+    // Das Blatt zeigt die Portionen des Rezepts, wenn ein anderes Rezept gewählt ist, und die eingestellten bei dem gewählten
+    await page.fill('#meal-form input[name=servings]', '6');
+    await page.mouse.move(box.x + 40, box.y + box.height / 2); await page.mouse.down(); await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await page.mouse.up();
+    const six = await sheetText(page);
+    assert.ok(six.includes('600 g') && six.includes('1.200 g'), 'das gewählte Rezept: eingestellte Portionen (6)');
+    await page.click('#sheet-close');
+    const other = await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).boundingBox();
+    await page.mouse.move(other.x + 40, other.y + other.height / 2); await page.mouse.down(); await page.waitForSelector('#sheet-dialog[open] .sheet-page'); await page.mouse.up();
+    assert.match(await sheetText(page), /PORTIONEN\s*\n?2/, 'ein anderes Rezept: dessen eigene Portionen');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan mit dem Finger: langes Drücken öffnet das Rezeptblatt (ohne Auswahl), langes Drücken irgendwo auf dem Blatt schließt es wieder; ein kurzer Tipp, Wischen und Zwei-Finger-Zoomen schließen nichts', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await openMealPicker(page);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y, id = 1) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id }] });
+    const row = await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).boundingBox();
+    await touch('touchStart', row.x + 60, row.y + row.height / 2);
+    await page.waitForSelector('#sheet-dialog[open] .sheet-page', { timeout: 3000 });
+    await touch('touchEnd');
+    await page.waitForTimeout(200);
+    assert.ok((await sheetText(page)).includes('Tomaten-Pasta'));
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), '', 'nichts gewählt');
+    // kurzer Tipp auf das Blatt: nichts
+    const viewport = page.viewportSize(), x = viewport.width / 2, y = viewport.height / 2;
+    await touch('touchStart', x, y); await page.waitForTimeout(120); await touch('touchEnd'); await page.waitForTimeout(700);
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 1);
+    // Wischen (Scrollen) beim Drücken: bricht ab
+    await touch('touchStart', x, y); await page.waitForTimeout(200); await touch('touchMove', x, y - 60); await page.waitForTimeout(900); await touch('touchEnd');
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 1, 'Wischen schließt nicht');
+    // Zwei Finger (Zoomen): schließt nicht
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 40, y, id: 1 }] });
+    await page.waitForTimeout(150);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 40, y, id: 1 }, { x: x + 40, y, id: 2 }] });
+    await page.waitForTimeout(900);
+    await touch('touchEnd');
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 1, 'zwei Finger schließen nicht');
+    // lange drücken, irgendwo auf dem Blatt: schließt (das Fenster dahinter bleibt)
+    await touch('touchStart', x, y);
+    await page.waitForFunction(() => !document.querySelector('#sheet-dialog').open, null, { timeout: 4000 });
+    await touch('touchEnd');
+    assert.equal(await page.locator('#meal-dialog[open]').count(), 1);
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), '');
+    // Ein Tipp wählt danach das Rezept
+    await touch('touchStart', row.x + 60, row.y + row.height / 2); await page.waitForTimeout(100); await touch('touchEnd');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), 'recipe-pasta');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptblatt mit dem Finger: zweimal kurz tippen vergrößert und verkleinert die Seite (auch ohne „dblclick“ des Browsers); ein einzelner Tipp oder zwei weit entfernte Tipps tun nichts', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await openCardSheet(page);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    const tap = async (x, y) => { await touch('touchStart', x, y); await page.waitForTimeout(40); await touch('touchEnd'); };
+    const zoom = () => page.locator('#sheet-pages').getAttribute('data-zoom');
+    const { width, height } = page.viewportSize(), x = width / 2, y = height / 2;
+    await tap(x, y); await page.waitForTimeout(600);
+    assert.equal(await zoom(), '1', 'ein Tipp allein tut nichts');
+    await tap(x, y); await page.waitForTimeout(150); await tap(x + 4, y + 4);
+    assert.equal(await zoom(), '2', 'zwei schnelle Tipps vergrößern');
+    await tap(x, y); await page.waitForTimeout(150); await tap(x + 3, y);
+    assert.equal(await zoom(), '1', 'und verkleinern wieder');
+    await tap(x - 100, y); await page.waitForTimeout(150); await tap(x + 100, y);
+    assert.equal(await zoom(), '1', 'zwei Tipps an verschiedenen Stellen zählen nicht');
+    await tap(x, y); await page.waitForTimeout(500); await tap(x, y);
+    assert.equal(await zoom(), '1', 'zu langsam');
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Plan: auch das Kontextmenü (rechte Maustaste, Menü-Taste, langes Drücken unter Android) öffnet das Rezeptblatt; auf „Eigenes Gericht“ geschieht nichts', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page);
+    await openMealPicker(page);
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).dispatchEvent('contextmenu');
+    await page.waitForSelector('#sheet-dialog[open] .sheet-page');
+    assert.ok((await sheetText(page)).includes('Apfel-Pfannkuchen'));
+    await page.click('#sheet-close');
+    await page.locator('#recipe-pick .pick-row.custom').dispatchEvent('contextmenu');
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('#sheet-dialog[open]').count(), 0);
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'), '', 'nichts gewählt');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const width of [280, 320, 390]) {
+    test(`Rezeptblatt bei ${width} px: Seite, „×“ und Knöpfe passen in den Bildschirm; „Größer“ vergrößert die Seite zum Lesen und wieder zurück`, async () => {
+      const { ctx, page, problems } = await sheetContext({ context: { viewport: { width, height: 740 } } });
+      await open(page);
+      await openCardSheet(page);
+      assert.equal(await horizontalOverflow(page), 0);
+      const geometry = () => page.evaluate(() => {
+        const rect = selector => { const box = document.querySelector(selector).getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width }; };
+        return { page: rect('.sheet-page'), close: rect('#sheet-close'), zoom: rect('#sheet-zoom'), save: rect('#sheet-save'), bar: rect('.sheet-bar'), zoomLevel: document.querySelector('#sheet-pages').dataset.zoom };
+      });
+      const small = await geometry();
+      assert.equal(small.zoomLevel, '1');
+      assert.ok(small.page.left >= 0 && small.page.right <= width, 'die Seite passt in die Breite');
+      assert.ok(small.page.width >= width - 26 - 0.5, 'und füllt sie fast');
+      assert.ok(small.close.right <= width && small.close.top >= 0 && small.zoom.right <= small.close.left, '„×“ ganz rechts, Lupe daneben');
+      assert.ok(small.save.left >= 0 && small.save.right <= width && small.save.bottom <= 740 && small.bar.bottom <= 740 + 1);
+      await page.click('#sheet-zoom');
+      const big = await geometry();
+      assert.equal(big.zoomLevel, '2');
+      assert.ok(big.page.width > small.page.width * 1.7, 'größer');
+      assert.equal(await horizontalOverflow(page), 0, 'die Seite der App läuft nicht über, nur das Blatt lässt sich verschieben');
+      assert.ok(await page.locator('#sheet-scroll').evaluate(node => node.scrollWidth > node.clientWidth), 'das Blatt lässt sich seitlich verschieben');
+      assert.ok(big.close.right <= width && big.close.top >= 0, 'das „×“ bleibt stehen');
+      await page.click('#sheet-zoom'); assert.equal((await geometry()).zoomLevel, '3');
+      await page.click('#sheet-zoom'); const again = await geometry();
+      assert.equal(again.zoomLevel, '1'); assert.ok(Math.abs(again.page.width - small.page.width) < 0.5);
+      await page.locator('#sheet-scroll').dblclick({ position: { x: width / 2, y: 300 } });
+      assert.equal((await geometry()).zoomLevel, '2', 'Doppeltippen vergrößert');
+      await page.locator('#sheet-scroll').dblclick({ position: { x: width / 2, y: 300 } });
+      assert.equal((await geometry()).zoomLevel, '1', 'und verkleinert wieder');
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    });
+  }
+
+  test('Rezeptblatt: ein langes Rezept mit vielen Zutaten und Schritten geht über mehrere Seiten, auch in der Vorschau; die Datei hat genauso viele Seiten', async () => {
+    const data = sheetData();
+    data.recipes.find(row => row.id === 'recipe-curry').instructions = Array.from({ length: 24 }, (_, index) => `Arbeitsgang ${index + 1}: ${'gut verrühren und ziehen lassen, '.repeat(4)}`).join('\n');
+    for (let index = 0; index < 40; index++) data.ingredients.push({ id: `extra-${index}`, recipeId: 'recipe-curry', name: `Zutat Nummer ${index + 1}`, quantity: index + 1, unit: 'g', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    await openCardSheet(page, 'Kichererbsen-Curry');
+    const pages = await page.locator('#sheet-pages .sheet-page').count();
+    assert.ok(pages >= 2, `${pages} Seiten`);
+    const text = await sheetText(page);
+    assert.ok(text.includes('Zutat Nummer 40') && text.includes('Arbeitsgang 24:') && text.includes(`Seite 2 von ${pages}`) && text.includes('REZEPT · FORTSETZUNG'));
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    assert.equal(download.suggestedFilename(), 'Kichererbsen-Curry.pdf');
+    assert.ok(checkPdf(await pdfBytesOf(download)).includes(`/Count ${pages} `));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptblatt: Dateiname ohne Sonderzeichen; Umlaute, Bruchzahlen und typografische Zeichen stehen auf dem Blatt; gelöschte Rezepte haben keine Karte mehr', async () => {
+    const data = sheetData();
+    data.recipes.push({ id: 'recipe-sonder', name: 'Süße „Grütze“ / Dessert: Nr. 1?', servings: 3, tags: ['süß'], instructions: 'Beeren aufkochen – 5 Min. köcheln lassen.\nKalt servieren (ca. 1½ Std.).', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {} });
+    data.ingredients.push({ id: 'ing-sonder', recipeId: 'recipe-sonder', name: 'Rote Grütze', quantity: 0.5, unit: 'l', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    // Den Dateinamen am Link selbst prüfen: Chromium auf Linux ohne Umgebungssprache verwirft Umlaute in Namen (liefert „download“), iPhone, Android, Mac und Windows nicht
+    await ctx.addInitScript(() => { window.__names = []; const click = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { if (this.download) window.__names.push(this.download); return click.call(this); }; });
+    await open(page);
+    await openCardSheet(page, 'Süße „Grütze“ / Dessert: Nr\\. 1\\?');
+    const text = await sheetText(page);
+    assert.ok(text.includes('Süße „Grütze“') && text.includes('0,5 l') && text.includes('5 Min. köcheln') && text.includes('1½ Std.'));
+    await page.click('#sheet-save');
+    assert.deepEqual(await page.evaluate(() => window.__names), ['Süße „Grütze“ Dessert Nr. 1.pdf']);
+    await page.click('#sheet-close');
+    // Das Rezept wird gelöscht, während die Karte noch zu sehen ist: Die Meldung steht im offenen Fenster, nichts öffnet sich
+    await goTab(page, 'recipes');
+    const button = page.getByRole('button', { name: /^Tomaten-Pasta: Rezeptblatt/ });
+    await page.evaluate(() => { const key = 'einkauf-demo-v1', stored = JSON.parse(localStorage.getItem(key)); stored.base.recipes.find(row => row.id === 'recipe-pasta').deletedAt = new Date().toISOString(); localStorage.setItem(key, JSON.stringify(stored)); });
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.equal(await page.getByRole('button', { name: /^Tomaten-Pasta: Rezeptblatt/ }).count(), 0, 'gelöschte Rezepte haben keine Karte mehr');
+    assert.equal(await button.count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 
   test('Fenster schließen: ein Tipp außerhalb (auf den abgedunkelten Hintergrund) schließt wie das „×“; Tipps im Fenster und Text markieren schließen nichts; das Willkommensfenster bleibt', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 700 } } });
