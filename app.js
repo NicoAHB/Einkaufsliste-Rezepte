@@ -14,6 +14,7 @@ import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, l
 import { emojiFor } from './emoji.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekDays, weekLabel, weekStart } from './plan.js';
+import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
@@ -397,7 +398,6 @@ function renderItems() {
   ensureSeen();
   const news = seen ? newFromOthers(rows, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const open = rows.filter(item => !item.checked && !newIds.has(item.id)), done = rows.filter(item => item.checked).sort(byName);
-  $('#item-count').textContent = `${open.length + news.length} offen · ${done.length} erledigt`;
   $('#clear-checked').disabled = !done.length;
   if (!rows.length && !news.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
   if (news.length) {
@@ -1988,16 +1988,37 @@ $('#sheet-scroll').addEventListener('contextmenu', event => event.preventDefault
   scroll.addEventListener('pointercancel', () => { down = null; lastTap = null; });
 }
 // Die Auswahl „Rezept“ im Fenster „Gericht planen“: eine Liste statt einer Auswahlbox, damit sich ein Rezept lange drücken lässt
-function fillRecipePick(recipes) {
-  const list = $('#recipe-pick'); list.replaceChildren();
+let pickPool = [];   // alle Rezepte, aus denen die Auswahl im Fenster „Gericht planen“ filtert
+// Die Liste nach dem Filter: das gerade gewählte Rezept bleibt immer sichtbar (siehe recipe-filter.js); „Eigenes Gericht“ steht immer am Ende.
+function renderPick() {
+  const list = $('#recipe-pick'), form = $('#meal-form'), filter = $('#recipe-filter').value, choice = form.elements.recipeId.value;
+  list.replaceChildren();
   const row = (value, title, meta, custom) => {
     const node = element('button', undefined, `pick-row${custom ? ' custom' : ''}`); node.type = 'button'; node.dataset.value = value;
+    node.setAttribute('aria-pressed', String(value === choice));
     node.append(element('strong', title)); if (meta) node.append(element('small', meta));
     list.append(node);
   };
-  for (const recipe of recipes) row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen`, false);
+  // Bei „Lange nicht gekocht“ steht dabei, wie lange es her ist.
+  const lastTime = recipe => {
+    if (filter !== LONG_AGO) return '';
+    const when = recipe.lastCookedAt ? relativeDay(recipe.lastCookedAt) : '';
+    return !recipe.lastCookedAt ? ' · noch nie gekocht' : when === 'geplant' ? '' : ` · zuletzt ${when}`;
+  };
+  const shown = pickRecipes(pickPool, filter, { today: isoDate(), keep: choice });
+  for (const recipe of shown) row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)}`, false);
+  if (!shown.length) list.append(element('p', 'Kein Rezept dafür.', 'pick-empty'));
   row('__custom', 'Eigenes Gericht (ohne Rezept)', '', true);
 }
+// Das Auswahlfeld für den Filter (Alle, Favoriten, Lange nicht gekocht, jedes Stichwort); mit nur einem Eintrag gibt es nichts zu filtern.
+function fillRecipePick(recipes) {
+  pickPool = recipes;
+  const select = $('#recipe-filter'), options = filterOptions(recipes, isoDate());
+  select.replaceChildren(...options.map(option => { const node = element('option', `${option.label} (${option.count})`); node.value = option.value; return node; }));
+  select.value = ''; select.hidden = options.length < 2;
+  renderPick();
+}
+$('#recipe-filter').addEventListener('change', () => { renderPick(); $('#recipe-pick').scrollTop = 0; });
 function setRecipeChoice(value) {
   $('#meal-form').elements.recipeId.value = value;
   $('#recipe-pick').querySelectorAll('.pick-row').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.value === value)));

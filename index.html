@@ -95,7 +95,7 @@
           <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Ein bereits gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.</p>
         </details>
       </form>
-      <div class="section-head list-head"><p id="item-count"></p><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
+      <div class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
       <ul id="items" class="item-list"></ul>
       </div>
       <div id="shop-view" hidden>
@@ -237,7 +237,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.45 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.46 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -388,7 +388,7 @@
     <input name="id" type="hidden">
     <label data-day>Tag<input name="date" type="date" required></label>
     <input name="recipeId" type="hidden">
-    <div class="pick-field" role="group" aria-labelledby="recipe-pick-label"><span id="recipe-pick-label" class="pick-caption">Rezept</span>
+    <div class="pick-field" role="group" aria-labelledby="recipe-pick-label"><div class="pick-head"><span id="recipe-pick-label" class="pick-caption">Rezept</span><select id="recipe-filter" aria-label="Rezepte filtern"></select></div>
       <div id="recipe-pick" class="recipe-pick"></div>
       <p class="hint">Ein Rezept lange drücken: das Rezeptblatt (PDF) ansehen.</p></div>
     <label data-custom hidden>Eigenes Gericht<input name="title" maxlength="80" placeholder="z. B. Pizza bestellen" autocomplete="off"></label>

@@ -444,11 +444,6 @@ main {
   font-size:.86rem;
   white-space:nowrap
 }
-.list-head p {
-  font-size:.88rem;
-  font-weight:600;
-  color:var(--muted)
-}
 
 /* Karten und Formulare */
 .card {
@@ -3706,11 +3701,39 @@ body.selecting .item .item-copy {
 .pick-field {
   margin-bottom:10px
 }
+.pick-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:6px
+}
 .pick-caption {
   display:block;
-  margin-bottom:6px;
   font-size:.88rem;
   font-weight:600;
+  color:var(--muted)
+}
+.pick-head select {
+  flex:1 1 0;
+  min-width:0;
+  max-width:min(100%,250px);
+  width:auto;
+  min-height:44px;
+  margin:0 0 0 auto;
+  padding-top:6px;
+  padding-bottom:6px;
+  font-size:1rem;
+  text-overflow:ellipsis
+}
+.pick-head select[hidden] {
+  display:none
+}
+.pick-empty {
+  margin:0;
+  padding:14px;
+  border-bottom:1px solid var(--line);
+  font-size:.9rem;
   color:var(--muted)
 }
 .recipe-pick {
