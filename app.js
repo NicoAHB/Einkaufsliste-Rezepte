@@ -603,10 +603,22 @@ function deleteOps(collection, ids) {
   return rows.map(row => nextOp(collection, row.id, { deletedAt: at }));
 }
 function removeRows(collection, ids) { commit(deleteOps(collection, ids)); }
+// Geschäfte-Dialog: Jedes vorhandene Geschäft ist eine zugeklappte Karte (Pfeil rechts); welche aufgeklappt sind, merkt sich nur das geöffnete Fenster.
+// „Neues Geschäft“ unten ist immer sichtbar und nicht klappbar; ein neu angelegtes Geschäft erscheint zugeklappt und leuchtet kurz auf.
+const storesOpen = new Set();
+let storeFresh = '';
+function openStoresDialog(openId = '') {
+  storesOpen.clear(); storeFresh = ''; if (openId) storesOpen.add(openId);
+  renderStores(); $('#stores-dialog').showModal();
+}
 function renderStores() {
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of active(state.stores)) {
-    const row = element('div', undefined, 'store-row');
+    const row = element('details', undefined, 'store-row'), summary = element('summary', undefined, 'store-summary'), body = element('div', undefined, 'store-body');
+    row.open = storesOpen.has(store.id); row.dataset.id = store.id;
+    row.addEventListener('toggle', () => { if (row.open) storesOpen.add(store.id); else storesOpen.delete(store.id); });
+    const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name)); summary.append(title);
+    if (isSeparate(store)) summary.append(element('span', 'Eigene Liste', 'store-pill'));
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
     input.name = 'name';
@@ -639,7 +651,8 @@ function renderStores() {
       if (!confirm(`„${store.name}“ löschen? Die Artikel werden ausgeblendet. Du kannst das Löschen rückgängig machen.`)) return;
       removeRows('stores', [store.id]); renderStores();
     }, 'danger');
-    remove.setAttribute('aria-label', `${store.name} löschen`); row.append(form, remove); editor.append(row);
+    remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form, remove); row.append(summary, body); editor.append(row);
+    if (store.id === storeFresh) { row.classList.add('fresh'); row.scrollIntoView({ block: 'nearest' }); }
   }
 }
 
@@ -1544,8 +1557,9 @@ function applyMode() {
 function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); armLock(); }
 function syncShopAwake() {
   const supported = 'wakeLock' in navigator;
-  $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && config.shopAwake === true && !awake.shop.failed;
-  const want = supported && config.shopAwake === true && shopOn() && !$('#shopping').hidden && !document.hidden;
+  const on = config.shopAwake !== false;   // seit Version 2.33 standardmäßig an (nur ein ausdrückliches Ausschalten gilt)
+  $('#shop-awake-label').hidden = !supported; $('#shop-awake').checked = supported && on && !awake.shop.failed;
+  const want = supported && on && shopOn() && !$('#shopping').hidden && !document.hidden;
   void keepAwake('shop', want);
 }
 /* ---------- Schutz vor versehentlichen Berührungen ---------- */
@@ -1793,7 +1807,8 @@ async function keepAwake(name, on) {
     hint.textContent = name === 'shop' ? '' : 'Der Bildschirm bleibt an, solange diese Ansicht offen ist.';   // im Laden steht die Liste im Mittelpunkt, kein Erklärtext
   } catch {
     entry.lock = null; entry.failed = true; $(entry.box).checked = false; entry.wanted = false;
-    hint.textContent = 'Geht gerade nicht. Stattdessen am Handy unter Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
+    // Wer „Bildschirm anlassen“ nicht selbst eingeschaltet hat (Standard an), bekommt bei einem Fehlschlag keine Fehlermeldung, nur den abgewählten Haken.
+    hint.textContent = name === 'shop' && config.shopAwake !== true ? '' : 'Geht gerade nicht. Stattdessen am Handy unter Anzeige & Helligkeit → Automatische Sperre eine längere Zeit wählen.';
   }
 }
 function openCook(id, servings) {
@@ -2355,7 +2370,7 @@ document.addEventListener('pointerup', event => {
 }, true);
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
-$('#set-offers').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
+$('#set-offers').addEventListener('click', () => openStoresDialog(view));   // das Geschäft, dessen Link fehlt, ist gleich aufgeklappt
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
 function addRows(rows, storeId, unchecked = [], remember = false) {
@@ -2491,11 +2506,12 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   commit(ops); $('#item-dialog').close();
 }); });
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
-$('#manage-stores').addEventListener('click', () => { renderStores(); $('#stores-dialog').showModal(); });
+$('#manage-stores').addEventListener('click', () => openStoresDialog());
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (active(state.stores).some(store => store.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))) throw new Error('Dieses Geschäft gibt es bereits.');
-  commit([nextOp('stores', uid(), { name, offersUrl: offerUrl(event.currentTarget.elements.offersUrl.value) })]); event.currentTarget.reset(); renderStores();
+  const id = uid();
+  commit([nextOp('stores', id, { name, offersUrl: offerUrl(event.currentTarget.elements.offersUrl.value) })]); event.currentTarget.reset(); storeFresh = id; renderStores();
 }); });
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
@@ -2709,9 +2725,18 @@ function incomingLink() {
 }
 // Andere Tabs dürfen ihre Warteschlangen nicht gegenseitig überschreiben.
 // Ein zweiter Tab bleibt deshalb vollständig inaktiv, bis der erste geschlossen ist.
+// Frischer Start: War die App ganz geschlossen, öffnet sie wieder unter „Einkauf → Planen“ (nicht „Im Laden“ und nicht gesperrt). Ein Neuladen in derselben Sitzung
+// (z. B. wenn das Handy die Seite im Hintergrund verworfen hat) bleibt, wie es war. Die Sitzung merkt sich der Browser bis zum vollständigen Schließen (sessionStorage).
+const SESSION_KEY = 'einkauf-session-v1';
+function freshStart() {
+  try { const fresh = sessionStorage.getItem(SESSION_KEY) === null; sessionStorage.setItem(SESSION_KEY, '1'); return fresh; }
+  catch { return true; }   // ohne Sitzungsspeicher gilt jeder Start als frisch
+}
 async function start() {
   try {
-    config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); fillSettings();
+    config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+    if (freshStart() && (config.shopMode === true || config.shopLocked === true)) saveConfig({ ...config, shopMode: false, shopLocked: false });
+    fillSettings();
     const adding = incomingAdd(), incoming = incomingLink();
     await loadWorkspace();
     prunePhotos(usedPhotos()).catch(() => {});

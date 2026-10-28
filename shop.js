@@ -44,7 +44,7 @@ export function shopAllView(items, stores) {
 /* Schutz vor versehentlichen Berührungen im Laden (Handy in der Hosentasche): „Einkauf beenden“ und „Entsperren“ muss man gedrückt halten,
    und nach einiger Zeit ohne Berührung sperrt sich die Ansicht (Tippen bewirkt dann nichts, Scrollen geht weiter). */
 export const LOCK_CHOICES = [0, 10, 20, 30, 60, 120];   // Sekunden ohne Berührung bis zur Sperre; 0 = nie
-export const LOCK_DEFAULT = 30;
+export const LOCK_DEFAULT = 10;   // Standard seit Version 2.33 (vorher 30 s); einstellbar unter „Einstellungen → Im Laden“
 export const HOLD_FINISH_MS = 700;   // „Einkauf beenden“ so lange gedrückt halten
 export const HOLD_UNLOCK_MS = 600;   // „Entsperren“ so lange gedrückt halten
 export const HOLD_ITEM_MS = 500;     // gesperrt: Kreis (abhaken) oder Geschäft (wechseln) so lange gedrückt halten

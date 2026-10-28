@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.32
+# Einkauf & Rezepte – Version 2.33
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.33: Sperre nach 10 Sekunden, Bildschirm anlassen an, Geschäfte aufklappbar, Start unter „Planen“
+
+- **Automatisch sperren: Standard 10 Sekunden** (vorher 30). Die Auswahl steht **nicht mehr unter „Im Laden“**, sondern unter **Einstellungen → Im Laden** (Nie, 10, 20, 30 Sekunden, 1 oder 2 Minuten; gilt nur auf diesem Gerät). Wer früher eine Zeit gewählt hat, behält sie.
+- **„Bildschirm anlassen“ ist unter „Im Laden“ standardmäßig an** (der Haken unter der Liste bleibt dort und lässt sich abwählen; die Wahl wird gemerkt). Klappt die Anforderung nicht (z. B. weil das Gerät sie ablehnt), erscheint nur dann eine Fehlermeldung, wenn der Haken selbst gesetzt wurde; sonst ist er still abgewählt.
+- **Geschäfte & Angebote:** Jedes vorhandene Geschäft ist eine **zugeklappte Karte** mit dem Namen (oder Logo/Symbol, bei einer eigenen Liste mit der Marke „Eigene Liste“) und einem Pfeil rechts. Ein Tipp klappt sie auf (Name, Angebotslink, Anzeige, Eigene Liste, Speichern, Löschen), ein zweiter zu; mehrere dürfen offen sein, ein Speichern lässt die Karte offen. **„Neues Geschäft“ unten ist immer sichtbar und nicht klappbar.** Ein neu angelegtes Geschäft erscheint **zugeklappt** in der Liste und leuchtet kurz auf. Beim nächsten Öffnen des Fensters sind alle wieder zu; „Angebotslink festlegen“ öffnet das Fenster mit genau diesem Geschäft aufgeklappt.
+- **Start nach vollständigem Schließen:** Die App öffnet wieder unter **Einkauf → Planen** (nicht unter „Im Laden“, nicht gesperrt). Ein Neuladen in derselben Sitzung (etwa wenn das Handy die Seite im Hintergrund verworfen hat) bleibt, wie es war. Die Sitzung merkt sich der Browser bis zum vollständigen Schließen (`sessionStorage`).
+- **Nicht getestet:** das Verhalten auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation). Ob iOS beim Zurückholen aus dem Hintergrund dieselbe Sitzung behält, hängt vom Gerät ab: Im Zweifel startet die App dann unter „Planen“.
+
+Weitere Testpunkte für Version 2.33:
+
+- [ ] App ganz schließen (im App-Wechsler wegwischen) und neu öffnen, nachdem zuletzt „Im Laden“ offen war: Es steht **Einkauf → Planen** da.
+- [ ] „Im Laden“ öffnen und nichts berühren: Nach etwa 10 Sekunden sperrt sich die Ansicht. Unter Einstellungen → Im Laden eine andere Zeit wählen.
+- [ ] Unter „Geschäfte“ (kleines Symbol neben „Planen | Im Laden“): Alle Geschäfte sind zu, ein Tipp klappt auf, „Neues Geschäft“ steht unten fest.
 
 ## Neu in Version 2.32: gesperrt leuchtet der Entsperren-Knopf auf statt eines Hinweistextes
 

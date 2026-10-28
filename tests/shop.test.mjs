@@ -80,6 +80,7 @@ test('Sperre im Laden: gültige Wartezeit, Standard bei Unsinn, Haltezeiten spü
   assert.equal(lockSeconds(45.4), 45);
   for (const seconds of LOCK_CHOICES) assert.equal(lockSeconds(seconds), seconds);
   assert.ok(LOCK_CHOICES.includes(LOCK_DEFAULT));
+  assert.equal(LOCK_DEFAULT, 10, 'Standard seit Version 2.33: 10 Sekunden');
   assert.ok(HOLD_FINISH_MS >= 500 && HOLD_FINISH_MS <= 1200);
   assert.ok(HOLD_UNLOCK_MS >= 400 && HOLD_UNLOCK_MS <= 1000);
 });
