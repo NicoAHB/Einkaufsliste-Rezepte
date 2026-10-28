@@ -83,7 +83,9 @@ const openStores = async page => {
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
-const openSettings = async page => { await page.click('[data-tab=settings]'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
+// Im Laden ist die Leiste unten ausgeblendet; der Reiterwechsel läuft hier deshalb per Skript (wie ein Tipp auf den Reiter).
+const goTab = (page, name) => page.evaluate(name => document.querySelector(`[data-tab=${name}]`).click(), name);
+const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
 // Ein Geschäft als Bild („Wünsche“ ist ein Geschenk) trägt seinen Namen als Beschriftung des Bildes, nicht als Text.
 const storeButton = (page, box, name) => { const byText = page.locator(`${box} .chip, ${box} button`, { hasText: name }); return byText.or(page.locator(`${box} .chip, ${box} button`, { has: page.getByRole('img', { name, exact: true }) })).first(); };
 const pickStore = async (page, name) => { await expandForm(page); await storeButton(page, '#store-pick', name).click(); };
@@ -1946,9 +1948,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Bildschirm anlassen gilt nur in dieser Ansicht
     await page.check('#shop-awake');
     await page.waitForFunction(() => window.__wake.requests === 1);
-    await page.click('[data-tab=recipes]');
+    await goTab(page, 'recipes');
     await page.waitForFunction(() => window.__wake.releases === 1);
-    await page.click('[data-tab=shopping]');
+    await goTab(page, 'shopping');
     await page.waitForFunction(() => window.__wake.requests === 2);
     // Einkauf beenden: Abgehaktes verschwindet, Kassenbon-Dialog mit dem Geschäft
     await finishShop(page); await sheetOpen(page);
@@ -2122,8 +2124,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await itemState(page, 'Tomaten'), false, 'nicht abgehakt');
     assert.equal(await page.locator('#notice').isHidden(), true, 'kein Hinweistext');
     assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'stattdessen leuchtet der Knopf zum Entsperren auf');
-    await page.click('[data-tab=recipes]');
-    assert.equal(await page.locator('#shopping').isVisible(), true, 'der Reiter wechselt nicht');
+    assert.equal(await page.locator('.tabs').isHidden(), true, 'im Laden gibt es unten keine Leiste');
     await page.click('#shop-back');
     assert.equal(await page.locator('#shop-view').isVisible(), true, '„Planen“ wirkt nicht');
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));   // ganz nach unten, über die schwebende Leiste hinaus
@@ -2198,8 +2199,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.locator('#shop-chips .chip[aria-selected=true]').textContent(), /Lidl/, 'Geschäft durch Halten gewechselt');
     assert.deepEqual(await page.locator('#shop-list .shop-name').allTextContents(), ['Milch']);
     assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
-    // Alles andere bleibt gesperrt: Reiter, Planen, Beenden
-    await page.click('[data-tab=recipes]'); await page.click('#shop-back');
+    // Alles andere bleibt gesperrt: Planen, Beenden
+    await page.click('#shop-back');
     assert.equal(await page.locator('#shop-view').isVisible(), true);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
@@ -2318,8 +2319,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#shop-lock');
     const unlock = page.locator('#shop-unlock'), bar = page.locator('#shop-lockbar');
     const animations = node => node.evaluate(element => element.getAnimations().map(animation => animation.animationName));
-    // Leere Fläche, Name, Menge, Reiter, Planen, Beenden: überall dasselbe, nie ein Text
-    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back', '[data-tab=recipes]']) {
+    // Leere Fläche, Name, Menge, Planen, Beenden: überall dasselbe, nie ein Text
+    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back', '#shop-finish']) {
       await page.locator(target).first().click();
       assert.equal(await page.locator('#notice').isHidden(), true, `${target}: kein Hinweistext`);
       assert.equal(await bar.evaluate(node => node.classList.contains('nudge')), true, `${target}: der Knopf leuchtet auf`);
@@ -2543,6 +2544,60 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
+  });
+
+  test('Im Laden: keine Leiste (Einkauf, Rezepte, Plan, Ausgaben, Einstellungen) unten; die Sperre und Meldungen sitzen am unteren Rand; zurück zu „Planen“ ist die Leiste wieder da', async () => {
+    for (const glass of [true, false]) {
+      const { ctx, page, problems } = await context({ config: { glass } });
+      await open(page);
+      const tabs = page.locator('nav.tabs');
+      assert.equal(await tabs.isVisible(), true, 'unter „Planen“ steht die Leiste');
+      const tabsBottom = (await tabs.boundingBox());
+      await page.click('#mode-shop');
+      await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+      assert.equal(await tabs.isHidden(), true, 'im Laden ist sie ausgeblendet');
+      assert.equal(await page.locator('[data-tab=recipes]').isHidden(), true);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--tabs-h').trim()), '0px');
+      const view = page.viewportSize();
+      // Entsperrt endet die Seite unten ohne Lücke für die Leiste: „Einkauf beenden“ ist nach dem Scrollen nahe am unteren Rand
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const finish = await page.locator('#shop-finish').boundingBox();
+      assert.ok(view.height - (finish.y + finish.height) < 60, `kein leerer Platz für die Leiste unter „Einkauf beenden“ (${Math.round(view.height - finish.y - finish.height)} px)`);
+      // Gesperrt: der Knopf zum Entsperren sitzt dort, wo die Leiste war
+      await page.click('#shop-lock');
+      const lockbar = await page.locator('#shop-lockbar').boundingBox();
+      const gap = view.height - (lockbar.y + lockbar.height);
+      assert.ok(gap >= 6 && gap <= 24, `die Sperre sitzt am unteren Rand (Abstand ${Math.round(gap)} px)`);
+      assert.ok(tabsBottom.y + tabsBottom.height / 2 > lockbar.y, 'dort, wo vorher die Leiste war');
+      // Die Liste ragt nicht unter die Sperre; „Einkauf beenden“ bleibt nach dem Scrollen frei
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const finishLocked = await page.locator('#shop-finish').boundingBox();
+      assert.ok(finishLocked.y + finishLocked.height <= lockbar.y + 1, 'unter der Sperre verdeckt nichts den letzten Knopf');
+      // Meldungen (hier: Abhaken per Halten) stehen über der Sperre, nicht dahinter
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await pressAndHold(page, '#shop-list .shop-tap', 650); await page.mouse.up();
+      await page.waitForSelector('#notice:not([hidden])');
+      const notice = await page.locator('#notice').boundingBox();
+      assert.ok(notice.y + notice.height <= lockbar.y + 1, `die Meldung steht über der Sperre (${Math.round(notice.y + notice.height)} ≤ ${Math.round(lockbar.y)})`);
+      assert.equal(await tabs.isHidden(), true);
+      assert.equal(await horizontalOverflow(page), 0);
+      // Entsperren und zurück zu „Planen“: die Leiste ist wieder da und bedienbar
+      await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+      await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+      await page.click('#shop-back');
+      assert.equal(await tabs.isVisible(), true, 'unter „Planen“ steht die Leiste wieder');
+      await page.click('[data-tab=recipes]');
+      assert.equal(await page.locator('#recipes').isVisible(), true);
+      // Bleibt „Im Laden“ gewählt, während man in einem anderen Bereich ist (Einstellungen), steht die Leiste dort
+      await page.click('[data-tab=shopping]'); await page.click('#mode-shop');
+      assert.equal(await tabs.isHidden(), true);
+      await goTab(page, 'settings');
+      assert.equal(await tabs.isVisible(), true, 'außerhalb der Einkaufsansicht ist die Leiste da');
+      await goTab(page, 'shopping');
+      assert.equal(await tabs.isHidden(), true);
+      assert.deepEqual(problems, []);
+      await ctx.close();
+    }
   });
 
   test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
