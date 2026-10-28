@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.41
+# Einkauf & Rezepte – Version 2.43
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,33 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.43: Bon-Zeilen ordnen sich selbst den Artikeln zu
+
+Auf dem Bon steht „G&G Champignons“, „Farm.Sn.Aprikosen“ oder „G&G Senf mittels.“, auf deiner Liste „Champignons“, „Aprikosen“, „Senf“. Niemand tippt den Bon-Text ab, und jede Zeile einzeln zu bestätigen ist zu aufwendig. Deshalb gilt jetzt:
+
+- **Dein Listenname ist der Anker.** Kommt der Name eines Artikels als ganzes Wort in der Bonzeile vor (Einzahl und Mehrzahl sind egal: Apfel/Äpfel, Aprikose/Aprikosen), ordnet die App die Zeile **selbst** diesem Artikel zu. Der Name ist dann „Champignons“, die **Sorte oder genaue Bezeichnung** ist die Bonzeile („G&G Champignons“). Im Laden steht der Preis deshalb beim Artikel „Champignons“.
+- **Nur, wenn alles Übrige ungefährlich ist:** Beigaben („Bio“, „frisch“), bekannte Handelsmarken („G&G“, „Gut & Günstig“, „Ja!“, Eigenmarken der Ketten), Marken aus früheren Zuordnungen und Abkürzungen (ein Wort mit Punkt dahinter wie „Farm.Sn.“ oder ein einzelner Buchstabe). Steht ein weiteres Produktwort dabei („Saft“, „Mus“, „Tasche“, „Joghurt“, „Milch“ …), ist es ein **anderes Produkt** und bekommt nie den Preis des Artikels: „Apfeltasche“, „Apfel Saft“, „Hafermilch“ und „Tomaten Mark“ bleiben eigene Produkte.
+- **Rest ohne Tippen:** In jeder Zeile des Kassenbon-Dialogs gibt es das Auswahlfeld **„Gehört zu (von deiner Liste wählen)“**. Ein Tipp auf den Artikel genügt; die Bonzeile bleibt als Bezeichnung erhalten. Ein unsicherer Vorschlag („Als „Tomaten“ eintragen“) wird weiterhin nur angeboten, nie von selbst eingesetzt.
+- **Einmal zuordnen reicht:** Was du zugeordnet hast, merkt sich die App (mit der Bezeichnung) und erkennt es beim nächsten Bon wieder („Zuordnung gemerkt“). Eine so gelernte Marke gilt auch für andere Artikel derselben Marke.
+- **Schon vorhandene Preise (Einstellungen → Bezahlte Preise):** **„Bon-Namen den Artikeln zuordnen (n)“** macht aus bisherigen Einträgen wie „G&G Champignons“ den Artikel „Champignons“ (mit Rückfrage und Liste der Änderungen, die Bonzeile bleibt als Bezeichnung). **„Alle zu prüfenden als bezahlt bestätigen“** bestätigt alle Notizen aus früheren Versionen auf einmal (mit Rückfrage); einzeln geht weiterhin „Stimmt“, „Ändern“, „Vergessen“.
+- **Hinweis im Laden:** Gibt es zu einem Artikel noch unbestätigte ältere Notizen, steht im Preisfeld ein kurzer Satz dazu (statt nur „Noch keine bestätigten Kaufpreise vorhanden“).
+
+Daten: keine neuen Felder, keine Migration. Zuordnungen schreiben dieselben Felder wie bisher (`prices.name`, `prices.variant`, `aliases.variant`), Apps ab 2.41 lesen sie weiter.
+
+Testpunkte für Version 2.43 (iPhone):
+
+- [ ] Kassenbon einfügen mit „G&G Champignons“, „Farm.Sn.Aprikosen“ (Artikel „Champignons“, „Aprikosen“ stehen auf der Liste): Die Zeilen heißen schon „Champignons“ bzw. „Aprikosen“, darunter „Automatisch … zugeordnet“. Speichern, im Laden bei „Champignons“ auf den Namen tippen: „G&G Champignons … laut Bon“.
+- [ ] Eine Zeile wie „Apfeltasche“ bleibt eigener Name und bekommt keinen Preis von „Äpfel“. Im Feld „Gehört zu“ lässt sich ein Artikel ohne Tippen wählen.
+- [ ] Einstellungen → Bezahlte Preise: „Bon-Namen den Artikeln zuordnen“ zeigt die Änderungen und fragt nach; „Alle zu prüfenden als bezahlt bestätigen“ fragt nach, danach ist „Zu prüfen“ leer.
+
+## Neu in Version 2.42: Preisinfo auch gesperrt, per Gedrückthalten
+
+Im Modus „Im Laden“ lässt sich die Preisinfo „Zuletzt bezahlt“ jetzt auch **bei gesperrter Ansicht** öffnen: den **Namen** (mit Menge, Symbol und Pfeil) eines Artikels **gedrückt halten**. Noch einmal gedrückt halten schließt sie wieder. Ein einfacher Tipp bewirkt gesperrt weiter nichts (der Knopf zum Entsperren leuchtet auf). Der Name ist damit die vierte Fläche, die gesperrt per Gedrückthalten reagiert (neben Kreis, Geschäft und „Erledigt“); während des Haltens färbt sich die Zeile und der Pfeil wächst. Zu früh loslassen oder Wegziehen (Scrollen) öffnet nichts; die Sperre bleibt bestehen. Ungesperrt öffnet wie bisher ein Tipp.
+
+Testpunkt für Version 2.42:
+
+- [ ] Gesperrt (Schloss): Namen eines Artikels kurz antippen: nichts, Entsperren-Knopf leuchtet. Namen halten: Preisinfo klappt auf; noch einmal halten: sie schließt. Der Artikel wird dabei nicht abgehakt, die Ansicht bleibt gesperrt.
 
 ## Neu in Version 2.41: Verlauf bezahlter Preise („Zuletzt bezahlt“) nur im Modus „Im Laden“
 

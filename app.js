@@ -1709,10 +1709,10 @@ function armLock() {
 }
 // Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
 for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
-// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Drei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
-// den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Vier Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
+// den Kreis eines Artikels (abhaken), den Namen eines Artikels (Preisinfo öffnen oder schließen), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
-const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-list .shop-text, #shop-chips .chip, #shop-list .shop-done summary';
 // Eine verschluckte Berührung zeigt keinen Text: Der Knopf zum Entsperren leuchtet kurz in der Farbe auf (zwei Pulse, CSS „nudge“). Bildschirmleser bekommen den Hinweis als unsichtbare Ansage.
 function nudgeUnlock() {
   const bar = $('#shop-lockbar');
@@ -1763,7 +1763,7 @@ let priceOpen = '', priceStore = null;
 const priceMore = new Set();   // aufgeklappte „Frühere Käufe“ (Artikel und Eintrag), bleiben beim Neuzeichnen offen
 function closePriceInfo() { priceOpen = ''; priceStore = null; priceMore.clear(); }
 function togglePriceInfo(id) {
-  if (isLocked()) return;
+  if (isLocked() && !lockBypass) return;   // gesperrt öffnet nur das Gedrückthalten (lockBypass) die Preisinfo, ein Tipp nicht
   priceOpen = priceOpen === id ? '' : id;
   priceMore.clear();
   renderShop();
@@ -1796,6 +1796,8 @@ function priceBox(item) {
     mine.forEach(entry => box.append(node(entry)));
     if (others.length) { box.append(element('h4', 'In anderen Geschäften')); others.forEach(entry => box.append(node(entry))); }
   } else entries.forEach(entry => box.append(node(entry)));
+  const waiting = reviewRows(state.prices).filter(row => productKey(row.name) === productKey(item.name)).length;
+  if (waiting) box.append(element('p', `${waiting === 1 ? 'Eine ältere Notiz zu diesem Artikel ist' : `${waiting} ältere Notizen zu diesem Artikel sind`} noch nicht bestätigt (Einstellungen → Bezahlte Preise).`, 'price-empty'));
   box.append(element('p', 'Vergangene Kaufpreise. Der heutige Preis kann abweichen.', 'price-foot'));
   return box;
 }
@@ -1999,13 +2001,14 @@ function openCook(id, servings) {
 /* ---------- Kassenbon ---------- */
 let receiptLines = [], receiptParsed = null;
 // Namen, die die App schon kennt: Artikel, Namensgedächtnis, notierte Preise und bestätigte Zuordnungen.
-function knownNames() {
+function uniqueNames(rows) {
   const names = new Map();
-  for (const row of [...itemHistory(), ...state.prices, ...active(state.aliases || []).map(alias => ({ name: alias.name }))]) {
-    if (typeof row.name === 'string' && row.name.trim() && !names.has(productKey(row.name))) names.set(productKey(row.name), row.name.trim());
-  }
+  for (const row of rows) if (typeof row.name === 'string' && row.name.trim() && !names.has(productKey(row.name))) names.set(productKey(row.name), row.name.trim());
   return [...names.values()];
 }
+// Die Namen deiner Liste (Artikel, Namensgedächtnis, bestätigte Zuordnungen): Daran richtet sich die Zuordnung der Bonzeilen aus.
+const listNames = () => uniqueNames([...itemHistory(), ...active(state.aliases || []).map(alias => ({ name: alias.name }))]);
+const knownNames = () => uniqueNames([...itemHistory(), ...state.prices, ...active(state.aliases || []).map(alias => ({ name: alias.name }))]);
 let receiptStore = '', receiptSpend = true;
 // `text`: bereits erkannter Bontext (aus dem Ausgaben-Fenster), wird sofort ausgewertet. `spend`: ob der Gesamtbetrag vorab für „Ausgaben“ angehakt ist.
 function openReceipt(storeId = '', text = '', spend = true) {
@@ -2036,8 +2039,10 @@ function receiptDuplicate(line) {
 function refreshReceiptLine(line) {
   const note = line.note; note.className = 'receipt-note hint'; note.textContent = '';
   const parts = [];
+  line.syncPick?.();
   if (line.how === 'gemerkt') parts.push('Zuordnung gemerkt (unter Einstellungen → Gemerkte Namen änderbar)');
   if (line.how === 'Sorte') parts.push(`Sorte erkannt: ${line.inputs.variant.value}. Bitte prüfen`);
+  if (line.how === 'Marke') parts.push(`Automatisch „${line.inputs.name.value}“ zugeordnet (${line.inputs.variant.value})`);
   try {
     const form = $('#receipt-form'), storeId = form.elements.storeId.value, name = line.inputs.name.value.trim(), variant = line.inputs.variant.value.trim().replace(/\s+/g, ' ');
     const quote = receiptQuote(line);
@@ -2067,11 +2072,13 @@ function parseReceiptText() {
   storeOptions(form.elements.storeId, storeForChain(parsed.chain, state.stores) || receiptStore || viewStore()?.id || '', false);
   form.elements.date.value = parsed.date || isoDate();
   const list = $('#receipt-lines'); list.replaceChildren(); receiptLines = [];
-  const names = $('#receipt-names'); names.replaceChildren(); const known = knownNames();
+  const names = $('#receipt-names'); names.replaceChildren(); const known = knownNames(), anchors = listNames().sort((a, b) => a.localeCompare(b, 'de'));
   for (const name of known.slice(0, 400)) names.append(new Option(name));
   const aliases = active(state.aliases || []);
   for (const item of parsed.items) {
-    const guess = suggestName(item, aliases, known);
+    // Zuerst mit den Namen deiner Liste („G&G Champignons“ → „Champignons“), sonst mit allem, was die App kennt
+    let guess = suggestName(item, aliases, anchors);
+    if (!guess.how) guess = suggestName(item, aliases, known);
     const box = element('div', undefined, 'receipt-line'), use = element('label', undefined, 'receipt-use'), check = element('input');
     check.type = 'checkbox'; check.checked = true; use.append(check, element('span', item.text));
     const label = (text, input) => { const node = element('label', text); node.append(input); return node; };
@@ -2083,8 +2090,18 @@ function parseReceiptText() {
     inputs.name.setAttribute('list', 'receipt-names'); inputs.unit.setAttribute('list', 'units');
     const grid = element('div', undefined, 'price-grid unit-grid'); grid.append(label('Preis (€)', inputs.price), label('Menge', inputs.quantity), label('Einheit', inputs.unit));
     const note = element('p', undefined, 'receipt-note hint');
-    box.append(use, label('Name in der App', inputs.name), label('Sorte oder genaue Bezeichnung (optional)', inputs.variant), grid, ...(item.checks || []).map(text => element('p', text, 'receipt-check')), note);
+    // Statt zu tippen: den Artikel von der eigenen Liste wählen. Die Bonzeile bleibt als genaue Bezeichnung erhalten („G&G Champignons“ bei „Champignons“).
+    const pick = element('select'); pick.name = 'pick'; pick.add(new Option('— so wie auf dem Bon —', ''));
+    for (const name of anchors.slice(0, 250)) pick.add(new Option(name, name));
+    const pickLabel = label('Gehört zu (von deiner Liste wählen)', pick); pickLabel.hidden = !anchors.length;
+    box.append(use, pickLabel, label('Name in der App', inputs.name), label('Sorte oder genaue Bezeichnung (optional)', inputs.variant), grid, ...(item.checks || []).map(text => element('p', text, 'receipt-check')), note);
     const line = { item, inputs, check, box, note, how: guess.how, key: guess.key, suggestion: unsure ? guess.name : '' };
+    line.syncPick = () => { pick.value = anchors.find(name => productKey(name) === productKey(inputs.name.value)) || ''; };
+    pick.addEventListener('change', () => {
+      if (pick.value) { inputs.name.value = pick.value; if (!inputs.variant.value.trim() && productKey(item.name) !== productKey(pick.value)) inputs.variant.value = item.name; }
+      else { inputs.name.value = item.name; inputs.variant.value = ''; }
+      line.how = ''; line.suggestion = ''; refreshReceiptLine(line);
+    });
     for (const node of Object.values(inputs)) node.addEventListener('input', () => { line.how = ''; if (node === inputs.name || node === inputs.variant) line.suggestion = ''; refreshReceiptLine(line); });
     check.addEventListener('change', () => box.classList.toggle('off', !check.checked));
     // Schon eingetragen (dieselbe Bonposition): nicht noch einmal vorschlagen.
@@ -2391,7 +2408,31 @@ function renderPaidNotes() {
   };
   section(box, 'Zu prüfen', review, true);
   section(list, 'Bestätigt', paid, false);
+  // Mit einem Tipp: Bon-Namen („G&G Champignons“) den Artikeln deiner Liste („Champignons“) zuordnen, und alte Notizen auf einmal bestätigen
+  const plan = remapPlan();
+  if (plan.length) list.prepend(button(`Bon-Namen den Artikeln zuordnen (${plan.length})`, () => remapNotes(), 'secondary small'));
+  if (review.length > 1) box.querySelector('h4')?.after(button('Alle zu prüfenden als bezahlt bestätigen', () => confirmAllNotes(), 'secondary small'));
   if (!review.length && !paid.length) list.append(element('p', 'Noch keine bezahlten Preise. Sie entstehen, wenn du die Zeilen eines Kassenbons prüfst und übernimmst.', 'hint'));
+}
+// Bon-Namen, die ein Listenartikel eindeutig enthält („G&G Champignons“ enthält „Champignons“), den Artikeln zuordnen; die Bonzeile bleibt als genaue Bezeichnung erhalten.
+function remapPlan() {
+  const anchors = listNames(), keys = new Set(anchors.map(productKey)), aliases = active(state.aliases || []);
+  return state.prices.filter(row => !row.deletedAt && typeof row.name === 'string' && !keys.has(productKey(row.name))).flatMap(row => {
+    const guess = suggestName({ name: row.name }, aliases, anchors);
+    return (guess.how === 'Marke' || guess.how === 'gemerkt') && productKey(guess.name) !== productKey(row.name) ? [{ row, guess }] : [];
+  });
+}
+function remapNotes() {
+  const plan = remapPlan();
+  if (!plan.length) return;
+  const shown = plan.slice(0, 8).map(({ row, guess }) => `${row.name} → ${guess.name}`).join('\n');
+  if (!confirm(`${plan.length} Preise den Artikeln deiner Liste zuordnen?\n\n${shown}${plan.length > 8 ? '\n…' : ''}\n\nDie Bezeichnung vom Bon bleibt als genaue Bezeichnung erhalten.`)) return;
+  commit(plan.map(({ row, guess }) => nextOp('prices', row.id, { name: guess.name, variant: variantOf(row) || guess.variant || row.name })), `${plan.length} Preise zugeordnet`);
+}
+function confirmAllNotes() {
+  const rows = reviewRows(state.prices);
+  if (!rows.length || !confirm(`Alle ${rows.length} Notizen aus früheren Versionen als bezahlte Preise übernehmen?\n\nFalsch zugeordnete Namen bleiben dabei falsch. Du kannst einzelne danach noch ändern oder vergessen.`)) return;
+  commit(rows.map(row => nextOp('prices', row.id, { src: 'bon' })), `${rows.length} Preise als bezahlt bestätigt`);
 }
 function openNote(id) {
   const row = state.prices.find(entry => entry.id === id && !entry.deletedAt);

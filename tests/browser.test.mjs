@@ -1218,17 +1218,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await line(0).locator('.receipt-check').textContent(), /Menge und Einheit stehen nicht auf dem Bon/);
     await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
     assert.deepEqual((await priced('Apfel')).map(row => row.quote), [{ cents: 129, quantity: 1, unit: 'Position' }]);
-    // 2. „Apfeltasche“ (Gebäck) bleibt „Apfeltasche“; „Bio Apfel“ ist nur ein Vorschlag: im Feld steht, was auf dem Bon steht
-    await parse('REWE Markt GmbH\nApfeltasche 0,69 A\nApfel Saft 1,49 A\nBio Apfel 1,59 A\nSUMME 3,77');
-    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Bio Apfel'], 'nichts wird ohne Bestätigung zugeordnet');
-    assert.ok(!/Vorschlag|Als „/.test(await note(0).textContent()), 'kein Vorschlag für die Apfeltasche');
+    // 2. „Apfeltasche“ (Gebäck) und „Apfel Saft“ bleiben eigene Produkte; „Bio Apfel“ ist eindeutig „Apfel“ (Beigabe „Bio“); „Tomat“ ist nur ein Vorschlag und steht erst nach dem Tipp im Feld
+    await parse('REWE Markt GmbH\nApfeltasche 0,69 A\nApfel Saft 1,49 A\nBio Apfel 1,59 A\nTomat 0,59 A\nSUMME 4,36');
+    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Äpfel', 'Tomat'], 'nur das Eindeutige wird zugeordnet („Bio Apfel“ gehört zu „Äpfel“ auf der Liste)');
+    assert.ok(!/Vorschlag|Als „|Automatisch/.test(await note(0).textContent()), 'kein Vorschlag für die Apfeltasche');
     assert.equal(await note(0).getByRole('button').count(), 0);
     assert.equal(await note(1).getByRole('button').count(), 0);
-    assert.match(await note(2).textContent(), /Noch kein bestätigter Kauf/);
-    await note(2).getByRole('button', { name: 'Als „Apfel“ eintragen' }).click();
-    assert.equal(await line(2).locator('input[name=name]').inputValue(), 'Apfel', 'erst nach dem ausdrücklichen Tipp gilt der Name');
-    assert.equal(await note(2).getByRole('button').count(), 0);
-    assert.match(await note(2).textContent(), /Zuletzt bezahlt: 1,29\s€ laut Bon \(Menge unbekannt\)/);
+    assert.equal(await line(2).locator('input[name=variant]').inputValue(), 'Bio Apfel', 'die Bonzeile bleibt als genaue Bezeichnung');
+    assert.match(await note(2).textContent(), /Automatisch „Äpfel“ zugeordnet \(Bio Apfel\)/);
+    assert.match(await note(2).textContent(), /Noch kein bestätigter Kauf mit dieser Sorte und Menge/, 'Bio Apfel ist eine andere Sorte als „Apfel“ ohne Sorte');
+    await note(3).getByRole('button', { name: 'Als „Tomaten“ eintragen' }).click();
+    assert.equal(await line(3).locator('input[name=name]').inputValue(), 'Tomaten', 'erst nach dem ausdrücklichen Tipp gilt der Name');
+    assert.equal(await note(3).getByRole('button').count(), 0);
+    await line(3).locator('input[type=checkbox]').uncheck();
     await line(2).locator('input[type=checkbox]').uncheck();   // „Bio Apfel“ hier nicht übernehmen
     await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
     assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69]);
@@ -3750,10 +3752,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Im Laden: ohne bestätigte Kaufpreise steht ein Hinweis; ungeprüfte alte Notizen zählen nicht; höchstens ein Feld gleichzeitig; im anderen Geschäft stehen dessen Preise zuerst', async () => {
     const { ctx, page, problems } = await paidContext();
     await open(page);
+    await page.fill('#item-form input[name=name]', 'Zucchini'); await page.click('#item-form button[type=submit]');
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
     const only = async name => { await shopItem(page, name).locator('.shop-text').click(); return page.locator('#shop-list .shop-price').count(); };
-    // Milch (Lidl) hat nur eine ungeprüfte Notiz aus früheren Versionen: noch kein bestätigter Kaufpreis
+    // Milch (Lidl) hat nur ungeprüfte Notizen aus früheren Versionen: noch kein bestätigter Kaufpreis, das Feld weist auf die Notizen hin
     assert.equal(await only('Milch'), 1);
+    assert.equal(await plainText(page.locator('#shop-list .shop-price')), 'Zuletzt bezahlt Noch keine bestätigten Kaufpreise vorhanden. 3 ältere Notizen zu diesem Artikel sind noch nicht bestätigt (Einstellungen → Bezahlte Preise). Vergangene Kaufpreise. Der heutige Preis kann abweichen.');
+    // Ein Artikel ganz ohne Notizen: nur der Satz, kein Hinweis auf unbestätigte Notizen
+    assert.equal(await only('Zucchini'), 1);
     assert.equal(await plainText(page.locator('#shop-list .shop-price')), 'Zuletzt bezahlt Noch keine bestätigten Kaufpreise vorhanden. Vergangene Kaufpreise. Der heutige Preis kann abweichen.');
     // Ein zweites Feld öffnen schließt das erste
     assert.equal(await only('Tomaten'), 1);
@@ -3806,7 +3812,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Halten am Kreis hakt weiter ab; ein offenes Feld bleibt lesbar', async () => {
+  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Gedrückthalten am Namen öffnet und schließt sie; Halten am Kreis hakt weiter ab', async () => {
     const { ctx, page, problems } = await paidContext();
     await open(page);
     await inShop(page, 'Rewe');
@@ -3824,6 +3830,29 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await apples().locator('.shop-chevron').click();
     assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'auch der Pfeil öffnet gesperrt nichts');
     assert.equal(await itemState(page, 'Äpfel'), false);
+    // Den Namen gedrückt halten öffnet die Preisinfo (auch gesperrt); noch einmal gedrückt halten schließt sie
+    const name = '#shop-list .shop-item:has-text("Äpfel") .shop-text', prices = () => page.locator('#shop-list .shop-price').count();
+    await pressAndHold(page, name, 200);
+    assert.equal(await page.locator(`${name}.holding`).count(), 1, 'die Zeile füllt sich, solange man hält');
+    await page.mouse.up();
+    assert.equal(await prices(), 0, 'zu früh losgelassen: nichts');
+    const box = await apples().locator('.shop-text').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 4 });
+    await page.waitForTimeout(700); await page.mouse.up();
+    assert.equal(await prices(), 0, 'wer beim Halten wegzieht (Scrollen), öffnet nichts');
+    await pressAndHold(page, name, 650); await page.mouse.up();
+    assert.equal(await prices(), 1, 'durch Halten geöffnet');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'true');
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Zuletzt bezahlt Bei Rewe Pink Lady 0,79 € pro Stück/);
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
+    assert.equal(await itemState(page, 'Äpfel'), false, 'nichts abgehakt');
+    await apples().locator('.shop-text').click();
+    assert.equal(await prices(), 1, 'ein Tipp schließt gesperrt nichts');
+    await pressAndHold(page, name, 650); await page.mouse.up();
+    assert.equal(await prices(), 0, 'noch einmal gedrückt gehalten: geschlossen');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
     // Das Halten am Kreis geht weiter
     await pressAndHold(page, '#shop-list .shop-item:has-text("Äpfel") .shop-tap', 650); await page.mouse.up();
     assert.equal(await itemState(page, 'Äpfel'), true, 'durch Halten abgehakt');
@@ -3972,6 +4001,106 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await ctx.close();
     });
   }
+
+  test('Kassenbon: „G&G Champignons“, „Farm.Sn.Aprikosen“ und „G&G Senf mittels.“ werden den Listenartikeln selbst zugeordnet; Rest per Auswahl von der Liste; beim nächsten Bon ist alles gemerkt; im Laden steht der Preis unter dem Listenartikel', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    for (const name of ['Champignons', 'Aprikosen', 'Senf', 'Joghurt']) { await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); }
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const parse = async text => {
+      await page.click('#open-receipt'); await sheetOpen(page);
+      await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
+      await page.waitForSelector('#receipt-review:not([hidden])');
+    };
+    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
+    const field = (index, name) => line(index).locator(`input[name=${name}]`).inputValue();
+    // 1. Erster Bon: Die Marke oder Abkürzung vor dem Listennamen stört nicht, die Bonzeile bleibt als genaue Bezeichnung
+    await parse('EDEKA\nG&G Champignons 1,49 A\nFarm.Sn.Aprikosen 3,29 A\nG&G Senf mittels. 0,59 A\nHerz.Naturjoghurt 0,89 A\nApfeltasche 1,19 A\nSUMME 7,45');
+    const names = await Promise.all([0, 1, 2, 3, 4].map(index => field(index, 'name'))), variants = await Promise.all([0, 1, 2, 3, 4].map(index => field(index, 'variant')));
+    assert.deepEqual(names, ['Champignons', 'Aprikosen', 'Senf', 'Herz.Naturjoghurt', 'Apfeltasche'], 'drei Zeilen ordnet die App selbst zu, „Naturjoghurt“ und „Apfeltasche“ nicht');
+    assert.deepEqual(variants, ['G&G Champignons', 'Farm.Sn.Aprikosen', 'G&G Senf mittels.', '', '']);
+    assert.match(await line(0).locator('.receipt-note').textContent(), /Automatisch „Champignons“ zugeordnet \(G&G Champignons\)/);
+    assert.equal(await line(0).locator('select[name=pick]').inputValue(), 'Champignons', 'die Auswahl zeigt den Listenartikel');
+    assert.equal(await line(4).locator('.receipt-note button').count(), 0, 'für die Apfeltasche gibt es keinen Vorschlag');
+    // Ohne Tippen: „Naturjoghurt“ wird aus der Liste gewählt, die Bonzeile bleibt als Bezeichnung
+    await line(3).locator('select[name=pick]').selectOption('Joghurt');
+    assert.equal(await field(3, 'name'), 'Joghurt');
+    assert.equal(await field(3, 'variant'), 'Herz.Naturjoghurt');
+    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice-text'), /^5 Preise gemerkt/);
+    const data = await stored(), paid = name => data.prices.filter(row => row.src === 'bon' && row.name === name);
+    assert.deepEqual(['Champignons', 'Aprikosen', 'Senf', 'Joghurt', 'Apfeltasche'].map(name => paid(name).length), [1, 1, 1, 1, 1]);
+    assert.equal(paid('Champignons')[0].variant, 'G&G Champignons');
+    assert.equal(paid('Joghurt')[0].variant, 'Herz.Naturjoghurt');
+    // 2. Nächster Bon: alles ist gemerkt, nichts muss noch gewählt werden
+    await parse('EDEKA\nG&G Champignons 1,59 A\nHerz.Naturjoghurt 0,95 A\nSUMME 2,54\nDatum 01.10.2026');
+    assert.deepEqual([await field(0, 'name'), await field(1, 'name')], ['Champignons', 'Joghurt']);
+    assert.match(await line(0).locator('.receipt-note').textContent(), /Zuordnung gemerkt/);
+    assert.match(await line(1).locator('.receipt-note').textContent(), /Zuordnung gemerkt/);
+    await page.keyboard.press('Escape');
+    // 3. Im Laden: der Listenartikel zeigt den bezahlten Preis mit der Bonzeile als Bezeichnung
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
+    await shopItem(page, 'Champignons').locator('.shop-text').click();
+    const text = await plainText(page.locator('#shop-list .shop-price'));
+    assert.match(text, /G&G Champignons 1,49 € laut Bon \(Menge unbekannt\)/, text);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Bezahlte Preise: Bon-Namen den Listenartikeln mit einem Tipp zuordnen; alle zu prüfenden auf einmal bestätigen; das Preisfeld weist auf unbestätigte Notizen hin', async () => {
+    const data = structuredClone(demo);
+    const row = (name, storeId) => ({ id: `item-${name}`, storeId, name, quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {}, onSale: false, price: null });
+    data.items.push(row('Champignons', 'store-edeka'), row('Aprikosen', 'store-edeka'), row('Apfeltasche', 'store-lidl'));
+    data.prices.push(paidRow('pb1', 'G&G Champignons', 'store-edeka', '2026-10-27', pq(149, 1, 'Position')), paidRow('pb2', 'Farm.Sn.Aprikosen', 'store-edeka', '2026-10-27', pq(329, 1, 'Position')),
+      paidRow('pb3', 'Apfeltasche', 'store-lidl', '2026-10-27', pq(119), { src: undefined }), paidRow('pb4', 'Apfel Saft', 'store-lidl', '2026-10-27', pq(199, 1, 'l')));
+    data.sync.minRev = 3;
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.prices);
+    // Vorher: „G&G Champignons“ ist ein eigenes Produkt, im Laden steht unter „Champignons“ nichts
+    await inShop(page, 'Edeka');
+    await shopItem(page, 'Champignons').locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Noch keine bestätigten Kaufpreise vorhanden/);
+    await page.click('#shop-back'); await openSettings(page);
+    if (!(await page.locator('#paid-details').evaluate(node => node.open))) await page.click('#paid-details > summary');
+    const button = page.getByRole('button', { name: /^Bon-Namen den Artikeln zuordnen \(2\)$/ });
+    assert.equal(await button.count(), 1, 'genau zwei Namen sind eindeutig; „Apfel Saft“ ist ein eigenes Produkt');
+    let asked = '';
+    page.once('dialog', dialog => { asked = dialog.message(); dialog.accept(); });
+    await button.click();
+    assert.match(asked, /G&G Champignons → Champignons/);
+    assert.match(asked, /Farm\.Sn\.Aprikosen → Aprikosen/);
+    assert.ok(!/Apfel Saft/.test(asked));
+    const after = await stored();
+    assert.deepEqual(['pb1', 'pb2', 'pb4'].map(id => { const entry = after.find(price => price.id === id); return [entry.name, entry.variant || '']; }), [['Champignons', 'G&G Champignons'], ['Aprikosen', 'Farm.Sn.Aprikosen'], ['Apfel Saft', '']]);
+    assert.equal(await page.getByRole('button', { name: /^Bon-Namen den Artikeln zuordnen/ }).count(), 0, 'nichts mehr zuzuordnen');
+    await goTab(page, 'shopping'); await inShop(page, 'Edeka');
+    await shopItem(page, 'Champignons').locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /G&G Champignons 1,49 € laut Bon \(Menge unbekannt\)/);
+    // Die unbestätigte Notiz zur Apfeltasche (Lidl) zählt nicht, das Preisfeld sagt es
+    await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
+    await shopItem(page, 'Apfeltasche').locator('.shop-text').click();
+    const hint = await plainText(page.locator('#shop-list .shop-price'));
+    assert.match(hint, /Noch keine bestätigten Kaufpreise vorhanden/);
+    assert.match(hint, /Eine ältere Notiz zu diesem Artikel ist noch nicht bestätigt \(Einstellungen → Bezahlte Preise\)/);
+    // Alle zu prüfenden auf einmal bestätigen (mit Rückfrage)
+    await page.click('#shop-back'); await openSettings(page);
+    const before = await page.locator('#paid-review .paid-note').count();
+    assert.ok(before > 1);
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.getByRole('button', { name: 'Alle zu prüfenden als bezahlt bestätigen' }).click();
+    assert.equal(await page.locator('#paid-review .paid-note').count(), before, 'abgebrochen: nichts bestätigt');
+    page.once('dialog', dialog => { assert.match(dialog.message(), new RegExp(`Alle ${before} Notizen`)); dialog.accept(); });
+    await page.getByRole('button', { name: 'Alle zu prüfenden als bezahlt bestätigen' }).click();
+    assert.equal(await page.locator('#paid-review .paid-note').count(), 0);
+    assert.ok((await stored()).every(price => price.deletedAt || price.src === 'bon'));
+    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
+    await shopItem(page, 'Apfeltasche').locator('.shop-text').click();
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Apfeltasche – Sorte unbekannt 1,19 € pro Stück Lidl · 27\.10\.2026/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 
   test('Artikelzeile ist kompakt: Name und Menge in einer Zeile, darunter klein die Person; unter „Planen“ steht in der Zeile kein Preis, Vergleich oder Entwicklung', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });

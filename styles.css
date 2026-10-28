@@ -3535,6 +3535,15 @@ body.shop-locked .toast {
   color:var(--on-accent);
   transition:background-color var(--hold,500ms) linear,color var(--hold,500ms) linear
 }
+.shop-text.holding {
+  background:var(--accent-soft);
+  transition:background-color var(--hold,500ms) linear
+}
+.shop-text.holding .shop-chevron {
+  color:var(--accent);
+  transform:scale(1.25);
+  transition:transform var(--hold,500ms) linear,color var(--hold,500ms) linear
+}
 .shop-done summary.holding {
   background:var(--accent);
   color:var(--on-accent);

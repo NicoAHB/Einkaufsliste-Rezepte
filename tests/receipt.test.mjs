@@ -215,3 +215,45 @@ test('Sorten: nur eine bekannte Sorte mit dem Wort der Gruppe wird erkannt; Apfe
   const alias = [{ from: 'gala äpfel', name: 'Äpfel', variant: 'Gala' }];
   assert.deepEqual(suggestName({ name: 'GALA ÄPFEL 1KG', text: '' }, alias, []), { name: 'Äpfel', variant: 'Gala', how: 'gemerkt', key: 'gala äpfel' });
 });
+
+test('Marke oder Abkürzung vor dem Listennamen: „G&G Champignons“, „Farm.Sn.Aprikosen“ und „G&G Senf mittels.“ gehören zu Champignons, Aprikosen und Senf', () => {
+  const known = ['Champignons', 'Aprikosen', 'Senf', 'Joghurt', 'Apfel', 'Milch', 'Tomaten'];
+  const name = text => suggestName({ name: text, text: '' }, [], known);
+  assert.deepEqual([name('G&G Champignons').name, name('G&G Champignons').variant, name('G&G Champignons').how], ['Champignons', 'G&G Champignons', 'Marke']);
+  assert.deepEqual([name('Farm.Sn.Aprikosen').name, name('Farm.Sn.Aprikosen').variant], ['Aprikosen', 'Farm.Sn.Aprikosen']);
+  assert.deepEqual([name('G&G Senf mittels.').name, name('G&G Senf mittels.').variant], ['Senf', 'G&G Senf mittels.']);
+  assert.equal(name('Ja! Milch').name, 'Milch', 'bekannte Handelsmarke');
+  assert.equal(name('Rewe Bio Tomaten').name, 'Tomaten');
+  assert.equal(name('Bio Apfel').name, 'Apfel', 'Beigabe „Bio“: die Bezeichnung bleibt als Sorte erhalten');
+  assert.equal(name('Bio Apfel').variant, 'Bio Apfel');
+  assert.equal(name('G&G Aprikose').name, 'Aprikosen', 'Einzahl und Mehrzahl sind dasselbe Wort');
+  assert.equal(name('Farm.Sn.Aprikosen').how, 'Marke', 'automatisch, keine Rückfrage nötig');
+  // Ohne Marke und ohne Zusatz gilt der gewöhnliche Vergleich
+  assert.deepEqual([name('Champignons').name, name('Champignons').how], ['Champignons', '']);
+});
+
+test('Marke oder Abkürzung macht aus einem anderen Produkt nie den Listenartikel: Apfeltasche, Apfel Saft, Tomaten Mark, Milch Reis, Hafermilch, Naturjoghurt', () => {
+  const known = ['Apfel', 'Tomaten', 'Milch', 'Joghurt', 'Senf', 'Aprikosen'];
+  const name = text => suggestName({ name: text, text: '' }, [], known);
+  for (const text of ['Apfeltasche', 'G&G Apfeltasche', 'Apfel Saft', 'G&G Apfel Saft', 'Apfel.Mus', 'Tomaten Mark', 'G&G Milch Reis', 'Hafermilch', 'Herz.Naturjoghurt', 'G&G Senf Gurken', 'Farm Aprikosen Joghurt', 'Ja! Joghurt Milch']) {
+    const result = name(text);
+    assert.equal(result.how, '', `${text} bleibt ein eigenes Produkt (${result.name})`);
+    assert.equal(result.name, text);
+  }
+  // „Mus“ als Abkürzung („Apfel.Mus“) ändert nichts: Produktwörter sind nie ungefährlich
+  assert.equal(name('G&G Senf').name, 'Senf');
+});
+
+test('Gelernte Marke: nach einer bestätigten Zuordnung gilt ein unbekanntes Markenwort künftig als ungefährlich', () => {
+  const known = ['Joghurt', 'Milch'];
+  const line = text => suggestName({ name: text, text: '' }, [], known);
+  assert.equal(line('Müller Joghurt').how, '', 'ein unbekanntes Wort ohne Punkt: erst einmal nicht sicher');
+  const aliases = [{ from: 'müller milch', name: 'Milch', variant: 'Müller Milch' }];
+  const after = suggestName({ name: 'Müller Joghurt', text: '' }, aliases, known);
+  assert.deepEqual([after.name, after.variant, after.how], ['Joghurt', 'Müller Joghurt', 'Marke']);
+  // Ein gelerntes Wort macht ein Produktwort nicht ungefährlich
+  const bad = [{ from: 'apfel saft', name: 'Apfel', variant: 'Apfel Saft' }];
+  assert.equal(suggestName({ name: 'Apfel Saft Bio', text: '' }, bad, ['Apfel']).how, '');
+  // Eine ausdrücklich gemerkte Zuordnung hat Vorrang
+  assert.equal(suggestName({ name: 'Müller Milch', text: '' }, aliases, known).how, 'gemerkt');
+});
