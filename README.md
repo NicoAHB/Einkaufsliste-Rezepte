@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.38
+# Einkauf & Rezepte – Version 2.39
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.39: „Gericht planen“ fragt den Tag nicht noch einmal
+
+Wer im Wochenplan am Montag auf **＋** tippt, musste im Fenster „Gericht planen“ noch einmal den Tag wählen. Das war doppelt.
+
+- **Vom Tag aus (＋ am Tag) und beim Ändern** gibt es keine Tagesauswahl mehr. Der Tag steht in der Überschrift: „Gericht planen – Montag 26.10.“ (beim Ändern „Gericht ändern – Montag 26.10.“). Der Tag ist etwas kleiner geschrieben wie auf den Tageskarten; in sehr schmalen Fenstern rutscht er in die zweite Zeile, bricht aber nie mitten im Datum um.
+- **Von der Rezeptkarte aus** (Kalender-Symbol) ist noch kein Tag gewählt. Dort bleibt die Tagesauswahl, sonst ließe sich das Rezept nur auf heute legen.
+- **Folge:** Ein geplantes Gericht auf einen anderen Tag zu legen geht nicht mehr im Ändern-Fenster; dafür das Gericht entfernen und am anderen Tag neu planen (oder von der Rezeptkarte aus mit Tagesauswahl).
+- **Test:** Ein Browser-Test prüft Überschrift und fehlende Tagesauswahl vom Tag aus und beim Ändern (auch in schmalen Fenstern bei 390, 320 und 280 px), dass das Gericht am richtigen Tag landet, und dass die Rezeptkarte weiter die Tagesauswahl hat und das Gericht auf den gewählten Tag legt. Vier eingebaute Fehler wurden erkannt.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone (geprüft im Chromium-Browser mit iPhone-13-Emulation).
+
+Weiterer Testpunkt für Version 2.39:
+
+- [ ] Wochenplan: ＋ am Donnerstag tippen: Überschrift „Gericht planen – Donnerstag …“, **keine** Tagesauswahl; speichern legt das Gericht auf Donnerstag. Von einer Rezeptkarte aus (Kalender-Symbol) gibt es weiter die Tagesauswahl.
 
 ## Neu in Version 2.38: Überschriften in Fenstern schimmern nicht mehr durch
 
@@ -634,7 +648,7 @@ Die Einkaufsliste ist nach Gängen im Laden geordnet: Obst & Gemüse, Brot & Bac
 ### Wochenplan (neuer Tab „Plan“)
 
 - Sieben Tage, Montag bis Sonntag, mit Wochen-Blättern („KW 44 · 26.10.–01.11.“) und „Heute“. Der heutige Tag ist hervorgehoben.
-- **Gericht planen:** mit **＋** am Tag oder mit dem Kalender-Symbol auf einer Rezeptkarte. Wähle ein Rezept (Favoriten stehen oben) und die Portionen, oder ein **eigenes Gericht** ohne Rezept („Pizza bestellen“).
+- **Gericht planen:** mit **＋** am Tag (der Tag steht dann in der Überschrift, z. B. „Gericht planen – Montag 26.10.“, und wird nicht noch einmal gefragt) oder mit dem Kalender-Symbol auf einer Rezeptkarte (dort wählst du den Tag). Wähle ein Rezept (Favoriten stehen oben) und die Portionen, oder ein **eigenes Gericht** ohne Rezept („Pizza bestellen“).
 - **Gekocht abhaken:** Der Haken merkt sich am Rezept das Kochdatum („gekocht vor 3 Tagen“).
 - **Einkauf für die Woche:** zählt die Zutaten aller geplanten Gerichte **zusammen** und rechnet auf die geplanten Portionen um. 800 g + 400 g Tomaten werden 1,2 kg, g und kg bzw. ml und l werden zusammengerechnet. Unterschiedliche Einheiten wie „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt; „Zwiebel“ und „Zwiebeln“ gelten als verschiedene Namen. Unter jeder Zeile steht, aus welchem Rezept sie stammt. Schon gekochte Gerichte lassen sich auslassen; „nach Bedarf“-Zutaten sind abgewählt. Danach wählst du das Geschäft und übernimmst die Auswahl auf die Einkaufsliste.
 - Tippen auf den Namen eines Gerichts springt zum Rezept. Entfernen geht mit dem Mülleimer.
