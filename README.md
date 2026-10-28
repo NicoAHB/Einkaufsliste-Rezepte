@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.43
+# Einkauf & Rezepte – Version 2.44
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -6,7 +6,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 - Einkaufsliste für **alle Geschäfte zusammen** (Startseite) oder je Geschäft (Edeka, Lidl, Rewe; weitere anlegen, umbenennen, löschen). Ein Geschäft ist beim Hinzufügen mit einem Tipp wählbar, aber nicht nötig.
 - Artikel mit Menge, Einheit und dem Namen der Person hinzufügen und bearbeiten; abhaken, löschen und erledigte Artikel gemeinsam entfernen. Erledigtes steht unten.
-- Pro Geschäft einstellbare Angebotslinks, manuell notierte Preise mit Bezugsmenge, Angebotsmarkierungen, letzter Preisvergleich und geschätzte Summe der noch offenen Artikel.
+- Pro Geschäft einstellbare Angebotslinks, eigene Preise am Artikel mit Bezugsmenge, Angebotsmarkierungen und geschätzte Summe der noch offenen Artikel. Einen Preisverlauf oder Preisvergleich gibt es nicht (Version 2.44).
 - Keine Rückgängig-Leiste: Ein Artikel, Geschäft, Rezept oder Gericht wird mit dem Mülleimer entfernt, versehentlich Entferntes legt man neu an. Kurze Hinweise (z. B. wo ein neuer Artikel steht) verschwinden nach wenigen Sekunden von selbst. Häkchen werden durch erneutes Antippen geändert.
 - Beim Tippen passende Artikelnamen aus eurem bisherigen Einkaufsverlauf übernehmen, auch nach dem Löschen und offline.
 - Rezepte mit einzelnen Zutaten, Zubereitung, Portionen, Tags und optionaler Quelle anlegen, bearbeiten, löschen; nach Rezept/Zutat/Tag suchen und nach Tag filtern. **Neu:** Import aus Link, Screenshot und Text (Abschnitt „Neu in Version 1.3“).
@@ -16,7 +16,37 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
 
+## Neu in Version 2.44: Preiserkennung entfernt, Schrift im Laden wie in der Einkaufsliste
+
+**Warum die Preiserkennung wieder entfernt wurde.** Die Funktion aus den Versionen 2.41 bis 2.43 („Zuletzt bezahlt“ im Laden, Bonzeilen den Artikeln der Liste zuordnen) hat sich im Alltag nicht bewährt: Auf dem Bon steht „G&G Champignons“, „Naturjoghurt“ oder „Herz.Naturjoghurt“, auf der Liste „Champignons“ oder „Joghurt“. Ob zwei Namen dasselbe Produkt meinen, ist **Bedeutungswissen**: „Naturjoghurt“ ist ein Joghurt, „Hafermilch“ ist keine Milch, „Apfeltasche“ ist kein Apfel. Mit festen Regeln lässt sich das nicht für Tausende Produkte zuverlässig entscheiden; dafür bräuchte man eine Produktdatenbank oder eine laufende Rückfrage bei jedem Einkauf, und beides ist nicht gewollt. Ein **falscher Preis ist schlimmer als gar keiner**. Deshalb gibt es die Funktion nicht mehr, statt sie halb zuverlässig anzubieten.
+
+**Was entfernt ist**
+- Im Laden: die Preisinfo „Zuletzt bezahlt“ (Pfeil am Namen, Gedrückthalten des Namens gesperrt). Name und Menge sind nur noch Anzeige; abgehakt wird wie immer über den Kreis links.
+- Der Kassenbon-Dialog für Artikelpreise („Kassenbon einfügen“, „Beenden und Kassenbon einfügen“, „Danach die Artikelpreise prüfen und übernehmen“), die automatische und die vorgeschlagene Namenszuordnung, „Bon-Namen den Artikeln zuordnen“ und „Alle zu prüfenden als bezahlt bestätigen“.
+- Unter Einstellungen: der Bereich „Bezahlte Preise“.
+- Im Code: `history.js` und die Namenslogik in `receipt.js` (`suggestName`, Sorten, Marken).
+
+**Was bleibt**
+- Eigene Preise am Artikel (Schätzung), die **geschätzte Summe**, Angebotsmarkierungen und die Angebotsseite je Geschäft.
+- **Ausgaben:** Betrag von Hand oder aus einem Kassenbon-Foto/Screenshot (Summe, Datum und Geschäft als Vorschlag), Monatsübersicht und Budget. `receipt.js` liest dafür weiter Summe, Datum und Kette aus dem Bontext.
+- **Gemerkte Namen** (Einstellungen): bestätigte Schreibweisen („Zwiebel“ → „Zwiebeln“) für Vorschläge und Zusammenzählen.
+
+**Daten:** Nichts wird gelöscht oder verändert. Die Sammlungen `prices` und `aliases` in der Datei bleiben, wie sie sind (auch die Felder `src`, `variant`, `receipt`, `receiptKey`); die App liest und prüft sie weiter, zeigt sie aber nicht mehr an und schreibt keine neuen Preisnotizen. Das **Aufräumen** (Datenumfang) behandelt sie wie bisher. Wer die Funktion zurückhaben will: Version 2.43 steht im Verlauf des Repositorys (Commit `f10a576`).
+
+**Schrift im Laden.** Name und Menge sind jetzt so groß wie in der Einkaufsliste unter „Planen“ (vorher 1,3-fach und 1,05-fach). Lange Namen brechen dadurch seltener um.
+
+**Tests:** `tests/browser.test.mjs`: Schriftgröße im Laden gleich der unter „Planen“, kein Pfeil und keine Preisinfo, ein Tipp auf den Namen tut nichts; kein Kassenbon-Weg und kein Bereich „Bezahlte Preise“; vorhandene Preisnotizen und Zuordnungen bleiben nach neuen Änderungen unverändert in der Datei; Gemerkte Namen. `tests/receipt.test.mjs` prüft nur noch das Lesen von Summe, Datum, Kette und Zeilen. Die Tests für die Preisinfo, die Bon-Zuordnung und `history.js` entfallen.
+
+Testpunkte für Version 2.44 (iPhone):
+
+- [ ] Im Laden: Name und Menge der Artikel sind so groß wie in der Einkaufsliste; lange Namen („Blumenerde“, „Domol Feinwaschmittel“) brechen seltener um. Ein Tipp auf den Namen bewirkt nichts, der Kreis hakt ab.
+- [ ] Einkauf beenden: nur „Was hast du bezahlt?“ mit „+“ und „Nur beenden“, kein Kassenbon-Knopf. Einkauf/„Preisschild“: Angebote wie bisher, kein „Kassenbon“-Knopf mehr.
+- [ ] Einstellungen: kein Bereich „Bezahlte Preise“; „Gemerkte Namen“ zeigt „Text → Name“.
+- [ ] Ausgaben → Einkauf eintragen: Kassenbon-Foto/Screenshot liest Summe, Datum und Geschäft; es gibt keinen Haken für Artikelpreise.
+
 ## Neu in Version 2.43: Bon-Zeilen ordnen sich selbst den Artikeln zu
+
+> **In Version 2.44 wieder entfernt** (siehe oben). Der Abschnitt bleibt als Geschichte stehen.
 
 Auf dem Bon steht „G&G Champignons“, „Farm.Sn.Aprikosen“ oder „G&G Senf mittels.“, auf deiner Liste „Champignons“, „Aprikosen“, „Senf“. Niemand tippt den Bon-Text ab, und jede Zeile einzeln zu bestätigen ist zu aufwendig. Deshalb gilt jetzt:
 
@@ -37,6 +67,8 @@ Testpunkte für Version 2.43 (iPhone):
 
 ## Neu in Version 2.42: Preisinfo auch gesperrt, per Gedrückthalten
 
+> **In Version 2.44 wieder entfernt** (siehe oben). Der Abschnitt bleibt als Geschichte stehen.
+
 Im Modus „Im Laden“ lässt sich die Preisinfo „Zuletzt bezahlt“ jetzt auch **bei gesperrter Ansicht** öffnen: den **Namen** (mit Menge, Symbol und Pfeil) eines Artikels **gedrückt halten**. Noch einmal gedrückt halten schließt sie wieder. Ein einfacher Tipp bewirkt gesperrt weiter nichts (der Knopf zum Entsperren leuchtet auf). Der Name ist damit die vierte Fläche, die gesperrt per Gedrückthalten reagiert (neben Kreis, Geschäft und „Erledigt“); während des Haltens färbt sich die Zeile und der Pfeil wächst. Zu früh loslassen oder Wegziehen (Scrollen) öffnet nichts; die Sperre bleibt bestehen. Ungesperrt öffnet wie bisher ein Tipp.
 
 Testpunkt für Version 2.42:
@@ -44,6 +76,8 @@ Testpunkt für Version 2.42:
 - [ ] Gesperrt (Schloss): Namen eines Artikels kurz antippen: nichts, Entsperren-Knopf leuchtet. Namen halten: Preisinfo klappt auf; noch einmal halten: sie schließt. Der Artikel wird dabei nicht abgehakt, die Ansicht bleibt gesperrt.
 
 ## Neu in Version 2.41: Verlauf bezahlter Preise („Zuletzt bezahlt“) nur im Modus „Im Laden“
+
+> **In Version 2.44 wieder entfernt** (siehe oben). Der Abschnitt bleibt als Geschichte stehen.
 
 Die Preisfunktion wurde umgebaut. Ziel ist ein zuverlässiger Verlauf **tatsächlich bezahlter** Preise, der nur im Laden und nur auf Wunsch sichtbar wird. Er **ersetzt** Preisvergleich, Preisentwicklung („▲ Teurer / ▼ Günstiger“) und die selbst eingetragenen gemerkten Preise aus den Versionen 1.5 bis 1.9. Architektur, Offline-Nutzung und gemeinsame Synchronisierung sind unverändert (Sammlung `prices`, neues Modul `history.js`).
 
@@ -836,7 +870,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `history.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -925,13 +959,13 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | `recipes` | zusätzlich `name`, `servings`, `tags`, `instructions`; optional `sourceUrl` (Quelle eines importierten Rezepts), `favorite` (Wahrheitswert), `lastCookedAt` (Datum `JJJJ-MM-TT`), `photoId` (Kennung der Datei `photos/<photoId>.jpg` im Daten-Repo; `null` = kein Foto) |
 | `meals` (optional) | Wochenplan: `date` (`JJJJ-MM-TT`), `servings`, entweder `recipeId` oder `title` (eigenes Gericht), optional `done` |
 | `ingredients` | zusätzlich `recipeId`, `name`, `quantity`, `unit`; die Einheit `nach Bedarf` (Menge 1) steht für Zutaten ohne Mengenangabe |
-| `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln |
+| `prices` (optional) | Einzelne Preisnotizen mit ID, `storeId`, `name`, `quote`, optional `regularQuote`, `onSale` und denselben Zeitstempeln; seit Version 2.41 auch `src`, `variant`, `receipt`, `receiptKey`. Seit Version 2.44 liest und prüft die App sie weiter, zeigt sie aber nicht mehr an und schreibt keine neuen |
 | `pantry` (optional) | Vorrat (Version 1.6): `name` und die üblichen Zeitstempel |
 | `names` (optional) | Namensgedächtnis aus aufgeräumten Artikeln (Version 1.6): `name`, `count`, `at`, optional `category`, `unit` |
 | `templates` (optional) | Einkaufsvorlagen (Version 2.5): `name` (höchstens 60 Zeichen) und `items`: bis zu 80 Artikel `{ name, quantity, unit, storeId? }`; die ganze Artikelliste wird als ein Feld zusammengeführt (die neuere Fassung gewinnt) |
 | `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`), `estimate` (Version 2.21: geschätzte Summe der abgehakten Artikel in Cent, nur bei „Einkauf beenden“ mit Betrag); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Beim Aufräumen entfallen Einträge, die älter als 36 Monate sind |
 | `budgets` (optional) | Monatsbudget (Version 2.21): eine Zeile mit der festen Kennung `monthly` und `cents` (ganze Cent, 0 = kein Budget); beide Geräte setzen dieselbe Zeile, der jüngere Wert gewinnt |
-| `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), z. B. aus Kassenbons und Schreibweisen: `from` (normalisierter Text, z. B. `tom cherry`), `name` (Name in der App) |
+| `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), heute nur noch Schreibweisen („Zwiebel“ → „Zwiebeln“): `from` (normalisierter Text), `name` (Name in der App), optional `variant` (nur von Version 2.41 bis 2.43 geschrieben, wird nicht mehr angezeigt) |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung (wird beim Aufräumen auf die letzten 600 gekürzt); `sync.compactedAt` nennt den Zeitpunkt des letzten Aufräumens |
 
 Ein Preis ist ein zusammengehöriges Objekt `{ "cents": 199, "quantity": 500, "unit": "g" }`: 199 Cent für 500 g. Dieses Objekt wird als ein Feld zusammengeführt, damit bei gleichzeitiger Bearbeitung Preis und Bezugsmenge nicht vermischt werden. Jede ausdrücklich geänderte Preisnotiz erhält eine eigene ID; der neueste passende Eintrag je Geschäft wird anhand von `createdAt` und ID bestimmt. Wiederholtes Senden derselben Operation erzeugt keine doppelte Preisnotiz. `stores.offersUrl` ist optional; ein leerer String deaktiviert den Link. `items.price` enthält den normalen Preis, `items.salePrice` optional den Angebotspreis mit eigener Bezugsmenge. `onSale` bestimmt, welcher Preis zur Schätzung verwendet wird. Preisnotizen enthalten in `quote` den verwendeten Preis und optional in `regularQuote` den bekannten Normalpreis. Alte Dateien ohne `prices` werden als leere Preisliste gelesen, ohne andere Daten zu verändern. Artikelvorschläge werden aus den bestehenden Artikeln abgeleitet; dafür gibt es keine neue Collection. Die Schema-Version bleibt 1, weil nur optionale Felder ergänzt wurden. Version 1.8 ergänzt optional: `items._base`/`items._adds` (Mengenzuwächse, siehe oben), `items.saleUntil` und `prices.saleUntil` (letzter Tag eines Angebots), `prices.trend` (`{ was, at }`, Preisentwicklung) und die Sammlung `aliases`. Auch `recipes.sourceUrl` (Version 1.3), `items.category`, `recipes.favorite`, `recipes.lastCookedAt`, `recipes.photoId` und die ganze Liste `meals` (Version 1.4) sowie `pantry`, `names` und `sync.compactedAt` (Version 1.6) sind optional; ältere App-Versionen auf einem zweiten Gerät ignorieren diese Felder, löschen sie aber nicht. Wer zwischen den Versionen wechselt, sieht dort lediglich Wochenplan, Kategorien und Fotos nicht.
@@ -1032,14 +1066,12 @@ Weitere Testpunkte für Version 1.9:
 - [ ] Einkauf → **Im Laden**: Edeka antippen, Artikel abhaken, zu Lidl wechseln. Ein Artikel ohne Geschäft, den ihr bei Edeka abgehakt habt, steht bei Lidl nicht mehr.
 - [ ] „Bildschirm anlassen“ einschalten: Der Bildschirm bleibt an, solange die Ladenansicht offen ist, und wird beim Wechsel zu „Rezepte“ wieder freigegeben.
 - [ ] Die Partnerin ergänzt unterwegs einen Artikel: Er steht gelb oben („neu von …“), „Übernehmen“ reiht ihn ein.
-- [ ] **Einkauf beenden → Beenden und Kassenbon einfügen:** Abgehaktes ist von der Liste entfernt, der Kassenbon-Dialog öffnet sich.
+- [ ] **Einkauf beenden → Nur beenden:** Abgehaktes ist von der Liste entfernt, die App steht wieder in der Liste.
 
 Weitere Testpunkte für Version 1.8 (auf beiden Geräten aktualisieren):
 
 - [ ] **Gleichzeitig dazuzählen:** Auf der Liste steht „Milch 1“. Ein Gerät in den Flugmodus, auf beiden Geräten je „Milch“ hinzufügen, Flugmodus aus: Ergebnis „3“.
 - [ ] **Neu von …:** Auf einem Gerät einen Artikel anlegen und ein zweites Mal „Milch“ dazuzählen. Auf dem anderen Gerät stehen beide gelb oben („neu von …“, „+1 von …“); „Übernehmen“ reiht sie ein, nach Neuladen bleiben sie übernommen.
-- [ ] **Kassenbon:** Den Text eines digitalen Bons einfügen, „Auswerten“: Summe stimmt? Namen prüfen, einen abweichenden Namen von Hand ändern, speichern. Beim nächsten Bon erscheint „Zuordnung gemerkt“.
-- [ ] **Preisänderung:** Einen Bon einfügen, bei dem ein bekanntes Produkt teurer oder günstiger geworden ist: roter oder grüner Hinweis in der Vorschau und danach am Artikel auf der Liste. Ein Aktionsartikel (mit Rabattzeile) löst keinen Hinweis aus.
 - [ ] **Angebot mit Datum:** An einem Artikel „Im Angebot“ mit „gültig bis“ gestern speichern: „Angebot abgelaufen“, die Schätzung nimmt den normalen Preis. Preisvergleich im Stift-Dialog: „zuletzt eingetragen am …“.
 - [ ] **Schreibweise:** „Zwiebel“ tippen: Vorschlag „Zwiebeln“ antippen, später wieder „Zwiebel“ tippen und hinzufügen: es erscheint „Zwiebeln“.
 - [ ] **Tastatur:** In „Was brauchst du?“ tippen, dann auf freie Fläche neben der Liste tippen: die Tastatur klappt weg. Dasselbe beim Eintragen einer neuen Zutat im Rezept.
@@ -1092,7 +1124,7 @@ npm run test:browser     # mobiles Chromium (npm i -D playwright; npx playwright
 ```
 
 - `tests/compact.test.mjs`: Aufräumen (Fristen für gelöschte und erledigte Artikel, Folgen für Zutaten/Preise/Artikel entfernter Rezepte und Geschäfte, Zeitstempel und Sammelmarke, verwaiste Änderungen eines alten Geräts, Namensgedächtnis, Simulation von einem Jahr Nutzung mit rund 20 Artikeln pro Woche). `tests/list.test.mjs`: Zusammenzählen gleicher Artikel (Einheiten, Geschäfte, „nach Bedarf“) und Vorrat.
-- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Namensvorschläge. `tests/trend.test.mjs`: sichere Preisänderungen, Aktionen, Umrechnung, 60-Tage-Frist, Zuordnungen, Aufräumen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“. `tests/browser.test.mjs` prüft zusätzlich das zugeklappte Formular, das Antippen von Zeilen, die Einstellungen und den `?add=`-Link. `tests/shop.test.mjs`: Modus „Im Laden“ (Geschäft wählen, Artikel ohne Geschäft, erst Edeka dann Lidl).
+- `tests/receipt.test.mjs`: Kassenbons im Stil von Rewe, Lidl, Edeka und PDF-Text (Gewicht, Stückzahl, Größen, Rabatt, Pfand, Summenprobe, Datum, Geschäft), Summe, Datum und Kette (seit Version 2.44 keine Namensvorschläge mehr). `tests/aliases.test.mjs`: Schreibweisen und Zuordnungen. `tests/offers.test.mjs`: Gültigkeit von Angeboten, Alter von Preisen. `tests/concurrent.test.mjs`: Mengen bei gleichzeitigem Zusammenzählen (alle Reihenfolgen, Einheiten, Zusammenführen von Doppeln, Aufräumen). `tests/names.test.mjs`: Schreibweisen, Schnellwahl. `tests/cook.test.mjs`: Schritte. `tests/news.test.mjs`: „Neu von …“. `tests/browser.test.mjs` prüft zusätzlich das zugeklappte Formular, das Antippen von Zeilen, die Einstellungen und den `?add=`-Link. `tests/shop.test.mjs`: Modus „Im Laden“ (Geschäft wählen, Artikel ohne Geschäft, erst Edeka dann Lidl).
 - `tests/data.test.mjs`, `tests/prices.test.mjs`: Beispielmodell, feldweises Zusammenführen, Reihenfolgeunabhängigkeit, doppelte Übertragung, Löschmarkierungen, Portionsübernahme, Versionsschutz, deutsche Mengeneingaben, Preisrechnung.
 - `tests/recipe-import.test.mjs`: Zutatenzeilen (Brüche, Bereiche, Einheiten, ohne Menge), schema.org-Rezepte, kaputtes JSON-LD, Freitext mit und ohne Überschriften.
 - `tests/page-source.test.mjs`: Hilfsdienst-Auswahl und der Cloudflare-Worker (nur eigene App, nur öffentliche https-Adressen, Größenlimit, Zeichensatz).

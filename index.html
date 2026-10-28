@@ -76,7 +76,7 @@
       <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <div class="summary">
         <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
-        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer" title="Angebote ansehen"><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote</span></a><button id="set-offers" class="secondary small" type="button" aria-label="Angebote einrichten" title="Angebote einrichten" hidden><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote einrichten</span></button><button id="open-receipt" class="secondary small" type="button" aria-label="Kassenbon einfügen" title="Kassenbon einfügen"><svg class="icon"><use href="#i-text"/></svg><span class="label">Kassenbon</span></button></div>
+        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer" title="Angebote ansehen"><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote</span></a><button id="set-offers" class="secondary small" type="button" aria-label="Angebote einrichten" title="Angebote einrichten" hidden><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote einrichten</span></button></div>
       </div>
       <form id="item-form" class="card add-form">
         <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
@@ -195,13 +195,8 @@
         <p class="hint">Nach dieser Zeit ohne Berührung sperrt sich die Ansicht „Im Laden“ von selbst, damit in der Hosentasche nichts versehentlich abgehakt wird. Gilt nur auf diesem Gerät. „Bildschirm anlassen“ steht in der Ansicht „Im Laden“ selbst.</p></div></details>
       </div>
       <div id="alias-card" class="card stack"><details id="alias-details" class="fold"><summary><h3>Gemerkte Namen<span id="alias-count"></span></h3></summary><div class="stack">
-        <p class="hint">Wenn du auf einem Kassenbon einen Namen oder eine Sorte änderst oder einen Vorschlag ausdrücklich übernimmst, merkt sich die App die Zuordnung („Text auf dem Bon → Name in der App“) und wendet sie beim nächsten Mal an. Eine falsche Zuordnung entfernst du hier; die bezahlten Preise dazu stehen unter „Bezahlte Preise“.</p>
+        <p class="hint">Schreibweisen, die du bestätigt hast („Zwiebel“ → „Zwiebeln“): Die App führt sie in Vorschlägen und beim Zusammenzählen zusammen. Eine falsche Zuordnung entfernst du hier.</p>
         <ul id="alias-list" class="pantry-list"></ul></div></details>
-      </div>
-      <div id="paid-card" class="card stack"><details id="paid-details" class="fold"><summary><h3>Bezahlte Preise<span id="paid-count"></span></h3></summary><div class="stack">
-        <p class="hint">Der Verlauf „Zuletzt bezahlt“ im Modus „Im Laden“ besteht nur aus Preisen, die du auf einem Kassenbon geprüft hast. Notizen aus früheren Versionen stehen unter „Zu prüfen“ und zählen erst, wenn du sie bestätigst. Alles lässt sich ändern oder vergessen.</p>
-        <div id="paid-review"></div>
-        <div id="paid-list"></div></div></details>
       </div>
       <div id="storage-card" class="card stack"><details id="storage-details" class="fold"><summary><h3>Datenumfang</h3></summary><div class="stack">
         <progress id="storage-bar" max="100" value="0"></progress>
@@ -242,7 +237,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.43 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.44 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -319,7 +314,6 @@
     <p id="finish-text"></p>
     <label>Was hast du bezahlt? (optional)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Bezahlter Betrag in Euro"><button class="add-button" type="submit" aria-label="Beenden und Betrag unter Ausgaben speichern"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <p class="hint">Mit dem + wird der Einkauf beendet und der Betrag unter Ausgaben gespeichert.</p>
-    <button id="finish-receipt" type="button">Beenden und Kassenbon einfügen</button>
     <button id="finish-only" type="button" class="secondary">Nur beenden</button>
   </form></dialog>
   <dialog id="cookable-dialog"><div class="stack"><div class="sheet-head"><h2>Was kann ich kochen?</h2><button type="button" data-close="cookable-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
@@ -335,23 +329,6 @@
     <h3>Zubereitung</h3><ol id="cook-steps" class="cook-steps"></ol>
     <button id="cook-done" type="button">Fertig · Heute gekocht</button>
   </dialog>
-  <dialog id="receipt-dialog"><form id="receipt-form" class="stack" novalidate><div class="sheet-head"><h2>Kassenbon einfügen</h2><button type="button" data-close="receipt-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <div id="receipt-input">
-      <label>Text des digitalen Kassenbons<textarea name="text" rows="9" placeholder="Hier den Text des Kassenbons einfügen (aus der App oder dem PDF des Marktes kopiert)." maxlength="60000"></textarea></label>
-      <p class="hint">Der Text bleibt auf deinem Gerät. Du prüfst alle Zeilen, bevor die Preise in eure Datei gespeichert werden. Aktionspreise zählen nie als Preisänderung.</p>
-      <button type="button" id="receipt-parse">Auswerten</button>
-    </div>
-    <div id="receipt-review" hidden>
-      <div class="price-grid"><label>Geschäft<select name="storeId"></select></label><label>Datum<input name="date" type="date"></label></div>
-      <p id="receipt-check" class="hint" role="status"></p>
-      <div id="receipt-lines"></div>
-      <details id="receipt-skipped" class="hint"><summary></summary><ul></ul></details>
-      <label id="receipt-spend-label" class="checkbox-label" hidden><input name="spend" type="checkbox"><span id="receipt-spend-text">Gesamtbetrag unter Ausgaben speichern</span></label>
-      <button type="submit" id="receipt-save">Preise speichern</button>
-      <button type="button" id="receipt-back" class="secondary">Anderen Text einfügen</button>
-    </div>
-    <datalist id="receipt-names"></datalist>
-  </form></dialog>
   <dialog id="import-dialog"><form id="import-form" class="stack" novalidate><div class="sheet-head"><h2>Rezept importieren</h2><button type="button" data-close="import-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <div class="segmented" role="tablist" aria-label="Quelle des Rezepts">
       <button type="button" role="tab" data-source="link" aria-selected="true"><svg class="icon"><use href="#i-link"/></svg>Link</button>
@@ -386,7 +363,6 @@
     <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
     <label>Notiz (optional)<span class="name-field"><input name="note" maxlength="120" placeholder="z. B. Getränke" autocomplete="off" aria-label="Notiz"><button id="purchase-note-toggle" class="field-button" type="button" aria-label="Vorschläge für die Notiz anzeigen" aria-expanded="false" aria-controls="purchase-note-picks"><svg class="icon"><use href="#i-chevron"/></svg></button></span></label>
     <div id="purchase-note-picks" class="note-menu" role="group" aria-label="Vorschläge für die Notiz: antippen zum Übernehmen" hidden></div>
-    <label id="purchase-prices-label" class="checkbox-label" hidden><input name="prices" type="checkbox"><span>Danach die Artikelpreise prüfen und übernehmen</span></label>
     <button type="submit" id="purchase-save">Speichern</button>
     <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>
     <p class="hint">Die Texterkennung läuft auf deinem Gerät, das Bild wird nirgends hochgeladen. Fotos von Kassenzetteln werden oft ungenau gelesen, deshalb steht der erkannte Betrag nur als Vorschlag im Feld: Bitte vor dem Speichern prüfen. Digitale Bons und Screenshots klappen besser.</p>
@@ -396,17 +372,6 @@
     <label>Budget pro Monat (€)<input name="amount" inputmode="decimal" placeholder="z. B. 400" maxlength="14" autocomplete="off"></label>
     <button type="submit">Speichern</button>
     <button id="budget-remove" type="button" class="danger" hidden>Budget entfernen</button>
-  </form></dialog>
-  <dialog id="note-dialog"><form id="note-form" class="stack"><div class="sheet-head"><h2>Preis prüfen</h2><button type="button" data-close="note-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <input name="id" type="hidden">
-    <p id="note-origin" class="hint"></p>
-    <label>Name in der App<input name="name" maxlength="120" required autocomplete="off"></label>
-    <label>Sorte oder genaue Bezeichnung (optional)<input name="variant" maxlength="80" autocomplete="off" placeholder="z. B. Gala"></label>
-    <div class="price-grid unit-grid"><label>Preis (€)<input name="price" inputmode="decimal" maxlength="10" required></label><label>Menge<input name="quantity" inputmode="decimal" maxlength="16" required></label><label>Einheit<input name="unit" list="units" maxlength="30" required></label></div>
-    <label>Geschäft<select name="storeId"></select></label>
-    <label class="checkbox-label"><input name="onSale" type="checkbox"> Damals im Angebot</label>
-    <button type="submit">Speichern und als bezahlt bestätigen</button>
-    <button id="note-forget" type="button" class="danger">Diesen Preis vergessen</button>
   </form></dialog>
   <dialog id="meal-dialog"><form id="meal-form" class="stack"><div class="sheet-head"><h2 id="meal-title">Gericht planen</h2><button type="button" data-close="meal-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">

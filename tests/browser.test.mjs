@@ -167,7 +167,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         ['Import Screenshot', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=image]'); }],
         ['Import Text', async () => { await page.click('[data-tab=recipes]'); await page.click('#import-recipe'); await page.click('[data-source=text]'); }],
         ['Kochmodus', async () => { await page.click('[data-tab=recipes]'); await page.locator('.recipe-card').first().getByRole('button', { name: 'Kochen' }).click(); }],
-        ['Kassenbon', () => page.click('#open-receipt')],
         ['Was kann ich kochen?', async () => { await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); }],
         ['Einkauf eintragen', async () => { await page.click('[data-tab=spending]'); await page.click('#add-purchase'); }],
         ['Gericht planen', async () => { await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button'); }],
@@ -1123,193 +1122,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Kassenbon: Text einfügen, prüfen, als bezahlte Preise speichern (Originaltext, Sorte, Herkunft), Zuordnung lernen, nie doppelt übernehmen', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    const dated = days => { const day = new Date(Date.now() - days * 86400000); return `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`; };
-    const comma = cents => (cents / 100).toFixed(2).replace('.', ',');
-    const bon = (milk, tomato, days) => `REWE Markt GmbH\nMusterstraße 1\nHAFERDRINK BIO 1L     ${comma(milk)} B\nKIRSCHTOMATEN 250G     ${comma(tomato)} B\nSUMME     EUR  ${comma(milk + tomato)}\nGeg. Karte ${comma(milk + tomato)}\nDatum: ${dated(days)}`;
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
-    const parse = async text => {
-      await page.click('#open-receipt'); await sheetOpen(page);
-      await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
-      await page.waitForSelector('#receipt-review:not([hidden])');
-    };
-    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
-    const note = index => line(index).locator('.receipt-note');
-    // 1. Erster Bon: Geschäft aus dem Bon, Summenprobe, Originaltext sichtbar, Zuordnung „Kirschtomaten“ → „Cherrytomaten“ (Sorte „Cherry“) von Hand
-    await parse(bon(129, 199, 10));
-    assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe');
-    assert.equal(await page.locator('#receipt-lines .receipt-line').count(), 2);
-    assert.match(await page.textContent('#receipt-check'), /Summe stimmt/);
-    assert.match(await line(0).locator('.receipt-use').textContent(), /HAFERDRINK BIO 1L/, 'der Originaltext vom Bon steht in der Zeile');
-    assert.match(await note(0).textContent(), /Noch kein bestätigter Kauf/);
-    await line(1).locator('input[name=name]').fill('Cherrytomaten');
-    await line(1).locator('input[name=variant]').fill('Cherry');
-    await page.click('#receipt-save');
-    await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /2 Preise gemerkt/);
-    let data = await stored();
-    const price = name => data.prices.filter(row => row.name === name && row.storeId === 'store-rewe').at(-1);   // neueste Notiz (die Beispieldaten enthalten schon ältere, ungeprüfte)
-    assert.deepEqual(price('Haferdrink Bio').quote, { cents: 129, quantity: 1, unit: 'l' });
-    assert.equal(price('Haferdrink Bio').src, 'bon', 'geprüfte Bonposition');
-    assert.match(price('Haferdrink Bio').receipt, /HAFERDRINK BIO 1L/);
-    assert.ok(price('Haferdrink Bio').receiptKey.startsWith('store-rewe|'), 'Schlüssel gegen doppeltes Übernehmen');
-    assert.deepEqual(price('Cherrytomaten').quote, { cents: 199, quantity: 250, unit: 'g' });
-    assert.equal(price('Cherrytomaten').variant, 'Cherry');
-    assert.ok(data.aliases.some(row => row.from === 'kirschtomaten' && row.name === 'Cherrytomaten' && row.variant === 'Cherry'), 'Zuordnung samt Sorte gemerkt');
-    assert.equal(data.sync.minRev, 3, 'Preise mit Sorte setzen die Mindestversion');
-    // 2. Derselbe Bon noch einmal: nichts wird doppelt übernommen
-    await parse(bon(129, 199, 10));
-    assert.equal(await page.locator('#receipt-lines input[type=checkbox]:checked').count(), 0, 'beide Zeilen sind schon eingetragen und abgewählt');
-    assert.match(await note(0).textContent(), /Schon eingetragen/);
-    await page.click('#receipt-save');
-    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /mindestens eine Zeile/);
-    await line(0).locator('input[type=checkbox]').check();   // wer sie trotzdem wählt: auch dann wird sie nicht doppelt gespeichert
-    await page.click('#receipt-save');
-    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /schon eingetragen/);
-    assert.equal((await stored()).prices.filter(row => row.src === 'bon').length, 2, 'weiterhin genau zwei bezahlte Preise');
-    await page.keyboard.press('Escape');
-    // 3. Zweiter Bon: gemerkte Zuordnung samt Sorte; der letzte bestätigte Kauf steht zum Vergleichen da, ohne Wertung
-    await parse(bon(139, 199, 3));
-    assert.equal(await line(1).locator('input[name=name]').inputValue(), 'Cherrytomaten');
-    assert.equal(await line(1).locator('input[name=variant]').inputValue(), 'Cherry');
-    assert.match(await note(1).textContent(), /Zuordnung gemerkt/);
-    assert.match(await note(0).textContent(), /Zuletzt bezahlt: 1,29\s€ pro l \(\d\d\.\d\d\.\d{4}\)/);
-    assert.ok(!/Teurer|Günstiger/.test(await note(0).textContent()), 'keine Preisentwicklung');
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /^2 Preise gemerkt/);
-    // 4. Auf der Liste (Planen) steht kein Preis, kein Vergleich, keine Entwicklung
-    await page.getByRole('tab', { name: /^Rewe/ }).click();
-    await page.fill('#item-form input[name=name]', 'Haferdrink Bio'); await page.fill('#item-form input[name=unit]', 'l'); await page.click('#item-form button[type=submit]');
-    const row = page.locator('#items .item', { hasText: 'Haferdrink' });
-    assert.ok(!/€|Teurer|Günstiger|ca\./.test(await row.textContent()), 'Planen zeigt keine Preise: ' + await row.textContent());
-    assert.equal(await row.locator('small.trend, small.price-note, .sale-badge').count(), 0);
-    // 5. Dritter Bon: ein Rabatt direkt unter der Zeile wird eingerechnet und zur Kontrolle gemeldet; er bleibt ein damaliger Angebotspreis
-    await parse(bon(119, 199, 1).replace('KIRSCHTOMATEN 250G     1,99 B', 'KIRSCHTOMATEN 250G     1,99 B\nPreisvorteil          -0,50'));
-    assert.match(await line(1).locator('.receipt-check').textContent(), /Rabatt von 0,50 € direkt unter der Zeile eingerechnet/);
-    assert.match(await note(1).textContent(), /Aktion: bezahlt 1,49\s€ für 250 g/);
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    data = await stored();
-    assert.equal(price('Cherrytomaten').onSale, true);
-    assert.deepEqual(price('Cherrytomaten').quote, { cents: 149, quantity: 250, unit: 'g' }, 'bezahlt');
-    assert.deepEqual(price('Cherrytomaten').regularQuote, { cents: 199, quantity: 250, unit: 'g' }, 'der Normalpreis bleibt erhalten');
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Kassenbon: „Apfeltasche“ bekommt nicht den Preis von „Apfel“; ein Vorschlag gilt erst nach ausdrücklicher Bestätigung; „Gala Äpfel“ wird als Sorte erkannt; ohne Mengenangabe bleibt die Menge unbekannt', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
-    const parse = async text => {
-      await page.click('#open-receipt'); await sheetOpen(page);
-      await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
-      await page.waitForSelector('#receipt-review:not([hidden])');
-    };
-    const priced = async name => (await stored()).prices.filter(row => !row.deletedAt && row.src === 'bon' && row.name === name && row.storeId === 'store-rewe');
-    const names = () => page.locator('#receipt-lines input[name=name]').evaluateAll(nodes => nodes.map(node => node.value));
-    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
-    const note = index => line(index).locator('.receipt-note');
-    // 1. „Apfel“: auf dem Bon steht keine Menge, sie bleibt unbekannt („Position“) und wird als Hinweis gezeigt
-    await parse('REWE Markt GmbH\nApfel 1,29 A\nSUMME 1,29');
-    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfel');
-    assert.equal(await page.inputValue('#receipt-lines input[name=unit]'), 'Position');
-    assert.match(await line(0).locator('.receipt-check').textContent(), /Menge und Einheit stehen nicht auf dem Bon/);
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.deepEqual((await priced('Apfel')).map(row => row.quote), [{ cents: 129, quantity: 1, unit: 'Position' }]);
-    // 2. „Apfeltasche“ (Gebäck) und „Apfel Saft“ bleiben eigene Produkte; „Bio Apfel“ ist eindeutig „Apfel“ (Beigabe „Bio“); „Tomat“ ist nur ein Vorschlag und steht erst nach dem Tipp im Feld
-    await parse('REWE Markt GmbH\nApfeltasche 0,69 A\nApfel Saft 1,49 A\nBio Apfel 1,59 A\nTomat 0,59 A\nSUMME 4,36');
-    assert.deepEqual(await names(), ['Apfeltasche', 'Apfel Saft', 'Äpfel', 'Tomat'], 'nur das Eindeutige wird zugeordnet („Bio Apfel“ gehört zu „Äpfel“ auf der Liste)');
-    assert.ok(!/Vorschlag|Als „|Automatisch/.test(await note(0).textContent()), 'kein Vorschlag für die Apfeltasche');
-    assert.equal(await note(0).getByRole('button').count(), 0);
-    assert.equal(await note(1).getByRole('button').count(), 0);
-    assert.equal(await line(2).locator('input[name=variant]').inputValue(), 'Bio Apfel', 'die Bonzeile bleibt als genaue Bezeichnung');
-    assert.match(await note(2).textContent(), /Automatisch „Äpfel“ zugeordnet \(Bio Apfel\)/);
-    assert.match(await note(2).textContent(), /Noch kein bestätigter Kauf mit dieser Sorte und Menge/, 'Bio Apfel ist eine andere Sorte als „Apfel“ ohne Sorte');
-    await note(3).getByRole('button', { name: 'Als „Tomaten“ eintragen' }).click();
-    assert.equal(await line(3).locator('input[name=name]').inputValue(), 'Tomaten', 'erst nach dem ausdrücklichen Tipp gilt der Name');
-    assert.equal(await note(3).getByRole('button').count(), 0);
-    await line(3).locator('input[type=checkbox]').uncheck();
-    await line(2).locator('input[type=checkbox]').uncheck();   // „Bio Apfel“ hier nicht übernehmen
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.deepEqual((await priced('Apfeltasche')).map(row => row.quote.cents), [69]);
-    assert.deepEqual((await priced('Apfel Saft')).map(row => row.quote.cents), [149]);
-    assert.deepEqual((await priced('Apfel')).map(row => row.quote.cents), [129], 'der Preis von „Apfel“ bleibt unberührt');
-    assert.equal((await stored()).aliases.filter(row => !row.deletedAt && row.from.includes('apfel')).length, 0, 'keine Zuordnung zu „Apfel“ gemerkt');
-    // 3. Eine Sorte wird nur erkannt, wenn der Bon auch das Wort der Gruppe nennt; „Gala“ allein bleibt, was es ist
-    await parse('REWE Markt GmbH\nGALA ÄPFEL 1KG 2,99 A\nPink Lady 0,79 A\nSUMME 3,78');
-    assert.deepEqual(await names(), ['Äpfel', 'Pink Lady']);
-    assert.equal(await line(0).locator('input[name=variant]').inputValue(), 'Gala');
-    assert.match(await note(0).textContent(), /Sorte erkannt: Gala/);
-    assert.equal(await line(1).locator('input[name=variant]').inputValue(), '', 'keine Sorte erfunden');
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    const apples = await priced('Äpfel');
-    assert.equal(apples.length, 1);
-    assert.equal(apples[0].variant, 'Gala');
-    assert.deepEqual(apples[0].quote, { cents: 299, quantity: 1, unit: 'kg' });
-    assert.deepEqual((await priced('Pink Lady')).map(row => row.variant), [undefined], 'ohne Gruppenwort bleibt „Pink Lady“ ein eigenes Produkt ohne Sorte');
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Gemerkte Namen: Zuordnungen von Kassenbon-Text zu Namen stehen in den Einstellungen und lassen sich entfernen', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    const aliases = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.filter(row => !row.deletedAt).map(row => [row.from, row.name]));
-    await openSettings(page);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen$/);
-    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
-    // Eine Zuordnung entsteht, wenn auf dem Bon ein Name geändert wird
-    await page.click('[data-tab=shopping]');
-    await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,69 A\nSUMME 0,69'); await page.click('#receipt-parse');
-    await page.locator('#receipt-lines input[name=name]').fill('Apfel');   // falsch zugeordnet, wie im Alltag passiert
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.deepEqual(await aliases(), [['apfeltasche', 'Apfel']]);
-    await openSettings(page);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)/);
-    assert.equal((await page.locator('#alias-list li').allTextContents()).join('|'), 'apfeltasche → Apfel');
-    // Beim nächsten Bon wird sie angewendet („Zuordnung gemerkt“) … bis sie entfernt ist
-    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,79 A\nSUMME 0,79'); await page.click('#receipt-parse');
-    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfel');
-    assert.match(await page.locator('#receipt-lines .receipt-note').textContent(), /Zuordnung gemerkt/);
-    await page.keyboard.press('Escape');
-    await openSettings(page);
-    await page.getByRole('button', { name: 'Zuordnung apfeltasche zu Apfel entfernen' }).click();
-    assert.deepEqual(await aliases(), []);
-    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
-    assert.ok(!/\(\d+\)/.test(await page.textContent('#alias-details summary')));
-    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', 'REWE Markt GmbH\nApfeltasche 0,79 A\nSUMME 0,79'); await page.click('#receipt-parse');
-    assert.equal(await page.inputValue('#receipt-lines input[name=name]'), 'Apfeltasche', 'ohne Zuordnung bleibt der Name');
-    assert.equal(await horizontalOverflow(page), 0);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Kassenbon: Text ohne Artikelzeilen, Summe stimmt nicht, schon eingetragene Zeilen sind abgewählt', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', 'Das ist kein Kassenbon.'); await page.click('#receipt-parse');
-    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /keine Artikelzeilen/);
-    const day = new Date(Date.now() - 86400000), stamp = `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`;
-    await page.fill('#receipt-form textarea[name=text]', `Lidl\nGurke 0,79 A\nButter 1,99 A\nSUMME 3,50\nDatum ${stamp}`); await page.click('#receipt-parse');
-    assert.match(await page.textContent('#receipt-check'), /Achtung: Die erkannten Zeilen ergeben 2,78\s€, der Bon nennt 3,50\s€/);
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    // Derselbe Bon noch einmal: alles schon eingetragen und abgewählt
-    await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', `Lidl\nGurke 0,79 A\nButter 1,99 A\nSUMME 2,78\nDatum ${stamp}`); await page.click('#receipt-parse');
-    assert.equal(await page.locator('#receipt-lines input[type=checkbox]:checked').count(), 0);
-    assert.match(await page.locator('#receipt-lines .receipt-note').first().textContent(), /Schon eingetragen/);
-    await page.click('#receipt-save');
-    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /mindestens eine Zeile/);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
   // ---- Ausgaben (Version 2.15) ----
   const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const monthsAgo = (count, day = 15) => new Date(new Date().getFullYear(), new Date().getMonth() - count, day, 12);
@@ -1322,6 +1134,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     if (note) await page.fill('#purchase-form input[name=note]', note);
     await page.click('#purchase-save');
   };
+
+  test('Gemerkte Namen: bestätigte Schreibweisen stehen in den Einstellungen und lassen sich entfernen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const aliases = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.filter(row => !row.deletedAt).map(row => [row.from, row.name]));
+    await openSettings(page);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen$/);
+    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
+    // Eine Zuordnung entsteht, wenn eine andere Schreibweise ausdrücklich bestätigt wird
+    await goTab(page, 'shopping'); await pickStore(page, 'Rewe');
+    await page.fill('#item-form input[name=name]', 'Apfel'); await page.waitForSelector('#item-suggestions:not([hidden])');
+    await page.locator('#item-suggestions button', { hasText: 'Äpfel' }).click();
+    assert.deepEqual(await aliases(), [['apfel', 'Äpfel']]);
+    await openSettings(page);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)/);
+    assert.equal((await page.locator('#alias-list li').allTextContents()).join('|'), 'apfel → Äpfel');
+    await page.getByRole('button', { name: 'Zuordnung apfel zu Äpfel entfernen' }).click();
+    assert.deepEqual(await aliases(), []);
+    assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
+    assert.ok(!/\(\d+\)/.test(await page.textContent('#alias-details summary')));
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 
   test('Ausgaben: von Hand eintragen, Monate vergleichen, Diagramm, nach Geschäft, ändern und löschen', async () => {
     const { ctx, page, problems } = await context();
@@ -1832,48 +1668,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
-  test('Ausgaben: Kassenbon-Text speichert den Gesamtbetrag mit, derselbe Bon wird nicht doppelt gezählt', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    const day = new Date(Date.now() - 86400000), stamp = `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`;
-    const bon = `Lidl\nGurke 0,79 A\nButter 1,99 A\nSUMME 2,78\nDatum ${stamp}`;
-    const parse = async () => {
-      await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
-      await page.fill('#receipt-form textarea[name=text]', bon); await page.click('#receipt-parse'); await page.waitForSelector('#receipt-review:not([hidden])');
-    };
-    await parse();
-    assert.ok(await page.locator('#receipt-spend-label').isVisible());
-    assert.match(await page.textContent('#receipt-spend-text'), /Gesamtbetrag 2,78\s€ unter Ausgaben speichern/);
-    assert.ok(await page.locator('#receipt-form input[name=spend]').isChecked(), 'vorab angehakt');
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /2 Preise gemerkt · 2,78\s€ unter Ausgaben/);
-    await page.click('[data-tab=spending]');
-    if (!(await page.locator('#purchase-list .spend-row').count())) await page.click('#month-prev');
-    const rows = page.locator('#purchase-list .spend-row');
-    assert.equal(await rows.count(), 1);
-    assert.match(await rows.first().textContent(), /Lidl · vom Kassenbon[\s\S]*2,78\s€/);
-    // Derselbe Bon noch einmal: nicht noch einmal angehakt, Preise lassen sich nicht erneut wählen (schon eingetragen), nichts doppelt
-    await parse();
-    assert.equal(await page.locator('#receipt-form input[name=spend]').isChecked(), false, 'schon unter Ausgaben');
-    await page.locator('#receipt-lines input[type=checkbox]').first().check();
-    await page.locator('#receipt-form input[name=spend]').check();
-    await page.click('#receipt-save');
-    assert.match(await page.textContent('#receipt-dialog [data-dialog-error]'), /schon eingetragen/, 'dieselbe Bonposition wird nicht noch einmal übernommen, auch nicht mit gesetztem Häkchen');
-    await page.keyboard.press('Escape'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    const purchases = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt));
-    assert.equal(purchases.length, 1, 'der Betrag wird auch bei gesetztem Häkchen nicht doppelt angelegt');
-    assert.equal(purchases[0].cents, 278);
-    assert.equal(purchases[0].source, 'bon');
-    // Ohne Summe im Text: Summe der Zeilen
-    await page.click('[data-tab=shopping]'); await page.click('#open-receipt'); await sheetOpen(page);
-    await page.fill('#receipt-form textarea[name=text]', `Rewe\nMilch 1,29 A\nBrot 2,49 A\nDatum ${stamp}`); await page.click('#receipt-parse');
-    assert.match(await page.textContent('#receipt-spend-text'), /3,78\s€ unter Ausgaben speichern \(Summe der erkannten Zeilen\)/);
-    await page.keyboard.press('Escape');
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Ausgaben: Foto oder Screenshot eines Kassenbons liest Summe, Datum und Geschäft als Vorschlag; Preise lassen sich gleich übernehmen', async () => {
+  test('Ausgaben: Foto oder Screenshot eines Kassenbons liest Summe, Datum und Geschäft als Vorschlag, gespeichert wird erst mit „Speichern“', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const day = new Date(Date.now() - 2 * 86400000), stamp = `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}.${day.getFullYear()}`;
@@ -1884,7 +1679,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       return canvas.toDataURL('image/png').split(',')[1];
     }, ['REWE Markt GmbH', 'HAFERDRINK BIO 1L  1,29 B', 'KIRSCHTOMATEN 250G  1,99 B', 'SUMME EUR  3,28', `Datum: ${stamp}`]);
     await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
-    assert.ok(await page.locator('#purchase-prices-label').isHidden());
     await page.setInputFiles('#purchase-form input[type=file]', { name: 'bon.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
     await page.waitForFunction(() => /Erkannt/.test(document.querySelector('#purchase-status').textContent), null, { timeout: 90000 });
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '3,28');
@@ -1892,23 +1686,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.inputValue('#purchase-form select[name=storeId]'), 'store-rewe');
     assert.match(await page.textContent('#purchase-status'), /Summe 3,28\s€[\s\S]*vergleichen/);
     assert.ok(await page.locator('#purchase-progress').isHidden());
-    assert.ok(await page.locator('#purchase-prices-label').isVisible());
     // Noch nichts gespeichert, bis „Speichern“
     assert.equal(await page.evaluate(() => (JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases || []).length), 0);
-    // Von Hand korrigieren (Foto war ungenau) und die Artikelpreise gleich mitnehmen
+    // Von Hand korrigieren (Foto war ungenau)
     await page.fill('#purchase-form input[name=amount]', '3,29');
-    await page.locator('#purchase-form input[name=prices]').check();
-    await page.click('#purchase-save');
-    await page.waitForSelector('#receipt-dialog[open]');
-    await page.waitForSelector('#receipt-review:not([hidden])');
-    assert.equal(await page.locator('#receipt-lines .receipt-line').count(), 2);
-    assert.equal(await page.locator('#receipt-form input[name=spend]').isChecked(), false, 'der Gesamtbetrag ist schon gespeichert');
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
+    const notes = () => page.evaluate(() => (JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.prices || []).filter(row => !row.deletedAt).length), notesBefore = await notes();
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
     const purchases = stored.purchases.filter(row => !row.deletedAt);
     assert.equal(purchases.length, 1);
     assert.deepEqual([purchases[0].cents, purchases[0].storeId, purchases[0].storeName, purchases[0].source, purchases[0].date], [329, 'store-rewe', 'Rewe', 'hand', isoDay(day)], 'von Hand geändert: Herkunft „hand“');
-    assert.ok(stored.prices.some(row => row.name === 'Haferdrink Bio' && row.createdAt.slice(0, 10) === isoDay(day)), 'Artikelpreis aus dem Bon');
+    assert.equal(await notes(), notesBefore, 'aus dem Bon werden keine Artikelpreise abgeleitet');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2232,7 +2020,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
-  test('Im Laden: Geschäft wählen, Artikel ohne Geschäft überall bis abgehakt (erst Edeka, dann Lidl), Einkauf beenden mit Kassenbon', async () => {
+  test('Im Laden: Geschäft wählen, Artikel ohne Geschäft überall bis abgehakt (erst Edeka, dann Lidl), Einkauf beenden', async () => {
     const { ctx, page, problems } = await context();
     await ctx.addInitScript(() => {
       window.__wake = { requests: 0, releases: 0 };
@@ -2283,19 +2071,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => window.__wake.releases === 1);
     await goTab(page, 'shopping');
     await page.waitForFunction(() => window.__wake.requests === 2);
-    // Einkauf beenden: Abgehaktes verschwindet, Kassenbon-Dialog mit dem Geschäft
+    // Einkauf beenden: Abgehaktes verschwindet, die App ist zurück in „Planen“
     await finishShop(page); await sheetOpen(page);
     assert.match(await page.textContent('#finish-text'), /2 abgehakte Artikel werden von der Liste entfernt/);
-    await page.click('#finish-receipt');
-    await page.waitForSelector('#receipt-dialog[open]');
-    await page.fill('#receipt-form textarea[name=text]', 'Kassenbon\nBrot 1,99 A\nSUMME 1,99');
-    await page.click('#receipt-parse');
-    assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-rewe', 'das Geschäft, in dem man zuletzt war');
-    // Auch nach „Kassenbon einfügen“ ist die App schon zurück in „Planen“ (die Liste steht hinter dem Kassenbon-Fenster)
+    assert.equal(await page.locator('#finish-receipt').count(), 0, 'es gibt keinen Kassenbon-Weg mehr');
+    await page.click('#finish-only');
     assert.equal(await page.locator('#plan-view').isVisible(), true);
     assert.equal(await page.locator('#shop-view').isHidden(), true);
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#plan-view').isVisible(), true);
     const text = await page.textContent('#items');
     assert.ok(!text.includes('Brot') && !text.includes('Milch'), 'abgehakte Artikel sind entfernt');
     assert.ok(text.includes('Tomaten') && text.includes('Äpfel'), 'offene bleiben');
@@ -2343,14 +2125,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(data.purchases.map(row => [row.cents, row.storeId || '', row.storeName || '']), [[1250, '', '']], 'ohne Geschäft gespeichert');
     assert.deepEqual(data.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Nudeln', 'Tomaten', 'Äpfel']);
     assert.equal(await page.locator('#plan-view').isVisible(), true);
-    // Kassenbon-Weg aus „Alle“: das Geschäft im Dialog ist leer statt „Alle“
-    await page.click('#mode-shop'); await page.locator('#shop-chips .chip').first().click();
-    await shopTap(page, 'Äpfel').click();
-    await finishShop(page); await sheetOpen(page);
-    await page.click('#finish-receipt');
-    await page.waitForSelector('#receipt-dialog[open]');
-    await page.fill('#receipt-form textarea[name=text]', 'Kassenbon\nÄpfel 1,99 A\nSUMME 1,99'); await page.click('#receipt-parse');
-    assert.equal(await page.inputValue('#receipt-form select[name=storeId]'), 'store-edeka', 'kein „Alle“ als Geschäft: der Dialog wählt ein echtes (das erste) Geschäft');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -3543,7 +3317,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'paid-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });
@@ -3683,421 +3457,51 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  // ---- Preisinfo „Zuletzt bezahlt“ im Laden (Version 2.40) ----
-  const paidRow = (id, name, storeId, at, quote, extra = {}) => ({ id, name, storeId, quote, regularQuote: quote, onSale: false, src: 'bon', receipt: name.toUpperCase(), createdAt: `${at}T10:00:00.000Z`, updatedAt: `${at}T10:00:00.000Z`, deletedAt: null, _clock: {}, ...extra });
-  const pq = (cents, quantity = 1, unit = 'Stück') => ({ cents, quantity, unit });
-  const PAID = [
-    paidRow('pa1', 'Äpfel', 'store-edeka', '2026-10-26', pq(59), { variant: 'Gala' }),
-    paidRow('pa2', 'Äpfel', 'store-edeka', '2026-10-12', pq(55), { variant: 'Gala' }),
-    paidRow('pa3', 'Äpfel', 'store-rewe', '2026-10-21', pq(79), { variant: 'Pink Lady', onSale: true }),
-    paidRow('pa4', 'Äpfel', 'store-rewe', '2026-10-01', pq(129, 1, 'Position')),
-    paidRow('pa5', 'Apfeltasche', 'store-rewe', '2026-10-22', pq(149)),
-    paidRow('pa6', 'Apfelsaft', 'store-rewe', '2026-10-22', pq(199, 1, 'l')),
-    paidRow('pa7', 'Tomaten', 'store-edeka', '2026-10-23', pq(298, 1, 'kg'))
-  ];
-  const withPaid = (rows = PAID) => { const data = structuredClone(demo); data.prices.push(...structuredClone(rows)); data.sync.minRev = 3; return data; };
-  // Die Beispieldaten plus bezahlte Preise liegen schon im lokalen Speicher, wenn die App startet.
-  const paidContext = async (options = {}) => {
-    const made = await context(options);
-    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', withPaid()]);
-    return made;
-  };
-  const shopItem = (page, name) => page.locator('#shop-list .shop-item', { hasText: name }).first();
-  // Der Text eines Feldes mit einem Leerzeichen zwischen allen Textteilen (Blöcke haben im Quelltext keine), unabhängig von Großschreibung per CSS
-  const plainText = locator => locator.evaluate(node => { const parts = [], walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); while (walk.nextNode()) { const text = walk.currentNode.textContent.replace(/[\u00a0\s]+/g, ' ').trim(); if (text) parts.push(text); } return parts.join(' '); });
-
-  test('Im Laden: Name oder Pfeil klappt unter dem Artikel „Zuletzt bezahlt“ auf und zu; Sorten getrennt, das gewählte Geschäft zuerst, höchstens ein Feld offen', async () => {
-    const { ctx, page, problems } = await paidContext();
-    await open(page);
-    await inShop(page, 'Rewe');
-    const apples = shopItem(page, 'Äpfel'), toggle = apples.locator('.shop-text'), box = apples.locator('.shop-price');
-    // Zunächst kompakt: Haken, Name, Menge, kleiner Pfeil; keine Preisangabe, kein Feld
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    assert.ok(!/€/.test(await apples.textContent()), 'zunächst keine Preisangabe');
-    assert.ok(await apples.locator('.shop-chevron').isVisible(), 'kleiner Pfeil');
-    assert.ok((await toggle.boundingBox()).height >= 60, 'große Tippfläche');
-    // Ein Tipp auf den Namen öffnet das Feld direkt unter dem Artikel
-    await toggle.locator('.shop-name').click();
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-    assert.equal(await toggle.getAttribute('aria-controls'), await box.getAttribute('id'));
-    const lower = await box.boundingBox(), upper = await toggle.boundingBox();
-    assert.ok(lower.y >= upper.y + upper.height - 1, 'das Feld liegt unter dem Artikel');
-    assert.equal(await itemState(page, 'Äpfel'), false, 'der Namenstipp hakt nichts ab');
-    assert.equal(await box.locator('h3').textContent(), 'Zuletzt bezahlt');
-    const text = await plainText(box);
-    for (const part of ['Bei Rewe', 'Pink Lady 0,79 € pro Stück Rewe · 21.10.2026 Damals im Angebot', 'Äpfel – Sorte unbekannt 1,29 € laut Bon (Menge unbekannt) Rewe · 01.10.2026',
-      'In anderen Geschäften', 'Gala 0,59 € pro Stück Edeka · 26.10.2026', 'Frühere Käufe (1)', 'Vergangene Kaufpreise. Der heutige Preis kann abweichen.']) assert.ok(text.includes(part), `${part} — ${text}`);
-    assert.ok(text.indexOf('Bei Rewe') < text.indexOf('Pink Lady') && text.indexOf('Pink Lady') < text.indexOf('Äpfel – Sorte unbekannt') && text.indexOf('Äpfel – Sorte unbekannt') < text.indexOf('In anderen Geschäften') && text.indexOf('In anderen Geschäften') < text.indexOf('Gala'), text);
-    for (const never of ['Apfeltasche', 'Apfelsaft', '1,49', '1,99', 'am günstigsten', 'günstig', 'teurer']) assert.ok(!text.includes(never), `${never} gehört nicht zu Äpfeln: ${text}`);
-    // Frühere Käufe sind zugeklappt und lassen sich aufklappen
-    assert.equal(await box.locator('.price-older').evaluate(node => node.open), false);
-    assert.equal(await box.locator('.price-older li').isVisible(), false);
-    await box.locator('.price-older summary').click();
-    assert.equal(await plainText(box.locator('.price-older li')), '0,55 € pro Stück · 12.10.2026');
-    // Erneutes Antippen schließt das Feld (auch mit der Tastatur: Fokus auf den Namen, Eingabetaste)
-    await toggle.click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    assert.equal(await shopItem(page, 'Äpfel').locator('.shop-text').getAttribute('aria-expanded'), 'false');
-    await shopItem(page, 'Äpfel').locator('.shop-text').focus(); await page.keyboard.press('Enter');
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 1);
-    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('shop-text')), true, 'der Fokus bleibt auf dem Namen');
-    assert.equal(await shopItem(page, 'Äpfel').locator('.price-older').evaluate(node => node.open), false, 'jedes Öffnen beginnt mit zugeklappten früheren Käufen');
-    await page.keyboard.press('Enter');
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Im Laden: ohne bestätigte Kaufpreise steht ein Hinweis; ungeprüfte alte Notizen zählen nicht; höchstens ein Feld gleichzeitig; im anderen Geschäft stehen dessen Preise zuerst', async () => {
-    const { ctx, page, problems } = await paidContext();
-    await open(page);
-    await page.fill('#item-form input[name=name]', 'Zucchini'); await page.click('#item-form button[type=submit]');
-    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
-    const only = async name => { await shopItem(page, name).locator('.shop-text').click(); return page.locator('#shop-list .shop-price').count(); };
-    // Milch (Lidl) hat nur ungeprüfte Notizen aus früheren Versionen: noch kein bestätigter Kaufpreis, das Feld weist auf die Notizen hin
-    assert.equal(await only('Milch'), 1);
-    assert.equal(await plainText(page.locator('#shop-list .shop-price')), 'Zuletzt bezahlt Noch keine bestätigten Kaufpreise vorhanden. 3 ältere Notizen zu diesem Artikel sind noch nicht bestätigt (Einstellungen → Bezahlte Preise). Vergangene Kaufpreise. Der heutige Preis kann abweichen.');
-    // Ein Artikel ganz ohne Notizen: nur der Satz, kein Hinweis auf unbestätigte Notizen
-    assert.equal(await only('Zucchini'), 1);
-    assert.equal(await plainText(page.locator('#shop-list .shop-price')), 'Zuletzt bezahlt Noch keine bestätigten Kaufpreise vorhanden. Vergangene Kaufpreise. Der heutige Preis kann abweichen.');
-    // Ein zweites Feld öffnen schließt das erste
-    assert.equal(await only('Tomaten'), 1);
-    assert.equal(await shopItem(page, 'Milch').locator('.shop-text').getAttribute('aria-expanded'), 'false');
-    assert.equal(await shopItem(page, 'Tomaten').locator('.shop-text').getAttribute('aria-expanded'), 'true');
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Bei Edeka Tomaten – Sorte unbekannt 2,98 € pro kg Edeka · 23\.10\.2026/, 'ein Preis je kg bleibt ein Preis je kg');
-    assert.equal(await only('Äpfel'), 1, 'Äpfel (Rewe) öffnen das Feld, Tomaten schließt');
-    assert.equal(await shopItem(page, 'Tomaten').locator('.shop-text').getAttribute('aria-expanded'), 'false');
-    // Ein Artikel eines anderen Geschäfts zuerst mit dessen Preisen: Äpfel gehören zu Rewe
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /^Zuletzt bezahlt Bei Rewe/);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Im Laden: der Haken hakt nur ab und öffnet nichts; Abhaken schließt das Feld des Artikels; Geschäftswechsel und Verlassen schließen es', async () => {
-    const { ctx, page, problems } = await paidContext();
-    await open(page);
-    await inShop(page, 'Rewe');
-    const apples = () => shopItem(page, 'Äpfel');
-    // Der Haken öffnet nichts
-    await shopTap(page, 'Äpfel').click();
-    assert.equal(await itemState(page, 'Äpfel'), true);
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'der Haken öffnet kein Feld');
-    await page.click('#notice-undo'); assert.equal(await itemState(page, 'Äpfel'), false);
-    // Offen, dann abhaken: Feld zu, Artikel abgehakt; Rückgängig öffnet es nicht von selbst wieder
-    await apples().locator('.shop-text').click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 1);
-    await shopTap(page, 'Äpfel').click();
-    assert.equal(await itemState(page, 'Äpfel'), true);
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'beim Abhaken schließt sich das Feld');
-    await page.click('#notice-undo');
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    // Geschäftswechsel schließt, Zurückwechseln öffnet nichts
-    await apples().locator('.shop-text').click();
-    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    // Auch „Alle“ ist ein anderer Reiter: Derselbe Artikel steht dort, sein Feld bleibt aber zu
-    await apples().locator('.shop-text').click();
-    await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'beim Wechsel zu „Alle“ schließt das Feld, obwohl der Artikel dort ebenfalls steht');
-    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
-    // Verlassen von „Im Laden“ schließt
-    await apples().locator('.shop-text').click();
-    await page.click('#shop-back'); await page.click('#mode-shop');
-    await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Gedrückthalten am Namen öffnet und schließt sie; Halten am Kreis hakt weiter ab', async () => {
-    const { ctx, page, problems } = await paidContext();
-    await open(page);
-    await inShop(page, 'Rewe');
-    const apples = () => shopItem(page, 'Äpfel');
-    await apples().locator('.shop-text').click();
-    await apples().locator('.price-older summary').click();
-    assert.equal(await apples().locator('.price-older').evaluate(node => node.open), true);
-    await apples().locator('.shop-text').click();   // zu
-    await page.click('#shop-lock');
-    assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
-    await apples().locator('.shop-text').click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'gesperrt öffnet ein Tipp nichts');
-    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'false');
-    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'der Knopf zum Entsperren leuchtet auf');
-    await apples().locator('.shop-chevron').click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'auch der Pfeil öffnet gesperrt nichts');
-    assert.equal(await itemState(page, 'Äpfel'), false);
-    // Den Namen gedrückt halten öffnet die Preisinfo (auch gesperrt); noch einmal gedrückt halten schließt sie
-    const name = '#shop-list .shop-item:has-text("Äpfel") .shop-text', prices = () => page.locator('#shop-list .shop-price').count();
-    await pressAndHold(page, name, 200);
-    assert.equal(await page.locator(`${name}.holding`).count(), 1, 'die Zeile füllt sich, solange man hält');
-    await page.mouse.up();
-    assert.equal(await prices(), 0, 'zu früh losgelassen: nichts');
-    const box = await apples().locator('.shop-text').boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 4 });
-    await page.waitForTimeout(700); await page.mouse.up();
-    assert.equal(await prices(), 0, 'wer beim Halten wegzieht (Scrollen), öffnet nichts');
-    await pressAndHold(page, name, 650); await page.mouse.up();
-    assert.equal(await prices(), 1, 'durch Halten geöffnet');
-    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'true');
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Zuletzt bezahlt Bei Rewe Pink Lady 0,79 € pro Stück/);
-    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
-    assert.equal(await itemState(page, 'Äpfel'), false, 'nichts abgehakt');
-    await apples().locator('.shop-text').click();
-    assert.equal(await prices(), 1, 'ein Tipp schließt gesperrt nichts');
-    await pressAndHold(page, name, 650); await page.mouse.up();
-    assert.equal(await prices(), 0, 'noch einmal gedrückt gehalten: geschlossen');
-    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'false');
-    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
-    // Das Halten am Kreis geht weiter
-    await pressAndHold(page, '#shop-list .shop-item:has-text("Äpfel") .shop-tap', 650); await page.mouse.up();
-    assert.equal(await itemState(page, 'Äpfel'), true, 'durch Halten abgehakt');
-    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Im Laden: das offene Feld bleibt beim automatischen Abgleich erhalten (Scrollposition und Fokus springen nicht); verschwindet der Artikel, schließt es; ohne Verbindung geht es aus den gespeicherten Daten', async () => {
-    const data = withPaid();
-    for (let index = 0; index < 18; index++) data.items.push({ id: `fill-${index}`, storeId: 'store-rewe', name: `Füllartikel ${String(index).padStart(2, '0')}`, quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {}, onSale: false });
-    const remote = github(data);
-    const { ctx, page, problems } = await context({ config: connectedConfig });
-    await ctx.route('https://api.github.com/**', route => remote.handler(route));
-    await open(page);
-    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
-    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
-    const apples = () => shopItem(page, 'Äpfel');
-    await apples().locator('.shop-text').click();
-    await apples().locator('.price-older summary').click().catch(() => {});   // Rewe-Äpfel haben keine früheren Käufe; der Aufruf ist nur ein Versuch
-    await page.evaluate(() => window.scrollTo(0, 60));
-    await page.waitForTimeout(150);
-    const mark = () => page.evaluate(() => { const node = document.querySelector('#shop-list .shop-item .shop-text[aria-expanded=true]'); return { top: Math.round(node.getBoundingClientRect().top), scroll: Math.round(scrollY), focus: document.activeElement?.dataset?.focusKey || '' }; });
-    await apples().locator('.shop-text').focus();
-    const before = await mark();
-    assert.ok(before.scroll > 0, `die Seite ist gescrollt (${before.scroll})`);
-    assert.match(before.focus, /^info:/);
-    // Der Partner fügt einen Artikel hinzu und ändert die Menge der Äpfel: Das Feld bleibt offen, nichts springt
-    remote.remoteChange(content => {
-      content.items.push({ id: 'item-partner', storeId: 'store-rewe', name: 'Zucchini', quantity: 2, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: content.updatedAt, updatedAt: content.updatedAt, deletedAt: null, _clock: {}, onSale: false });
-      content.items.find(row => row.name === 'Äpfel').quantity = 6;
-    });
-    await pollNow(page);
-    await page.waitForFunction(() => document.querySelector('#shop-list').textContent.includes('Zucchini'));
-    const after = await mark();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 1, 'das Feld ist weiter offen');
-    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'true');
-    assert.match(await plainText(apples().locator('.shop-qty')), /^6/, 'die neue Menge steht schon da');
-    assert.deepEqual(after, before, 'Scrollposition, Lage und Fokus bleiben');
-    // Ohne Verbindung: öffnen, schließen und ein anderes Feld öffnen kommt ohne Netz aus den gespeicherten Daten
-    await ctx.setOffline(true);
-    const requests = []; page.on('request', request => { if (!request.url().startsWith('data:')) requests.push(request.url()); });
-    await apples().locator('.shop-text').click();
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    await apples().locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Pink Lady 0,79 € pro Stück Rewe · 21\.10\.2026/);
-    assert.deepEqual(requests, [], 'das Aufklappen braucht kein Netz');
-    await ctx.setOffline(false);
-    // Verschwindet der Artikel, schließt das Feld und es bleibt nichts zurück
-    remote.remoteChange(content => { content.items.find(row => row.name === 'Äpfel').deletedAt = new Date().toISOString(); });
-    await pollNow(page);
-    await page.waitForFunction(() => !document.querySelector('#shop-list').textContent.includes('Äpfel'));
-    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
-    // Ein von der anderen Person abgehakter Artikel steht unter „Erledigt“, ohne offenes Feld
-    await shopItem(page, 'Zucchini').locator('.shop-text').click();
-    remote.remoteChange(content => { const row = content.items.find(entry => entry.name === 'Zucchini'); row.checked = true; });
-    await pollNow(page);
-    await page.waitForFunction(() => !document.querySelector('#shop-list .shop-price'));
-    assert.deepEqual(problems.filter(text => !/Failed to load resource|net::ERR/.test(text)), []);
-    await ctx.close();
-  });
-
-  test('Bezahlte Preise prüfen (Einstellungen): ungeprüfte Notizen zählen im Laden nicht; „Stimmt“ bestätigt, „Ändern“ korrigiert Name, Sorte und Preis, „Vergessen“ entfernt', async () => {
+  test('Im Laden: Name und Menge sind so groß wie in der Einkaufsliste unter „Planen“; keine Preisinfo und kein Pfeil, ein Tipp auf Name oder Menge bewirkt nichts', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
-    const rows = () => page.locator('#paid-review .paid-note');
-    await openSettings(page);
-    assert.match(await page.textContent('#paid-details summary'), /Bezahlte Preise \(8 zu prüfen\)/);
-    await page.click('#paid-details > summary');
-    assert.equal(await rows().count(), 8);
-    assert.match(await page.textContent('#paid-review'), /Es ist nicht sicher, ob der Preis bezahlt wurde/);
-    // Im Laden ist die Milch von Lidl noch nicht bestätigt
-    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
-    await shopItem(page, 'Milch').locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Noch keine bestätigten Kaufpreise vorhanden/);
-    await page.click('#shop-back'); await openSettings(page);
-    // „Stimmt“: die Notiz wird zu einem bezahlten Preis
-    const milkLidl = rows().filter({ hasText: 'Milch – Sorte unbekannt' }).filter({ hasText: 'Lidl' });
-    assert.equal(await milkLidl.count(), 1);
-    await milkLidl.getByRole('button', { name: /Stimmt/ }).click();
-    assert.equal((await stored()).prices.find(row => row.id === 'price-demo-milch-lidl').src, 'bon');
-    assert.equal(await rows().count(), 7);
-    assert.match(await page.textContent('#paid-list'), /Milch – Sorte unbekannt/);
-    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
-    await shopItem(page, 'Milch').locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Milch – Sorte unbekannt 0,99 € pro l Lidl · 25\.10\.2026/);
-    await page.click('#shop-back'); await openSettings(page);
-    // „Ändern“: falsch zugeordnet (Äpfel bei Rewe waren Gala), Name, Sorte und Preis korrigieren; danach bestätigt
-    const apples = rows().filter({ hasText: 'Äpfel' });
-    await apples.getByRole('button', { name: /Ändern/ }).click(); await sheetOpen(page);
-    assert.match(await page.textContent('#note-origin'), /Noch nicht bestätigt/);
-    await page.fill('#note-form input[name=variant]', 'Gala'); await page.fill('#note-form input[name=price]', '0,65'); await page.fill('#note-form input[name=quantity]', '1'); await page.fill('#note-form input[name=unit]', 'Stück');
-    await page.click('#note-form button[type=submit]'); await page.waitForSelector('#note-dialog', { state: 'hidden' });
-    const fixed = (await stored()).prices.find(row => row.id === 'price-demo-aepfel-rewe');
-    assert.deepEqual([fixed.src, fixed.variant, fixed.name, fixed.quote], ['bon', 'Gala', 'Äpfel', { cents: 65, quantity: 1, unit: 'Stück' }]);
-    assert.equal((await stored()).sync.minRev, 3);
-    assert.match(await page.textContent('#paid-list'), /Gala/);
-    // „Vergessen“ mit Rückfrage
-    page.once('dialog', dialog => dialog.dismiss());
-    await rows().first().getByRole('button', { name: /Vergessen/ }).click();
-    assert.equal(await rows().count(), 6, 'abgebrochen: nichts vergessen');
-    const firstId = await rows().first().evaluate(node => node.textContent);
-    page.once('dialog', dialog => dialog.accept());
-    await rows().first().getByRole('button', { name: /Vergessen/ }).click();
-    assert.equal(await rows().count(), 5);
-    assert.ok((await stored()).prices.some(row => row.deletedAt), `vergessen: ${firstId.slice(0, 30)}`);
-    // Alle ungeprüften vergessen
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: 'Alle zu prüfenden vergessen' }).click();
-    assert.equal(await rows().count(), 0);
-    assert.ok(!/zu prüfen/.test(await page.textContent('#paid-details summary')));
+    const size = selector => page.evaluate(sel => parseFloat(getComputedStyle(document.querySelector(sel)).fontSize), selector);
+    const plan = { name: await size('#items .item-copy strong'), qty: await size('#items .item-copy .item-qty') };
+    await inShop(page, 'Edeka');
+    const shop = { name: await size('#shop-list .shop-name'), qty: await size('#shop-list .shop-qty') };
+    assert.deepEqual(shop, plan, 'dieselbe Schriftgröße wie unter „Planen“');
+    assert.equal(await page.locator('#shop-list .shop-chevron, #shop-list .shop-price, #shop-list button.shop-text, #shop-list [aria-expanded]').count(), 0, 'kein Pfeil, keine Preisinfo');
+    const checked = () => page.locator('#shop-list .shop-item.checked').count();
+    const before = await checked();
+    await page.locator('#shop-list .shop-name').first().click();
+    await page.locator('#shop-list .shop-qty').first().click();
+    assert.equal(await page.locator('#shop-list .shop-price').count(), 0);
+    assert.equal(await checked(), before, 'ein Tipp auf den Namen hakt nichts ab');
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
 
-  for (const [width, scheme] of [[390, 'light'], [390, 'dark'], [320, 'light'], [280, 'dark']]) {
-    test(`Preisinfo im Laden: passt in ${width} px Breite ohne Überlauf, mit Symbol und Pfeil, gut lesbar (${scheme})`, async () => {
-      const { ctx, page, problems } = await paidContext({ context: { viewport: { width, height: 700 }, colorScheme: scheme }, config: { productImages: true } });
-      await open(page);
-      await inShop(page, 'Rewe');
-      const apples = shopItem(page, 'Äpfel');
-      await apples.locator('.shop-text').click();
-      await apples.locator('.price-older summary').click().catch(() => {});
-      assert.equal(await horizontalOverflow(page), 0);
-      const fit = await page.evaluate(() => {
-        const boxNode = document.querySelector('.shop-price'), listItem = document.querySelector('.shop-item.info-open').getBoundingClientRect();
-        const clipped = [...boxNode.querySelectorAll('*')].filter(node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.right > boxNode.getBoundingClientRect().right + 0.5; }).map(node => node.className || node.tagName);
-        const box = boxNode.getBoundingClientRect(), row = document.querySelector('.shop-item.info-open .shop-text').getBoundingClientRect(), chevron = document.querySelector('.shop-item.info-open .shop-chevron').getBoundingClientRect();
-        const thumb = document.querySelector('.shop-item.info-open .item-thumb');
-        const parse = text => (text.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
-        const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
-        const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-        const bg = parse(getComputedStyle(document.querySelector('.shop-price')).backgroundColor);
-        const colors = ['.price-title', '.price-amount', '.price-meta', '.price-foot', 'h3'].map(selector => [selector, Math.round(contrast(parse(getComputedStyle(document.querySelector(`.shop-price ${selector}`)).color), bg) * 10) / 10]);
-        return { boxRight: box.right, boxLeft: box.left, listLeft: listItem.left, listRight: listItem.right, clipped, width: innerWidth, rowHeight: row.height, chevronRight: chevron.right, chevronVisible: chevron.width > 0 && chevron.right <= innerWidth, thumbShown: Boolean(thumb) && getComputedStyle(thumb).display !== 'none', colors };
-      });
-      assert.ok(fit.boxLeft >= 0 && fit.boxRight <= fit.width, JSON.stringify(fit));
-      assert.ok(fit.boxLeft >= fit.listLeft - 0.5 && fit.boxRight <= fit.listRight + 0.5, `das Feld liegt innerhalb der Artikelzeile: ${JSON.stringify(fit)}`);
-      assert.deepEqual(fit.clipped, [], 'nichts im Feld ragt über den Rand');
-      assert.ok(fit.rowHeight >= 60 && fit.chevronVisible, JSON.stringify(fit));
-      assert.equal(fit.thumbShown, width > 340, 'das Symbol steht bei schmalen Bildschirmen nicht im Weg');
-      for (const [selector, ratio] of fit.colors) assert.ok(ratio >= 4.5, `${selector} Kontrast ${ratio} (${scheme}, ${width} px)`);
-      assert.deepEqual(problems, []);
-      await ctx.close();
-    });
-  }
-
-  test('Kassenbon: „G&G Champignons“, „Farm.Sn.Aprikosen“ und „G&G Senf mittels.“ werden den Listenartikeln selbst zugeordnet; Rest per Auswahl von der Liste; beim nächsten Bon ist alles gemerkt; im Laden steht der Preis unter dem Listenartikel', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    for (const name of ['Champignons', 'Aprikosen', 'Senf', 'Joghurt']) { await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); }
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
-    const parse = async text => {
-      await page.click('#open-receipt'); await sheetOpen(page);
-      await page.fill('#receipt-form textarea[name=text]', text); await page.click('#receipt-parse');
-      await page.waitForSelector('#receipt-review:not([hidden])');
-    };
-    const line = index => page.locator('#receipt-lines .receipt-line').nth(index);
-    const field = (index, name) => line(index).locator(`input[name=${name}]`).inputValue();
-    // 1. Erster Bon: Die Marke oder Abkürzung vor dem Listennamen stört nicht, die Bonzeile bleibt als genaue Bezeichnung
-    await parse('EDEKA\nG&G Champignons 1,49 A\nFarm.Sn.Aprikosen 3,29 A\nG&G Senf mittels. 0,59 A\nHerz.Naturjoghurt 0,89 A\nApfeltasche 1,19 A\nSUMME 7,45');
-    const names = await Promise.all([0, 1, 2, 3, 4].map(index => field(index, 'name'))), variants = await Promise.all([0, 1, 2, 3, 4].map(index => field(index, 'variant')));
-    assert.deepEqual(names, ['Champignons', 'Aprikosen', 'Senf', 'Herz.Naturjoghurt', 'Apfeltasche'], 'drei Zeilen ordnet die App selbst zu, „Naturjoghurt“ und „Apfeltasche“ nicht');
-    assert.deepEqual(variants, ['G&G Champignons', 'Farm.Sn.Aprikosen', 'G&G Senf mittels.', '', '']);
-    assert.match(await line(0).locator('.receipt-note').textContent(), /Automatisch „Champignons“ zugeordnet \(G&G Champignons\)/);
-    assert.equal(await line(0).locator('select[name=pick]').inputValue(), 'Champignons', 'die Auswahl zeigt den Listenartikel');
-    assert.equal(await line(4).locator('.receipt-note button').count(), 0, 'für die Apfeltasche gibt es keinen Vorschlag');
-    // Ohne Tippen: „Naturjoghurt“ wird aus der Liste gewählt, die Bonzeile bleibt als Bezeichnung
-    await line(3).locator('select[name=pick]').selectOption('Joghurt');
-    assert.equal(await field(3, 'name'), 'Joghurt');
-    assert.equal(await field(3, 'variant'), 'Herz.Naturjoghurt');
-    await page.click('#receipt-save'); await page.waitForSelector('#receipt-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /^5 Preise gemerkt/);
-    const data = await stored(), paid = name => data.prices.filter(row => row.src === 'bon' && row.name === name);
-    assert.deepEqual(['Champignons', 'Aprikosen', 'Senf', 'Joghurt', 'Apfeltasche'].map(name => paid(name).length), [1, 1, 1, 1, 1]);
-    assert.equal(paid('Champignons')[0].variant, 'G&G Champignons');
-    assert.equal(paid('Joghurt')[0].variant, 'Herz.Naturjoghurt');
-    // 2. Nächster Bon: alles ist gemerkt, nichts muss noch gewählt werden
-    await parse('EDEKA\nG&G Champignons 1,59 A\nHerz.Naturjoghurt 0,95 A\nSUMME 2,54\nDatum 01.10.2026');
-    assert.deepEqual([await field(0, 'name'), await field(1, 'name')], ['Champignons', 'Joghurt']);
-    assert.match(await line(0).locator('.receipt-note').textContent(), /Zuordnung gemerkt/);
-    assert.match(await line(1).locator('.receipt-note').textContent(), /Zuordnung gemerkt/);
-    await page.keyboard.press('Escape');
-    // 3. Im Laden: der Listenartikel zeigt den bezahlten Preis mit der Bonzeile als Bezeichnung
-    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
-    await shopItem(page, 'Champignons').locator('.shop-text').click();
-    const text = await plainText(page.locator('#shop-list .shop-price'));
-    assert.match(text, /G&G Champignons 1,49 € laut Bon \(Menge unbekannt\)/, text);
-    assert.deepEqual(problems, []);
-    await ctx.close();
-  });
-
-  test('Bezahlte Preise: Bon-Namen den Listenartikeln mit einem Tipp zuordnen; alle zu prüfenden auf einmal bestätigen; das Preisfeld weist auf unbestätigte Notizen hin', async () => {
-    const data = structuredClone(demo);
-    const row = (name, storeId) => ({ id: `item-${name}`, storeId, name, quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {}, onSale: false, price: null });
-    data.items.push(row('Champignons', 'store-edeka'), row('Aprikosen', 'store-edeka'), row('Apfeltasche', 'store-lidl'));
-    data.prices.push(paidRow('pb1', 'G&G Champignons', 'store-edeka', '2026-10-27', pq(149, 1, 'Position')), paidRow('pb2', 'Farm.Sn.Aprikosen', 'store-edeka', '2026-10-27', pq(329, 1, 'Position')),
-      paidRow('pb3', 'Apfeltasche', 'store-lidl', '2026-10-27', pq(119), { src: undefined }), paidRow('pb4', 'Apfel Saft', 'store-lidl', '2026-10-27', pq(199, 1, 'l')));
+  test('Keine Preiserkennung (Version 2.44): kein Kassenbon-Weg für Artikelpreise, kein Bereich „Bezahlte Preise“; vorhandene Preisnotizen und Zuordnungen bleiben unverändert in der Datei', async () => {
+    const data = structuredClone(demo), stamp = '2026-10-27T10:00:00.000Z';
+    const price = (id, name, extra = {}) => ({ id, name, storeId: 'store-edeka', quote: { cents: 149, quantity: 1, unit: 'Position' }, regularQuote: { cents: 149, quantity: 1, unit: 'Position' }, onSale: false, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
+    data.prices.push(price('pb1', 'G&G Champignons', { src: 'bon', variant: 'G&G Champignons', receipt: 'G&G CHAMPIGNONS', receiptKey: 'store-edeka|2026-10-27|g g champignons|149' }), price('pb2', 'Apfeltasche'));
+    data.aliases = [...(data.aliases || []), { id: 'al1', from: 'tom cherry', name: 'Cherrytomaten', variant: 'Cherry', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
     data.sync.minRev = 3;
     const { ctx, page, problems } = await context();
     await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
     await open(page);
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.prices);
-    // Vorher: „G&G Champignons“ ist ein eigenes Produkt, im Laden steht unter „Champignons“ nichts
-    await inShop(page, 'Edeka');
-    await shopItem(page, 'Champignons').locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Noch keine bestätigten Kaufpreise vorhanden/);
-    await page.click('#shop-back'); await openSettings(page);
-    if (!(await page.locator('#paid-details').evaluate(node => node.open))) await page.click('#paid-details > summary');
-    const button = page.getByRole('button', { name: /^Bon-Namen den Artikeln zuordnen \(2\)$/ });
-    assert.equal(await button.count(), 1, 'genau zwei Namen sind eindeutig; „Apfel Saft“ ist ein eigenes Produkt');
-    let asked = '';
-    page.once('dialog', dialog => { asked = dialog.message(); dialog.accept(); });
-    await button.click();
-    assert.match(asked, /G&G Champignons → Champignons/);
-    assert.match(asked, /Farm\.Sn\.Aprikosen → Aprikosen/);
-    assert.ok(!/Apfel Saft/.test(asked));
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const keep = rows => rows.filter(row => ['pb1', 'pb2', 'al1'].includes(row.id)).map(row => JSON.stringify([row.id, row.name || row.from, row.src, row.variant, row.receiptKey, row.quote, row.deletedAt])).sort();
+    const seeded = keep([...data.prices, ...data.aliases]);
+    assert.equal(await page.locator('#open-receipt, #receipt-dialog, #note-dialog, #paid-card, #finish-receipt').count(), 0);
+    // Eine neue Änderung schreibt die Datei neu; die alten Preisnotizen und Zuordnungen bleiben dabei unverändert
+    await page.fill('#item-form input[name=name]', 'Zucchini'); await page.click('#item-form button[type=submit]');
     const after = await stored();
-    assert.deepEqual(['pb1', 'pb2', 'pb4'].map(id => { const entry = after.find(price => price.id === id); return [entry.name, entry.variant || '']; }), [['Champignons', 'G&G Champignons'], ['Aprikosen', 'Farm.Sn.Aprikosen'], ['Apfel Saft', '']]);
-    assert.equal(await page.getByRole('button', { name: /^Bon-Namen den Artikeln zuordnen/ }).count(), 0, 'nichts mehr zuzuordnen');
+    assert.deepEqual(keep([...after.prices, ...after.aliases]), seeded, 'Preisnotizen und Zuordnungen sind unverändert');
+    assert.equal(after.sync.minRev, 3);
+    await openSettings(page);
+    assert.equal(await page.getByText('Bezahlte Preise').count(), 0);
+    assert.match(await page.textContent('#alias-list'), /tom cherry → Cherrytomaten/);
+    assert.ok(!/Cherry\)/.test(await page.textContent('#alias-list')), 'die Sorte wird nicht mehr angezeigt');
+    // Im Laden gibt es für den Artikel kein Preisfeld, auch wenn Notizen zu seinem Namen vorhanden sind
     await goTab(page, 'shopping'); await inShop(page, 'Edeka');
-    await shopItem(page, 'Champignons').locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /G&G Champignons 1,49 € laut Bon \(Menge unbekannt\)/);
-    // Die unbestätigte Notiz zur Apfeltasche (Lidl) zählt nicht, das Preisfeld sagt es
-    await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
-    await shopItem(page, 'Apfeltasche').locator('.shop-text').click();
-    const hint = await plainText(page.locator('#shop-list .shop-price'));
-    assert.match(hint, /Noch keine bestätigten Kaufpreise vorhanden/);
-    assert.match(hint, /Eine ältere Notiz zu diesem Artikel ist noch nicht bestätigt \(Einstellungen → Bezahlte Preise\)/);
-    // Alle zu prüfenden auf einmal bestätigen (mit Rückfrage)
-    await page.click('#shop-back'); await openSettings(page);
-    const before = await page.locator('#paid-review .paid-note').count();
-    assert.ok(before > 1);
-    page.once('dialog', dialog => dialog.dismiss());
-    await page.getByRole('button', { name: 'Alle zu prüfenden als bezahlt bestätigen' }).click();
-    assert.equal(await page.locator('#paid-review .paid-note').count(), before, 'abgebrochen: nichts bestätigt');
-    page.once('dialog', dialog => { assert.match(dialog.message(), new RegExp(`Alle ${before} Notizen`)); dialog.accept(); });
-    await page.getByRole('button', { name: 'Alle zu prüfenden als bezahlt bestätigen' }).click();
-    assert.equal(await page.locator('#paid-review .paid-note').count(), 0);
-    assert.ok((await stored()).every(price => price.deletedAt || price.src === 'bon'));
-    await goTab(page, 'shopping'); await inShop(page, 'Lidl');
-    await shopItem(page, 'Apfeltasche').locator('.shop-text').click();
-    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Apfeltasche – Sorte unbekannt 1,19 € pro Stück Lidl · 27\.10\.2026/);
+    assert.equal(await page.locator('#shop-list .shop-price, #shop-list button.shop-text').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4964,16 +4368,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
       assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
       assert.equal(await horizontalOverflow(page), 0);
-      // In jedem Geschäft (mit und ohne Angebotslink): Summentext und beide Knöpfe liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
+      // In jedem Geschäft (mit und ohne Angebotslink): Summentext und Knopf liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
       for (const name of ['Edeka', 'Lidl', 'Rewe']) {
         await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
         const layout = await page.evaluate(() => {
           const rect = selector => { const node = document.querySelector(selector); return node && !node.hidden && node.getClientRects().length ? node.getBoundingClientRect() : null; };
-          const card = rect('.summary'), text = rect('#shopping-total'), buttons = ['#offers-link', '#set-offers', '#open-receipt'].map(rect).filter(Boolean);
+          const card = rect('.summary'), text = rect('#shopping-total'), buttons = ['#offers-link', '#set-offers'].map(rect).filter(Boolean);
           const inner = document.querySelector('#shopping-total').querySelector('strong, small');
           return { card, text, buttons, textFits: !inner || inner.scrollWidth <= document.querySelector('#shopping-total').clientWidth + 1 };
         });
-        assert.ok(layout.buttons.length >= 2, `${name}: Knöpfe sichtbar`);
+        assert.equal(layout.buttons.length, 1, `${name}: der Angebote-Knopf ist sichtbar (kein Kassenbon-Knopf mehr)`);
         assert.ok(layout.textFits, `${name}: Summentext ragt über seinen Platz hinaus`);
         const parts = [layout.text, ...layout.buttons].sort((a, b) => a.left - b.left);
         for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5, `${name}: Summe und Knöpfe überlappen bei ${width} px`);
