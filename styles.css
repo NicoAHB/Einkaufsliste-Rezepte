@@ -1453,17 +1453,14 @@ dialog[open] {
 dialog::backdrop {
   background:hsl(var(--h) 50% 5% / .6)
 }
+/* Die Überschrift mit dem „×“ steht am Anfang des Fensters und scrollt mit dem Inhalt weg; beim Hochscrollen ist sie wieder da (Version 2.40). Nur die Knopfleiste unten bleibt stehen. */
 .sheet-head {
-  position:sticky;
-  top:-8px;
-  z-index:2;
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
   margin:0 -18px 8px;
-  padding:14px 18px 8px;
-  background:var(--card)
+  padding:14px 18px 8px
 }
 .sheet-head h2 {
   margin:0;
@@ -1546,16 +1543,12 @@ dialog.cook {
   border-radius:0
 }
 .cook-head {
-  position:sticky;
-  top:-12px;
-  z-index:2;
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
   margin:-12px -18px 8px;
   padding:12px 18px;
-  background:var(--card);
   border-bottom:1px solid var(--line)
 }
 .cook-head h2 {
@@ -3263,10 +3256,6 @@ output {
   -webkit-backdrop-filter:blur(6px);
   backdrop-filter:blur(6px)
 }
-/* Die feste Überschrift (und die feste Knopfleiste unten) liegt auf einer undurchsichtigen Fläche in der Glasfarbe: Beim Scrollen schimmert sonst Text darunter durch. */
-:root[data-glass] .sheet-head {
-  background:linear-gradient(var(--glass-strong),var(--glass-strong)),var(--card)
-}
 
 :root[data-glass] .move-bar {
   background:var(--glass-strong);
@@ -3632,6 +3621,7 @@ html[data-landscape] .turn-hint {
 .item.checked .item-qty {
   color:var(--muted)
 }
+/* Die feste Knopfleiste unten liegt auf einer undurchsichtigen Fläche in der Glasfarbe: Beim Scrollen schimmert sonst Text darunter durch. */
 :root[data-glass] .sheet-actions {
   background:linear-gradient(var(--glass-strong),var(--glass-strong)),var(--card);
   border-top-color:var(--glass-line)

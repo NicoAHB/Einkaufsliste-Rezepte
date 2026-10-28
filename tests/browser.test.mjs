@@ -5464,9 +5464,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  // ---- Version 2.38: Die feste Überschrift und die feste Knopfleiste in Fenstern sind undurchsichtig (Text darunter schimmerte durch) ----
+  // ---- Version 2.40: Die Überschrift mit dem „×“ scrollt mit dem Inhalt weg und kommt beim Hochscrollen wieder (nichts bleibt oben stehen); ein Tipp außerhalb schließt ein Fenster ----
   for (const [glass, scheme] of [[true, 'light'], [true, 'dark'], [false, 'light'], [false, 'dark']]) {
-    test(`Fenster: beim Scrollen schimmert nichts durch die feste Überschrift und die feste Leiste (${glass ? 'Glas-Design' : 'ohne Glas'}, ${scheme})`, async () => {
+    test(`Fenster: die Überschrift scrollt mit dem Inhalt weg, beim Hochscrollen ist sie mit dem „×“ wieder da; nur die Knopfleiste unten bleibt (${glass ? 'Glas-Design' : 'ohne Glas'}, ${scheme})`, async () => {
       const { ctx, page, problems } = await context({ config: { glass }, context: { viewport: { width: 390, height: 480 }, colorScheme: scheme } });
       await open(page);
       const lum = ([r, g, b]) => { const [x, y, z] = [r, g, b].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * x + .7152 * y + .0722 * z; };
@@ -5477,59 +5477,122 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         const spread = Math.max(...values) - Math.min(...values);
         assert.ok(spread < 0.06, `${label}: es schimmert etwas durch (Streuung ${spread.toFixed(2)} über ${values.length} Punkte)`);
       };
-      const check = async (dialog, label) => {
+      // Überall: keine Überschrift (Fenster, Kochmodus) ist festgesetzt; nur die Knopfleiste unten ist es
+      const modes = await page.evaluate(() => [...document.querySelectorAll('dialog .sheet-head, dialog .cook-head')].map(node => ({ dialog: node.closest('dialog').id, position: getComputedStyle(node).position })));
+      assert.ok(modes.length >= 12, `viele Überschriften (${modes.length})`);
+      for (const mode of modes) assert.ok(!['sticky', 'fixed'].includes(mode.position), `${mode.dialog}: die Überschrift bleibt nicht oben stehen (${mode.position})`);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#edit-item-form .sheet-actions')).position), 'sticky', 'die Knopfleiste unten bleibt');
+      // Scrollt die Überschrift mit, ist sie nach dem Hinunterscrollen weg, und beim Hochscrollen mit dem „×“ wieder da; ein Tipp auf das „×“ schließt
+      const check = async (dialog, label, head = '.sheet-head') => {
         await sheetOpen(page);
+        const rect = () => page.evaluate(([selector, headSelector]) => { const box = document.querySelector(`${selector} ${headSelector}`).getBoundingClientRect(), shell = document.querySelector(selector).getBoundingClientRect(); return { top: box.top, bottom: box.bottom, height: box.height, shellTop: shell.top, scroll: document.querySelector(selector).scrollTop }; }, [dialog, head]);
+        await page.evaluate(selector => { document.querySelector(selector).scrollTop = 0; }, dialog);   // ganz oben beginnen (ein Rezept mit neuen Zeilen steht evtl. weiter unten)
+        await page.waitForTimeout(100);
+        const start = await rect();
         await page.evaluate(([selector, at]) => { document.querySelector(selector).scrollTop = at; }, [dialog, 420]);
         await page.waitForTimeout(150);
-        assert.ok(await page.evaluate(selector => document.querySelector(selector).scrollTop > 20, dialog), `${label}: das Fenster ist gescrollt`);
-        // Erst nach dem Scrollen messen: Die Überschrift rückt dabei an den oberen Rand (top: -8px)
-        const box = await page.locator(`${dialog} .sheet-head`).boundingBox(), shell = await page.locator(dialog).boundingBox();
-        const heading = await page.locator(`${dialog} .sheet-head h2`).boundingBox(), close = await page.locator(`${dialog} .sheet-head button`).first().boundingBox();
-        const top = Math.max(box.y, shell.y) + 6;   // sichtbarer oberer Rand der Überschrift (die runden Ecken des Fensters bleiben außen vor)
-        // Zwischen Überschrift und Schließen-Knopf sowie am oberen und unteren Rand: nur Hintergrund, kein Text darunter
-        const band = { x: heading.x + heading.width + 8, y: box.y + box.height / 2, width: close.x - 8 - (heading.x + heading.width + 8) };
-        if (band.width > 12) await flat(band, `${label}, neben der Überschrift`);
-        await flat({ x: box.x + 32, y: top, width: box.width - 64 }, `${label}, oberer Rand der Überschrift`);
-        await flat({ x: box.x + 32, y: box.y + box.height - 3, width: box.width - 64 }, `${label}, unterer Rand der Überschrift`);
+        const down = await rect();
+        assert.ok(down.scroll > 20, `${label}: das Fenster ist gescrollt (${down.scroll})`);
+        assert.ok(Math.abs((start.top - down.top) - down.scroll) <= 2, `${label}: die Überschrift scrollt mit dem Inhalt (${start.top} → ${down.top}, gescrollt ${down.scroll})`);
+        if (down.scroll >= start.height + 8) assert.ok(down.bottom <= down.shellTop + 1, `${label}: die Überschrift ist nach dem Scrollen nicht mehr zu sehen`);
+        await page.evaluate(selector => { document.querySelector(selector).scrollTop = 0; }, dialog);
+        await page.waitForTimeout(100);
+        const up = await rect();
+        assert.ok(Math.abs(up.top - start.top) <= 1 && up.top >= up.shellTop, `${label}: beim Hochscrollen ist die Überschrift wieder da`);
+        const id = dialog.slice(1);
+        await page.click(`${dialog} [data-close="${id}"]`);
+        await page.waitForSelector('dialog[open]', { state: 'detached' });
       };
-      // In allen Fenstern der App: Die Grundfläche jeder festen Überschrift und Leiste ist deckend (Alpha 1), egal welches Fenster
-      const bases = await page.evaluate(() => [...document.querySelectorAll('dialog .sheet-head, dialog .sheet-actions, dialog .cook-head')].map(node => ({ dialog: node.closest('dialog').id, kind: node.className, color: getComputedStyle(node).backgroundColor })));
-      assert.ok(bases.length >= 12, `viele feste Überschriften (${bases.length})`);
-      for (const base of bases) assert.ok(/^rgb\(/.test(base.color) || /,\s*1\)$/.test(base.color), `${base.dialog} ${base.kind}: Grundfläche nicht deckend (${base.color})`);
-      // Anleitung (lang)
       await openSettings(page); await page.click('#open-help'); await page.waitForSelector('#help-dialog[open]');
       await page.evaluate(() => document.querySelectorAll('#help-body details').forEach(node => { node.open = true; }));
       await check('#help-dialog', 'Anleitung');
-      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-      // Einkauf eintragen (Foto-Feld und Eingaben liegen unter der Überschrift)
       await goTab(page, 'spending');
       await page.click('#add-purchase'); await page.waitForSelector('#purchase-dialog[open]');
       await check('#purchase-dialog', 'Einkauf eintragen');
-      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-      // Rezepte des Tages und Was kann ich kochen?
       await goTab(page, 'recipes');
       await page.click('#daily-open'); await page.waitForSelector('#daily-dialog[open]');
       await check('#daily-dialog', 'Rezepte des Tages');
-      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
       await page.click('#cookable-open'); await page.waitForSelector('#cookable-dialog[open]');
       await page.evaluate(() => document.querySelectorAll('#cookable-dialog details').forEach(node => { node.open = true; }));
       await check('#cookable-dialog', 'Was kann ich kochen?');
-      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-      // Geschäfte & Angebote
+      // Rezepte: neues Rezept mit vielen Zutaten (langes Fenster) und der Kochmodus
+      await page.click('#add-recipe'); await page.waitForSelector('#recipe-dialog[open]');
+      for (let index = 0; index < 8; index++) { await page.click('#add-ingredient'); }
+      await check('#recipe-dialog', 'Rezept bearbeiten');
+      await page.locator('.recipe-card').first().getByRole('button', { name: 'Kochen' }).click(); await page.waitForSelector('#cook-dialog[open]');
+      await page.evaluate(() => { const list = document.querySelector('#cook-ingredients'); for (let index = 0; index < 20; index++) list.append(list.firstElementChild.cloneNode(true)); });
+      await check('#cook-dialog', 'Kochmodus', '.cook-head');
       await goTab(page, 'shopping'); await openStores(page);
       await check('#stores-dialog', 'Geschäfte & Angebote');
-      await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-      // Artikel bearbeiten: die feste Knopfleiste unten
+      // Artikel bearbeiten: die Knopfleiste unten bleibt stehen und ist undurchsichtig (nichts schimmert durch)
       await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
       await page.click('#item-price-fold > summary');
       await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
-      const bar = await page.locator('#edit-item-form .sheet-actions').boundingBox();
+      const bar = await page.locator('#edit-item-form .sheet-actions').boundingBox(), shell = await page.locator('#item-dialog').boundingBox();
+      assert.ok(Math.abs(bar.y + bar.height - (shell.y + shell.height)) <= 2, 'die Knopfleiste sitzt am unteren Rand');
       await flat({ x: bar.x + 6, y: bar.y + 3, width: bar.width - 12 }, 'Knopfleiste, oberer Rand');
       await flat({ x: bar.x + 6, y: bar.y + bar.height - 3, width: bar.width - 12 }, 'Knopfleiste, unterer Rand');
       assert.deepEqual(problems, []);
       await ctx.close();
     });
   }
+
+  test('Fenster schließen: ein Tipp außerhalb (auf den abgedunkelten Hintergrund) schließt wie das „×“; Tipps im Fenster und Text markieren schließen nichts; das Willkommensfenster bleibt', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 700 } } });
+    await open(page);
+    const dialogTop = async id => (await page.locator(id).boundingBox()).y;
+    const closed = () => page.waitForSelector('dialog[open]', { state: 'detached' });
+    // Mehrere Fenster: der Bereich oberhalb des Fensters schließt (der Kochmodus füllt den ganzen Bildschirm und hat keinen; dort scrollt man hoch und tippt auf das „×“)
+    const opens = [
+      ['#item-dialog', async () => { await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); }],
+      ['#meal-dialog', async () => { await goTab(page, 'plan'); await page.locator('.day').first().locator('.day-head .icon-button').click(); }],
+      ['#help-dialog', async () => { await openSettings(page); await page.click('#open-help'); }],
+      ['#purchase-dialog', async () => { await goTab(page, 'spending'); await page.click('#add-purchase'); }],
+      ['#cookable-dialog', async () => { await goTab(page, 'recipes'); await page.click('#cookable-open'); }],
+      ['#stores-dialog', async () => { await goTab(page, 'shopping'); await openStores(page); }]
+    ];
+    for (const [id, show] of opens) {
+      await show(); await page.waitForSelector(`${id}[open]`); await sheetOpen(page);
+      const top = await dialogTop(id);
+      assert.ok(top > 20, `${id}: oberhalb des Fensters bleibt Hintergrund zum Antippen (${Math.round(top)} px)`);
+      await page.mouse.click(195, Math.min(10, top / 2));
+      await closed();
+    }
+    // Ein Tipp auf die Überschrift, auf einen Rand im Fenster oder auf den Knopf im Fenster schließt nicht von selbst
+    await goTab(page, 'shopping');
+    await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    const box = await page.locator('#item-dialog').boundingBox();
+    await page.mouse.click(box.x + 4, box.y + box.height / 2);   // dicht am linken Rand, aber noch im Fenster
+    await page.locator('#item-dialog h2').click();
+    assert.equal(await page.locator('#item-dialog[open]').count(), 1, 'Tipps im Fenster schließen nichts');
+    // Text im Feld markieren und außerhalb loslassen: bleibt offen
+    const field = await page.locator('#edit-item-form input[name=name]').boundingBox();
+    await page.mouse.move(field.x + 10, field.y + field.height / 2); await page.mouse.down();
+    await page.mouse.move(195, 8, { steps: 4 }); await page.mouse.up();
+    assert.equal(await page.locator('#item-dialog[open]').count(), 1, 'Drücken im Fenster und Loslassen außerhalb schließt nicht');
+    // Drücken außerhalb und Loslassen im Fenster: ebenfalls nicht
+    await page.mouse.move(195, 8); await page.mouse.down(); await page.mouse.move(box.x + 60, box.y + 60, { steps: 4 }); await page.mouse.up();
+    assert.equal(await page.locator('#item-dialog[open]').count(), 1, 'Drücken außerhalb und Loslassen im Fenster schließt nicht');
+    await page.mouse.click(195, 8);
+    await closed();
+    // Rezept bearbeiten: Der Tipp außerhalb schließt wie das „×“ und behält den Entwurf
+    await goTab(page, 'recipes');
+    await page.click('#add-recipe'); await sheetOpen(page);
+    await page.fill('#recipe-form input[name=name]', 'Linsensuppe');
+    await page.mouse.click(195, 8);
+    await closed();
+    await page.click('#add-recipe'); await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-draft-note').isVisible(), true, 'der angefangene Entwurf wird angeboten');
+    await page.click('#recipe-dialog [data-close]');
+    // Das Willkommensfenster braucht den Namen und lässt sich nicht wegtippen
+    const first = await context({ seed: false, context: { viewport: { width: 390, height: 700 } } });
+    await open(first.page);
+    await first.page.waitForSelector('#welcome[open]');
+    await first.page.mouse.click(195, 4);
+    assert.equal(await first.page.locator('#welcome[open]').count(), 1, 'das Willkommensfenster bleibt offen');
+    assert.deepEqual(problems, []);
+    await first.ctx.close(); await ctx.close();
+  });
 
   test('Neuer Name und Backup', async () => {
     const { ctx, page } = await context({ seed: false });
