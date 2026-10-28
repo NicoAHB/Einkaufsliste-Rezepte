@@ -33,6 +33,8 @@ export function validateRow(key, row) {
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
   // `anywhere` (Version 2.6): ob „Im Laden“ Artikel ohne Geschäft angezeigt werden; fehlt oder null = Voreinstellung nach dem Namen (siehe shop.js).
   if (key === 'stores' && row.anywhere !== undefined && row.anywhere !== null && typeof row.anywhere !== 'boolean') throw new Error('Ungültige Einstellung für Artikel ohne Geschäft.');
+  // `separate` (Version 2.30): eigene Liste, nur sichtbar, wenn das Geschäft gewählt ist; fehlt oder null = normales Geschäft.
+  if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
   if (key === 'stores' && row.offersUrl !== undefined) {
     if (typeof row.offersUrl !== 'string') throw new Error('Ungültiger Angebotslink.');
     offerUrl(row.offersUrl);

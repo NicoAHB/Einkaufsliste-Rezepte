@@ -3035,6 +3035,114 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // Beispieldaten plus eine eigene Liste „Wünsche“ (Wünsche zählen nirgends mit), zwei Artikel dort und ein Artikel ohne Geschäft
+  const withWishes = () => {
+    const data = structuredClone(demo), at = '2026-10-25T00:00:00.000Z';
+    data.stores.push({ id: 'store-wish', name: 'Wünsche', offersUrl: '', separate: true, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const make = (id, name, storeId) => ({ id, storeId, name, quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {}, onSale: false });
+    data.items.push(make('item-fahrrad', 'Fahrrad', 'store-wish'), make('item-zwiebeln', 'Zwiebeln', 'store-wish'), make('item-brot', 'Brot', ''));
+    return data;
+  };
+
+  test('Eigene Liste („Wünsche“): nirgends sichtbar, nur wenn das Geschäft gewählt ist (Planen, Im Laden, Zähler, Beenden, Kochen); einstellbar pro Geschäft', async () => {
+    const remote = github(withWishes());
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await synced(page);
+    const tab = name => page.getByRole('tab', { name: new RegExp(`^${name}`) });
+    const itemsText = () => page.textContent('#items');
+    // Planen, Alle: keine Wünsche in der Liste, im Zähler „offen“ und in der Summe; der Reiter „Wünsche“ zählt seine eigenen
+    assert.ok(!(await itemsText()).includes('Fahrrad'), 'unter „Alle“ stehen keine Wünsche');
+    assert.match(await page.textContent('#item-count'), /^5 offen/, 'Tomaten, Nudeln, Milch, Äpfel und Brot; ohne die zwei Wünsche');
+    assert.match(await tab('Alle').textContent(), /Alle\s*5$/);
+    assert.match(await tab('Wünsche').textContent(), /Wünsche\s*2$/);
+    assert.ok(!(await page.textContent('#items')).includes('Zwiebeln'));
+    // Der Reiter „Wünsche“ zeigt sie
+    await tab('Wünsche').click();
+    assert.deepEqual((await page.locator('#items .item-name, #items .item-copy strong').allTextContents()).sort(), ['Fahrrad', 'Zwiebeln']);
+    assert.match(await page.textContent('#item-count'), /^2 offen/);
+    // Ein Artikel, der in „Alle“ zu den Wünschen kommt, verschwindet dort: die Meldung sagt, wo er steht
+    await tab('Alle').click();
+    await expandForm(page);
+    assert.deepEqual(await page.locator('#store-pick button[aria-pressed=true]').allTextContents(), ['Kein Geschäft'], 'zurück in „Alle“ ist das Geschäft „Wünsche“ nicht mehr vorgewählt (sonst verschwänden neue Artikel unbemerkt)');
+    await pickStore(page, 'Wünsche'); await page.fill('#item-form input[name=name]', 'Buch'); await page.click('#item-form button[type=submit]');
+    await page.waitForSelector('#notice:not([hidden])');
+    assert.match(await page.textContent('#notice-text'), /„Buch“ steht bei „Wünsche“/);
+    assert.ok(!(await itemsText()).includes('Buch'));
+    assert.match(await tab('Alle').textContent(), /Alle\s*5$/);
+    assert.match(await tab('Wünsche').textContent(), /Wünsche\s*3$/);
+    // „Was kann ich kochen?“: die Zwiebeln auf den Wünschen zählen nicht als „kommt noch“
+    await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page);
+    assert.match(await page.locator('#cookable-list .cookable-card').first().locator('.cookable-lines').textContent(), /Fehlt: Zwiebel, Olivenöl/);
+    await page.keyboard.press('Escape'); await page.click('[data-tab=shopping]');
+    // Im Laden
+    await page.click('#mode-shop');
+    const chip = name => page.locator('#shop-chips .chip', { hasText: name });
+    const names = async () => (await page.locator('#shop-list .shop-name').allTextContents()).sort();
+    assert.match(await chip('Alle').textContent(), /Alle\s*5$/, 'ohne Wünsche');
+    assert.match(await chip('Wünsche').textContent(), /Wünsche\s*3$/);
+    await chip('Alle').click();
+    assert.ok(!(await names()).some(name => ['Fahrrad', 'Zwiebeln', 'Buch'].includes(name)), 'auch „Alle“ im Laden zeigt keine Wünsche');
+    assert.match(await page.textContent('#shop-status'), /Noch 5 offen/);
+    await chip('Edeka').click();
+    assert.deepEqual(await names(), ['Brot', 'Nudeln', 'Tomaten']);
+    assert.match(await page.textContent('#shop-list'), /2 Artikel für andere Geschäfte/, 'Milch und Äpfel; die Wünsche zählen nicht mit');
+    await chip('Wünsche').click();
+    assert.deepEqual(await names(), ['Buch', 'Fahrrad', 'Zwiebeln'], 'nur die eigenen Artikel, kein Brot');
+    assert.ok(!/Überall möglich|für andere Geschäfte|ohne Geschäft stehen hier nicht/.test(await page.textContent('#shop-list')), 'keine Hinweise auf Artikel anderswo');
+    // Einkauf beenden bei Edeka lässt abgehakte Wünsche in Ruhe; bei den Wünschen beendet nur sie
+    const gone = id => remote.content.items.find(row => row.id === id).deletedAt !== null;
+    await shopTap(page, 'Fahrrad').click();
+    await chip('Edeka').click(); await shopTap(page, 'Nudeln').click();
+    await finishShop(page); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /^1 abgehakte Artikel wird/, 'nur Nudeln, nicht das Fahrrad');
+    await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.notEqual(remote.content.items.find(row => row.name === 'Nudeln').deletedAt, null, 'Nudeln sind weg');
+    assert.equal(gone('item-fahrrad'), false, 'das abgehakte Fahrrad bleibt');
+    await page.click('#mode-shop'); await chip('Wünsche').click();
+    assert.ok((await page.textContent('#shop-list')).includes('Erledigt (1)'));
+    await shopTap(page, 'Buch').click();
+    await chip('Alle').click(); await shopTap(page, 'Tomaten').click();
+    await chip('Wünsche').click();
+    await finishShop(page); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /^2 abgehakte Artikel werden/, 'Fahrrad und Buch, nicht die Tomaten');
+    await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(gone('item-fahrrad'), true);
+    assert.equal(remote.content.items.find(row => row.name === 'Tomaten').deletedAt, null, 'die Tomaten bleiben abgehakt stehen');
+    assert.equal(remote.content.items.find(row => row.name === 'Zwiebeln').deletedAt, null);
+    // Einstellbar: im Dialog „Geschäfte“ gibt es „Eigene Liste“; dann entfällt „Artikel ohne Geschäft“
+    await page.click('#manage-stores'); await sheetOpen(page);
+    const row = index => page.locator('#store-editor .store-row').nth(index);
+    assert.equal(await row(3).locator('input[name=separate]').isChecked(), true, 'Wünsche: eigene Liste');
+    assert.equal(await row(3).locator('input[name=anywhere]').isVisible(), false, 'dann entfällt „Artikel ohne Geschäft“');
+    assert.equal(await row(2).locator('input[name=separate]').isChecked(), false);
+    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), true);
+    assert.match(await row(2).textContent(), /Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist/);
+    await row(2).locator('input[name=separate]').check();
+    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), false);
+    await row(2).getByRole('button', { name: /speichern/ }).click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').separate, true, 'die Einstellung liegt in der gemeinsamen Datei');
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.ok(!(await itemsText()).includes('Äpfel'), 'Rewe ist jetzt eine eigene Liste: die Äpfel stehen nicht mehr unter „Alle“');
+    await tab('Rewe').click();
+    assert.ok((await itemsText()).includes('Äpfel'), 'aber unter „Rewe“');
+    await tab('Alle').click();
+    await page.click('#manage-stores'); await sheetOpen(page);
+    await row(2).locator('input[name=separate]').uncheck();
+    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), true);
+    await row(2).getByRole('button', { name: /speichern/ }).click();
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').separate, null);
+    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.ok((await itemsText()).includes('Äpfel'));
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Geschäfte als Text oder Logo: Auswahl in den Einstellungen, bleibt nach dem Neuladen', async () => {
     const data = withRossmann(), at = '2026-10-25T00:00:00.000Z';
     data.stores.push({ id: 'store-metzger', name: 'Metzger Müller', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
