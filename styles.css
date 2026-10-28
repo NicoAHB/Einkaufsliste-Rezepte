@@ -2775,7 +2775,7 @@ details,summary,.card {
     gap:0
   }
   .tabs button {
-    font-size:.6rem
+    font-size:.57rem
   }
   .tab-icon {
     width:38px
@@ -2786,7 +2786,7 @@ details,summary,.card {
 }
 @media(max-width:300px) {
   .tabs button {
-    font-size:.52rem
+    font-size:.48rem
   }
   .spend-chart {
     gap:4px
