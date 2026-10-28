@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.41
+# Einkauf & Rezepte – Version 2.42
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,14 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.42: Preisinfo auch gesperrt, per Gedrückthalten
+
+Im Modus „Im Laden“ lässt sich die Preisinfo „Zuletzt bezahlt“ jetzt auch **bei gesperrter Ansicht** öffnen: den **Namen** (mit Menge, Symbol und Pfeil) eines Artikels **gedrückt halten**. Noch einmal gedrückt halten schließt sie wieder. Ein einfacher Tipp bewirkt gesperrt weiter nichts (der Knopf zum Entsperren leuchtet auf). Der Name ist damit die vierte Fläche, die gesperrt per Gedrückthalten reagiert (neben Kreis, Geschäft und „Erledigt“); während des Haltens färbt sich die Zeile und der Pfeil wächst. Zu früh loslassen oder Wegziehen (Scrollen) öffnet nichts; die Sperre bleibt bestehen. Ungesperrt öffnet wie bisher ein Tipp.
+
+Testpunkt für Version 2.42:
+
+- [ ] Gesperrt (Schloss): Namen eines Artikels kurz antippen: nichts, Entsperren-Knopf leuchtet. Namen halten: Preisinfo klappt auf; noch einmal halten: sie schließt. Der Artikel wird dabei nicht abgehakt, die Ansicht bleibt gesperrt.
 
 ## Neu in Version 2.41: Verlauf bezahlter Preise („Zuletzt bezahlt“) nur im Modus „Im Laden“
 

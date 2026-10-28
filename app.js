@@ -1709,10 +1709,10 @@ function armLock() {
 }
 // Jede Berührung, jeder Tastendruck und jedes Scrollen setzt die Wartezeit zurück.
 for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListener(type, () => { if (shopOn() && !isLocked()) armLock(); }, { capture: true, passive: true });
-// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Drei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
-// den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
+// Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Vier Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
+// den Kreis eines Artikels (abhaken), den Namen eines Artikels (Preisinfo öffnen oder schließen), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
-const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-list .shop-text, #shop-chips .chip, #shop-list .shop-done summary';
 // Eine verschluckte Berührung zeigt keinen Text: Der Knopf zum Entsperren leuchtet kurz in der Farbe auf (zwei Pulse, CSS „nudge“). Bildschirmleser bekommen den Hinweis als unsichtbare Ansage.
 function nudgeUnlock() {
   const bar = $('#shop-lockbar');
@@ -1763,7 +1763,7 @@ let priceOpen = '', priceStore = null;
 const priceMore = new Set();   // aufgeklappte „Frühere Käufe“ (Artikel und Eintrag), bleiben beim Neuzeichnen offen
 function closePriceInfo() { priceOpen = ''; priceStore = null; priceMore.clear(); }
 function togglePriceInfo(id) {
-  if (isLocked()) return;
+  if (isLocked() && !lockBypass) return;   // gesperrt öffnet nur das Gedrückthalten (lockBypass) die Preisinfo, ein Tipp nicht
   priceOpen = priceOpen === id ? '' : id;
   priceMore.clear();
   renderShop();

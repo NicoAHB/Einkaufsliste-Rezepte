@@ -3806,7 +3806,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Halten am Kreis hakt weiter ab; ein offenes Feld bleibt lesbar', async () => {
+  test('Im Laden gesperrt: ein gewöhnlicher Tipp öffnet keine Preisinfo und lässt den Entsperren-Knopf aufleuchten; Gedrückthalten am Namen öffnet und schließt sie; Halten am Kreis hakt weiter ab', async () => {
     const { ctx, page, problems } = await paidContext();
     await open(page);
     await inShop(page, 'Rewe');
@@ -3824,6 +3824,29 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await apples().locator('.shop-chevron').click();
     assert.equal(await page.locator('#shop-list .shop-price').count(), 0, 'auch der Pfeil öffnet gesperrt nichts');
     assert.equal(await itemState(page, 'Äpfel'), false);
+    // Den Namen gedrückt halten öffnet die Preisinfo (auch gesperrt); noch einmal gedrückt halten schließt sie
+    const name = '#shop-list .shop-item:has-text("Äpfel") .shop-text', prices = () => page.locator('#shop-list .shop-price').count();
+    await pressAndHold(page, name, 200);
+    assert.equal(await page.locator(`${name}.holding`).count(), 1, 'die Zeile füllt sich, solange man hält');
+    await page.mouse.up();
+    assert.equal(await prices(), 0, 'zu früh losgelassen: nichts');
+    const box = await apples().locator('.shop-text').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 4 });
+    await page.waitForTimeout(700); await page.mouse.up();
+    assert.equal(await prices(), 0, 'wer beim Halten wegzieht (Scrollen), öffnet nichts');
+    await pressAndHold(page, name, 650); await page.mouse.up();
+    assert.equal(await prices(), 1, 'durch Halten geöffnet');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'true');
+    assert.match(await plainText(page.locator('#shop-list .shop-price')), /Zuletzt bezahlt Bei Rewe Pink Lady 0,79 € pro Stück/);
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
+    assert.equal(await itemState(page, 'Äpfel'), false, 'nichts abgehakt');
+    await apples().locator('.shop-text').click();
+    assert.equal(await prices(), 1, 'ein Tipp schließt gesperrt nichts');
+    await pressAndHold(page, name, 650); await page.mouse.up();
+    assert.equal(await prices(), 0, 'noch einmal gedrückt gehalten: geschlossen');
+    assert.equal(await apples().locator('.shop-text').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
     // Das Halten am Kreis geht weiter
     await pressAndHold(page, '#shop-list .shop-item:has-text("Äpfel") .shop-tap', 650); await page.mouse.up();
     assert.equal(await itemState(page, 'Äpfel'), true, 'durch Halten abgehakt');
