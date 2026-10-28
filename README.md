@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.36
+# Einkauf & Rezepte – Version 2.37
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,43 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.37: Daten abgesichert, ruhigere Optik, Mehrfachauswahl, Entwürfe, Vollsicherung, Tests auf GitHub
+
+Anlass: eine Durchsicht mit Verbesserungsvorschlägen. Die beiden Datenfehler daraus wurden zuerst mit einem eigenen Test nachgestellt (Menge 3 wurde nach dem Aufräumen zu 4; ein endgültig entfernter Artikel kam wieder), dann behoben.
+
+**Daten**
+- **Angewendete Änderungen bleiben nach Alter** (`sync.marks`): Das Aufräumen behielt nur die letzten 600 Kennungen. Sendete ein Gerät, dessen Schreiben gelang, dessen Antwort aber verloren ging, dieselben Änderungen erst nach über 600 weiteren und einem Aufräumen erneut, wirkten sie ein zweites Mal. Jetzt merkt sich jedes Aufräumen eine Marke „die ersten *n* Einträge waren vor *Zeitpunkt* angewendet“; alles, was jünger als **45 Tage** ist, bleibt (mindestens 600, höchstens 2500 Einträge, etwa 100 KB). Unlesbare Marken werden ignoriert. Nicht abgedeckt bleibt ein Gerät, das länger als 45 Tage nach dem Schreiben keinen Abgleich geschafft hat.
+- **Mindestversion** (`sync.minRev`, jetzt 2): Eine App, die eine höhere Mindestversion in der Datei sieht, liest sie nicht und schreibt nichts, sondern bittet, die App zu aktualisieren. Apps bis Version 2.36 kennen das Feld nicht; es schützt also erst vor künftigen Änderungen.
+- **Foto-Bereinigung vorsichtiger:** ein ausdrücklich geglückter Abgleich vorher und noch einmal nach der Rückfrage; Fotos, die jünger als 24 Stunden sind (Commit-Datum) oder deren Alter GitHub nicht verrät, bleiben stehen. Das zweite Gerät lädt ein Foto vor seiner Rezeptänderung hoch; dieses Fenster ist damit geschlossen.
+
+**Optik**
+- Karten ohne farbigen Rahmenverlauf, dezentere Schatten und Knopf-Leuchten; Farbe bleibt der Auswahl (Reiter, Umschalter, gewähltes Geschäft) und der wichtigsten Aktion vorbehalten. Geschäftsüberschriften getönt statt kräftigem Band. Emoji-Kacheln im Dunkelmodus dunkel.
+- **Artikelzeile kompakt:** Name und Menge in einer Zeile, darunter klein Person und geschätzter Preis (`ca. 2,49 €`). Der Preisvergleich mit Datum steht im Bearbeiten-Fenster.
+- **Bearbeiten-Fenster:** Name, Menge, Einheit, Geschäft und Kategorie oben; **Preis & Angebot** zugeklappt (die Zeile nennt den Stand, z. B. „2,49 € für 500 g · Im Angebot“); **Speichern** bleibt am unteren Rand erreichbar, auch bei einem Rezept mit vielen Zutaten.
+- **Rezepte:** Suche zuerst, darunter „Rezepte des Tages“ und „Was kann ich kochen?“ nebeneinander.
+- **Ausgaben ohne Einträge:** kurze Erklärung mit **Ersten Einkauf eintragen**; Monatswahl, Summe, Diagramm und Liste erscheinen nach dem ersten Eintrag.
+
+**Neue Funktionen**
+- **Rezeptentwürfe:** Was im Rezeptfenster getippt ist, wird laufend auf diesem Gerät gesichert (`einkauf-recipe-drafts-v1`, ohne Foto, 30 Tage, höchstens 10). Nach dem Schließen oder Neuladen bietet das nächste Öffnen **Entwurf zurückholen** oder **Verwerfen** an. Je Rezept ein Entwurf; ein importiertes Rezept ist sofort ein Entwurf und wird beim nächsten „Neu“ angeboten. Nach dem Speichern ist der Entwurf weg.
+- **Reihenfolge der Gänge je Geschäft** (`aisles` am Geschäft): im Geschäfte-Fenster unter **Reihenfolge der Gänge** mit Pfeilen ordnen; gilt unter „Planen“ (Geschäft und Abschnitte unter „Alle“) und „Im Laden“. **Standardreihenfolge** stellt zurück.
+- **Mehrere Artikel gemeinsam bearbeiten:** **Auswählen** über der Liste (nur „Planen“). Ein Tipp wählt aus oder ab, **Alle**/**Keine**, **Geschäft zuordnen** (eine Änderung für alle; gleiche offene Artikel im Ziel werden zusammengezählt, auch untereinander) und **Löschen** (mit Rückfrage). Im Auswahlmodus hakt der Kreis nicht ab und das lange Halten hebt keine Zeile ab.
+- **Vollsicherung mit Fotos (ZIP):** Einstellungen → **Vollsicherung mit Fotos (ZIP)**: `daten.json`, `fotos/<Kennung>.jpg` und `lies-mich.txt` (nennt auch Fotos, die sich nicht holen ließen). Neue Datei `zip.js` (unkomprimierter ZIP-Schreiber, mit Tests; die Ausgabe wurde zusätzlich mit Pythons `zipfile` geprüft). Die Wiederherstellung bleibt Handarbeit.
+
+**Tests**
+- `.github/workflows/tests.yml` führt bei jedem Push und Pull Request die Logiktests und die Browsertests (Chromium, Playwright 1.63.0) auf GitHub aus.
+- Nicht möglich in dieser Umgebung: Tests mit WebKit/Safari (es gibt nur Chromium). Ob Tastatur, langes Drücken, Bildschirm-Wachhalten und der Betrieb als Homescreen-App auf dem iPhone funktionieren, bleibt ein Test auf dem Gerät.
+
+**Nicht getestet:** das Aussehen und Verhalten auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, 280 bis 390 px, hell und dunkel).
+
+Weitere Testpunkte für Version 2.37:
+
+- [ ] Einkauf → Planen: Die Zeilen sind niedriger (Name und Menge, darunter klein Person und `ca.`-Preis); Antippen öffnet das Bearbeiten-Fenster mit **Preis & Angebot** zugeklappt und **Speichern** am unteren Rand.
+- [ ] **Auswählen**: zwei Artikel antippen, **Geschäft zuordnen**; dann **Löschen** (Rückfrage).
+- [ ] Rezepte → **Neu**: etwas tippen, die App ganz schließen und neu öffnen, wieder **Neu**: **Entwurf zurückholen**.
+- [ ] Geschäfte (Symbol neben „Planen | Im Laden“) → ein Geschäft aufklappen → **Reihenfolge der Gänge** ändern, **Speichern**: Die Liste unter Planen und Im Laden folgt.
+- [ ] Einstellungen → **Vollsicherung mit Fotos (ZIP)**: Die Datei lässt sich im iPhone-Dateien-Programm entpacken und enthält die Fotos.
+- [ ] Ausgaben ohne Einträge: Erklärung statt leerem Diagramm.
 
 ## Neu in Version 2.36: „Bildschirm anlassen“ sicher an, gesperrt ohne Haken und ohne „Einkauf beenden“
 
@@ -689,7 +726,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

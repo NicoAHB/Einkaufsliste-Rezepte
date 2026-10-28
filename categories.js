@@ -83,10 +83,19 @@ export function itemCategory(item, items = []) {
   return (isCategory(item.category) ? item.category : null) ?? suggestCategory(item.name, items) ?? 'sonstiges';
 }
 
-// Artikel nach Kategorie ordnen: nur Kategorien mit Artikeln, Reihenfolge wie im Laden, Namen alphabetisch.
-export function groupByCategory(rows, allItems = rows) {
+/* Eigene Reihenfolge der Gänge (pro Geschäft: `aisles`, Liste von Kategorie-Kennungen). Genannte Gänge kommen zuerst in dieser Reihenfolge, alle anderen danach
+   wie im Standard. Unbekannte und doppelte Einträge zählen nicht; ohne Liste gilt der Standardweg durch den Laden. */
+export function orderCategories(order) {
+  const first = [...new Set(Array.isArray(order) ? order.filter(isCategory) : [])];
+  return [...first.map(id => CATEGORIES.find(category => category.id === id)), ...CATEGORIES.filter(category => !first.includes(category.id))];
+}
+// Liste gültig? (fehlt oder null = Standard)
+export const validAisles = order => order === undefined || order === null || (Array.isArray(order) && order.length <= CATEGORIES.length && order.every(isCategory) && new Set(order).size === order.length);
+
+// Artikel nach Kategorie ordnen: nur Kategorien mit Artikeln, Reihenfolge wie im Laden (oder nach `order`), Namen alphabetisch.
+export function groupByCategory(rows, allItems = rows, order = null) {
   const groups = new Map(CATEGORIES.map(category => [category.id, []])), learned = asLearned(allItems);
   for (const item of rows) groups.get(itemCategory(item, learned)).push(item);
-  return CATEGORIES.map(category => ({ ...category, items: groups.get(category.id).sort((a, b) => a.name.localeCompare(b.name, 'de')) }))
+  return orderCategories(order).map(category => ({ ...category, items: groups.get(category.id).sort((a, b) => a.name.localeCompare(b.name, 'de')) }))
     .filter(group => group.items.length);
 }

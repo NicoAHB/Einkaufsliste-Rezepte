@@ -1,7 +1,7 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
 import { offerUrl, productKey, rememberedPrice, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
-import { learnCategories, suggestCategory } from './categories.js';
+import { learnCategories, suggestCategory, validAisles } from './categories.js';
 // `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
 const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
@@ -37,6 +37,8 @@ export function validateRow(key, row) {
   if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
   // `symbol` (Version 2.31): Geschäft als Bild statt Name anzeigen ('gift') oder ausdrücklich nicht ('none'); fehlt oder null = Voreinstellung nach dem Namen (siehe brand.js).
   if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && !['gift', 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
+  // `aisles` (Version 2.37): eigene Reihenfolge der Gänge in diesem Geschäft (Kategorie-Kennungen); fehlt oder null = Standardweg.
+  if (key === 'stores' && !validAisles(row.aisles)) throw new Error('Ungültige Reihenfolge der Gänge.');
   if (key === 'stores' && row.offersUrl !== undefined) {
     if (typeof row.offersUrl !== 'string') throw new Error('Ungültiger Angebotslink.');
     offerUrl(row.offersUrl);

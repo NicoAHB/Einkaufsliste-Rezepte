@@ -157,3 +157,15 @@ test('Neue Artikel: Kategorie wird aus früheren Artikeln gelernt, sonst geschä
   assert.ok(!('category' in ops[2].patch));
   assert.ok(ops.every(row => row.collection === 'items' && row.patch.createdBy === 'Nico' && row.patch.checked === false));
 });
+
+test('Reihenfolge der Gänge am Geschäft (aisles): gültige Listen werden gespeichert, ungültige lehnt die Datei ab', () => {
+  const store = patch => operation('stores', 's-neu', { name: 'Neu', ...patch }, 'Nico', '2027-03-01T10:00:00.000Z');
+  const ok = merge(emptyData(), [store({ aisles: ['getraenke', 'obst'] })]);
+  assert.deepEqual(ok.stores.find(row => row.id === 's-neu').aisles, ['getraenke', 'obst']);
+  assert.doesNotThrow(() => validate(merge(ok, [store({ aisles: null })])), 'null = Standard');
+  // Eine ungültige Liste (von einer fehlerhaften Datei oder einem anderen Gerät) macht die Zeile ungültig; merge verwirft sie nicht still
+  for (const bad of ['obst', ['unsinn'], ['obst', 'obst']]) {
+    const data = merge(emptyData(), [store({})]); data.stores.find(row => row.id === 's-neu').aisles = bad;
+    assert.throws(() => validate(data), /Reihenfolge der Gänge/, JSON.stringify(bad));
+  }
+});
