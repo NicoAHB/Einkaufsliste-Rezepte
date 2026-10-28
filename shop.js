@@ -39,6 +39,7 @@ export const LOCK_CHOICES = [0, 10, 20, 30, 60, 120];   // Sekunden ohne Berühr
 export const LOCK_DEFAULT = 30;
 export const HOLD_FINISH_MS = 700;   // „Einkauf beenden“ so lange gedrückt halten
 export const HOLD_UNLOCK_MS = 600;   // „Entsperren“ so lange gedrückt halten
+export const HOLD_ITEM_MS = 500;     // gesperrt: Kreis (abhaken) oder Geschäft (wechseln) so lange gedrückt halten
 // Gemerkte Wartezeit (Sekunden) als gültige Zahl; ohne Angabe oder bei Unsinn gilt der Standard.
 export function lockSeconds(value) {
   return Number.isFinite(value) && value >= 0 && value <= 3600 ? Math.round(value) : LOCK_DEFAULT;
