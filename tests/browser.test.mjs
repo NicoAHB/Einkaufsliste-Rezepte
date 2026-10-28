@@ -2113,7 +2113,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Nichts reagiert
     await shopTap(page, 'Tomaten').click();
     assert.equal(await itemState(page, 'Tomaten'), false, 'nicht abgehakt');
-    assert.match(await page.textContent('#notice-text'), /Gesperrt/);
+    assert.equal(await page.locator('#notice').isHidden(), true, 'kein Hinweistext');
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'stattdessen leuchtet der Knopf zum Entsperren auf');
     await page.click('[data-tab=recipes]');
     assert.equal(await page.locator('#shopping').isVisible(), true, 'der Reiter wechselt nicht');
     await page.click('#shop-back');
@@ -2159,13 +2160,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#shop-lockbar').isVisible(), true);
     const state = name => itemState(page, name);
     const circle = shopTap(page, 'Tomaten'), chip = page.locator('#shop-chips .chip', { hasText: 'Lidl' });
-    // Tipp: nichts, nur ein Hinweis, der das Gedrückthalten nennt
+    // Tipp: nichts, kein Text; der Knopf zum Entsperren leuchtet auf
     await circle.click();
     assert.equal(await state('Tomaten'), false);
-    assert.match(await page.textContent('#notice-text'), /Kreis gedrückt halten zum Abhaken/);
-    await page.waitForTimeout(3100);
+    assert.equal(await page.locator('#notice').isHidden(), true, 'kein Hinweistext');
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1);
+    await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
     await chip.click();
-    assert.match(await page.textContent('#notice-text'), /Geschäft gedrückt halten zum Wechseln/);
+    assert.equal(await page.locator('#notice').isHidden(), true);
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'auch bei einem Geschäft');
     assert.equal(await page.locator('#shop-chips .chip[aria-selected=true]').textContent().then(text => /Edeka/.test(text)), true, 'Geschäft nicht gewechselt');
     // Zu früh loslassen und Wegziehen: nichts
     await pressAndHold(page, '#shop-list .shop-tap', 200);
@@ -2211,7 +2214,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Tipp: nichts, nur ein Hinweis, der das Gedrückthalten nennt
     await summary.click();
     assert.equal(await isOpen(), false, 'ein Tipp öffnet nichts');
-    assert.match(await page.textContent('#notice-text'), /„Erledigt“ gedrückt halten zum Öffnen/);
+    assert.ok(!/Gesperrt|gedrückt halten/.test(await page.textContent('#notice-text')), 'kein Hinweistext (höchstens die Meldung vom Abhaken steht noch da)');
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1, 'der Knopf zum Entsperren leuchtet auf');
     // Zu früh loslassen und Wegziehen: nichts
     await pressAndHold(page, '#shop-list .shop-done summary', 200);
     assert.equal(await page.locator('#shop-list .shop-done summary.holding').count(), 1, 'die Zeile füllt sich');
@@ -2224,18 +2228,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForTimeout(700); await page.mouse.up();
     assert.equal(await isOpen(), false, 'wer beim Halten wegzieht (Scrollen), öffnet nichts');
     // Gedrückt halten öffnet; das Loslassen danach schaltet nicht wieder um und meldet nichts Neues
-    await page.waitForTimeout(3100);   // Hinweis-Sperre abwarten, damit eine fälschliche Meldung auffiele
-    await page.evaluate(() => document.querySelector('#notice').hidden = true);
+    await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });   // das Aufleuchten vom Tipp ist vorbei, damit ein falsches Aufleuchten nach dem Halten auffiele
     await pressAndHold(page, '#shop-list .shop-done summary', 650); await page.mouse.up();
     assert.equal(await isOpen(), true, 'durch Halten geöffnet');
     assert.equal(await page.locator('#shop-lockbar').isVisible(), true, 'weiter gesperrt');
-    assert.equal(await page.locator('#notice').isHidden(), true, 'nach dem Loslassen keine Sperr-Meldung');
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 0, 'nach dem Loslassen leuchtet nichts auf');
     assert.equal(await page.locator('#shop-list .shop-done .shop-name', { hasText: 'Tomaten' }).isVisible(), true);
     assert.equal(await page.evaluate(() => getSelection().toString()), '', 'nichts ist markiert');
-    // Der Hinweis nennt jetzt das Schließen; Halten schließt wieder
-    await page.waitForTimeout(3100);
+    // Ein Tipp tut auch jetzt nichts (der Knopf leuchtet auf); Halten schließt wieder
+    await page.waitForTimeout(900);   // das Loslassen nach dem Halten ist ein Klick, der bis dahin still verschluckt wird
     await summary.click();
-    assert.match(await page.textContent('#notice-text'), /„Erledigt“ gedrückt halten zum Schließen/);
+    assert.equal(await isOpen(), true);
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1);
+    await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
     await pressAndHold(page, '#shop-list .shop-done summary', 650); await page.mouse.up();
     assert.equal(await isOpen(), false, 'durch Halten geschlossen');
     // Nichts anderes wurde dabei verändert
@@ -2297,6 +2302,83 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.evaluate(() => screen.orientation.type.startsWith('landscape')), true, 'Vorbereitung: das Gerät liegt quer');
     assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-landscape')), false, 'Tablets drehen frei');
     assert.equal(await page.locator('[data-tab=settings]').isVisible(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: eine Berührung zeigt keinen Hinweistext, der Knopf zum Entsperren leuchtet farbig auf (hell/dunkel, alle Farben, Glas); Bildschirmleser bekommen die Ansage', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await inShop(page);
+    await page.click('#shop-lock');
+    const unlock = page.locator('#shop-unlock'), bar = page.locator('#shop-lockbar');
+    const animations = node => node.evaluate(element => element.getAnimations().map(animation => animation.animationName));
+    // Leere Fläche, Name, Menge, Reiter, Planen, Beenden: überall dasselbe, nie ein Text
+    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back', '[data-tab=recipes]']) {
+      await page.locator(target).first().click();
+      assert.equal(await page.locator('#notice').isHidden(), true, `${target}: kein Hinweistext`);
+      assert.equal(await bar.evaluate(node => node.classList.contains('nudge')), true, `${target}: der Knopf leuchtet auf`);
+      await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
+    }
+    // Der Knopf pulsiert (Animation am Knopf und an der Leiste); die Klasse verschwindet von selbst
+    await page.locator('#shop-status').click();
+    assert.deepEqual(await animations(unlock), ['lock-nudge']);
+    assert.deepEqual(await animations(bar), ['lock-nudge-bar']);
+    // Für Bildschirmleser: unsichtbare Ansage statt des Textes
+    assert.equal(await page.locator('#shop-lock-live').getAttribute('role'), 'status');
+    await page.waitForFunction(() => document.querySelector('#shop-lock-live').textContent.includes('Zum Entsperren'));
+    assert.ok(await page.locator('#shop-lock-live').evaluate(node => getComputedStyle(node).clip !== 'auto' || node.getBoundingClientRect().width <= 1), 'die Ansage ist nicht zu sehen');
+    // Der Knopf selbst bleibt bedienbar: gedrückt halten entsperrt, ohne aufzuleuchten
+    await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
+    await pressAndHold(page, '#shop-unlock', 900); await page.mouse.up();
+    await page.waitForSelector('#shop-lockbar', { state: 'hidden' });
+    assert.equal(await bar.evaluate(node => node.classList.contains('nudge')), false);
+    // Farbe: auf jedem Grund hebt sich der Leuchtrand deutlich ab (Pixel neben dem Knopf mitten im Aufleuchten gegen dieselbe Stelle in Ruhe) und der Knopf selbst wird heller
+    await page.click('#shop-lock');
+    const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const worst = { ring: Infinity, ringAt: '', fill: Infinity, fillAt: '' };
+    const combos = [];
+    for (const theme of ['light', 'dark']) { for (const palette of ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich']) for (const glass of ['aus', 'lichter']) combos.push([theme, palette, glass]); for (const glass of ['verlauf', 'schlicht']) combos.push([theme, 'blau', glass]); }
+    for (const [theme, palette, glass] of combos) {
+      await page.evaluate(([theme, palette, glass]) => {
+        const root = document.documentElement; root.dataset.theme = theme; root.dataset.palette = palette;
+        if (glass === 'aus') { delete root.dataset.glass; delete root.dataset.glassBg; root.style.removeProperty('--gs'); } else { root.dataset.glass = ''; root.dataset.glassBg = glass; root.style.setProperty('--gs', '0.5'); }
+        document.querySelector('#shop-lockbar').classList.remove('nudge');
+      }, [theme, palette, glass]);
+      await page.waitForTimeout(80);
+      const box = await unlock.boundingBox();
+      await page.locator('#shop-status').click();
+      const at = time => page.evaluate(time => { for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = time; } return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); }, time);
+      const ringSpot = [box.x - 5, box.y + box.height / 2], fillSpot = [box.x + 14, box.y + box.height / 2];
+      await at(0);
+      const restRing = await pixelAt(page, ...ringSpot), restFill = await pixelAt(page, ...fillSpot);
+      await at(200);
+      const peakRing = await pixelAt(page, ...ringSpot), peakFill = await pixelAt(page, ...fillSpot);
+      const ring = distance(restRing, peakRing), fill = distance(restFill, peakFill), label = `${theme}/${palette}/${glass}`;
+      if (ring < worst.ring) { worst.ring = ring; worst.ringAt = `${label}: ${restRing} → ${peakRing}`; }
+      if (fill < worst.fill) { worst.fill = fill; worst.fillAt = `${label}: ${restFill} → ${peakFill}`; }
+      assert.ok(ring >= 100, `${label}: der Leuchtrand hebt sich zu schwach ab (${ring.toFixed(0)}): ${restRing} → ${peakRing}`);
+      assert.ok(fill >= 12, `${label}: der Knopf wird kaum heller (${fill.toFixed(0)}): ${restFill} → ${peakFill}`);
+      await page.evaluate(() => { for (const animation of document.getAnimations()) animation.cancel(); document.querySelector('#shop-lockbar').classList.remove('nudge'); });
+    }
+    console.log(`Aufleuchten: schwächster Leuchtrand ${worst.ring.toFixed(0)} (${worst.ringAt}), schwächste Aufhellung ${worst.fill.toFixed(0)} (${worst.fillAt})`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Im Laden gesperrt: bei „Bewegung reduzieren“ leuchtet der Knopf ohne Bewegung auf (Leuchtrand statt Pulsieren)', async () => {
+    const { ctx, page, problems } = await context({ context: { reducedMotion: 'reduce' } });
+    await open(page);
+    await inShop(page);
+    await page.click('#shop-lock');
+    await page.locator('#shop-status').click();
+    assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1);
+    assert.deepEqual(await page.locator('#shop-unlock').evaluate(node => node.getAnimations().length), 0, 'keine Animation');
+    const style = await page.locator('#shop-unlock').evaluate(node => { const css = getComputedStyle(node); return { shadow: css.boxShadow, transform: css.transform }; });
+    assert.notEqual(style.shadow, 'none', 'ein Leuchtrand bleibt stehen');
+    assert.ok(style.transform === 'none' || style.transform === 'matrix(1, 0, 0, 1, 0, 0)', 'ohne Vergrößern');
+    await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
+    assert.equal(await page.locator('#shop-unlock').evaluate(node => getComputedStyle(node).boxShadow), 'none', 'danach wieder ruhig');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

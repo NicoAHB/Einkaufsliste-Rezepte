@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.31
+# Einkauf & Rezepte – Version 2.32
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.32: gesperrt leuchtet der Entsperren-Knopf auf statt eines Hinweistextes
+
+- **Kein Hinweistext mehr** bei einer Berührung im gesperrten Zustand („Gesperrt · unten gedrückt halten zum Entsperren“ und die Hinweise zu Kreis, Geschäft und „Erledigt“ entfallen).
+- **Stattdessen leuchtet der Knopf „Zum Entsperren gedrückt halten“ kurz farbig auf:** zweimal pulsierend, mit Leuchtrand und Glühen in der gewählten Akzentfarbe, der Knopf wird dabei etwas heller und leicht größer; auch die Leiste bekommt kurz einen Rand in der Farbe (1,2 Sekunden). Jede weitere Berührung startet das Aufleuchten neu.
+- Gilt für jede verschluckte Berührung: leere Fläche, Name, Menge, Reiter unten, „Planen“, „Einkauf beenden“, Kreis, Geschäft und „Erledigt“. Nach einem gelungenen Halten (abhaken, Geschäft wechseln, „Erledigt“ öffnen) leuchtet nichts auf.
+- **Bildschirmleser** bekommen weiter die Ansage „Gesperrt. Zum Entsperren unten gedrückt halten.“ (unsichtbar, höchstens alle vier Sekunden).
+- **Bewegung reduzieren** (Einstellung des Geräts): Der Knopf pulsiert nicht und wird nicht größer, er behält kurz einen Leuchtrand.
+- **Farben geprüft:** hell und dunkel, alle sechs Farben, Glas aus und alle drei Glas-Hintergründe; mitten im Aufleuchten hebt sich der Rand neben dem Knopf um mindestens 145 (Farbabstand von 441) vom Grund ab, der Knopf wird um mindestens 27 heller.
+- **Nicht getestet:** das Aussehen auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation).
+
+Weiterer Testpunkt für Version 2.32:
+
+- [ ] Im Laden sperren und irgendwo tippen (Fläche, Name, Reiter unten): Es erscheint **kein Text**, der grüne (bzw. in deiner Farbe) Knopf „Zum Entsperren gedrückt halten“ leuchtet zweimal auf. Kreis halten hakt weiter ab, ohne dass etwas aufleuchtet.
 
 ## Neu in Version 2.31: Geschenk-Symbol statt „Wünsche“
 

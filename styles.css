@@ -3271,6 +3271,55 @@ body.shop-locked .toast {
   border:1px solid var(--glass-line)
 }
 
+/* Gesperrt: Eine Berührung zeigt keinen Text; der Knopf zum Entsperren leuchtet zweimal in der Akzentfarbe auf (Leuchtrand, leicht größer, etwas heller) */
+.lockbar {
+  --nudge-ring:hsl(var(--h) 95% 60% / .6);
+  --nudge-glow:hsl(var(--h) 100% 62% / .5)
+}
+.lockbar.nudge button {
+  animation:lock-nudge 1.2s ease-out
+}
+.lockbar.nudge {
+  animation:lock-nudge-bar 1.2s ease-out
+}
+@keyframes lock-nudge {
+  0%,100% {
+    box-shadow:0 0 0 0 transparent,0 0 0 0 transparent;
+    transform:scale(1);
+    filter:none
+  }
+  16%,52% {
+    box-shadow:0 0 0 4px var(--nudge-ring),0 0 22px 4px var(--nudge-glow);
+    transform:scale(1.025);
+    filter:brightness(1.18) saturate(1.2)
+  }
+  34% {
+    box-shadow:0 0 0 1px var(--nudge-ring),0 0 8px 2px var(--nudge-glow);
+    transform:scale(1.008);
+    filter:brightness(1.06)
+  }
+}
+@keyframes lock-nudge-bar {
+  0%,100% {
+    box-shadow:0 10px 30px rgba(0,0,0,.3),0 0 0 0 transparent
+  }
+  16%,52% {
+    box-shadow:0 10px 30px rgba(0,0,0,.3),0 0 0 3px var(--nudge-ring)
+  }
+  34% {
+    box-shadow:0 10px 30px rgba(0,0,0,.3),0 0 0 1px var(--nudge-ring)
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  .lockbar.nudge,.lockbar.nudge button {
+    animation:none
+  }
+  .lockbar.nudge button {
+    box-shadow:0 0 0 4px var(--nudge-ring),0 0 18px 4px var(--nudge-glow);
+    filter:brightness(1.18) saturate(1.2)
+  }
+}
+
 /* Gesperrt: Kreis und Geschäft füllen sich beim Gedrückthalten */
 .shop-tap.holding .shop-mark {
   background:var(--accent);

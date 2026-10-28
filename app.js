@@ -1573,7 +1573,7 @@ function holdToConfirm(node, ms, action, hint = '') {
 }
 // Sperre: Gesperrt bewirkt Tippen nichts (Scrollen geht weiter). Zum Entsperren den Knopf unten gedrückt halten. Sie greift von selbst nach einiger Zeit ohne
 // Berührung (einstellbar) und wenn die App aus dem Hintergrund zurückkommt; der Zustand wird gemerkt (auch nach einem Neuladen noch gesperrt).
-let lockTimer = null, lockHint = 0;
+let lockTimer = null, lockQuiet = 0, lockAnnounced = 0, nudgeTimer = null;
 const isLocked = () => config.shopLocked === true && shopOn();   // die gemerkte Einstellung ist die Quelle der Wahrheit (die Einstellungen werden erst beim Start geladen)
 function setLocked(on) {
   const next = on && shopOn();
@@ -1603,15 +1603,21 @@ for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListen
 // den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
 const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
+// Eine verschluckte Berührung zeigt keinen Text: Der Knopf zum Entsperren leuchtet kurz in der Farbe auf (zwei Pulse, CSS „nudge“). Bildschirmleser bekommen den Hinweis als unsichtbare Ansage.
+function nudgeUnlock() {
+  const bar = $('#shop-lockbar');
+  bar.classList.remove('nudge'); void bar.offsetWidth; bar.classList.add('nudge');   // die Animation startet bei jeder Berührung neu
+  clearTimeout(nudgeTimer); nudgeTimer = setTimeout(() => bar.classList.remove('nudge'), 1300);
+  if (Date.now() - lockAnnounced > 4000) {
+    lockAnnounced = Date.now();
+    const live = $('#shop-lock-live'); live.textContent = '';
+    setTimeout(() => { live.textContent = 'Gesperrt. Zum Entsperren unten gedrückt halten.'; }, 50);
+  }
+}
 document.addEventListener('click', event => {
   if (!isLocked() || lockBypass || event.target.closest?.('#shop-lockbar, #notice-undo')) return;   // „Rückgängig“ nach dem Abhaken geht auch gesperrt
   event.preventDefault(); event.stopPropagation();
-  if (Date.now() - lockHint > 3000) {
-    lockHint = Date.now();
-    const done = event.target.closest?.('#shop-list .shop-done summary');
-    showNotice(event.target.closest?.('#shop-list .shop-tap') ? 'Gesperrt · Kreis gedrückt halten zum Abhaken' : event.target.closest?.('#shop-chips .chip') ? 'Gesperrt · Geschäft gedrückt halten zum Wechseln'
-      : done ? `Gesperrt · „Erledigt“ gedrückt halten zum ${done.parentElement.open ? 'Schließen' : 'Öffnen'}` : 'Gesperrt · unten gedrückt halten zum Entsperren');
-  }
+  if (Date.now() >= lockQuiet) nudgeUnlock();
 }, true);
 function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
 // Ein langer Druck markiert auf iOS sonst Text in der Nähe (blaue Auswahl mit Griffen): Im Laden gibt es keine Textauswahl (CSS), und beim Gedrückthalten wird sie zusätzlich unterbunden.
@@ -1625,7 +1631,7 @@ document.addEventListener('pointerdown', event => {
   node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
   lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
     const target = node; endLockHold(); clearSelection(); navigator.vibrate?.(15);
-    lockHint = Date.now();   // das Loslassen danach ist ein Klick auf dasselbe Element (bleibt es stehen, wie „Erledigt“): er wird verschluckt, ohne zu melden
+    lockQuiet = Date.now() + 800;   // das Loslassen danach ist ein Klick auf dasselbe Element (bleibt es stehen, wie „Erledigt“): er wird verschluckt, ohne den Knopf aufleuchten zu lassen
     lockBypass = true; try { target.click(); } finally { lockBypass = false; }
   }, HOLD_ITEM_MS) };
 }, true);
