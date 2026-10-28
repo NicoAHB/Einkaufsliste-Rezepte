@@ -815,6 +815,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await horizontalOverflow(page), 0, `kein seitlicher Überlauf bei ${width} px`);
       const widest = await chips.evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().right)));
       assert.ok(widest.every(right => right <= width), 'die Chips bleiben im Bild');
+      await page.getByRole('button', { name: 'Mehl in den Vorrat übernehmen' }).click();
+      assert.equal(await page.getByRole('button', { name: 'Alle übernehmen' }).count(), 0);
+      await page.getByRole('button', { name: 'Zucker aus dem Vorrat entfernen', exact: true }).click();
+      const head = await box.locator('.suggest-head').evaluate(node => [...node.children].map(child => { const r = child.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
+      assert.ok(head.every(([left, right]) => left >= 0 && right <= width), `Überschrift und „Alle übernehmen“ bleiben im Bild (${JSON.stringify(head)})`);
       assert.deepEqual(problems, []);
       await ctx.close();
     }

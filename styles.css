@@ -3504,11 +3504,13 @@ html[data-landscape] .turn-hint {
 }
 .suggest-head {
   display:flex;
+  flex-wrap:wrap;
   align-items:center;
   justify-content:space-between;
-  gap:10px
+  gap:8px 10px
 }
 .suggest-head h4 {
+  flex:1 1 120px;
   margin:0;
   font-size:1rem
 }
