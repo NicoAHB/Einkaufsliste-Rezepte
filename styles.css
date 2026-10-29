@@ -3959,3 +3959,6 @@ body.selecting .item .item-copy {
 #week-listed.warn {
   color:var(--danger, #b3261e)
 }
+#week-changes.warn,.meal-listed.changed {
+  color:var(--danger, #b3261e)
+}

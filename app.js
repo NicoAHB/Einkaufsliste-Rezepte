@@ -13,7 +13,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { emojiFor } from './emoji.js';
 import { GROCERY_NAMES } from './grocery-names.js';
-import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, relativeDay, weekBasket, weekDays, weekLabel, weekStart } from './plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, snapshotRows, weekBasket, weekDays, weekLabel, weekStart } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
@@ -1019,7 +1019,9 @@ function mealRow(meal, recipes) {
   const copy = element('div', undefined, 'meal-copy');
   const listed = Number(meal.listedServings) > 0 ? Number(meal.listedServings) : 0;   // Zutaten schon auf die Einkaufsliste übernommen (siehe weekBasket in plan.js)
   copy.append(recipe ? button(name, () => showRecipe(recipe.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
+  const changed = recipe && listed ? mealChanges(meal) : null;
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
+  if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
   row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
     iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
   return row;
@@ -1079,7 +1081,7 @@ function saveMeal(event) {
     const id = form.elements.id.value || uid();
     const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
     if (!mealBaseline) patch.done = false;
-    else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null });   // ein anderes Rezept: die Übernahme gilt nicht mehr
+    else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null, listedRows: null });   // ein anderes Rezept: die Übernahme gilt nicht mehr
     const delta = changed(patch, mealBaseline);
     if (Object.keys(delta).length) commit([nextOp('meals', id, delta)]);
     planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan');
@@ -1110,8 +1112,29 @@ function weekListedNote(plan) {
   }
   const note = $('#week-listed'); note.textContent = parts.join(' '); note.hidden = !parts.length; note.classList.toggle('warn', again && listed.length > 0);
 }
+// Was am Rezept eines übernommenen Gerichts seit der Übernahme geändert wurde (siehe recipeChanges in plan.js), oder null.
+function mealChanges(meal) {
+  if (!meal.listedRows || !meal.recipeId) return null;
+  const rows = active(state.ingredients).filter(row => row.recipeId === meal.recipeId);
+  const changes = recipeChanges(meal.listedRows, rows);
+  return changes.any ? changes : null;
+}
+const amountText = row => `${format(row.quantity)} ${row.unit}`;
+const changeText = changes => [...changes.added.map(row => `neu: ${amountText(row)} ${row.name}`), ...changes.removed.map(row => `entfällt: ${row.name}`),
+  ...changes.changed.map(entry => `${entry.name}: ${amountText(entry.from)} → ${amountText(entry.to)}`)].join(', ');
+// Hinweise zur Woche nach der Übernahme: Rezept geändert, Gericht gelöscht, Rezept gelöscht. Sie zeigen, was auf der Einkaufsliste noch zu prüfen ist.
+function weekChangeLines() {
+  const days = weekDays(planWeek), recipes = new Map(state.recipes.map(recipe => [recipe.id, recipe])), lines = [];
+  for (const meal of state.meals.filter(row => days.includes(row.date) && row.recipeId && Number(row.listedServings) > 0).sort((a, b) => a.date.localeCompare(b.date))) {
+    const name = recipes.get(meal.recipeId)?.name || 'Rezept', label = `${dayName(meal.date)}: ${name}`;
+    if (meal.deletedAt) lines.push(`${label} wurde aus dem Plan entfernt, die Zutaten stehen noch auf der Liste.`);
+    else if (!recipes.get(meal.recipeId) || recipes.get(meal.recipeId).deletedAt) lines.push(`${label}: Das Rezept wurde gelöscht, die Zutaten stehen noch auf der Liste.`);
+    else { const changes = mealChanges(meal); if (changes) lines.push(`${label}: Das Rezept wurde seit der Übernahme geändert (${changeText(changes)}).`); }
+  }
+  return lines;
+}
 // Woran man erkennt, dass sich die Vorschau überholt hat: welche Gerichte mit wie vielen Portionen aufgenommen werden und welche Zutaten daraus werden.
-const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit])]);
+const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit]), weekChangeLines()]);
 // Die Vorschau neu aufbauen, ohne abgewählte Zutaten wieder anzuhaken (Schlüssel: Name und Einheit).
 function refreshWeekRows() {
   const unchecked = new Set([...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => `${productKey(label._row.name)}|${label._row.unit}`));
@@ -1122,6 +1145,7 @@ function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
   const plan = weekPlan(), rows = plan.rows, keys = pantryKeys(state.pantry);
   $('#week-form')._plan = plan; weekListedNote(plan);
+  const lines = weekChangeLines(), changes = $('#week-changes'); changes.textContent = lines.length ? `Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: ${lines.join(' ')}` : ''; changes.hidden = !lines.length;
   if (!rows.length) {
     const allListed = plan.basket.listed.length > 0 && $('#week-form').elements.skipListed.checked;
     box.append(element('p', allListed ? 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.'
@@ -2809,7 +2833,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   const storeId = currentStore(form.elements.storeId.value);
   // Die Gerichte, deren Zutaten jetzt auf die Liste gehen, merken sich das (für wie viele Portionen), damit ein zweites Mal nichts verdoppelt. Dieselbe Änderung wie die Artikel.
   const stamp = new Date().toISOString(), marks = [...new Set(form._plan.basket.use.map(meal => meal.id))].map(id => form._plan.meals.find(meal => meal.id === id)).filter(Boolean)
-    .map(meal => nextOp('meals', meal.id, { listedServings: meal.servings, listedAt: stamp }));
+    .map(meal => nextOp('meals', meal.id, { listedServings: meal.servings, listedAt: stamp, listedRows: snapshotRows(active(state.ingredients).filter(row => row.recipeId === meal.recipeId)) }));
   addRows(selected.map(row => listRow(row)), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name), form.elements.rememberPantry.checked, marks);
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
