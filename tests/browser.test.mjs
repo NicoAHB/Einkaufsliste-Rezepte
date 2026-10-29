@@ -5131,7 +5131,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
     await page.click('[data-tab=plan]');
     const days = await page.locator('#plan-days .day').evaluateAll(nodes => nodes.map(node => node.dataset.day)), today = await page.locator('.day.today').getAttribute('data-day');
-    const free = days.find(day => day !== today);
+    const free = days.find(day => day > today);   // ein späterer Tag dieser Woche (vergangene Tage sind gesperrt); am Sonntag gibt es keinen
+    if (!free) { await ctx.close(); return; }
     // Nichts wird blau markiert (iOS markiert beim langen Halten sonst Text): Auswahl aus, und nach dem Ziehen ist nichts markiert
     assert.equal(await page.locator('#plan-days').evaluate(node => getComputedStyle(node).userSelect), 'none');
     await page.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('#plan-days h3')); getSelection().removeAllRanges(); getSelection().addRange(range); });
@@ -5161,6 +5162,50 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#swap-yes'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
     assert.deepEqual(await mealDays(page), [['recipe-curry', free, null], ['recipe-pasta', today, 2]].sort());
     assert.match(await page.textContent('#notice-text'), /getauscht/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Wochenplan: vergangene Tage sind nur zu sehen (kein Plus, kein Ändern, Löschen, Ziehen); heute und spätere Tage bleiben bearbeitbar; neue Gerichte nicht für vergangene Tage', async () => {
+    const past = ago(2).slice(0, 10), todayIso = ago(0).slice(0, 10);
+    const data = structuredClone(demo);
+    // ein Gericht gestern/vorgestern (nicht abgehakt) und eines heute
+    const at = '2026-10-25T00:00:00.000Z', day = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+    data.meals = [{ id: 'm-past', date: day(-1), recipeId: 'recipe-curry', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }, { id: 'm-today', date: day(0), recipeId: 'recipe-pasta', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    await page.click('[data-tab=plan]');
+    // Wochenansicht: ab Montag; vergangene Tage dieser Woche (falls vorhanden) sind gesperrt. Gestern liegt nur dann in dieser Woche, wenn heute nicht Montag ist.
+    const info = await page.evaluate(() => [...document.querySelectorAll('#plan-days .day')].map(card => ({ day: card.dataset.day, past: card.classList.contains('past'), plus: card.querySelectorAll('.day-head .icon-button').length, edit: card.querySelectorAll('.meal .icon-button').length, check: [...card.querySelectorAll('.meal .check')].map(node => node.disabled), id: [...card.querySelectorAll('.meal')].map(node => Boolean(node.dataset.id)) })));
+    const todayCard = info.find(entry => entry.day === day(0));
+    assert.deepEqual([todayCard.past, todayCard.plus, todayCard.edit, todayCard.check, todayCard.id], [false, 1, 2, [false], [true]], 'heute ist bearbeitbar');
+    for (const entry of info.filter(entry => entry.day < day(0))) assert.deepEqual([entry.past, entry.plus], [true, 0], `${entry.day}: gesperrt`);
+    for (const entry of info.filter(entry => entry.day > day(0))) assert.deepEqual([entry.past, entry.plus], [false, 1], `${entry.day}: bearbeitbar`);
+    const yesterday = info.find(entry => entry.day === day(-1));
+    if (yesterday) assert.deepEqual([yesterday.edit, yesterday.check, yesterday.id], [0, [true], [false]], 'gestern: kein Stift, kein Papierkorb, Haken gesperrt, nicht ziehbar');
+    // Ziehen auf einen vergangenen Tag tut nichts (und aus einem vergangenen Tag geht es nicht)
+    if (yesterday) {
+      const from = await page.locator('.day.today .meal .meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${day(-1)}"]`).boundingBox();
+      await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
+      await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+      assert.equal(await page.locator('.day.drop-target').count(), 0, 'ein vergangener Tag ist kein Ziel');
+      await page.mouse.up();
+      assert.deepEqual(await mealDays(page).then(list => list.map(entry => entry[1]).sort()), [day(-1), day(0)].sort());
+    }
+    // Neues Gericht für einen vergangenen Tag (über die Rezeptkarte mit Tagesauswahl): abgelehnt
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Apfel-Pfannkuchen' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click(); await sheetOpen(page);
+    assert.equal(await page.getAttribute('#meal-form input[name=date]', 'min'), day(0), 'das Datumsfeld beginnt heute');
+    await page.fill('#meal-form input[name=date]', day(-3));
+    assert.equal(await page.evaluate(() => document.querySelector('#meal-form input[name=date]').validity.rangeUnderflow), true, 'das Feld lehnt vergangene Tage ab');
+    await page.click('#meal-form button[type=submit]');
+    assert.equal(await page.locator('#meal-dialog[open]').count(), 1, 'nichts wird gespeichert');
+    await page.evaluate(() => document.querySelector('#meal-form input[name=date]').removeAttribute('min'));   // auch ohne die Feldprüfung lehnt die App ab
+    await page.click('#meal-form button[type=submit]');
+    assert.match(await page.textContent('#meal-dialog [data-dialog-error]'), /Vergangene Tage lassen sich nicht mehr planen/);
+    await page.fill('#meal-form input[name=date]', day(1)); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    assert.equal((await mealDays(page)).filter(entry => entry[0] === 'recipe-pfannkuchen').length, 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -6430,7 +6475,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Mehrere Fenster: der Bereich oberhalb des Fensters schließt (der Kochmodus füllt den ganzen Bildschirm und hat keinen; dort scrollt man hoch und tippt auf das „×“)
     const opens = [
       ['#item-dialog', async () => { await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); }],
-      ['#meal-dialog', async () => { await goTab(page, 'plan'); await page.locator('.day').first().locator('.day-head .icon-button').click(); }],
+      ['#meal-dialog', async () => { await goTab(page, 'plan'); await page.locator('.day:not(.past)').first().locator('.day-head .icon-button').click(); }],
       ['#help-dialog', async () => { await openSettings(page); await page.click('#open-help'); }],
       ['#purchase-dialog', async () => { await goTab(page, 'spending'); await page.click('#add-purchase'); }],
       ['#cookable-dialog', async () => { await goTab(page, 'recipes'); await page.click('#cookable-open'); }],

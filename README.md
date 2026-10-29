@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.54
+# Einkauf & Rezepte – Version 2.55
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,19 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.55: Vergangene Tage im Wochenplan sind nur noch zu sehen
+
+Im **Wochenplan** lassen sich nur noch **heute und spätere Tage** bearbeiten.
+- **Vergangene Tage** (vor heute) sind blasser dargestellt und **gesperrt**: kein **＋**, kein **Stift**, kein **Papierkorb**, der **Haken „gekocht“** ist nicht antippbar (der Stand bleibt sichtbar), und ein Gericht lässt sich **nicht ziehen**. Der Rezeptname öffnet weiter das Rezept.
+- **Ziehen und Tauschen:** Ein vergangener Tag ist kein Ziel; aus einem vergangenen Tag lässt sich nichts verschieben.
+- **Neue Gerichte** (auch über „Im Wochenplan einplanen“ an der Rezeptkarte mit der Tagesauswahl): Das Datumsfeld beginnt **heute**; ein vergangener Tag wird zusätzlich von der App abgelehnt („Vergangene Tage lassen sich nicht mehr planen.“).
+- **Vergangene Wochen** sind komplett nur zu sehen. Mit dem Tageswechsel (nach Mitternacht) wird „heute“ von selbst neu bestimmt.
+- Unverändert: Der **Einkauf für die Woche** berücksichtigt weiter alle Gerichte der Woche, auch vergangene, die nicht als „gekocht“ markiert sind (mit dem Haken „Schon gekochte Gerichte auslassen“ lässt sich das steuern).
+
+**Tests:** Browser: vergangene Tage ohne ＋/Stift/Papierkorb mit gesperrtem Haken und ohne Ziehen, heute und spätere Tage bearbeitbar, vergangener Tag als Ziel, Datumsfeld und Prüfung beim Speichern.
+
+Testpunkt (iPhone): Im Plan sind die Tage vor heute blass und ohne Knöpfe; heute und die nächsten Tage wie bisher.
 
 ## Neu in Version 2.54: Neues Rezeptblatt nach dem Entwurf („Rezeptblatt-Entwurf.pdf“)
 

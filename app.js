@@ -998,21 +998,22 @@ function renderPlan() {
   const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
   const box = $('#plan-days'); box.replaceChildren();
   for (const day of days) {
-    const card = element('article', undefined, `day${day === today ? ' today' : ''}`); card.dataset.day = day;
+    const past = day < today;   // vergangene Tage sind nur zu sehen (Version 2.55): nicht planen, ändern, löschen oder verschieben
+    const card = element('article', undefined, `day${day === today ? ' today' : ''}${past ? ' past' : ''}`); card.dataset.day = day;
     const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
     title.append(element('small', dayMonthLabel(day)));
-    head.append(title, iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
+    head.append(title); if (!past) head.append(iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
     card.append(head);
-    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes));
+    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
     box.append(card);
   }
   $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
 }
-function mealRow(meal, recipes) {
+function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);
   const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
-  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); row.dataset.id = meal.id;
-  const check = button('', () => toggleMeal(meal.id), 'check');
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); if (!past) row.dataset.id = meal.id;   // ohne Kennung lässt sich das Gericht nicht ziehen
+  const check = button('', () => toggleMeal(meal.id), 'check'); check.disabled = past;
   if (meal.done) check.append(icon('check'));
   check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
   check.setAttribute('aria-pressed', String(Boolean(meal.done)));
@@ -1022,8 +1023,8 @@ function mealRow(meal, recipes) {
   const changed = recipe && listed ? mealChanges(meal) : null;
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
-  row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
-    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
+  row.append(check, copy);
+  if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
   return row;
 }
 // Ein Gericht auf einen anderen Tag verschieben (Version 2.51): Gericht lange halten, auf einen anderen Tag ziehen und loslassen. Ist der Tag frei, zieht es dorthin um; sonst fragt das Fenster
@@ -1034,7 +1035,7 @@ const dayTarget = {
   at: (x, y, id) => {
     const card = dayCards().find(node => { const box = node.getBoundingClientRect(); return y >= box.top && y <= box.bottom; });
     const own = state.meals.find(row => row.id === id)?.date;
-    return card && card.dataset.day !== own ? card.dataset.day : null;
+    return card && !card.classList.contains('past') && card.dataset.day !== own ? card.dataset.day : null;
   },
   mark: day => dayCards().forEach(node => node.classList.toggle('drop-target', node.dataset.day === day)),
   hide: () => dayCards().forEach(node => node.classList.remove('drop-target')),
@@ -1044,7 +1045,7 @@ const mealName = meal => meal.recipeId ? active(state.recipes).find(recipe => re
 let swapPending = null;
 function dropMeal(id, day) {
   const meal = active(state.meals).find(row => row.id === id);
-  if (!meal || meal.date === day) return;
+  if (!meal || meal.date === day || day < isoDate() || meal.date < isoDate()) return;
   const others = active(state.meals).filter(row => row.date === day && row.id !== id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (!others.length) { commit([nextOp('meals', id, { date: day })], `„${mealName(meal)}“ auf ${dayName(day)} verschoben`); return; }
   swapPending = { id, otherId: others[0].id, day, from: meal.date };
@@ -1083,7 +1084,7 @@ function openMeal(options = {}) {
   const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
   fillRecipePick(recipes);
   form.elements.id.value = options.id || '';
-  form.elements.date.value = meal?.date || options.date || isoDate();
+  form.elements.date.value = meal?.date || options.date || isoDate(); form.elements.date.min = meal ? '' : isoDate();   // neue Gerichte nur ab heute
   let choice = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
   if (choice && choice !== '__custom' && !recipes.some(recipe => recipe.id === choice)) choice = meal ? '__custom' : '';   // das Rezept gibt es nicht mehr
   setRecipeChoice(choice);
@@ -1109,6 +1110,7 @@ function saveMeal(event) {
     const form = event.currentTarget, choice = form.elements.recipeId.value, custom = choice === '__custom', title = form.elements.title.value.trim();
     const date = form.elements.date.value;
     if (!validDay(date)) throw new Error('Bitte einen Tag auswählen.');
+    if (date < isoDate() && (!mealBaseline || mealBaseline.date !== date)) throw new Error('Vergangene Tage lassen sich nicht mehr planen. Bitte heute oder einen späteren Tag wählen.');
     if (!choice) throw new Error('Bitte ein Rezept wählen oder „Eigenes Gericht“ eintragen.');
     if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
     if (!custom) currentRecipe(choice);

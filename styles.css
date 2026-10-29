@@ -3985,3 +3985,11 @@ body.selecting .item .item-copy {
   -webkit-user-select:none;
   user-select:none
 }
+
+/* Wochenplan: vergangene Tage sind nur zu sehen (Version 2.55) */
+.day.past {
+  opacity:.62
+}
+.day.past .meal .check:disabled {
+  cursor:default
+}
