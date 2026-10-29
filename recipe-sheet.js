@@ -2,7 +2,7 @@
    Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und „EINKAUF & REZEPTE“, der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
    Gesamtzeit, Stichworte, Quelle); links ein heller Kasten mit den Zutaten (Kästchen zum Abhaken, Menge hervorgehoben), rechts die Zubereitung in klar getrennten, nummerierten
    Schritten (erster Satz fett als Überschrift); unten „Meine Notizen“ mit eigenem Platz zum Schreiben. Ein Foto steht klein oben rechts. Ist das Rezept lang, geht es auf einer zweiten
-   (dritten …) Seite weiter; die Notizen stehen auf der letzten.
+   (dritten …) Seite weiter; die Notizen stehen auf der letzten. Zubereitungsschritte werden nie gekürzt: ein langer Schritt läuft auf der nächsten Seite weiter („Fortsetzung“).
    `layoutRecipe` liefert nur Zeichenbefehle (siehe pdf.js: Rechteck, Linie, Text, Bild); dieselben Befehle ergeben die PDF-Datei (pdf.js) und die Vorschau (sheet-view.js). */
 import { textWidth } from './pdf.js';
 import { splitSteps } from './cook.js';
@@ -40,7 +40,7 @@ export function wrapText(text, font, size, maxWidth) {
   while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
   return lines;
 }
-// Text auf eine Breite bringen: erst die Schrift verkleinern (bis `min`), dann mit „…“ kürzen
+// Text auf eine Breite bringen (nur für Titel und Eckdaten, nie für Kochanweisungen): erst die Schrift verkleinern (bis `min`), dann mit „…“ kürzen
 export function fitText(text, font, size, maxWidth, min = size) {
   let current = size;
   while (current > min && textWidth(text, font, current) > maxWidth) current = Math.max(min, current - 0.5);
@@ -94,14 +94,45 @@ function ingredientBlocks(ingredients) {
     return { amount, name, soft: entry.soft, height: 19 + count * 14 };
   });
 }
-// Schritte: Kreis mit Nummer, Überschrift fett, Text; atomar (ein Schritt bleibt zusammen, sehr lange werden gekürzt)
+// Schritte: Kreis mit Nummer, Überschrift fett, Text. Nichts wird gekürzt: jede Zeile jedes Schritts steht im Blatt.
 function stepBlocks(instructions) {
   const width = STEPS.width - STEPS.number - 12;
   return splitSteps(instructions).map((step, index) => {
     const { title, body } = stepParts(step);
-    const titleLines = title ? clip(wrapText(title, 'sansBold', 12, width), 4) : [], bodyLines = body ? clip(wrapText(body, 'sans', 11, width), 40) : [];
-    return { number: index + 1, titleLines, bodyLines, height: titleLines.length * 15.5 + bodyLines.length * 15 + (titleLines.length && bodyLines.length ? 2 : 0) + 24 };
+    return { number: index + 1, titleLines: title ? wrapText(title, 'sansBold', 12, width) : [], bodyLines: body ? wrapText(body, 'sans', 11, width) : [] };
   });
+}
+// Höhe eines Schrittstücks: Überschriftzeilen, Textzeilen, Abstand dazwischen, bei einer Fortsetzung die Zeile „Fortsetzung“, Abstand zum nächsten Schritt
+const stepHeight = (titles, bodies, continued) => titles * 15.5 + bodies * 15 + (titles && bodies ? 2 : 0) + (continued ? 15 : 0) + 24;
+// Die Schritte in der Reihenfolge auf Seiten verteilen; `heights` ist die verfügbare Höhe je Seite. Ein Schritt bleibt auf einer Seite, wenn er dort ganz hineinpasst. Ist er länger
+// als der Rest der Seite und passt auch auf die nächste nicht ganz, geht er zeilenweise auf den Folgeseiten weiter (mit „Fortsetzung“ an seiner Nummer); dabei bleiben mindestens
+// zwei Zeilen auf jeder Seite. So geht kein Text verloren und keiner läuft in die Notizen oder über den Seitenrand.
+function flowSteps(blocks, heights) {
+  const pages = heights.map(() => []), used = heights.map(() => 0), last = heights.length - 1;
+  let page = 0;
+  for (const block of blocks) {
+    let rest = [...block.titleLines.map(text => ({ text, title: true })), ...block.bodyLines.map(text => ({ text, title: false }))], continued = false;
+    const fragment = (lines, again) => {
+      const titleLines = lines.filter(line => line.title).map(line => line.text), bodyLines = lines.filter(line => !line.title).map(line => line.text);
+      return { number: block.number, continued: again, soft: block.soft, titleLines, bodyLines, height: stepHeight(titleLines.length, bodyLines.length, again) };
+    };
+    const wholeOnNext = fragment(rest, false).height;
+    while (rest.length) {
+      const room = heights[page] - used[page], whole = fragment(rest, continued);
+      if (whole.height <= room + 0.01) { pages[page].push(whole); used[page] += whole.height; break; }
+      if (!continued && pages[page].length && page < last && wholeOnNext <= heights[page + 1] + 0.01) { page++; continue; }
+      let take = 0;
+      while (take < rest.length && fragment(rest.slice(0, take + 1), continued).height <= room + 0.01) take++;
+      if (rest.length - take < 2) take = rest.length - 2;
+      if (take < 2 && pages[page].length && page < last) { page++; continue; }
+      take = Math.max(1, Math.min(take, rest.length));
+      const part = fragment(rest.slice(0, take), continued);
+      pages[page].push(part); used[page] += part.height;
+      rest = rest.slice(take); continued = true;
+      if (rest.length && page < last) page++;
+    }
+  }
+  return { pages, fits: used.every((height, index) => height <= heights[index] + 0.01) };
 }
 // Blöcke in der Reihenfolge auf Seiten verteilen: jede Seite hat eine verfügbare Höhe; ein Block bleibt ganz auf einer Seite
 function pack(blocks, heights) {
@@ -111,7 +142,7 @@ function pack(blocks, heights) {
     while (page < heights.length - 1 && used[page] + block.height > heights[page] && pages[page].length) page++;
     pages[page].push(block); used[page] += block.height;
   }
-  return { pages, fits: blocks.every(block => pages.some(list => list.includes(block))) && pages.every((list, index) => used[index] <= heights[index] + 0.01 || list.length === 1) };
+  return { pages, fits: used.every((height, index) => height <= heights[index] + 0.01) };
 }
 function ingredientCard(items, x, top, blocks, servings, continued) {
   const heading = continued ? 'Zutaten · Fortsetzung' : 'Zutaten', headerH = 54, height = headerH + blocks.reduce((sum, block) => sum + block.height, 0) + 10;
@@ -130,7 +161,7 @@ function ingredientCard(items, x, top, blocks, servings, continued) {
   });
   return top + height;
 }
-function stepsColumn(items, top, blocks, continued, empty) {
+function stepsColumn(items, top, blocks, continued) {
   items.push({ type: 'text', x: STEPS.x, y: top + 29, text: continued ? 'Zubereitung · Fortsetzung' : 'Zubereitung', font: 'sansBold', size: 17, color: COLOR.ink });
   let y = top + 60;
   for (const block of blocks) {
@@ -138,12 +169,12 @@ function stepsColumn(items, top, blocks, continued, empty) {
     items.push({ type: 'text', x: STEPS.x + STEPS.number / 2, y: y - 0.4, text: String(block.number), font: 'sansBold', size: 8, color: COLOR.accent, align: 'center' });
     const textX = STEPS.x + STEPS.number + 12;
     let baseline = y;
+    if (block.continued) { items.push({ type: 'text', x: textX, y: baseline, text: 'Fortsetzung', font: 'sansBold', size: 8, color: COLOR.accent, charSpace: 0.8 }); baseline += 15; }
     for (const line of block.titleLines) { items.push({ type: 'text', x: textX, y: baseline, text: line, font: 'sansBold', size: 12, color: COLOR.ink }); baseline += 15.5; }
     if (block.titleLines.length && block.bodyLines.length) baseline += 2;
     for (const line of block.bodyLines) { items.push({ type: 'text', x: textX, y: baseline, text: line, font: 'sans', size: 11, color: block.soft ? COLOR.soft : COLOR.body }); baseline += 15; }
     y += block.height;
   }
-  return empty;
 }
 function notes(items, top) {
   items.push({ type: 'line', x1: LEFT, y1: top, x2: RIGHT, y2: top, color: COLOR.rule, width: 0.8 });
@@ -197,14 +228,14 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
   const firstTop = ruleTop + 74, otherTop = 76;
   const ingredientRows = ingredientBlocks(ingredients), stepRows = stepBlocks(instructions);
   if (!ingredientRows.length) ingredientRows.push({ amount: [''], name: ['Keine Zutaten eingetragen.'], soft: true, height: 33 });
-  if (!stepRows.length) stepRows.push({ number: 1, titleLines: [], bodyLines: ['Keine Zubereitung eingetragen.'], soft: true, height: 39 });
+  if (!stepRows.length) stepRows.push({ number: 1, titleLines: [], bodyLines: ['Keine Zubereitung eingetragen.'], soft: true });
   // Seitenzahl: so viele, bis alles untergebracht ist; auf der letzten Seite bleibt unten Platz für die Notizen
   let count = 1, left, right;
   for (;; count++) {
     const room = index => BOTTOM - (index === 0 ? firstTop : otherTop) - (index === count - 1 ? NOTES.height : 0);
     left = pack(ingredientRows, Array.from({ length: count }, (_, index) => room(index) - 64));
-    right = pack(stepRows, Array.from({ length: count }, (_, index) => room(index) - 60));
-    if (count >= 30 || (left.fits && right.fits)) break;
+    right = flowSteps(stepRows, Array.from({ length: count }, (_, index) => room(index) - 60));
+    if (count >= 200 || (left.fits && right.fits)) break;
   }
   const sheets = [];
   for (let index = 0; index < count; index++) {

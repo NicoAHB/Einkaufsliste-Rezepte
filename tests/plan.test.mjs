@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, recipeChanges, relativeDay, snapshotRows, weekBasket, weekDays, weekLabel, weekStart } from '../plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from '../plan.js';
 import { validDay } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
@@ -134,4 +134,28 @@ test('Rezept nach der Übernahme geändert: neue, entfernte und geänderte Zutat
   assert.deepEqual(recipeChanges(snapshot, [{ name: 'Mehl', quantity: 0.15, unit: 'kg' }, rows[1], rows[2]]).added.map(row => row.unit), ['kg'], 'andere Einheit: neu und entfernt');
   assert.deepEqual(recipeChanges(undefined, rows).added.length, 3, 'ohne Merker alles neu (wird in der App nicht verwendet)');
   assert.deepEqual(snapshotRows([{ name: 'A|B', quantity: 1, unit: 'g' }]), ['A/B|1|g'], 'ein senkrechter Strich im Namen stört nicht');
+});
+
+test('Kennung einer Wochenübernahme (Version 2.56): gleich auf jedem Gerät, unabhängig von der Reihenfolge; andere Gerichte, Portionen oder ein anderer Übernahme-Stand ergeben eine andere', () => {
+  const meal = (id, servings, extra = {}) => ({ id, servings, date: '2026-10-29', recipeId: 'r', ...extra });
+  const base = weekTakeId([meal('m1', 2), meal('m2', 4)]);
+  assert.match(base, /^[0-9a-z]{6,}$/);
+  assert.equal(weekTakeId([meal('m2', 4), meal('m1', 2)]), base, 'Reihenfolge egal');
+  assert.equal(weekTakeId([meal('m1', 2, { date: '2026-10-30', createdAt: 'x' }), meal('m2', '4')]), base, 'Datum und Rezept gehören nicht zur Kennung, 4 und „4“ sind gleich');
+  assert.notEqual(weekTakeId([meal('m1', 2)]), base, 'ein Gericht weniger');
+  assert.notEqual(weekTakeId([meal('m1', 3), meal('m2', 4)]), base, 'andere Portionen');
+  assert.notEqual(weekTakeId([meal('m1', 2, { listedServings: 2, listedAt: '2026-10-29T10:00:00.000Z' }), meal('m2', 4)]), base, 'schon einmal übernommen: eine neue, bewusste Übernahme');
+  assert.notEqual(weekTakeId([meal('m1', 2, { listedServings: 2, listedAt: '2026-10-29T11:00:00.000Z' }), meal('m2', 4)]), weekTakeId([meal('m1', 2, { listedServings: 2, listedAt: '2026-10-29T10:00:00.000Z' }), meal('m2', 4)]), 'zweite und dritte Übernahme unterscheiden sich');
+  assert.equal(weekTakeId([]), weekTakeId([]));
+});
+
+test('Schlüssel der Zeilen: Name und Einheit (Schreibweisen gleich), kommt derselbe zweimal vor, wird durchgezählt; fester Hash', () => {
+  const rows = [{ name: 'Nudeln', unit: 'g' }, { name: 'nudeln ', unit: 'G' }, { name: 'Nudeln', unit: 'Stück' }, { name: 'Tomaten', unit: 'g' }];
+  const keys = weekRowKeys(rows);
+  assert.equal(new Set(keys).size, 4, 'jede Zeile hat einen eigenen Schlüssel');
+  assert.ok(keys[1].startsWith(keys[0]) && keys[1].endsWith('-2'));
+  assert.deepEqual(weekRowKeys(rows), keys, 'immer gleich');
+  assert.equal(shortHash('abc'), shortHash('abc'));
+  assert.notEqual(shortHash('abc'), shortHash('abd'));
+  assert.ok(keys.every(key => /^[0-9a-z-]+$/.test(key)), 'nur Zeichen, die in einer Kennung stehen dürfen');
 });

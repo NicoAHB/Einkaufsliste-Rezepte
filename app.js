@@ -13,7 +13,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { emojiFor } from './emoji.js';
 import { GROCERY_NAMES } from './grocery-names.js';
-import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, snapshotRows, weekBasket, weekDays, weekLabel, weekStart } from './plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
@@ -998,21 +998,22 @@ function renderPlan() {
   const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
   const box = $('#plan-days'); box.replaceChildren();
   for (const day of days) {
-    const card = element('article', undefined, `day${day === today ? ' today' : ''}`); card.dataset.day = day;
+    const past = day < today;   // vergangene Tage sind nur zu sehen (Version 2.55): nicht planen, ändern, löschen oder verschieben
+    const card = element('article', undefined, `day${day === today ? ' today' : ''}${past ? ' past' : ''}`); card.dataset.day = day;
     const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
     title.append(element('small', dayMonthLabel(day)));
-    head.append(title, iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
+    head.append(title); if (!past) head.append(iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
     card.append(head);
-    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes));
+    for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
     box.append(card);
   }
   $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
 }
-function mealRow(meal, recipes) {
+function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);
   const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
-  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); row.dataset.id = meal.id;
-  const check = button('', () => toggleMeal(meal.id), 'check');
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); if (!past) row.dataset.id = meal.id;   // ohne Kennung lässt sich das Gericht nicht ziehen
+  const check = button('', () => toggleMeal(meal.id), 'check'); check.disabled = past;
   if (meal.done) check.append(icon('check'));
   check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
   check.setAttribute('aria-pressed', String(Boolean(meal.done)));
@@ -1022,8 +1023,8 @@ function mealRow(meal, recipes) {
   const changed = recipe && listed ? mealChanges(meal) : null;
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
-  row.append(check, copy, iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })),
-    iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
+  row.append(check, copy);
+  if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
   return row;
 }
 // Ein Gericht auf einen anderen Tag verschieben (Version 2.51): Gericht lange halten, auf einen anderen Tag ziehen und loslassen. Ist der Tag frei, zieht es dorthin um; sonst fragt das Fenster
@@ -1034,7 +1035,7 @@ const dayTarget = {
   at: (x, y, id) => {
     const card = dayCards().find(node => { const box = node.getBoundingClientRect(); return y >= box.top && y <= box.bottom; });
     const own = state.meals.find(row => row.id === id)?.date;
-    return card && card.dataset.day !== own ? card.dataset.day : null;
+    return card && !card.classList.contains('past') && card.dataset.day !== own ? card.dataset.day : null;
   },
   mark: day => dayCards().forEach(node => node.classList.toggle('drop-target', node.dataset.day === day)),
   hide: () => dayCards().forEach(node => node.classList.remove('drop-target')),
@@ -1044,7 +1045,7 @@ const mealName = meal => meal.recipeId ? active(state.recipes).find(recipe => re
 let swapPending = null;
 function dropMeal(id, day) {
   const meal = active(state.meals).find(row => row.id === id);
-  if (!meal || meal.date === day) return;
+  if (!meal || meal.date === day || day < isoDate() || meal.date < isoDate()) return;
   const others = active(state.meals).filter(row => row.date === day && row.id !== id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (!others.length) { commit([nextOp('meals', id, { date: day })], `„${mealName(meal)}“ auf ${dayName(day)} verschoben`); return; }
   swapPending = { id, otherId: others[0].id, day, from: meal.date };
@@ -1083,7 +1084,7 @@ function openMeal(options = {}) {
   const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
   fillRecipePick(recipes);
   form.elements.id.value = options.id || '';
-  form.elements.date.value = meal?.date || options.date || isoDate();
+  form.elements.date.value = meal?.date || options.date || isoDate(); form.elements.date.min = meal ? '' : isoDate();   // neue Gerichte nur ab heute
   let choice = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
   if (choice && choice !== '__custom' && !recipes.some(recipe => recipe.id === choice)) choice = meal ? '__custom' : '';   // das Rezept gibt es nicht mehr
   setRecipeChoice(choice);
@@ -1109,6 +1110,7 @@ function saveMeal(event) {
     const form = event.currentTarget, choice = form.elements.recipeId.value, custom = choice === '__custom', title = form.elements.title.value.trim();
     const date = form.elements.date.value;
     if (!validDay(date)) throw new Error('Bitte einen Tag auswählen.');
+    if (date < isoDate() && (!mealBaseline || mealBaseline.date !== date)) throw new Error('Vergangene Tage lassen sich nicht mehr planen. Bitte heute oder einen späteren Tag wählen.');
     if (!choice) throw new Error('Bitte ein Rezept wählen oder „Eigenes Gericht“ eintragen.');
     if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
     if (!custom) currentRecipe(choice);
@@ -2667,12 +2669,17 @@ for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale
 $('#set-offers').addEventListener('click', () => openStoresDialog(view));   // das Geschäft, dessen Link fehlt, ist gleich aufgeklappt
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
-function addRows(rows, storeId, unchecked = [], remember = false, extraOps = []) {
+// `take`: Kennung einer Wochenübernahme (siehe weekTakeId in plan.js); Zeilen mit `key` bekommen dann feste Kennungen, damit dieselbe Übernahme von zwei Geräten nur einmal zählt.
+function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [], take = '') {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory());
+  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory(), take);
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length && !extraOps.length) throw new Error('Alles davon steht schon auf der Liste.');
-  const pantryOps = stocked.map(name => nextOp('pantry', uid(), { name }));
+  const pantryOps = stocked.map(name => {
+    const id = take ? `take-${take}-pantry-${shortHash(productKey(name))}` : uid(), op = nextOp('pantry', id, { name });
+    if (take) op.id = id;
+    return op;
+  });
   const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
   commit([...result.ops, ...pantryOps, ...extraOps], `Übernommen: ${parts.join(', ') || 'alles stand schon auf der Liste'}`);
@@ -2883,7 +2890,10 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   // Die Gerichte, deren Zutaten jetzt auf die Liste gehen, merken sich das (für wie viele Portionen), damit ein zweites Mal nichts verdoppelt. Dieselbe Änderung wie die Artikel.
   const stamp = new Date().toISOString(), marks = [...new Set(form._plan.basket.use.map(meal => meal.id))].map(id => form._plan.meals.find(meal => meal.id === id)).filter(Boolean)
     .map(meal => nextOp('meals', meal.id, { listedServings: meal.servings, listedAt: stamp, listedRows: snapshotRows(active(state.ingredients).filter(row => row.recipeId === meal.recipeId)) }));
-  addRows(selected.map(row => listRow(row)), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name), form.elements.rememberPantry.checked, marks);
+  // Dieselbe Übernahme von zwei Geräten zählt nur einmal: feste Kennungen aus den Gerichten und den Zeilen (siehe weekTakeId in plan.js)
+  const keys = weekRowKeys(selected);
+  addRows(selected.map((row, index) => ({ ...listRow(row), key: keys[index] })), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name),
+    form.elements.rememberPantry.checked, marks, weekTakeId(form._plan.basket.use));
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {

@@ -5078,6 +5078,59 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Zwei Geräte bestätigen dieselbe Wochenübernahme fast gleichzeitig (mit Schreibkollision und erneutem Speichern): genau einmal gezählt; bewusst zusätzlich eingetragene Mengen addieren sich weiter', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    // Sperre: Beide Geräte lesen denselben Stand und wollen schreiben. Erst wenn beide soweit sind, schreibt A; B bekommt dann „409“ (veralteter Stand) und speichert erneut.
+    const gate = { on: false, arrived: [] }; let open_, aWrote; const bothArrived = new Promise(resolve => { open_ = resolve; }), aDone = new Promise(resolve => { aWrote = resolve; });
+    const serve = name => async route => {
+      if (gate.on && route.request().method() === 'PUT' && /daten\.json/.test(route.request().url())) {
+        gate.arrived.push(name); if (gate.arrived.length === 2) { gate.on = false; open_(); }
+        await bothArrived;
+        if (name === 'b') await aDone;
+        await remote.handler(route);
+        if (name === 'a') aWrote();
+        return;
+      }
+      return remote.handler(route);
+    };
+    await a.ctx.route('https://api.github.com/**', serve('a')); await b.ctx.route('https://api.github.com/**', serve('b'));
+    const conflicts = []; b.page.on('response', response => { if (response.request().method() === 'PUT' && response.status() === 409) conflicts.push(response.url()); });
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); }
+    await planPasta(a.page, '2'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Tomaten-Pasta/.test(document.querySelector('#plan-days').textContent), null, { timeout: 20000 });
+    const nudeln = () => remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`).sort();
+    const before = nudeln();
+    for (const device of [a, b]) { await device.page.click('[data-tab=plan]'); await device.page.click('#plan-shopping'); await sheetOpen(device.page); }
+    assert.ok((await weekRowsText(a.page)).some(row => /Nudeln/.test(row)) && (await weekRowsText(b.page)).some(row => /Nudeln/.test(row)), 'beide haben noch dieselbe Vorschau');
+    gate.on = true;
+    await Promise.all([a.page.click('#week-form button[type=submit]'), b.page.click('#week-form button[type=submit]')]);
+    await a.page.waitForSelector('#week-dialog', { state: 'hidden' }); await b.page.waitForSelector('#week-dialog', { state: 'hidden' });
+    await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(a.page); await pollNow(b.page); await synced(a.page); await synced(b.page);
+    assert.ok(conflicts.length >= 1, 'B bekam eine Schreibkollision und speicherte erneut');
+    const once = nudeln();
+    // dieselbe Übernahme, nur einmal gezählt: Nudeln stehen genau um die 200 g mehr da, die das Rezept für 2 Portionen braucht
+    const total = list => list.reduce((sum, text) => sum + Number.parseFloat(text), 0);
+    assert.equal(total(once) - total(before), 200, `vorher ${before}, danach ${once}`);
+    assert.equal(remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').length, once.length);
+    const names = remote.content.items.filter(item => !item.deletedAt).map(item => item.name.toLowerCase());
+    assert.equal(names.length, new Set(names.map((name, index) => `${name}|${remote.content.items.filter(item => !item.deletedAt)[index].storeId}`)).size, 'kein Artikel steht doppelt');
+    // Bewusst zusätzlich eingetragen: beide Geräte tragen von Hand je 100 g Nudeln ein – das zählt, jedes einzeln
+    const manual = async page => {
+      await page.click('[data-tab=shopping]');
+      await page.getByRole('tab', { name: /^Edeka/ }).click();
+      await page.fill('#item-form input[name=name]', 'Nudeln'); await page.fill('#item-form input[name=quantity]', '100'); await page.fill('#item-form input[name=unit]', 'g');
+      await page.click('#item-form button[type=submit]');
+    };
+    await manual(a.page); await synced(a.page); await manual(b.page); await synced(b.page);
+    await pollNow(a.page); await synced(a.page);
+    assert.equal(total(nudeln()) - total(once), 200, `von Hand zweimal 100 g: ${once} → ${nudeln()}`);
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
   test('Nach der Übernahme geändert: Rezept geändert, Rezept gelöscht, Gericht gelöscht – Plan und Wochen-Einkauf sagen, was auf der Einkaufsliste zu prüfen ist; die Liste selbst bleibt unverändert', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -5131,7 +5184,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
     await page.click('[data-tab=plan]');
     const days = await page.locator('#plan-days .day').evaluateAll(nodes => nodes.map(node => node.dataset.day)), today = await page.locator('.day.today').getAttribute('data-day');
-    const free = days.find(day => day !== today);
+    const free = days.find(day => day > today);   // ein späterer Tag dieser Woche (vergangene Tage sind gesperrt); am Sonntag gibt es keinen
+    if (!free) { await ctx.close(); return; }
     // Nichts wird blau markiert (iOS markiert beim langen Halten sonst Text): Auswahl aus, und nach dem Ziehen ist nichts markiert
     assert.equal(await page.locator('#plan-days').evaluate(node => getComputedStyle(node).userSelect), 'none');
     await page.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('#plan-days h3')); getSelection().removeAllRanges(); getSelection().addRange(range); });
@@ -5161,6 +5215,50 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#swap-yes'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
     assert.deepEqual(await mealDays(page), [['recipe-curry', free, null], ['recipe-pasta', today, 2]].sort());
     assert.match(await page.textContent('#notice-text'), /getauscht/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Wochenplan: vergangene Tage sind nur zu sehen (kein Plus, kein Ändern, Löschen, Ziehen); heute und spätere Tage bleiben bearbeitbar; neue Gerichte nicht für vergangene Tage', async () => {
+    const past = ago(2).slice(0, 10), todayIso = ago(0).slice(0, 10);
+    const data = structuredClone(demo);
+    // ein Gericht gestern/vorgestern (nicht abgehakt) und eines heute
+    const at = '2026-10-25T00:00:00.000Z', day = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+    data.meals = [{ id: 'm-past', date: day(-1), recipeId: 'recipe-curry', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }, { id: 'm-today', date: day(0), recipeId: 'recipe-pasta', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    await page.click('[data-tab=plan]');
+    // Wochenansicht: ab Montag; vergangene Tage dieser Woche (falls vorhanden) sind gesperrt. Gestern liegt nur dann in dieser Woche, wenn heute nicht Montag ist.
+    const info = await page.evaluate(() => [...document.querySelectorAll('#plan-days .day')].map(card => ({ day: card.dataset.day, past: card.classList.contains('past'), plus: card.querySelectorAll('.day-head .icon-button').length, edit: card.querySelectorAll('.meal .icon-button').length, check: [...card.querySelectorAll('.meal .check')].map(node => node.disabled), id: [...card.querySelectorAll('.meal')].map(node => Boolean(node.dataset.id)) })));
+    const todayCard = info.find(entry => entry.day === day(0));
+    assert.deepEqual([todayCard.past, todayCard.plus, todayCard.edit, todayCard.check, todayCard.id], [false, 1, 2, [false], [true]], 'heute ist bearbeitbar');
+    for (const entry of info.filter(entry => entry.day < day(0))) assert.deepEqual([entry.past, entry.plus], [true, 0], `${entry.day}: gesperrt`);
+    for (const entry of info.filter(entry => entry.day > day(0))) assert.deepEqual([entry.past, entry.plus], [false, 1], `${entry.day}: bearbeitbar`);
+    const yesterday = info.find(entry => entry.day === day(-1));
+    if (yesterday) assert.deepEqual([yesterday.edit, yesterday.check, yesterday.id], [0, [true], [false]], 'gestern: kein Stift, kein Papierkorb, Haken gesperrt, nicht ziehbar');
+    // Ziehen auf einen vergangenen Tag tut nichts (und aus einem vergangenen Tag geht es nicht)
+    if (yesterday) {
+      const from = await page.locator('.day.today .meal .meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${day(-1)}"]`).boundingBox();
+      await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
+      await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+      assert.equal(await page.locator('.day.drop-target').count(), 0, 'ein vergangener Tag ist kein Ziel');
+      await page.mouse.up();
+      assert.deepEqual(await mealDays(page).then(list => list.map(entry => entry[1]).sort()), [day(-1), day(0)].sort());
+    }
+    // Neues Gericht für einen vergangenen Tag (über die Rezeptkarte mit Tagesauswahl): abgelehnt
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Apfel-Pfannkuchen' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click(); await sheetOpen(page);
+    assert.equal(await page.getAttribute('#meal-form input[name=date]', 'min'), day(0), 'das Datumsfeld beginnt heute');
+    await page.fill('#meal-form input[name=date]', day(-3));
+    assert.equal(await page.evaluate(() => document.querySelector('#meal-form input[name=date]').validity.rangeUnderflow), true, 'das Feld lehnt vergangene Tage ab');
+    await page.click('#meal-form button[type=submit]');
+    assert.equal(await page.locator('#meal-dialog[open]').count(), 1, 'nichts wird gespeichert');
+    await page.evaluate(() => document.querySelector('#meal-form input[name=date]').removeAttribute('min'));   // auch ohne die Feldprüfung lehnt die App ab
+    await page.click('#meal-form button[type=submit]');
+    assert.match(await page.textContent('#meal-dialog [data-dialog-error]'), /Vergangene Tage lassen sich nicht mehr planen/);
+    await page.fill('#meal-form input[name=date]', day(1)); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    assert.equal((await mealDays(page)).filter(entry => entry[0] === 'recipe-pfannkuchen').length, 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -6396,6 +6494,34 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Rezeptblatt: ein sehr langer Arbeitsschritt wird nie gekürzt – er läuft auf der nächsten Seite weiter („Fortsetzung“), der Notizbereich bleibt frei, der letzte Satz steht vollständig in Vorschau und PDF', async () => {
+    const data = sheetData(), sentence = number => `Satz ${number} verlangt Ruhe und Sorgfalt beim Verrühren, damit die Masse gleichmäßig bleibt und nichts anbrennt.`;
+    const longStep = `Langer Schritt mit vielen Angaben. ${Array.from({ length: 36 }, (_, index) => sentence(index + 1)).join(' ')} Das ist der allerletzte Satz dieses langen Schritts.`;
+    data.recipes.find(row => row.id === 'recipe-curry').instructions = `Zwiebeln anbraten.\n${longStep}\nFertig servieren.`;
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    await openCardSheet(page, 'Kichererbsen-Curry');
+    const sheets = await page.evaluate(() => [...document.querySelectorAll('#sheet-pages svg')].map(svg => [...svg.querySelectorAll('text')].map(node => ({ text: node.textContent, x: Number(node.getAttribute('x')), y: Number(node.getAttribute('y')) }))));
+    assert.ok(sheets.length >= 2, `${sheets.length} Seiten`);
+    const stepText = sheets.flatMap(items => items.filter(item => item.x === 324 && item.text !== 'Fortsetzung')).map(item => item.text).join(' ');
+    assert.equal(stepText, `Zwiebeln anbraten. ${longStep} Fertig servieren.`, 'jedes Wort jedes Schritts steht in der Vorschau, in der richtigen Reihenfolge');
+    assert.ok(!sheets.flat().some(item => item.text.includes('…')), 'nirgends „…“');
+    assert.ok(sheets.slice(1, -1).every(items => items.some(item => item.text === 'Fortsetzung')) && !sheets[0].some(item => item.text === 'Fortsetzung'), 'jede Folgeseite beginnt mit „Fortsetzung“, die erste nicht');
+    const last = sheets.at(-1), notes = last.find(item => item.text === 'Meine Notizen');
+    assert.ok(notes, 'die Notizen stehen auf der letzten Seite');
+    for (const items of sheets) for (const item of items.filter(entry => entry.x === 324)) assert.ok(item.y < (items === last ? notes.y - 30 : 780), `„${item.text}“ (y ${item.y}) liegt im Notizbereich oder unter dem Seitenrand`);
+    assert.ok(last.some(item => item.text === 'Fertig servieren.') && sheets.flat().some(item => item.text.includes('Schritts.')), 'der letzte Satz und der folgende Schritt sind da');
+    // die Datei: dieselben Seiten, der letzte Satz des langen Schritts steht darin
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    const body = checkPdf(await pdfBytesOf(download));
+    assert.ok(body.includes(`/Count ${sheets.length} `), 'gleich viele Seiten wie die Vorschau');
+    // Text steht in der Datei als Hexadezimalzahlen der Zeichen (siehe pdf.js)
+    for (const part of ['allerletzte', 'Schritts.', 'Satz 36 verlangt', 'Fortsetzung']) assert.ok(body.includes(Buffer.from(part, 'latin1').toString('hex')), `${part} fehlt in der PDF-Datei`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Rezeptblatt: Dateiname ohne Sonderzeichen; Umlaute, Bruchzahlen und typografische Zeichen stehen auf dem Blatt; gelöschte Rezepte haben keine Karte mehr', async () => {
     const data = sheetData();
     data.recipes.push({ id: 'recipe-sonder', name: 'Süße „Grütze“ / Dessert: Nr. 1?', servings: 3, tags: ['süß'], instructions: 'Beeren aufkochen – 5 Min. köcheln lassen.\nKalt servieren (ca. 1½ Std.).', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {} });
@@ -6430,7 +6556,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Mehrere Fenster: der Bereich oberhalb des Fensters schließt (der Kochmodus füllt den ganzen Bildschirm und hat keinen; dort scrollt man hoch und tippt auf das „×“)
     const opens = [
       ['#item-dialog', async () => { await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); }],
-      ['#meal-dialog', async () => { await goTab(page, 'plan'); await page.locator('.day').first().locator('.day-head .icon-button').click(); }],
+      ['#meal-dialog', async () => { await goTab(page, 'plan'); await page.locator('.day:not(.past)').first().locator('.day-head .icon-button').click(); }],
       ['#help-dialog', async () => { await openSettings(page); await page.click('#open-help'); }],
       ['#purchase-dialog', async () => { await goTab(page, 'spending'); await page.click('#add-purchase'); }],
       ['#cookable-dialog', async () => { await goTab(page, 'recipes'); await page.click('#cookable-open'); }],

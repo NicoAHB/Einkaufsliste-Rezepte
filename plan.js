@@ -56,6 +56,31 @@ export function weekBasket(meals, again = false) {
   return { use, listed };
 }
 
+/* Dieselbe Wochenübernahme genau einmal (Version 2.56): Bestätigen zwei Geräte die Übernahme fast gleichzeitig, jedes mit dem Stand, den es hat, dürfen ihre Änderungen nicht zweimal zählen
+   (800 g statt 400 g). Beide Geräte geben der Übernahme deshalb dieselbe Kennung: Sie hängt nur davon ab, welche Gerichte mit wie vielen Portionen aufgenommen werden und in welchem
+   Übernahme-Stand sie vorher waren (`listedServings`, `listedAt`). Jede Zeile der Übernahme bekommt dazu einen Schlüssel aus Name und Einheit (siehe addToList in data.js).
+   Eine spätere, bewusste Übernahme (anderer Stand) oder ein von Hand eingetragener Artikel hat eine andere Kennung und addiert sich wie bisher. */
+export function shortHash(text) {   // cyrb53: kurz und fest, nur zum Wiedererkennen
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (const char of String(text)) {
+    const code = char.codePointAt(0);
+    h1 = Math.imul(h1 ^ code, 2654435761); h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+export const weekTakeId = use => shortHash(use.map(meal => [meal.id, Math.round(Number(meal.servings) * 1000) / 1000, Number(meal.listedServings) > 0 ? Number(meal.listedServings) : 0, meal.listedAt || ''].join('|')).sort().join(';'));
+// Schlüssel je Zeile (Name und Einheit); kommt derselbe zweimal vor, wird durchgezählt, damit keine Zeile die Kennung einer anderen trägt
+export function weekRowKeys(rows) {
+  const seen = new Map();
+  return rows.map(row => {
+    const base = shortHash(`${productKey(row.name)}|${productKey(row.unit)}`), count = (seen.get(base) || 0) + 1;
+    seen.set(base, count);
+    return count > 1 ? `${base}-${count}` : base;
+  });
+}
+
 /* Nachträgliche Änderungen (Version 2.50): Bei der Übernahme merkt sich das Gericht die Zutaten seines Rezepts (`listedRows`, „Name|Menge|Einheit“). Wurde das Rezept danach geändert,
    zeigt `recipeChanges`, was sich geändert hat (hinzugekommen, entfernt, andere Menge), damit man die Einkaufsliste prüfen kann. Die Liste selbst ändert die App nie von selbst. */
 const snapshotKey = entry => `${productKey(entry.name)}|${productKey(entry.unit)}`;

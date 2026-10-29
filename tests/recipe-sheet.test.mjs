@@ -146,6 +146,84 @@ test('Ein Schritt bleibt auf einer Seite zusammen (Nummer, Überschrift und Text
   });
 });
 
+/* ---------- Lange Schritte (Version 2.56): nie gekürzt, auf Folgeseiten fortgesetzt, Notizen frei ---------- */
+const STEP_X = 324;   // linke Kante des Schritttexts: Kasten 226 + Abstand + Kreis
+const sentenceNo = i => `Satz ${i} beschreibt einen weiteren Handgriff, der genau so ausgeführt werden soll, damit nichts anbrennt oder zu weich wird.`;
+const longStep = count => `Alles gründlich vorbereiten. ${Array.from({ length: count }, (_, i) => sentenceNo(i + 1)).join(' ')} Zum Schluss alles sofort servieren.`;
+const stepLines = layout => layout.pages.flatMap(page => texts(page).filter(item => item.x === STEP_X && item.text !== 'Fortsetzung'));
+const BOTTOM = PAGE.height - 62;
+
+test('Ein sehr langer Schritt wird nie gekürzt: jedes Wort steht in der richtigen Reihenfolge im Blatt, auch der letzte Satz, ohne „…“', () => {
+  for (const count of [3, 6, 12, 30, 80]) {
+    const step = longStep(count), layout = make({ instructions: `${step}\nDanach abkühlen lassen.` });
+    const lines = stepLines(layout), joined = lines.map(item => item.text).join(' ');
+    assert.equal(joined, `${step} Danach abkühlen lassen.`.replace(/\. (Satz|Zum|Danach)/g, (_, word) => `. ${word}`), `${count} Sätze: der Text ist unverändert`);
+    assert.ok(!joined.includes('…') && !allText(layout).some(item => item.text.endsWith('…')), 'keine Auslassungspunkte');
+    assert.ok(joined.includes('Zum Schluss alles sofort servieren.') && joined.endsWith('Danach abkühlen lassen.'), 'der letzte Satz ist da');
+  }
+});
+
+test('Ein langer Schritt läuft auf der nächsten Seite weiter: „Fortsetzung“ an seiner Nummer, mindestens zwei Zeilen je Seite, die Nummern bleiben richtig', () => {
+  const layout = make({ instructions: `Zuerst die Zutaten abwiegen.\n${longStep(40)}\nDanach abkühlen lassen.` });
+  assert.ok(layout.pages.length >= 3);
+  layout.pages.forEach((page, index) => {
+    const marks = texts(page).filter(item => item.text === 'Fortsetzung'), badge = texts(page).filter(item => item.align === 'center' && /^\d+$/.test(item.text) && item.font === 'sansBold');
+    if (index === 0) assert.equal(marks.length, 0, 'auf der ersten Seite beginnt der Schritt');
+    else if (index < layout.pages.length - 1) {
+      assert.equal(marks.length, 1, `Seite ${index + 1}: genau eine Fortsetzung`);
+      assert.equal(badge[0].text, '2', 'die Fortsetzung trägt die Nummer des Schritts');
+      assert.equal(marks[0].y, badge[0].y + 0.4, 'sie steht neben der Nummer');
+      assert.ok(texts(page).filter(item => item.x === STEP_X && item.text !== 'Fortsetzung').length >= 2, 'mindestens zwei Zeilen');
+    }
+  });
+  const numbers = layout.pages.flatMap(page => texts(page).filter(item => item.align === 'center' && /^\d+$/.test(item.text) && item.font === 'sansBold').map(item => item.text));
+  assert.deepEqual(numbers.filter((value, index) => value !== numbers[index - 1]), ['1', '2', '3'], 'Schritt 1, dann 2 (mit Fortsetzungen), dann 3');
+  assert.equal(by(layout, item => item.text === 'Zuerst die Zutaten abwiegen.').length, 1);
+  assert.ok(texts(layout.pages.at(-1)).some(item => item.text === 'Danach abkühlen lassen.'), 'der folgende Schritt steht nach dem langen');
+});
+
+test('Der Notizbereich bleibt frei und nichts läuft über den Rand: kein Schritttext unterhalb der Notizlinie, keiner unterhalb des Seitenfußes oder rechts über den Rand', () => {
+  for (const count of [2, 9, 14, 25, 60]) {
+    const layout = make({ instructions: `Kurz.\n${longStep(count)}` });
+    layout.pages.forEach((page, index) => {
+      const last = index === layout.pages.length - 1, notes = texts(page).find(item => item.text === 'Meine Notizen');
+      assert.equal(Boolean(notes), last);
+      const top = notes ? notes.y - 26 : BOTTOM;
+      for (const item of texts(page)) {
+        const width = textWidth(item.text, item.font, item.size, item.charSpace || 0), left = item.align === 'right' ? item.x - width : item.align === 'center' ? item.x - width / 2 : item.x;
+        assert.ok(left >= 41.5 && left + width <= PAGE.width - 41.5, `${count}: „${item.text}“ ragt über den Rand`);
+        if (item.x === STEP_X || item.text === 'Fortsetzung') assert.ok(item.y < top - 8, `${count} Sätze, Seite ${index + 1}: „${item.text}“ (y ${item.y.toFixed(1)}) reicht an die Notizen (${top.toFixed(1)})`);
+        else if (!/^(Seite |Quelle|Eigenes|EINKAUF|REZEPT)/.test(item.text)) assert.ok(item.y < BOTTOM, `${item.text} unterhalb des Randes`);
+      }
+    });
+  }
+});
+
+test('Ein Schritt, der auf die nächste Seite passt, wird nicht zerrissen; erst was länger als eine Seite ist, wird geteilt', () => {
+  const mid = 'Mittlerer Schritt. ' + Array.from({ length: 10 }, (_, i) => sentenceNo(i + 1)).join(' ');
+  const steps = Array.from({ length: 6 }, (_, i) => i === 3 ? mid : `Schritt ${i + 1} wird ausgeführt. ${sentenceNo(i + 1)} ${sentenceNo(i + 2)}`).join('\n');
+  const layout = make({ instructions: steps });
+  assert.ok(!allText(layout).some(item => item.text === 'Fortsetzung'), 'nichts wurde geteilt');
+  assert.ok(content(layout).includes('Mittlerer Schritt.'));
+  assert.ok(allText(make({ instructions: `Vorweg.\n${longStep(60)}` })).some(item => item.text === 'Fortsetzung'), 'der lange Schritt wird geteilt');
+  assert.ok(!allText(make({ instructions: longStep(60) })).some(item => item.text === 'Fortsetzung'), 'ein Absatz ohne Zeilenumbruch wird an Satzenden in Schritte geteilt, die einzeln zusammenbleiben');
+});
+
+test('Mehrere lange Schritte hintereinander: jeder vollständig, in der Reihenfolge, mit richtigen Nummern', () => {
+  const steps = [1, 2, 3, 4].map(n => `Schritt ${n} beginnt hier. ${Array.from({ length: 14 }, (_, i) => `Teil ${n}.${i + 1} wird gründlich und in Ruhe erledigt, bis alles gleichmäßig verteilt ist.`).join(' ')}`);
+  const layout = make({ instructions: steps.join('\n') }), joined = stepLines(layout).map(item => item.text).join(' ');
+  assert.equal(joined, steps.join(' '));
+  for (const n of [1, 2, 3, 4]) assert.ok(joined.includes(`Teil ${n}.14 wird`), `Ende von Schritt ${n}`);
+  assert.ok(layout.pages.length >= 3);
+});
+
+test('Ein einziges sehr langes Wort und Zeilenumbrüche im Schritt gehen nicht verloren', () => {
+  const word = 'Donaudampfschifffahrtsgesellschaftskapitänsmützenabzeichenverleihung'.repeat(2);
+  const layout = make({ instructions: `Das ${word} sorgfältig aufbewahren. ${'Noch ein Hinweis steht hier. '.repeat(40)}Ende.` });
+  const joined = stepLines(layout).map(item => item.text).join(' ').replace(/- /g, '');
+  assert.ok(joined.includes(word) && joined.endsWith('Ende.'));
+});
+
 test('„Gesamtzeit: 25 Min.“ am Anfang der Zubereitung (Import, Rezepte des Tages) wird eine Eckdate und ein Zeitvermerk statt eines Schritts', () => {
   const layout = make({ instructions: 'Gesamtzeit: 25 Min.\n\nNudeln kochen.\nSoße rühren.' });
   const text = content(layout);
