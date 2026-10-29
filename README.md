@@ -20,6 +20,7 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 - **Planen:** Auch in der Einkaufsliste unter „Planen“ (Gesamtliste „Alle“ und jedes einzelne Geschäft) steht die Zahl nur noch **beim Geschäft**, nicht mehr bei den Kategorien. **„Erledigt“** behält seine Zahl.
 - **Menge unter dem Namen:** Bei jedem Artikel steht die Menge jetzt **immer in einer eigenen Zeile unter dem Namen**, bündig mit ihm, darunter die Person („Nico“). Vorher stand sie bei kurzen Namen **daneben** („Honig 1 Stück“) und bei langen **leicht eingerückt** darunter („Domol Feinwaschmittel“, „Blumenerde“). So sieht es auch unter „Im Laden“ aus.
+- **Aktualisieren:** Die App ein Mal ganz schließen und neu öffnen (bei Bedarf zweimal), damit das neue Offline-Paket `einkauf-shell-v72` geladen wird.
 - Test: In „Alle“ steht bei kurzen und sehr langen Namen auf 320, 390 und 430 px die Menge unter dem Namen und links bündig, die Person darunter, ohne seitlichen Überlauf; keine Kategorie hat eine Zahl, „Erledigt“ schon, das Geschäft behält seine.
 
 ## Neu in Version 2.59: Im Laden keine Anzahl bei den Kategorien
