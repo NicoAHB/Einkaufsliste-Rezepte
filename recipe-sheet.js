@@ -1,17 +1,18 @@
-/* Das Rezeptblatt (Version 2.45): ein Rezept als schön gestaltete DIN-A4-Seite. Reine Logik ohne DOM.
-   Das Blatt folgt einer Rezeptkarte: oben „REZEPT“, der Titel in einer Schrift mit Serifen und einem Strich darunter, vier Kästchen mit den Eckdaten, rechts das Foto als
-   aufgeklebtes Sofortbild, darunter links die Zutaten (Menge | Zutat) und rechts die Zubereitung, beides auf Linien wie auf liniertem Papier. Die Linien laufen bis zum Seitenende:
-   unten bleibt Platz für Notizen. Ist das Rezept lang, geht es auf einer zweiten (dritten …) Seite weiter.
+/* Das Rezeptblatt (Version 2.54): ein Rezept als lesbare DIN-A4-Seite. Reine Logik ohne DOM.
+   Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und „EINKAUF & REZEPTE“, der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
+   Gesamtzeit, Stichworte, Quelle); links ein heller Kasten mit den Zutaten (Kästchen zum Abhaken, Menge hervorgehoben), rechts die Zubereitung in klar getrennten, nummerierten
+   Schritten (erster Satz fett als Überschrift); unten „Meine Notizen“ mit eigenem Platz zum Schreiben. Ein Foto steht klein oben rechts. Ist das Rezept lang, geht es auf einer zweiten
+   (dritten …) Seite weiter; die Notizen stehen auf der letzten.
    `layoutRecipe` liefert nur Zeichenbefehle (siehe pdf.js: Rechteck, Linie, Text, Bild); dieselben Befehle ergeben die PDF-Datei (pdf.js) und die Vorschau (sheet-view.js). */
 import { textWidth } from './pdf.js';
 import { splitSteps } from './cook.js';
 
 export const PAGE = { width: 595.28, height: 841.89 };
-export const COLOR = { ink: '#2f2a26', accent: '#b5702d', accentLine: '#c0813c', border: '#f0e3ce', box: '#fbf3e6', boxLine: '#f1e3cb', label: '#8b8175', rule: '#d4cec6', soft: '#9a9186', tape: '#f1e1bd' };
-const MARGIN = 52, FRAME = 26, PITCH = 17, BODY = 10.5, BOTTOM = PAGE.height - 52 - 14;
-const LEFT = MARGIN, RIGHT = PAGE.width - MARGIN, WIDTH = RIGHT - LEFT;
-const INGREDIENTS = { width: 226, amount: 74 }, GAP = 22;
-const STEPS = { x: LEFT + INGREDIENTS.width + GAP, width: RIGHT - (LEFT + INGREDIENTS.width + GAP), number: 19 };
+export const COLOR = { ink: '#26352e', body: '#38403b', accent: '#a8502e', soft: '#6f7872', label: '#6f7872', rule: '#d9ddd5', card: '#f0f2ea', cardRule: '#d7dccf', box: '#9aa59b', badge: '#f7e4dc' };
+const MARGIN = 42, LEFT = MARGIN, RIGHT = PAGE.width - MARGIN, WIDTH = RIGHT - LEFT, BOTTOM = PAGE.height - 62;
+const CARD = { width: 226, pad: 15, box: 11, amount: 60 };
+const STEPS = { x: LEFT + CARD.width + 26, number: 18 }; STEPS.width = RIGHT - STEPS.x;
+const NOTES = { height: 150 };
 const NO_AMOUNT = 'nach Bedarf';
 
 const number = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 });
@@ -56,85 +57,99 @@ export function sheetIngredient(row, factor = 1) {
   const noAmount = row.unit === NO_AMOUNT;
   return { amount: noAmount ? NO_AMOUNT : `${formatNumber(row.quantity * factor)} ${row.unit}`.trim(), name: String(row.name ?? '').trim(), soft: noAmount };
 }
-function ingredientGroups(ingredients) {
-  const nameWidth = INGREDIENTS.width - INGREDIENTS.amount - 10;
-  return ingredients.map(entry => {
-    const amount = wrapText(entry.amount, entry.soft ? 'sans' : 'sansBold', entry.soft ? 9 : BODY, INGREDIENTS.amount - 8), name = wrapText(entry.name, 'sans', BODY, nameWidth);
-    return Array.from({ length: Math.max(amount.length, name.length) }, (_, index) => ({ amount: amount[index] ?? '', name: name[index] ?? '', soft: entry.soft }));
-  });
-}
-function stepGroups(instructions) {
-  const width = STEPS.width - STEPS.number;
-  return splitSteps(instructions).map((step, index) => wrapText(step, 'sans', BODY, width).map((text, line) => ({ text, number: line === 0 ? index + 1 : 0 })));
-}
-// Gruppen (zusammengehörige Zeilen) auf Seiten verteilen. Eine Gruppe bleibt ganz beieinander; nur lange Gruppen (Schritte) dürfen getrennt werden, nie eine einzelne Zeile allein.
-function paginate(groups, capacities) {
-  const pages = capacities.map(() => []);
-  let page = 0;
-  const free = () => capacities[page] - pages[page].length;
-  for (const group of groups) {
-    let rest = group;
-    while (rest.length) {
-      if (rest.length <= free()) { pages[page].push(...rest); rest = []; continue; }
-      let take = free();
-      if (rest.length - take === 1) take--;   // nie eine einzelne Zeile allein auf die nächste Seite
-      if (rest.length >= 4 && take >= 2) { pages[page].push(...rest.slice(0, take)); rest = rest.slice(take); }
-      if (page + 1 >= pages.length) { pages[page].push(...rest.slice(0, free())); break; }
-      page++;
-    }
+
+/* ---------- Schritte: erster Satz fett, der Rest darunter ---------- */
+// „Nudeln in Salzwasser kochen. Nudelwasser aufheben.“ → Überschrift „Nudeln in Salzwasser kochen.“ und Text „Nudelwasser aufheben.“; ein einzelner kurzer Satz ist nur Überschrift,
+// ein langer Satz nur Text.
+export function stepParts(step) {
+  const text = String(step ?? '').trim();
+  // Satzende: . ! ? gefolgt von Leerraum und einem Großbuchstaben (oder Ziffer, Anführungszeichen) oder vom Ende; „5 Min. köcheln“ und „ca. 1½ Std.“ enden keinen Satz
+  const ABBREVIATION = /(?:^|[\s(])(?:Min|Std|ca|evtl|bzw|ggf|etc|Nr|ungef|[a-zäöü]|kg|ml|EL|TL|Pck|Pkg)\.$/i;   // auch einzelne Buchstaben („z. B.“, „d. h.“, „g“)
+  for (const match of text.matchAll(/[.!?](?=\s+[A-ZÄÖÜ„"(\d]|\s*$)/g)) {
+    const end = match.index + 1, head = text.slice(0, end);
+    if (head.length < 3 || (match[0] === '.' && ABBREVIATION.test(head))) continue;
+    if (head.length > 70) break;
+    return { title: head, body: text.slice(end).trim() };
   }
-  return pages;
+  return text.length <= 60 ? { title: text, body: '' } : { title: '', body: text };
 }
 
-/* ---------- Seiten ---------- */
-function frame(items) {
-  items.push({ type: 'rect', x: FRAME, y: FRAME, w: PAGE.width - 2 * FRAME, h: PAGE.height - 2 * FRAME, r: 16, stroke: COLOR.border, lineWidth: 1.4 });
-}
-function pill(items, x, y, label) {
-  const size = 8.5, spacing = 1.1, width = textWidth(label, 'sansBold', size, spacing) + 26, height = 18;
-  items.push({ type: 'rect', x, y, w: width, h: height, r: height / 2, fill: COLOR.accent });
-  items.push({ type: 'text', x: x + width / 2 + spacing / 2, y: y + 12.2, text: label, font: 'sansBold', size, color: '#ffffff', charSpace: spacing, align: 'center' });
-}
-function infoBox(items, x, y, w, h, label, value) {
-  items.push({ type: 'rect', x, y, w, h, r: 9, fill: COLOR.box, stroke: COLOR.boxLine, lineWidth: 1 });
-  items.push({ type: 'text', x: x + 11, y: y + 15, text: label, font: 'sansBold', size: 6.8, color: COLOR.label, charSpace: 0.7 });
-  const fitted = fitText(value || '–', 'sansBold', 12.5, w - 22, 8);
-  items.push({ type: 'text', x: x + 11, y: y + h - 12, text: fitted.text, font: 'sansBold', size: fitted.size, color: COLOR.ink });
-}
-// Das Foto als aufgeklebtes Sofortbild: Schatten, weißer Rahmen mit breitem unteren Rand, Klebestreifen, leicht schief
-function polaroid(items, photo, x, y) {
-  const w = 172, h = 168, rotate = { deg: 3.4, cx: x + w / 2, cy: y + h / 2 };
-  for (const [grow, dx, dy, alpha] of [[0, 2, 3, 0.1], [2, 3, 4.5, 0.06], [5, 4, 6, 0.035]]) items.push({ type: 'rect', x: x - grow / 2 + dx, y: y - grow / 2 + dy, w: w + grow, h: h + grow, r: 3, fill: '#000000', alpha, rotate });
-  items.push({ type: 'rect', x, y, w, h, r: 2.5, fill: '#ffffff', stroke: '#e6e1d9', lineWidth: 0.7, rotate });
-  items.push({ type: 'image', x: x + 8, y: y + 8, w: w - 16, h: h - 42, photo, rotate });
-  items.push({ type: 'rect', x: x + w / 2 - 33, y: y - 9, w: 66, h: 18, fill: COLOR.tape, alpha: 0.88, rotate: { deg: -2.2, cx: x + w / 2, cy: y } });
-  return y + h + 12;
+/* ---------- Bausteine ---------- */
+const capital = text => text.charAt(0).toLocaleUpperCase('de') + text.slice(1);
+function header(items, continued) {
+  items.push({ type: 'text', x: LEFT, y: 50, text: continued ? 'REZEPTSAMMLUNG · FORTSETZUNG' : 'REZEPTSAMMLUNG', font: 'sansBold', size: 7, color: COLOR.accent, charSpace: 1.8 });
+  items.push({ type: 'text', x: RIGHT, y: 50, text: 'EINKAUF & REZEPTE', font: 'sans', size: 7, color: COLOR.soft, charSpace: 0.9, align: 'right' });
 }
 function footer(items, page, pages, source) {
-  const y = PAGE.height - FRAME - 11.5;
-  const left = source ? fitText(`Quelle: ${source}`, 'sans', 7.5, 330, 7.5).text : 'Einkauf & Rezepte';
-  const right = pages > 1 ? `Seite ${page} von ${pages}` : source ? 'Einkauf & Rezepte' : '';
-  items.push({ type: 'text', x: LEFT, y, text: left, font: 'sans', size: 7.5, color: COLOR.soft });
-  if (right) items.push({ type: 'text', x: RIGHT, y, text: right, font: 'sans', size: 7.5, color: COLOR.soft, align: 'right' });
+  const y = PAGE.height - 30;
+  items.push({ type: 'text', x: LEFT, y, text: source ? fitText(`Quelle: ${source}`, 'sans', 7.5, 360, 7.5).text : 'Eigenes Rezept', font: 'sans', size: 7.5, color: COLOR.soft });
+  items.push({ type: 'text', x: RIGHT, y, text: `Seite ${page} / ${pages}`, font: 'sans', size: 7.5, color: COLOR.soft, align: 'right', charSpace: 0.4 });
 }
-// Linien, senkrechter Strich bei den Zutaten und der Inhalt der Spalten
-function columns(items, top, count, ingredients, steps) {
-  for (let line = 0; line <= count; line++) {
-    const y = top + line * PITCH;
-    items.push({ type: 'line', x1: LEFT, y1: y, x2: LEFT + INGREDIENTS.width, y2: y, color: COLOR.rule, width: 0.6 });
-    items.push({ type: 'line', x1: STEPS.x, y1: y, x2: RIGHT, y2: y, color: COLOR.rule, width: 0.6 });
+// Zeilen der Zutaten im Kasten: Kästchen, Menge (rechtsbündig, fett), Name
+function ingredientBlocks(ingredients) {
+  const nameWidth = CARD.width - 2 * CARD.pad - CARD.box - 8 - CARD.amount - 10;
+  return ingredients.map(entry => {
+    const amount = wrapText(entry.amount, entry.soft ? 'sans' : 'sansBold', entry.soft ? 8.5 : 10.5, CARD.amount), name = wrapText(entry.name, 'sans', 10.5, nameWidth);
+    const count = Math.max(amount.length, name.length);
+    return { amount, name, soft: entry.soft, height: 19 + count * 14 };
+  });
+}
+// Schritte: Kreis mit Nummer, Überschrift fett, Text; atomar (ein Schritt bleibt zusammen, sehr lange werden gekürzt)
+function stepBlocks(instructions) {
+  const width = STEPS.width - STEPS.number - 12;
+  return splitSteps(instructions).map((step, index) => {
+    const { title, body } = stepParts(step);
+    const titleLines = title ? clip(wrapText(title, 'sansBold', 12, width), 4) : [], bodyLines = body ? clip(wrapText(body, 'sans', 11, width), 40) : [];
+    return { number: index + 1, titleLines, bodyLines, height: titleLines.length * 15.5 + bodyLines.length * 15 + (titleLines.length && bodyLines.length ? 2 : 0) + 24 };
+  });
+}
+// Blöcke in der Reihenfolge auf Seiten verteilen: jede Seite hat eine verfügbare Höhe; ein Block bleibt ganz auf einer Seite
+function pack(blocks, heights) {
+  const pages = heights.map(() => []), used = heights.map(() => 0);
+  let page = 0;
+  for (const block of blocks) {
+    while (page < heights.length - 1 && used[page] + block.height > heights[page] && pages[page].length) page++;
+    pages[page].push(block); used[page] += block.height;
   }
-  items.push({ type: 'line', x1: LEFT + INGREDIENTS.amount, y1: top, x2: LEFT + INGREDIENTS.amount, y2: top + count * PITCH, color: COLOR.rule, width: 0.8 });
-  ingredients.forEach((row, index) => {
-    const baseline = top + (index + 1) * PITCH - 5.2;
-    if (row.amount) items.push({ type: 'text', x: LEFT + 4, y: baseline, text: row.amount, font: row.soft ? 'sans' : 'sansBold', size: row.soft ? 9 : BODY, color: row.soft ? COLOR.label : COLOR.ink });
-    if (row.name) items.push({ type: 'text', x: LEFT + INGREDIENTS.amount + 8, y: baseline, text: row.name, font: 'sans', size: BODY, color: COLOR.ink });
+  return { pages, fits: blocks.every(block => pages.some(list => list.includes(block))) && pages.every((list, index) => used[index] <= heights[index] + 0.01 || list.length === 1) };
+}
+function ingredientCard(items, x, top, blocks, servings, continued) {
+  const heading = continued ? 'Zutaten · Fortsetzung' : 'Zutaten', headerH = 54, height = headerH + blocks.reduce((sum, block) => sum + block.height, 0) + 10;
+  items.push({ type: 'rect', x, y: top, w: CARD.width, h: height, r: 12, fill: COLOR.card });
+  items.push({ type: 'text', x: x + CARD.pad, y: top + 29, text: heading, font: 'sansBold', size: 16, color: COLOR.ink });
+  if (!continued) items.push({ type: 'text', x: x + CARD.pad, y: top + 43, text: `Für ${servings} ${servings === '1' ? 'Portion' : 'Portionen'}`, font: 'sans', size: 8, color: COLOR.soft });
+  let y = top + headerH;
+  blocks.forEach((block, index) => {
+    const first = y + 14;
+    items.push({ type: 'rect', x: x + CARD.pad, y: first - 9, w: CARD.box - 2, h: CARD.box - 2, r: 1.8, fill: '#ffffff', stroke: COLOR.box, lineWidth: 0.8 });
+    const amountRight = x + CARD.pad + CARD.box + 8 + CARD.amount;
+    block.amount.forEach((line, row) => items.push({ type: 'text', x: amountRight, y: first + row * 14, text: line, font: block.soft ? 'sans' : 'sansBold', size: block.soft ? 8.5 : 10.5, color: block.soft ? COLOR.soft : COLOR.ink, align: 'right' }));
+    block.name.forEach((line, row) => items.push({ type: 'text', x: amountRight + 10, y: first + row * 14, text: line, font: 'sans', size: 10.5, color: COLOR.body }));
+    y += block.height;
+    if (index < blocks.length - 1) items.push({ type: 'line', x1: x + CARD.pad, y1: y - 2, x2: x + CARD.width - CARD.pad, y2: y - 2, color: COLOR.cardRule, width: 0.6 });
   });
-  steps.forEach((row, index) => {
-    const baseline = top + (index + 1) * PITCH - 5.2;
-    if (row.number) items.push({ type: 'text', x: STEPS.x + 1, y: baseline, text: `${row.number}.`, font: 'sansBold', size: BODY, color: COLOR.accent });
-    items.push({ type: 'text', x: STEPS.x + STEPS.number, y: baseline, text: row.text, font: 'sans', size: BODY, color: row.soft ? COLOR.label : COLOR.ink });
-  });
+  return top + height;
+}
+function stepsColumn(items, top, blocks, continued, empty) {
+  items.push({ type: 'text', x: STEPS.x, y: top + 29, text: continued ? 'Zubereitung · Fortsetzung' : 'Zubereitung', font: 'sansBold', size: 17, color: COLOR.ink });
+  let y = top + 60;
+  for (const block of blocks) {
+    items.push({ type: 'rect', x: STEPS.x, y: y - 12, w: STEPS.number, h: STEPS.number, r: STEPS.number / 2, fill: COLOR.badge });
+    items.push({ type: 'text', x: STEPS.x + STEPS.number / 2, y: y - 0.4, text: String(block.number), font: 'sansBold', size: 8, color: COLOR.accent, align: 'center' });
+    const textX = STEPS.x + STEPS.number + 12;
+    let baseline = y;
+    for (const line of block.titleLines) { items.push({ type: 'text', x: textX, y: baseline, text: line, font: 'sansBold', size: 12, color: COLOR.ink }); baseline += 15.5; }
+    if (block.titleLines.length && block.bodyLines.length) baseline += 2;
+    for (const line of block.bodyLines) { items.push({ type: 'text', x: textX, y: baseline, text: line, font: 'sans', size: 11, color: block.soft ? COLOR.soft : COLOR.body }); baseline += 15; }
+    y += block.height;
+  }
+  return empty;
+}
+function notes(items, top) {
+  items.push({ type: 'line', x1: LEFT, y1: top, x2: RIGHT, y2: top, color: COLOR.rule, width: 0.8 });
+  items.push({ type: 'text', x: LEFT, y: top + 26, text: 'Meine Notizen', font: 'serifBold', size: 15, color: COLOR.ink });
+  items.push({ type: 'text', x: LEFT, y: top + 41, text: 'Für Ideen, Änderungen und das nächste Mal.', font: 'sans', size: 8, color: COLOR.soft });
+  for (let line = 0; line < 3; line++) items.push({ type: 'line', x1: LEFT, y1: top + 72 + line * 28, x2: RIGHT, y2: top + 72 + line * 28, color: COLOR.rule, width: 0.7 });
 }
 
 /* Das ganze Blatt.
@@ -150,62 +165,59 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
   const time = timeLine ? timeLine[0].replace(/^\s*Gesamtzeit:\s*/i, '').trim() : '';
   const instructions = timeLine ? String(rawInstructions).slice(timeLine[0].length) : rawInstructions;
   const first = [];
-  frame(first);
-  first.push({ type: 'text', x: LEFT, y: MARGIN + 9, text: 'REZEPT', font: 'sansBold', size: 8, color: COLOR.accent, charSpace: 3 });
-  const leftWidth = photo ? 292 : WIDTH;
+  header(first, false);
+  const photoW = photo ? 150 : 0, titleWidth = WIDTH - (photo ? photoW + 22 : 0);
   // Titel: so groß wie möglich in höchstens zwei Zeilen, sonst kleiner in drei
-  let size = 32, lines = wrapText(title, 'serifBold', size, leftWidth);
-  while (lines.length > 2 && size > 22) { size -= 2; lines = wrapText(title, 'serifBold', size, leftWidth); }
+  let size = 34, lines = wrapText(title, 'serifBold', size, titleWidth);
+  while (lines.length > 2 && size > 22) { size -= 2; lines = wrapText(title, 'serifBold', size, titleWidth); }
   lines = clip(lines, 3);
-  let baseline = MARGIN + 9 + 10 + size * 0.78;
-  for (const line of lines) { first.push({ type: 'text', x: LEFT, y: baseline, text: line, font: 'serifBold', size, color: COLOR.ink }); baseline += size * 1.12; }
-  const ruleY = baseline - size * 1.12 + 11;
-  first.push({ type: 'line', x1: LEFT, y1: ruleY, x2: LEFT + leftWidth, y2: ruleY, color: COLOR.accentLine, width: 1.3 });
-  // Eckdaten
-  const tags = (recipe.tags || []).join(', '), servings = formatNumber(recipe.servings);
-  const facts = [['PORTIONEN', servings], time ? ['GESAMTZEIT', time] : ['ZUTATEN', String(ingredients.length)], ['STICHWORTE', tags], ['QUELLE', recipe.sourceHost || 'Eigenes Rezept']];
-  const boxTop = ruleY + 17, boxH = 46;
-  let boxesBottom;
+  let baseline = 70 + size * 0.85;
+  for (const line of lines) { first.push({ type: 'text', x: LEFT, y: baseline, text: line, font: 'serifBold', size, color: COLOR.ink }); baseline += size * 1.1; }
+  let bottom = baseline - size * 1.1 + 8;
+  if (time) { first.push({ type: 'text', x: LEFT, y: bottom + 12, text: `Gesamtzeit: ${time}`, font: 'sans', size: 10.5, color: COLOR.soft }); bottom += 20; }
   if (photo) {
-    const boxW = (leftWidth - 10) / 2;
-    facts.forEach(([label, value], index) => infoBox(first, LEFT + (index % 2) * (boxW + 10), boxTop + Math.floor(index / 2) * (boxH + 10), boxW, boxH, label, value));
-    boxesBottom = boxTop + 2 * boxH + 10;
-  } else {
-    const boxW = (WIDTH - 30) / 4;
-    facts.forEach(([label, value], index) => infoBox(first, LEFT + index * (boxW + 10), boxTop, boxW, boxH, label, value));
-    boxesBottom = boxTop + boxH;
+    const px = RIGHT - photoW, py = 62, ph = 106;
+    first.push({ type: 'image', x: px, y: py, w: photoW, h: ph, photo });
+    first.push({ type: 'rect', x: px, y: py, w: photoW, h: ph, r: 3, stroke: COLOR.rule, lineWidth: 0.8 });
+    bottom = Math.max(bottom, py + ph + 4);
   }
-  const photoBottom = photo ? polaroid(first, photo, RIGHT - 172, MARGIN + 12) : 0;
-  const pillTop = Math.max(boxesBottom, photoBottom) + 20;
-  // Zeilen für die Spalten verteilen
-  const firstTop = pillTop + 18 + 10, otherTop = MARGIN + 50 + 18 + 10;
-  const firstCount = Math.floor((BOTTOM - firstTop) / PITCH), otherCount = Math.floor((BOTTOM - otherTop) / PITCH);
-  const ingredientRows = ingredientGroups(ingredients), stepRows = stepGroups(instructions);
-  if (!ingredientRows.length) ingredientRows.push([{ amount: '', name: 'Keine Zutaten eingetragen.', soft: true }]);
-  if (!stepRows.length) stepRows.push([{ text: 'Keine Zubereitung eingetragen.', number: 0, soft: true }]);
-  // Seitenzahl: so viele, bis alles untergebracht ist
-  let count = 1, ingredientPages, stepPages;
+  // Eckdaten zwischen zwei Linien
+  const ruleTop = bottom + 14, tags = (recipe.tags || []).map(tag => String(tag).trim()).filter(Boolean).join(' · '), servings = formatNumber(recipe.servings);
+  const facts = [['PORTIONEN', servings, 1, 17], ['ZUTATEN', String(ingredients.length), 1, 17], ...(time ? [['GESAMTZEIT', time, 1.5, 12]] : []), ['STICHWORTE', capital(tags) || '–', 2.4, 11.5], ...(recipe.sourceHost ? [['QUELLE', recipe.sourceHost, 1.8, 11.5]] : [])];
+  const weight = facts.reduce((sum, fact) => sum + fact[2], 0);
+  first.push({ type: 'line', x1: LEFT, y1: ruleTop, x2: RIGHT, y2: ruleTop, color: COLOR.rule, width: 0.8 });
+  let fx = LEFT;
+  for (const [label, value, share, valueSize] of facts) {
+    const width = WIDTH * share / weight, fitted = fitText(value, 'sansBold', valueSize, width - 10, 8);
+    first.push({ type: 'text', x: fx, y: ruleTop + 19, text: label, font: 'sansBold', size: 6.5, color: COLOR.label, charSpace: 1.1 });
+    first.push({ type: 'text', x: fx, y: ruleTop + 40, text: fitted.text, font: 'sansBold', size: fitted.size, color: COLOR.ink });
+    fx += width;
+  }
+  first.push({ type: 'line', x1: LEFT, y1: ruleTop + 54, x2: RIGHT, y2: ruleTop + 54, color: COLOR.rule, width: 0.8 });
+  const firstTop = ruleTop + 74, otherTop = 76;
+  const ingredientRows = ingredientBlocks(ingredients), stepRows = stepBlocks(instructions);
+  if (!ingredientRows.length) ingredientRows.push({ amount: [''], name: ['Keine Zutaten eingetragen.'], soft: true, height: 33 });
+  if (!stepRows.length) stepRows.push({ number: 1, titleLines: [], bodyLines: ['Keine Zubereitung eingetragen.'], soft: true, height: 39 });
+  // Seitenzahl: so viele, bis alles untergebracht ist; auf der letzten Seite bleibt unten Platz für die Notizen
+  let count = 1, left, right;
   for (;; count++) {
-    const capacities = Array.from({ length: count }, (_, index) => index === 0 ? firstCount : otherCount);
-    ingredientPages = paginate(ingredientRows, capacities); stepPages = paginate(stepRows, capacities);
-    const placed = pages => pages.reduce((sum, rows) => sum + rows.length, 0);
-    if (count >= 30 || (placed(ingredientPages) === ingredientRows.flat().length && placed(stepPages) === stepRows.flat().length)) break;
+    const room = index => BOTTOM - (index === 0 ? firstTop : otherTop) - (index === count - 1 ? NOTES.height : 0);
+    left = pack(ingredientRows, Array.from({ length: count }, (_, index) => room(index) - 64));
+    right = pack(stepRows, Array.from({ length: count }, (_, index) => room(index) - 60));
+    if (count >= 30 || (left.fits && right.fits)) break;
   }
   const sheets = [];
   for (let index = 0; index < count; index++) {
     const items = index === 0 ? first : [];
     if (index > 0) {
-      frame(items);
-      items.push({ type: 'text', x: LEFT, y: MARGIN + 9, text: 'REZEPT · FORTSETZUNG', font: 'sansBold', size: 7.5, color: COLOR.accent, charSpace: 2.4 });
-      const small = fitText(title, 'serifBold', 20, WIDTH, 14);
-      items.push({ type: 'text', x: LEFT, y: MARGIN + 31, text: small.text, font: 'serifBold', size: small.size, color: COLOR.ink });
-      items.push({ type: 'line', x1: LEFT, y1: MARGIN + 38, x2: RIGHT, y2: MARGIN + 38, color: COLOR.accentLine, width: 1.1 });
+      header(items, true);
+      const small = fitText(title, 'serifBold', 22, WIDTH, 14);
+      items.push({ type: 'text', x: LEFT, y: 72, text: small.text, font: 'serifBold', size: small.size, color: COLOR.ink });
     }
-    const top = index === 0 ? firstTop : otherTop, pills = (index === 0 ? pillTop : MARGIN + 50);
-    // Auf Folgeseiten steht über einer leeren Spalte „NOTIZEN“: Die Linien sind Platz zum Schreiben
-    pill(items, LEFT, pills, ingredientPages[index].length ? 'ZUTATEN' : 'NOTIZEN');
-    pill(items, STEPS.x, pills, stepPages[index].length ? 'ZUBEREITUNG' : 'NOTIZEN');
-    columns(items, top, index === 0 ? firstCount : otherCount, ingredientPages[index], stepPages[index]);
+    const top = index === 0 ? firstTop : otherTop;
+    if (left.pages[index].length) ingredientCard(items, LEFT, top, left.pages[index], servings, index > 0);
+    if (right.pages[index].length) stepsColumn(items, top, right.pages[index], index > 0);
+    if (index === count - 1) notes(items, BOTTOM - NOTES.height + 14);
     sheets.push({ width: PAGE.width, height: PAGE.height, items });
   }
   sheets.forEach((sheet, index) => footer(sheet.items, index + 1, sheets.length, recipe.sourceUrl ? `${recipe.sourceHost || ''}${shortPath(recipe.sourceUrl)}` : ''));

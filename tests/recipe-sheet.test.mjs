@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PAGE, fitText, formatNumber, layoutRecipe, sheetIngredient, wrapText } from '../recipe-sheet.js';
+import { COLOR, PAGE, fitText, formatNumber, layoutRecipe, sheetIngredient, wrapText } from '../recipe-sheet.js';
 import { jpegInfo, makePdf, textWidth } from '../pdf.js';
 
 const photo = () => { const bytes = Uint8Array.from(Buffer.from('/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAMABADASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAMF/8QAGRAAAQUAAAAAAAAAAAAAAAAAAAISFFFh/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAP/xAAYEQACAwAAAAAAAAAAAAAAAAAAAQITFP/aAAwDAQACEQMRAD8AnJ0SdM16rD1WMsSl7P/Z', 'base64')); return { bytes, ...jpegInfo(bytes) }; };
@@ -43,137 +43,115 @@ test('Text anpassen: erst kleiner, dann mit „…“ gekürzt', () => {
   assert.equal(cut.size, 8); assert.ok(cut.text.endsWith('…')); assert.ok(textWidth(cut.text, 'sansBold', 8) <= 118);
 });
 
-test('Rezeptblatt: eine A4-Seite mit Rahmen, „REZEPT“, Titel, vier Kästchen, Zutaten und Schritten; alles ist Text oder Form, nichts fehlt', () => {
-  const layout = make();
+import { stepParts } from '../recipe-sheet.js';
+const by = (layout, predicate) => allText(layout).filter(predicate);
+const sheetMake = (options = {}) => make(options);
+
+test('Rezeptblatt (Entwurf Version 2.54): A4, „REZEPTSAMMLUNG“, großer Titel, Eckdaten, Zutaten-Kasten mit Kästchen, nummerierte Schritte, „Meine Notizen“; alles ist Text oder Form', () => {
+  const layout = make({ instructions: STEPS });
   assert.equal(layout.pages.length, 1);
-  assert.deepEqual([layout.width, layout.height, layout.pages[0].width, layout.pages[0].height], [PAGE.width, PAGE.height, PAGE.width, PAGE.height]);
-  assert.equal(layout.title, 'Spiegeleierkuchen');
+  assert.deepEqual([layout.pages[0].width, layout.pages[0].height], [PAGE.width, PAGE.height]);
   const text = content(layout);
-  for (const part of ['REZEPT', 'Spiegeleierkuchen', 'PORTIONEN', '12', 'ZUTATEN', '4', 'STICHWORTE', 'Backen, Kuchen', 'QUELLE', 'Eigenes Rezept', 'ZUBEREITUNG', '6 Stück', 'Eier', '200 g', 'Butter, weich', 'nach Bedarf', 'Salz',
-    '1.', 'Den Backofen vorheizen.', '2.', 'Eier und Zucker schaumig rühren.', '3.', 'Einkauf & Rezepte']) assert.ok(text.includes(part), `${part} fehlt`);
-  const title = allText(layout).find(item => item.text === 'Spiegeleierkuchen');
-  assert.equal(title.font, 'serifBold'); assert.equal(title.size, 32);
-  assert.equal(layout.pages[0].items[0].type, 'rect', 'der Rahmen kommt zuerst');
-  assert.equal(layout.pages[0].items.filter(item => item.type === 'image').length, 0, 'ohne Foto kein Bild');
+  for (const part of ['REZEPTSAMMLUNG', 'EINKAUF & REZEPTE', 'Spiegeleierkuchen', 'PORTIONEN', 'ZUTATEN', 'STICHWORTE', 'Backen · Kuchen', 'Zutaten', 'Für 12 Portionen', 'Zubereitung', 'Eier', '6 Stück',
+    'Zucker', '200 g', 'Butter, weich', 'nach Bedarf', 'Salz', 'Den Backofen vorheizen.', 'Eier und Zucker schaumig rühren.', 'Meine Notizen', 'Für Ideen, Änderungen und das nächste Mal.', 'Eigenes Rezept', 'Seite 1 / 1']) assert.ok(text.includes(part), `${part} fehlt`);
+  const kinds = new Set(layout.pages[0].items.map(item => item.type));
+  assert.deepEqual([...kinds].sort(), ['line', 'rect', 'text']);
+  assert.equal(layout.pages[0].items.filter(item => item.type === 'rect' && item.w < 12 && item.stroke).length, 4, 'ein Kästchen zum Abhaken je Zutat');
+  const title = by(layout, item => item.text === 'Spiegeleierkuchen')[0];
+  assert.equal(title.font, 'serifBold'); assert.ok(title.size >= 30);
+  assert.equal(by(layout, item => item.text === '6 Stück')[0].font, 'sansBold', 'die Menge ist hervorgehoben');
+  assert.equal(by(layout, item => item.text === 'nach Bedarf')[0].font, 'sans', '„nach Bedarf“ ist keine Menge und nicht fett');
+  assert.ok(!layout.pages[0].items.some(item => item.type === 'image'));
 });
 
-test('Eckdaten: vier Kästchen nebeneinander ohne Foto, zwei mal zwei mit Foto neben dem Sofortbild; Quelle zeigt den Rechnernamen', () => {
-  const boxes = layout => layout.pages[0].items.filter(item => item.type === 'rect' && item.fill === '#fbf3e6');
-  const plain = boxes(make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/1/kuchen' } }));
-  assert.equal(plain.length, 4);
-  assert.equal(new Set(plain.map(box => box.y)).size, 1, 'eine Reihe');
+test('Schritte: erster Satz fett als Überschrift, der Rest darunter; ein kurzer Satz allein ist Überschrift, ein langer nur Text', () => {
+  assert.deepEqual(stepParts('Nudeln in Salzwasser kochen. Nudelwasser aufheben.'), { title: 'Nudeln in Salzwasser kochen.', body: 'Nudelwasser aufheben.' });
+  assert.deepEqual(stepParts('Alles vermischen.'), { title: 'Alles vermischen.', body: '' });
+  const long = 'Die Zwiebeln schälen und in sehr feine Würfel schneiden, dann in reichlich Olivenöl langsam goldbraun und weich anbraten';
+  assert.deepEqual(stepParts(long), { title: '', body: long });
+  assert.deepEqual(stepParts('Kurz ohne Punkt'), { title: 'Kurz ohne Punkt', body: '' });
+  assert.deepEqual(stepParts('Beeren aufkochen – 5 Min. köcheln lassen.'), { title: 'Beeren aufkochen – 5 Min. köcheln lassen.', body: '' }, '„Min.“ vor Kleinbuchstaben ist kein Satzende');
+  assert.deepEqual(stepParts('Kalt servieren (ca. 1½ Std.). Danach essen.'), { title: 'Kalt servieren (ca. 1½ Std.).', body: 'Danach essen.' });
+  assert.deepEqual(stepParts('20 Min. backen. Dann abkühlen lassen.'), { title: '20 Min. backen.', body: 'Dann abkühlen lassen.' });
+  assert.deepEqual(stepParts('Mit z. B. Zimt würzen. Fertig.'), { title: 'Mit z. B. Zimt würzen.', body: 'Fertig.' });
+  const layout = make({ instructions: 'Nudeln kochen. Das Wasser aufheben.\nAlles mischen.' });
+  assert.equal(by(layout, item => item.text === 'Nudeln kochen.')[0].font, 'sansBold');
+  assert.equal(by(layout, item => item.text === 'Das Wasser aufheben.')[0].font, 'sans');
+  assert.deepEqual(by(layout, item => /^[12]$/.test(item.text) && item.font === 'sansBold' && item.align === 'center').map(item => item.text), ['1', '2'], 'die Nummern stehen in Kreisen');
+});
+
+test('Eckdaten: Portionen, Zutaten, Stichworte; mit Gesamtzeit und Quelle kommen zwei Spalten dazu; Stichworte beginnen groß', () => {
+  const plain = content(make({ recipe: { tags: ['schnell', 'vegetarisch'] } }));
+  assert.ok(plain.includes('Schnell · vegetarisch') && !plain.includes('GESAMTZEIT') && !plain.includes('QUELLE'));
+  const full = content(make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/1/x' }, instructions: 'Gesamtzeit: 25 Min.\nBacken.' }));
+  for (const part of ['GESAMTZEIT', '25 Min.', 'Gesamtzeit: 25 Min.', 'QUELLE', 'chefkoch.de', 'Quelle: chefkoch.de/rezepte/1/x']) assert.ok(full.includes(part), part);
+  assert.ok(!full.includes('Gesamtzeit: 25 Min.\nBacken'), 'die Zeitzeile ist kein Schritt');
+  assert.ok(content(make({ recipe: { tags: [] } })).includes('–'), 'ohne Stichworte steht ein Strich');
+});
+
+test('Titel: so groß wie möglich in höchstens zwei Zeilen, sehr lange Titel kleiner in drei, danach mit „…“; leerer Titel heißt „Rezept“; ein Foto steht klein oben rechts', () => {
+  const sizeOf = layout => by(layout, item => item.font === 'serifBold' && item.size > 20).map(item => item.size);
+  assert.deepEqual(sizeOf(make({ recipe: { name: 'Tomaten-Pasta' } })), [34]);
+  const long = make({ recipe: { name: 'Kichererbsen-Curry mit Reis und frischem Koriander aus dem Ofen' } });
+  assert.ok(sizeOf(long).length <= 3 && sizeOf(long).length >= 2);
+  const huge = make({ recipe: { name: 'Sehr langer Titel '.repeat(12) } });
+  assert.ok(sizeOf(huge).length <= 3 && content(huge).includes('…'));
+  assert.ok(content(make({ recipe: { name: '   ' } })).includes('Rezept'));
   const withPhoto = make({ photo: photo() });
-  const grid = boxes(withPhoto);
-  assert.equal(grid.length, 4);
-  assert.equal(new Set(grid.map(box => box.y)).size, 2, 'zwei Reihen');
   const image = withPhoto.pages[0].items.find(item => item.type === 'image');
-  assert.ok(image && image.rotate && image.photo.width === 16);
-  for (const box of grid) assert.ok(box.x + box.w <= image.x - 10, 'die Kästchen liegen links vom Foto');
-  const sourceBox = content(make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/1/kuchen' } }));
-  assert.ok(sourceBox.includes('chefkoch.de') && sourceBox.includes('Quelle: chefkoch.de/rezepte/1/kuchen'));
+  assert.ok(image && image.x + image.w <= PAGE.width - 40 && image.y < 100 && image.w <= 160, 'klein, oben rechts');
+  assert.ok(Math.max(...by(withPhoto, item => item.font === 'serifBold' && item.size > 20).map(item => textWidth(item.text, 'serifBold', item.size))) <= PAGE.width - 84 - image.w, 'der Titel läuft nicht ins Foto');
 });
 
-test('Titel: so groß wie möglich in höchstens zwei Zeilen, sehr lange Titel kleiner in drei, danach mit „…“; leerer Titel heißt „Rezept“', () => {
-  const lines = layout => allText(layout).filter(item => item.font === 'serifBold' && item.y < 200);
-  assert.equal(lines(make()).length, 1);
-  const middle = make({ recipe: { name: 'Gebratene Nudeln mit Gemüse und Erdnusssoße' }, photo: photo() });
-  assert.ok(lines(middle).length >= 2 && lines(middle).length <= 3);
-  const huge = make({ recipe: { name: 'Spaghetti Bolognese mit frischem Basilikum und geriebenem Parmesan nach Omas Rezept aus der Toskana' }, photo: photo() });
-  assert.equal(lines(huge).length, 3); assert.equal(lines(huge)[0].size, 22); assert.ok(lines(huge)[2].text.endsWith('…'));
-  assert.equal(make({ recipe: { name: '   ' } }).title, 'Rezept');
-  for (const item of lines(huge)) assert.ok(textWidth(item.text, 'serifBold', item.size) <= 292 + 0.01);
-});
-
-test('Spalten: Zutaten links (Menge | Zutat), Zubereitung rechts; Linien bis zum Seitenende; nichts ragt über seine Spalte hinaus', () => {
-  const layout = make({ ingredients: ingredients([...rows, ['Sahne, mind. 30 % Fett, gut gekühlt und steif geschlagen', 400, 'ml']]), instructions: `${STEPS}\nDie Sahne steif schlagen, auf den Kuchen streichen und mit Aprikosenhälften belegen, mit Puderzucker bestäuben und kühl servieren.` });
-  const [page] = layout.pages;
-  const rules = page.items.filter(item => item.type === 'line' && item.color === '#d4cec6' && item.y1 === item.y2);
-  const left = rules.filter(item => item.x1 === 52), right = rules.filter(item => item.x1 > 250);
-  assert.equal(left.length, right.length);
-  assert.ok(left.length > 20, 'die Linien laufen bis unten');
-  assert.ok(Math.max(...left.map(item => item.y1)) > 740 && Math.max(...left.map(item => item.y1)) < 780);
-  for (const item of texts(page)) {
-    if (item.align) continue;
-    const width = textWidth(item.text, item.font, item.size, item.charSpace ?? 0);
-    assert.ok(item.x >= 52 - 0.01, `${item.text} links`);
-    assert.ok(item.x + width <= 543.28 + 0.01, `${item.text} rechts (${item.x + width})`);
+test('Kasten und Spalten: Zutaten links im Kasten (Kästchen, Menge rechtsbündig, Name), Zubereitung rechts; nichts ragt über den Rand oder die Seite hinaus', () => {
+  const layout = make({ ingredients: ingredients(Array.from({ length: 12 }, (_, i) => [`Zutat Nummer ${i + 1} mit einem recht langen Namen`, i + 1, 'g'])), instructions: STEPS });
+  for (const page of layout.pages) for (const item of page.items) {
+    if (item.type === 'text') {
+      const width = textWidth(item.text, item.font, item.size, item.charSpace || 0), left = item.align === 'right' ? item.x - width : item.align === 'center' ? item.x - width / 2 : item.x;
+      assert.ok(left >= 40 && left + width <= PAGE.width - 40 + 0.5, `${item.text}: ${left}–${left + width}`);
+      assert.ok(item.y > 20 && item.y < PAGE.height - 20);
+    } else if (item.type === 'rect') assert.ok(item.x >= 40 && item.x + item.w <= PAGE.width - 40 + 0.5 && item.y >= 0 && item.y + item.h <= PAGE.height, JSON.stringify(item));
   }
-  const names = texts(page).filter(item => item.x === 52 + 74 + 8), amounts = texts(page).filter(item => item.x === 56);
-  for (const item of names) assert.ok(item.x + textWidth(item.text, item.font, item.size) <= 52 + 226, `${item.text} bleibt in der Zutatenspalte`);
-  assert.ok(amounts.some(item => item.text === '400 ml'));
-  const cream = names.filter(item => /Sahne|gekühlt|geschlagen/.test(item.text));
-  assert.equal(cream.length, 2, 'der lange Name bricht um');
-  assert.equal(cream[1].y - cream[0].y, 17, 'jede Zeile liegt auf einer Linie');
-  const baselines = texts(page).filter(item => item.x >= 56 && item.size === 10.5).map(item => item.y);
-  for (const y of baselines) assert.ok(rules.some(rule => Math.abs(rule.y1 - y - 5.2) < 0.01), 'der Text steht auf einer Linie');
+  const card = layout.pages[0].items.find(item => item.type === 'rect' && item.fill === COLOR.card);
+  const amounts = by(layout, item => /^\d+ g$/.test(item.text));
+  assert.ok(amounts.length === 12 && amounts.every(item => item.align === 'right' && item.x < card.x + card.w / 2));
+  assert.ok(by(layout, item => item.text === 'Zubereitung')[0].x > card.x + card.w, 'die Schritte stehen rechts neben dem Kasten');
 });
 
-test('Lange Rezepte gehen auf weiteren Seiten weiter: nichts geht verloren, die Reihenfolge bleibt, jede Seite zählt mit', () => {
-  const many = Array.from({ length: 70 }, (_, index) => [`Zutat ${index + 1}`, index + 1, 'g']);
-  const steps = Array.from({ length: 30 }, (_, index) => `Arbeitsgang ${index + 1}: ${'Alles gut verrühren und etwas ziehen lassen. '.repeat(3)}`.trim());
-  const layout = make({ ingredients: ingredients(many), instructions: steps.join('\n') });
-  assert.ok(layout.pages.length >= 3);
-  const text = content(layout);
-  many.forEach(([name], index) => assert.ok(text.includes(name), name));
-  const order = steps.map((_, index) => text.indexOf(`Arbeitsgang ${index + 1}:`));
-  assert.ok(order.every((at, index) => at >= 0 && (index === 0 || at > order[index - 1])), 'alle Schritte in Reihenfolge');
-  const numbers = allText(layout).filter(item => /^\d+\.$/.test(item.text)).map(item => Number(item.text.slice(0, -1)));
-  assert.deepEqual(numbers, steps.map((_, index) => index + 1), 'Nummern lückenlos');
+test('Lange Rezepte gehen auf weiteren Seiten weiter: nichts geht verloren, die Reihenfolge bleibt, jede Seite zählt mit, die Notizen stehen nur auf der letzten', () => {
+  const many = ingredients(Array.from({ length: 45 }, (_, i) => [`Zutat ${i + 1}`, i + 1, 'g']));
+  const steps = Array.from({ length: 30 }, (_, i) => `Schritt ${i + 1} wird gemacht. Dazu gehört eine längere Erklärung, die über mehrere Zeilen im Text geht und gut lesbar sein soll.`).join('\n');
+  const layout = make({ ingredients: many, instructions: steps });
+  assert.ok(layout.pages.length >= 3 && layout.pages.length <= 8);
+  const names = allText(layout).map(item => item.text), at = text => names.indexOf(text);
+  for (let i = 1; i <= 45; i++) assert.ok(names.includes(`Zutat ${i}`), `Zutat ${i} fehlt`);
+  for (let i = 1; i <= 30; i++) assert.ok(names.includes(`Schritt ${i} wird gemacht.`), `Schritt ${i} fehlt`);
+  assert.ok(at('Zutat 1') < at('Zutat 45') && at('Schritt 1 wird gemacht.') < at('Schritt 30 wird gemacht.'), 'Reihenfolge');
   layout.pages.forEach((page, index) => {
-    const own = texts(page).map(item => item.text);
-    assert.ok(own.includes(`Seite ${index + 1} von ${layout.pages.length}`));
-    if (index > 0) assert.ok(own.includes('REZEPT · FORTSETZUNG') && own.includes('Spiegeleierkuchen'));
+    assert.ok(texts(page).some(item => item.text === `Seite ${index + 1} / ${layout.pages.length}`));
+    assert.equal(texts(page).some(item => item.text === 'Meine Notizen'), index === layout.pages.length - 1);
+    assert.equal(texts(page).some(item => item.text === 'REZEPTSAMMLUNG · FORTSETZUNG'), index > 0);
+    for (const item of page.items) if (item.type === 'text') assert.ok(item.y < PAGE.height - 25, `${item.text} unterhalb der Seite`);
   });
-  // Jede Seite hat zwei Spalten mit Überschrift; eine leere Spalte heißt „NOTIZEN“
-  const heads = layout.pages.map(page => texts(page).filter(item => ['ZUTATEN', 'ZUBEREITUNG', 'NOTIZEN'].includes(item.text) && item.color === '#ffffff').map(item => item.text));
-  assert.ok(heads.every(list => list.length === 2));
-  assert.ok(heads.flat().includes('NOTIZEN'), 'die Zutaten sind früher fertig als die Schritte');
-  for (const page of layout.pages) for (const item of texts(page)) if (!item.align) assert.ok(item.x + textWidth(item.text, item.font, item.size, item.charSpace ?? 0) <= 543.3, item.text);
+  const lastPage = layout.pages.at(-1), notesY = texts(lastPage).find(item => item.text === 'Meine Notizen').y;
+  assert.ok(texts(lastPage).filter(item => item.y > notesY - 20 && item.y < notesY + 60).every(item => /^(Meine Notizen|Für Ideen|Seite|Eigenes)/.test(item.text)), 'unter den Notizen steht nichts anderes');
 });
 
-test('Ein Schritt bleibt zusammen; nur lange Schritte werden getrennt und nie so, dass eine einzelne Zeile allein steht', () => {
-  const steps = Array.from({ length: 12 }, (_, index) => `Schritt ${index + 1} ${'wort '.repeat(40)}`.trim());
-  const layout = make({ instructions: steps.join('\n') });
-  assert.ok(layout.pages.length >= 2);
-  const lineCount = page => texts(page).filter(item => item.x >= 52 + 226 + 22 + 19 - 0.01 && item.size === 10.5 && item.x < 400).length;
-  const perPage = layout.pages.map(lineCount);
-  assert.ok(perPage.every(count => count > 0));
-  for (const page of layout.pages.slice(1)) {
-    const first = texts(page).filter(item => item.size === 10.5 && item.x > 250 && item.x < 400).sort((a, b) => a.y - b.y).slice(0, 2);
-    assert.ok(first.length === 2, 'mindestens zwei Zeilen auf der Folgeseite');
-  }
+test('Ein Schritt bleibt auf einer Seite zusammen (Nummer, Überschrift und Text)', () => {
+  const steps = Array.from({ length: 20 }, (_, i) => `Schritt ${i + 1} mit Namen. Und danach kommt ein Text, der zu diesem Schritt gehört und etwas länger ist als eine Zeile im Blatt.`).join('\n');
+  const layout = make({ instructions: steps });
+  layout.pages.forEach(page => {
+    const heads = texts(page).filter(item => /^Schritt \d+ mit Namen\.$/.test(item.text)), bodies = texts(page).filter(item => item.text.startsWith('Und danach') || item.text.includes('Zeile im Blatt'));
+    assert.ok(bodies.length >= heads.length, 'zu jeder Überschrift auf dieser Seite gehört ihr Text');
+  });
 });
 
-test('Seitenwechsel mitten in einem Schritt: auf der Folgeseite stehen mindestens zwei Zeilen davon, nie eine einzelne', () => {
-  const stepLines = page => texts(page).filter(item => item.x === 319 && item.size === 10.5).length;
-  const capacity = (() => { const [page] = make({ instructions: 'Kurz.' }).pages; return page.items.filter(item => item.type === 'line' && item.y1 === item.y2 && item.x1 === 300).length - 1; })();
-  let words = 1;
-  while (wrapText(('wort '.repeat(words)).trim(), 'sans', 10.5, 243.28 - 19).length < 4) words++;
-  assert.equal(wrapText(('wort '.repeat(words)).trim(), 'sans', 10.5, 243.28 - 19).length, 4, 'ein Schritt mit genau vier Zeilen');
-  const long = ('wort '.repeat(words)).trim();
-  // Drei Zeilen frei, der Schritt hat vier: ohne Regel bliebe eine Zeile allein auf Seite 2
-  const steps = [...Array.from({ length: capacity - 3 }, (_, index) => `Kurz ${index + 1}`), long];
-  const layout = make({ instructions: steps.join('\n') });
-  assert.equal(layout.pages.length, 2);
-  assert.equal(stepLines(layout.pages[1]), 2, 'zwei Zeilen auf der Folgeseite');
-  assert.equal(stepLines(layout.pages[0]), capacity - 1);
-  // Passt der ganze Schritt noch, bleibt er auf der Seite
-  const fits = make({ instructions: [...Array.from({ length: capacity - 4 }, (_, index) => `Kurz ${index + 1}`), long].join('\n') });
-  assert.equal(fits.pages.length, 1);
-});
-
-test('„Gesamtzeit: 25 Min.“ am Anfang der Zubereitung (Import, Rezepte des Tages) wird ein Kästchen statt eines Schritts', () => {
-  const layout = make({ instructions: 'Gesamtzeit: 1 Std. 5 Min.\n\nNudeln kochen.\nSoße rühren.' });
+test('„Gesamtzeit: 25 Min.“ am Anfang der Zubereitung (Import, Rezepte des Tages) wird eine Eckdate und ein Zeitvermerk statt eines Schritts', () => {
+  const layout = make({ instructions: 'Gesamtzeit: 25 Min.\n\nNudeln kochen.\nSoße rühren.' });
   const text = content(layout);
-  assert.ok(text.includes('GESAMTZEIT') && text.includes('1 Std. 5 Min.'));
-  assert.ok(!text.includes('Gesamtzeit') && !text.includes('ZUTATEN\n4'), 'kein Schritt, und die Zahl der Zutaten weicht dem Kästchen');
-  const numbers = allText(layout).filter(item => /^\d+\.$/.test(item.text)).map(item => item.text);
-  assert.deepEqual(numbers, ['1.', '2.'], 'die Schritte beginnen bei 1');
-  assert.ok(text.includes('Nudeln kochen.') && text.includes('Soße rühren.'));
-  const withoutTime = content(make({ instructions: 'Nudeln kochen.' }));
-  assert.ok(!withoutTime.includes('GESAMTZEIT') && withoutTime.includes('ZUTATEN'));
-  assert.equal(make({ instructions: 'Gesamtzeit: 10 Min.' }).pages.length, 1, 'nur eine Zeitangabe: „Keine Zubereitung eingetragen.“');
-  assert.ok(content(make({ instructions: 'Gesamtzeit: 10 Min.' })).includes('Keine Zubereitung eingetragen.'));
+  assert.ok(text.includes('GESAMTZEIT') && text.includes('25 Min.'));
+  assert.deepEqual(by(layout, item => /^[0-9]$/.test(item.text) && item.align === 'center').map(item => item.text), ['1', '2'], 'zwei Schritte, nicht drei');
+  assert.ok(!allText(layout).some(item => /Gesamtzeit:.*Nudeln/.test(item.text)));
 });
 
 test('Leere Rezepte: „Keine Zutaten eingetragen.“ und „Keine Zubereitung eingetragen.“, nie eine kaputte Seite', () => {
@@ -184,11 +162,11 @@ test('Leere Rezepte: „Keine Zutaten eingetragen.“ und „Keine Zubereitung e
   assert.ok(text.includes('ZUTATEN') && text.includes('0'));
 });
 
-test('Quelle und Fußzeile: ohne Quelle steht „Einkauf & Rezepte“, bei mehreren Seiten „Seite x von y“', () => {
-  const single = content(make());
-  assert.equal((single.match(/Einkauf & Rezepte/g) || []).length, 1);
-  const sourced = make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/42/kuchen/' } });
-  assert.ok(content(sourced).includes('Quelle: chefkoch.de/rezepte/42/kuchen'));
+
+test('Fußzeile: ohne Quelle „Eigenes Rezept“, mit Quelle „Quelle: …“; rechts „Seite x / y“', () => {
+  assert.ok(content(make()).includes('Eigenes Rezept') && content(make()).includes('Seite 1 / 1'));
+  const withSource = content(make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/123/spiegeleierkuchen' } }));
+  assert.ok(withSource.includes('Quelle: chefkoch.de/rezepte/123/spiegeleierkuchen') && !withSource.includes('Eigenes Rezept'));
 });
 
 test('Das Layout ist unveränderlich für gleiche Eingaben und ergibt eine gültige PDF-Datei mit Foto', () => {
