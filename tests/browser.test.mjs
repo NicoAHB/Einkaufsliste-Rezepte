@@ -6653,13 +6653,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang\nOhne Gewichte');
     await page.fill('#wish-form [name=wishNote]', 'Nicht speichern');
     await page.click('#wish-dialog [data-close]'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
-    // Alternative ohne Haltegeste und Fehler im obersten Fenster (zwei offene Dialoge).
-    await page.locator('#items .item-copy').click(); await sheetOpen(page);
-    await page.click('#open-wish-details'); await sheetOpen(page);
+    // Ein kurzer Tipp öffnet dasselbe Fenster (Version 2.58), nicht das Artikel-Fenster; ein Fehler steht im Fenster.
+    await page.locator('#items .item-copy').click(); await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    assert.equal(await page.locator('#item-dialog[open]').count(), 0);
     assert.equal(await page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang\nOhne Gewichte');
     await page.fill('#wish-form [name=wishUrl]', 'http://example.org'); await page.click('#wish-form button[type=submit]');
     assert.equal(await page.locator('#wish-dialog [data-dialog-error]').isVisible(), true);
-    await page.click('#wish-dialog [data-close]'); await page.click('#item-dialog [data-close]');
+    await page.click('#wish-dialog [data-close]');
     await openSettings(page);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
     const saved = JSON.parse(await readFile(await download.path(), 'utf8')), row = saved.items.find(item => item.id === 'wish-rope');
@@ -6667,8 +6667,52 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(row.wishNote, 'Schwarz, 3 m lang\nOhne Gewichte');
     assert.equal(saved.sync.minRev, 4);
     await goTab(page, 'shopping'); await storeButton(page, '#store-chips', 'Edeka').click();
-    await page.locator('#items .item-copy').first().click(); await sheetOpen(page);
-    assert.equal(await page.locator('#open-wish-details').isVisible(), false, 'Supermarktartikel erhalten keine Wunschfelder');
+    await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]'); await sheetOpen(page);
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0, 'Supermarktartikel erhalten keine Wunschfelder');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Wünsche (nur Wünsche): ein Tipp öffnet direkt Name, Produktlink & Notiz – ohne Menge, Einheit, Kategorie und Preis & Angebot; umbenennen, verschieben und löschen gehen dort; normale Artikel behalten ihr Fenster', async () => {
+    const { ctx, page, problems } = await localWishes();
+    await page.locator('#items .item[data-id="wish-rope"] .item-copy').click();
+    await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    assert.equal(await page.locator('#item-dialog[open]').count(), 0, 'nicht das Artikel-Fenster');
+    const visible = await page.evaluate(() => [...document.querySelectorAll('#wish-dialog input:not([type=hidden]), #wish-dialog textarea, #wish-dialog select, #wish-dialog button')]
+      .filter(node => node.getClientRects().length).map(node => node.name || node.id || node.getAttribute('aria-label') || node.textContent.trim()));
+    assert.deepEqual(visible, ['Schließen', 'name', 'wishUrl', 'wishNote', 'storeId', 'delete-wish', 'Wunschdetails speichern'], `sichtbar: ${visible}`);
+    for (const label of ['Menge', 'Einheit', 'Kategorie', 'Preis & Angebot', 'Normaler Preis']) assert.ok(!(await page.textContent('#wish-dialog')).includes(label), `„${label}“ gehört nicht ins Wunschfenster`);
+    assert.equal(await page.locator('#wish-dialog [name=quantity], #wish-dialog [name=unit], #wish-dialog [name=category], #wish-dialog [name=priceEuros]').count(), 0);
+    // umbenennen und Details speichern; die Menge bleibt unberührt
+    await page.fill('#wish-form [name=name]', 'Springseil Profi'); await page.fill('#wish-form [name=wishNote]', 'Schwarz');
+    await page.click('#wish-form button[type=submit]'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
+    const row = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(item => item.id === 'wish-rope'));
+    let saved = await row();
+    assert.deepEqual([saved.name, saved.wishNote, saved.quantity, saved.unit, saved.storeId], ['Springseil Profi', 'Schwarz', 1, 'Stück', 'store-wishes']);
+    assert.ok((await page.textContent('#items')).includes('Springseil Profi'));
+    // leerer Name wird abgelehnt
+    await page.locator('#items .item[data-id="wish-rope"] .item-copy').click(); await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    await page.fill('#wish-form [name=name]', '  '); await page.click('#wish-form button[type=submit]');
+    assert.match(await page.textContent('#wish-dialog [data-dialog-error]'), /Namen/);
+    // verschieben in eine normale Liste: Details bleiben erhalten, der Artikel steht dort
+    await page.fill('#wish-form [name=name]', 'Springseil Profi'); await page.selectOption('#wish-form select[name=storeId]', { label: 'Edeka' });
+    await page.click('#wish-form button[type=submit]'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
+    saved = await row();
+    assert.deepEqual([saved.storeId, saved.wishNote], ['store-edeka', 'Schwarz']);
+    // dort ist es ein normaler Artikel mit dem vollen Fenster
+    await storeButton(page, '#store-chips', 'Edeka').click();
+    await page.locator('#items .item[data-id="wish-rope"] .item-copy').click(); await page.waitForSelector('#item-dialog[open]'); await sheetOpen(page);
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0);
+    for (const name of ['quantity', 'unit', 'category', 'storeId']) assert.equal(await page.locator(`#edit-item-form [name=${name}]`).count(), 1, name);
+    await page.click('#item-dialog [data-close]');
+    // zurück in die Wunschliste und dort löschen
+    await page.locator('#items .item[data-id="wish-rope"] .item-copy').click(); await page.waitForSelector('#item-dialog[open]'); await sheetOpen(page);
+    await page.selectOption('#edit-item-form select[name=storeId]', { label: 'Wünsche' }); await page.click('#edit-item-form button[type=submit]');
+    await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    await storeButton(page, '#store-chips', 'Wünsche').click();
+    await page.locator('#items .item[data-id="wish-rope"] .item-copy').click(); await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    await page.click('#delete-wish'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item[data-id="wish-rope"]').count(), 0);
+    assert.ok((await row()).deletedAt, 'gelöscht');
     assert.deepEqual(problems, []); await ctx.close();
   });
 

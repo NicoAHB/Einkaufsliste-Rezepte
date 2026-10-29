@@ -240,7 +240,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.57 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.58 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -274,7 +274,6 @@
     <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
     <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
-    <button id="open-wish-details" type="button" class="secondary" hidden><svg class="icon"><use href="#i-link"/></svg>Produktlink & Notiz</button>
     <details id="item-price-fold" class="price-fold"><summary><span>Preis & Angebot</span><small id="item-price-summary"></small></summary>
       <div class="stack">
         <p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
@@ -289,10 +288,13 @@
   <dialog id="wish-dialog" aria-labelledby="wish-title"><form id="wish-form" class="stack" novalidate>
     <div class="sheet-head"><h2 id="wish-title">Wunschdetails</h2><button type="button" data-close="wish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">
+    <label>Name<input name="name" required maxlength="120" autocomplete="off"></label>
     <label>Produktlink (optional)<input name="wishUrl" type="url" inputmode="url" maxlength="2000" placeholder="https://…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
     <a id="wish-product-link" class="button secondary" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden><svg class="icon"><use href="#i-external"/></svg>Produkt ansehen</a>
     <label>Notiz (optional)<textarea name="wishNote" rows="4" maxlength="1000" placeholder="Zum Beispiel: schwarz, Größe M, bestimmtes Modell"></textarea></label>
+    <label>Liste<select name="storeId"></select></label>
     <p class="hint">Link und Notiz sehen beide Personen. Die Produktseite öffnet erst beim Antippen.</p>
+    <button id="delete-wish" type="button" class="danger">Wunsch löschen</button>
     <div class="sheet-actions"><button type="submit">Wunschdetails speichern</button></div>
   </form></dialog>
   <dialog id="recipe-dialog"><form id="recipe-form" class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

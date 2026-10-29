@@ -579,10 +579,10 @@ function readPricing(form) {
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
+  if (isWish(item)) { openWish(id); return; }   // Wünsche (nur sie): direkt Name, Produktlink & Notiz, ohne Menge, Einheit, Kategorie und Preis
   itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
-  $('#open-wish-details').hidden = !isWish(item);
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true);
@@ -596,8 +596,8 @@ function editItem(id) {
   message(); $('#item-dialog').showModal();
 }
 
-// Wunschdetails sind ein eigenes kleines Fenster, damit die Liste ruhig bleibt.
-// Ein kurzer Tipp führt wie bisher zu Name, Menge und Liste; langes Drücken zu diesen Details.
+// Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und die Liste (zum Verschieben) – ohne Menge, Einheit, Kategorie und
+// Preis & Angebot. Ein kurzer Tipp und langes Drücken öffnen dasselbe Fenster; normale Artikel behalten ihr Bearbeiten-Fenster.
 function showWishProductLink() {
   const link = $('#wish-product-link');
   let url = ''; try { url = productLink($('#wish-form').elements.wishUrl.value); } catch { /* unfertige Eingabe */ }
@@ -609,7 +609,8 @@ function openWish(id) {
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch ist nicht mehr in einer Wunschliste. Bitte die Liste aktualisieren.');
   const form = $('#wish-form'); form.reset();
   form.elements.id.value = id;
-  wishBaseline = { wishUrl: item.wishUrl || '', wishNote: item.wishNote || '' };
+  wishBaseline = { name: item.name, storeId: item.storeId || '', wishUrl: item.wishUrl || '', wishNote: item.wishNote || '' };
+  form.elements.name.value = wishBaseline.name; storeOptions(form.elements.storeId, wishBaseline.storeId, true);
   form.elements.wishUrl.value = wishBaseline.wishUrl; form.elements.wishNote.value = wishBaseline.wishNote;
   $('#wish-title').textContent = item.name;
   showWishProductLink(); message(); $('#wish-dialog').showModal();
@@ -2870,16 +2871,21 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
   commit(ops); $('#item-dialog').close();
 }); });
-$('#open-wish-details').addEventListener('click', () => guard(() => openWish($('#edit-item-form').elements.id.value)));
 $('#wish-form').elements.wishUrl.addEventListener('input', showWishProductLink);
 $('#wish-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = active(state.items).find(row => row.id === form.elements.id.value);
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch wurde inzwischen gelöscht oder verschoben. Bitte schließen und die Liste aktualisieren.');
-  const patch = { wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim() };
+  const patch = { name: form.elements.name.value.trim(), storeId: currentStore(form.elements.storeId.value), wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim() };
+  if (!patch.name) throw new Error('Bitte einen Namen eingeben.');
   const delta = changed(patch, wishBaseline);
   if (Object.keys(delta).length) commit([nextOp('items', item.id, delta)]);
   $('#wish-dialog').close();
 }); });
+$('#delete-wish').addEventListener('click', () => guard(() => {
+  const id = $('#wish-form').elements.id.value, item = active(state.items).find(row => row.id === id);
+  if (item) { removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`); }
+  $('#wish-dialog').close();
+}));
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });
