@@ -1,5 +1,6 @@
 /* Wochenplan: Datumsrechnung und Zutaten über mehrere Gerichte zusammenzählen. Reine Logik ohne DOM.
    Tage sind lokale Kalendertage im Format JJJJ-MM-TT; gerechnet wird um 12 Uhr, damit Zeitumstellungen nie einen Tag verschieben. */
+import { sameProduct } from './data.js';
 import { productKey, unitSpec } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
@@ -57,33 +58,37 @@ export function weekBasket(meals, again = false) {
 
 /* Zutaten aller Gerichte zusammenzählen. Gleicher Name und vergleichbare Einheit werden addiert
    (g und kg zusammen, ml und l zusammen); 1,2 kg statt 1200 g. Unterschiedliche Einheiten wie
-   „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt. */
+   „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt.
+   Als gleicher Name gilt auch eine andere Schreibweise desselben Produkts („Zwiebel“ und „Zwiebeln“, siehe sameProduct in data.js); angezeigt wird die Schreibweise, die in den
+   Rezepten am häufigsten vorkommt, bei Gleichstand die längere (meist die Mehrzahl). */
 export function aggregateIngredients(meals, recipes, ingredients) {
   const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
   const byRecipe = new Map();
   for (const row of ingredients) byRecipe.set(row.recipeId, [...(byRecipe.get(row.recipeId) || []), row]);
-  const totals = new Map();
+  const entries = [];
   for (const meal of meals) {
     const recipe = recipeById.get(meal.recipeId);
     if (!recipe) continue;
     const factor = meal.servings / recipe.servings;
     for (const row of byRecipe.get(recipe.id) || []) {
-      const spec = unitSpec(row.unit), noAmount = row.unit === NO_AMOUNT;
-      const key = `${productKey(row.name)}|${noAmount ? 'nach' : spec.group}`;
-      const entry = totals.get(key) || { name: row.name.trim(), group: noAmount ? 'nach' : spec.group, label: spec.label, unit: row.unit, base: 0, sources: new Set() };
+      const spec = unitSpec(row.unit), noAmount = row.unit === NO_AMOUNT, group = noAmount ? 'nach' : spec.group, name = row.name.trim();
+      let entry = entries.find(found => found.group === group && sameProduct(found.name, name));
+      if (!entry) { entry = { name, group, label: spec.label, unit: row.unit, base: 0, sources: new Set(), spellings: new Map() }; entries.push(entry); }
       if (!noAmount) entry.base += row.quantity * factor * spec.factor;
       entry.sources.add(recipe.name);
-      totals.set(key, entry);
+      const spelling = entry.spellings.get(productKey(name));
+      entry.spellings.set(productKey(name), { name: spelling?.name ?? name, count: (spelling?.count || 0) + 1 });   // bei gleicher Schreibweise (Groß-/Kleinschreibung) zählt die zuerst genannte
     }
   }
   const round = value => Math.round(value * 1000) / 1000;
-  return [...totals.values()].map(entry => {
+  return entries.map(entry => {
     let quantity = entry.base, unit = entry.label;
     if (entry.group === 'nach') { quantity = 1; unit = NO_AMOUNT; }
     else if (entry.group === 'weight') [quantity, unit] = entry.base >= 1000 ? [entry.base / 1000, 'kg'] : [entry.base, 'g'];
     else if (entry.group === 'volume') [quantity, unit] = entry.base >= 1000 ? [entry.base / 1000, 'l'] : [entry.base, 'ml'];
     else if (entry.group === 'count') unit = 'Stück';
     else unit = entry.unit.trim();
-    return { name: entry.name, quantity: round(quantity), unit, sources: [...entry.sources] };
+    const shown = [...entry.spellings.values()].reduce((best, spelling) => (spelling.count > best.count || (spelling.count === best.count && spelling.name.length > best.name.length) ? spelling : best));
+    return { name: shown.name, quantity: round(quantity), unit, sources: [...entry.sources] };
   }).sort((a, b) => a.name.localeCompare(b.name, 'de') || a.unit.localeCompare(b.unit, 'de'));
 }

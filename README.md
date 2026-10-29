@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.47
+# Einkauf & Rezepte – Version 2.48
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,30 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.48: „Zwiebel“ und „Zwiebeln“ sind dasselbe Produkt
+
+Bisher waren „Zwiebel“ im einen Rezept und „Zwiebeln“ im anderen zwei Zeilen im Wochen-Einkauf und zwei Artikel auf der Liste. Jetzt führt die App Namen zusammen, die **dasselbe Produkt** meinen (`sameProduct` in `data.js`).
+
+**Die Regel.** Verglichen wird die **Grundform** jedes Wortes: Groß-/Kleinschreibung, Umlaute und Mehrzahlendungen sind egal („Äpfel“ = „Apfel“, „Tomate“ = „Tomaten“, „Ei“ = „Eier“). Eine reine Buchstabenprozentzahl allein würde „Zwiebel“ und „Zwiebeln“ nicht erkennen (1 von 8 Buchstaben fehlt: 87,5 %); die Grundform ist dieselbe (100 %). Zusätzlich gilt die **95-%-Regel** für **lange Wörter** (ab 20 Buchstaben): Dort verzeiht sie einen Tippfehler. Bei kurzen Wörtern kann ein Buchstabe das Produkt ändern („Ei“ und „Eis“), deshalb gilt dort nur die gleiche Grundform.
+- Zwei Namen müssen **gleich viele Wörter** haben, und jedes Wort muss passen. „Rote Zwiebel“, „Zwiebelmett“, „Hafermilch“ (zu „Milch“) bleiben getrennt.
+- Steht **eine Zahl** im Namen („Cola 1 l“, „Cola 2 l“), werden nur genau gleiche Namen zusammengeführt.
+- Ein Name ohne Buchstaben ist nur mit sich selbst gleich.
+- Die **Einheiten** entscheiden weiter getrennt: „1 Stück Zwiebel“ und „200 g Zwiebeln“ bleiben zwei Zeilen; g und kg, ml und l, Stück und Stk. werden wie bisher addiert.
+
+**Wo es wirkt.**
+- **Einkauf für die Woche:** ein Eintrag je Produkt. Angezeigt wird die Schreibweise, die in den Rezepten am häufigsten vorkommt, bei Gleichstand die längere (meist die Mehrzahl): „Zwiebel“ (1) + „Zwiebeln“ (2) = „3 Stück Zwiebeln“.
+- **Auf die Liste setzen** (Rezept, Woche, Vorlage, Link `?add=`, Eingabefeld, Verschieben): Steht „Zwiebeln“ schon auf der Liste, zählt „Zwiebel“ dort dazu. Der Artikel behält seinen Namen. Auch innerhalb einer Übernahme werden Schreibweisen zusammengezählt.
+- **Vorrat:** „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab (vorab abgewählt, Hinweis „Vorrat“); beim Hinzufügen zum Vorrat wird eine vorhandene Schreibweise erkannt. Die Vorschläge für den Vorrat berücksichtigen das ebenso.
+- **Nicht** verändert: Artikel, die schon getrennt auf der Liste stehen, werden nicht nachträglich zusammengelegt. Das Zusammenlegen gleichzeitig angelegter Doppelter bleibt bei genau gleichen Namen. Die Vorschläge „Meinst du dasselbe wie …?“ und „Gemerkte Namen“ bleiben, wie sie sind.
+
+**Tests:** `tests/list.test.mjs` (Regel mit Beispielen dafür und dagegen, 87,5 % gegen Grundform, Zählen zu vorhandenen Artikeln, Vorrat), `tests/plan.test.mjs` (Wochen-Einkauf, angezeigte Schreibweise, getrennte Fälle) und im Browser: Zwiebel/Zwiebeln über Rezept, Woche, Eingabefeld und Vorrat.
+
+Testpunkte für Version 2.48 (iPhone):
+
+- [ ] Zwei Rezepte, eines mit „Zwiebel“, eines mit „Zwiebeln“, im Wochenplan: Der Einkauf zeigt **eine** Zeile mit der Summe.
+- [ ] „Zwiebeln“ steht auf der Liste: Ein Rezept mit „Zwiebel“ übernehmen zählt zur vorhandenen Menge dazu.
+- [ ] „Zwiebeln“ im Vorrat: Ein Rezept mit „Zwiebel“ steht beim Übernehmen vorab abgewählt mit „Vorrat“.
 
 ## Neu in Version 2.47: Drei nachgestellte Fehler behoben, Wochen-Einkauf ohne Verdoppeln
 

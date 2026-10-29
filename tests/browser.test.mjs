@@ -1893,12 +1893,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const type = text => page.fill('#item-form input[name=name]', text);
     const submit = () => page.click('#item-form button[type=submit]');
     await pickStore(page, 'Rewe');   // die Beispiel-Äpfel (4 Stück) liegen bei Rewe
-    // Unsicher: „Apfel“ ist nicht „Äpfel“, solange es niemand bestätigt hat
+    // Der Vorschlag steht da; ohne Bestätigung wird nichts gemerkt. Seit Version 2.48 zählt „Apfel“ trotzdem zu den vorhandenen „Äpfeln“ (dasselbe Produkt, siehe sameProduct)
     await type('Apfel'); await page.waitForSelector('#item-suggestions:not([hidden])');
     assert.match(await page.textContent('#item-suggestions'), /Meinst du dasselbe wie[\s\S]*Äpfel/);
     await submit();
-    assert.equal(await page.locator('#items .item', { hasText: /^Apfel/ }).count(), 1, 'ohne Bestätigung bleibt es bei „Apfel“');
-    await page.getByRole('button', { name: /^Apfel, .*bearbeiten/ }).click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item', { hasText: /^Apfel/ }).count(), 0, 'kein zweiter Artikel „Apfel“');
+    assert.match(await page.locator('#items .item', { hasText: 'Äpfel' }).textContent(), /5 Stück/, 'zu den 4 Äpfeln dazugezählt');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.length), 0, 'ohne Bestätigung wird keine Zuordnung gemerkt');
     // Bestätigt: ein Tipp merkt die Zuordnung
     await type('Apfel'); await page.waitForSelector('#item-suggestions:not([hidden])');
     await page.locator('#item-suggestions button', { hasText: 'Äpfel' }).click();
@@ -1909,7 +1910,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await type('apfel'); await submit();
     assert.match(await page.textContent('#notice-text'), /„apfel“ → „Äpfel“/);
     assert.equal(await page.locator('#items .item', { hasText: /^Apfel/ }).count(), 0);
-    assert.match(await page.locator('#items .item', { hasText: 'Äpfel' }).textContent(), /5 Stück/);
+    assert.match(await page.locator('#items .item', { hasText: 'Äpfel' }).textContent(), /6 Stück/);
     // Schnellwahl: erst nach mehrfachem Kaufen, nie für offene Artikel
     assert.equal(await page.locator('#quick-pick').isHidden(), true);
     await type('Quark'); await submit(); await type('Quark'); await submit();
@@ -4966,6 +4967,37 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   const ALL_LISTED = 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.';
   const listQty = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === wanted).map(row => `${row.quantity} ${row.unit}`), name);
   const takeWeek = async (page, store = 'Lidl') => { await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page); if (store) await page.selectOption('#week-form select[name=storeId]', { label: store }); };
+
+  test('Dasselbe Produkt in anderer Schreibweise wird zusammengeführt: „Zwiebel“ im Rezept zählt zu „Zwiebeln“ auf der Liste, im Wochen-Einkauf ein Eintrag, im Eingabefeld und im Vorrat', async () => {
+    const data = structuredClone(demo), stamp = '2026-10-27T10:00:00.000Z';
+    data.ingredients.push({ id: 'ing-zw', recipeId: 'recipe-curry', name: 'Zwiebeln', quantity: 2, unit: 'Stück', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+    data.items.push({ id: 'item-zw', storeId: '', name: 'Zwiebeln', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    const onList = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && /^zwiebel/i.test(row.name)).map(row => `${row.name} ${row.quantity} ${row.unit}`));
+    await planPasta(page, '2'); await planPasta(page, '2', 'Kichererbsen-Curry');
+    await takeWeek(page, '');
+    const rows = (await weekRowsText(page)).filter(row => /Zwiebel/.test(row));
+    assert.equal(rows.length, 1, `ein Eintrag für Zwiebel/Zwiebeln: ${rows.join(' | ')}`);
+    assert.match(rows[0], /3\s*Stück\s*Zwiebeln/, 'die längere Schreibweise bei Gleichstand, zusammengezählt');
+    await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    assert.deepEqual(await onList(), ['Zwiebeln 4 Stück'], 'zum vorhandenen Artikel dazugezählt, kein zweiter Eintrag');
+    // Eingabefeld: „Zwiebel“ zählt zu „Zwiebeln“
+    await page.click('[data-tab=shopping]');
+    await page.fill('#item-form input[name=name]', 'Zwiebel'); await page.fill('#item-form input[name=quantity]', '1'); await page.click('#item-form button[type=submit]');
+    assert.deepEqual(await onList(), ['Zwiebeln 5 Stück']);
+    // Vorrat: „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab
+    await openSettings(page);
+    await page.fill('#pantry-form input[name=name]', 'Zwiebeln'); await page.click('#pantry-form button[type=submit]');
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Auf die Liste' }).click(); await sheetOpen(page);
+    const zwiebel = page.locator('#transfer-ingredients label', { hasText: 'Zwiebel' });
+    assert.equal(await zwiebel.locator('input').isChecked(), false, 'schon im Vorrat: vorab abgewählt');
+    assert.equal(await zwiebel.locator('.pantry-badge').count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 
   test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
     const { ctx, page, problems } = await context();

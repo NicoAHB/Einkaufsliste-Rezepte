@@ -58,8 +58,8 @@ test('Zutaten werden über Gerichte hinweg zusammengezählt und auf Portionen um
   const text = Object.fromEntries(rows.map(item => [`${item.name}|${item.unit}`, item.quantity]));
   assert.equal(text['Tomaten|kg'], 2);            // 1600 g + 400 g
   assert.equal(text['Milch|l'], 1.75);            // 250 ml + 1,5 l
-  assert.equal(text['Zwiebel|Stück'], 4);         // 1 x 2 Portionsfaktor + 1 x 2; „Zwiebeln“ ist ein eigener Name
-  assert.equal(text['Zwiebeln|Stück'], 2);
+  assert.equal(text['Zwiebel|Stück'], 6);         // 1 x 2 Portionsfaktor + 1 x 2 + 2 „Zwiebeln“ (dasselbe Produkt, seit Version 2.48); die häufigste Schreibweise wird gezeigt
+  assert.ok(!('Zwiebeln|Stück' in text));
   assert.equal(text['Salz|nach Bedarf'], 1);
   assert.equal(text['Olivenöl|EL'], 4);
   assert.equal(text['Olivenöl|ml'], 100);
@@ -101,4 +101,23 @@ test('Wochen-Einkauf: Gleitkomma-Reste zählen nicht als „mehr“; ungültige 
   assert.equal(weekBasket([meal('a', 0.1 + 0.2, { listedServings: 0.3 })]).use.length, 0);
   for (const bad of [null, 0, -1, 'x', undefined, NaN]) assert.deepEqual(weekBasket([meal('a', 2, { listedServings: bad })]).use.map(entry => entry.servings), [2], String(bad));
   assert.deepEqual(weekBasket([]), { use: [], listed: [] });
+});
+
+// Version 2.48: dasselbe Produkt in anderer Schreibweise wird zusammengezählt
+test('Wochen-Einkauf: „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“ sind ein Eintrag; die häufigere Schreibweise (bei Gleichstand die längere) wird gezeigt', () => {
+  const recipes = [{ id: 'a', name: 'A', servings: 2 }, { id: 'b', name: 'B', servings: 2 }, { id: 'c', name: 'C', servings: 2 }];
+  const meals = ['a', 'b', 'c'].map(recipeId => ({ recipeId, servings: 2 }));
+  const rows = aggregateIngredients(meals, recipes, [
+    { recipeId: 'a', name: 'Zwiebel', quantity: 1, unit: 'Stück' }, { recipeId: 'b', name: 'Zwiebeln', quantity: 2, unit: 'Stück' },
+    { recipeId: 'a', name: 'Tomate', quantity: 100, unit: 'g' }, { recipeId: 'b', name: 'Tomaten', quantity: 0.4, unit: 'kg' }, { recipeId: 'c', name: 'Tomaten', quantity: 100, unit: 'g' },
+    { recipeId: 'a', name: 'Äpfel', quantity: 2, unit: 'Stück' }, { recipeId: 'c', name: 'Apfel', quantity: 1, unit: 'Stück' }]);
+  assert.deepEqual(rows.map(row => [row.name, row.quantity, row.unit, row.sources]), [
+    ['Äpfel', 3, 'Stück', ['A', 'C']], ['Tomaten', 600, 'g', ['A', 'B', 'C']], ['Zwiebeln', 3, 'Stück', ['A', 'B']]]);
+});
+test('Wochen-Einkauf: andere Wörter, andere Einheiten und Zahlen im Namen bleiben getrennt', () => {
+  const recipes = [{ id: 'a', name: 'A', servings: 1 }];
+  const ing = list => list.map(([name, quantity, unit]) => ({ recipeId: 'a', name, quantity, unit }));
+  const rows = aggregateIngredients([{ recipeId: 'a', servings: 1 }], recipes, ing([['Zwiebel', 1, 'Stück'], ['rote Zwiebel', 1, 'Stück'], ['Zwiebeln', 200, 'g'], ['Milch', 1, 'l'], ['Hafermilch', 1, 'l'],
+    ['Cola 1 l', 1, 'Stück'], ['Cola 2 l', 1, 'Stück'], ['Ei', 1, 'Stück'], ['Eis', 1, 'Stück']]));
+  assert.deepEqual(rows.map(row => `${row.name}|${row.unit}`).sort(), ['Cola 1 l|Stück', 'Cola 2 l|Stück', 'Ei|Stück', 'Eis|Stück', 'Hafermilch|l', 'Milch|l', 'Zwiebel|Stück', 'Zwiebeln|g', 'rote Zwiebel|Stück'].sort());
 });

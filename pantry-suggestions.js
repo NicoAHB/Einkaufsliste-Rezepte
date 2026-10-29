@@ -1,7 +1,7 @@
 /* Vorschläge für den Vorrat (Einstellungen → Vorrat): häufige Zutaten, die man meist zu Hause hat. Reine Logik ohne DOM.
-   Die Namen sind so geschrieben, wie sie in Rezepten meistens stehen („Salz“, „Olivenöl“, „Zwiebel“), denn der Vorrat vergleicht Namen genau
-   (Groß- und Kleinschreibung egal). Ein Name enthält kein Komma und kein „und“, sonst würde der Vorrat ihn in mehrere Teile zerlegen. */
-import { productKey } from './prices.js';
+   Die Namen sind so geschrieben, wie sie in Rezepten meistens stehen („Salz“, „Olivenöl“, „Zwiebel“), denn der Vorrat vergleicht die Grundform
+   (Groß- und Kleinschreibung, Umlaute und Mehrzahl egal: „Zwiebel“ deckt „Zwiebeln“ ab). Ein Name enthält kein Komma und kein „und“, sonst würde der Vorrat ihn in mehrere Teile zerlegen. */
+import { pantryKey } from './data.js';
 
 export const PANTRY_SUGGESTIONS = [
   { title: 'Würzen', names: ['Salz', 'Pfeffer', 'Paprikapulver', 'Zimt', 'Muskat', 'Oregano', 'Thymian', 'Currypulver'] },
@@ -13,5 +13,5 @@ export const PANTRY_SUGGESTIONS = [
 
 // Die Vorschläge, die noch nicht im Vorrat stehen, je Gruppe (leere Gruppen fallen weg). `keys`: Schlüssel der Einträge im Vorrat (pantryKeys in data.js).
 export function pantrySuggestions(keys, groups = PANTRY_SUGGESTIONS) {
-  return groups.map(group => ({ title: group.title, names: group.names.filter(name => !keys.has(productKey(name))) })).filter(group => group.names.length);
+  return groups.map(group => ({ title: group.title, names: group.names.filter(name => !keys.has(pantryKey(name))) })).filter(group => group.names.length);
 }

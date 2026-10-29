@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { active, addToList, combineQuantity, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, validate } from '../data.js';
+import { active, addToList, combineQuantity, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, sameProduct, validate, wordSimilarity } from '../data.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
 const AT = '2026-10-27T10:00:00.000Z';
@@ -166,4 +166,36 @@ test('Datenmodell: Merker „auf die Liste übernommen“ am Gericht wird geprü
   for (const patch of [{ listedServings: 0 }, { listedServings: -2 }, { listedServings: 'x' }, { listedAt: 'gestern' }]) {
     assert.throws(() => merge(structuredClone(data), [operation('meals', 'm1', patch, 'Nico', '2026-10-29T10:00:03.000Z')]), /Ungültige Angabe zur Übernahme/, JSON.stringify(patch));
   }
+});
+
+// Version 2.48: dasselbe Produkt in anderer Schreibweise
+test('Dasselbe Produkt: gleiche Grundform oder (bei langen Wörtern) mindestens 95 % Übereinstimmung; sonst getrennt', () => {
+  for (const [a, b] of [['Zwiebel', 'Zwiebeln'], ['zwiebeln', 'Zwiebel'], ['Äpfel', 'Apfel'], ['Tomate', 'Tomaten'], ['Ei', 'Eier'], ['Kichererbsen, abgetropft', 'Kichererbsen abgetropft'],
+    ['rote Zwiebeln', 'rote Zwiebel'], ['Mehl', 'mehl '], ['Haferflocken', 'Haferflocke'], ['Kartoffelstärkemehlmischung', 'Kartoffelstaerkemehlmischung'], ['Cola 1 l', 'Cola 1 L']]) assert.equal(sameProduct(a, b), true, `${a} = ${b}`);
+  for (const [a, b] of [['Zwiebel', 'rote Zwiebel'], ['Milch', 'Hafermilch'], ['Ei', 'Eis'], ['Vollkornspaghetti mit Ei', 'Vollkornspaghetti mit Eis'], ['Cola 1 l', 'Cola 2 l'], ['Salz', 'Salami'],
+    ['Zwiebel', 'Zwiebelmett'], ['Nudeln', 'Nudelsalat'], ['', 'x'], ['?', '!'], ['Butter', 'Margarine']]) assert.equal(sameProduct(a, b), false, `${a} ≠ ${b}`);
+  assert.equal(sameProduct('?', '?'), true, 'derselbe Text ist immer derselbe Name');
+  // die 95 %: Roh sind „Zwiebel“ und „Zwiebeln“ nur 87,5 % gleich (die Grundform ist es zu 100 %)
+  assert.equal(wordSimilarity('zwiebel', 'zwiebeln'), 0.875);
+  assert.equal(wordSimilarity('kartoffelstarkemehlmischung', 'kartoffelstarkemehlmischunq') >= 0.95, true);
+});
+
+test('Auf die Liste: „Zwiebel“ zählt zu „Zwiebeln“ dazu (und umgekehrt), der Artikel behält seinen Namen; 500 g und 2 Stück bleiben getrennt', () => {
+  const items = [row('a', 'Zwiebeln', 2, 'Stück'), row('b', 'Tomate', 500, 'g')];
+  const result = foldIntoList([{ name: 'Zwiebel', quantity: 1, unit: 'Stück' }, { name: 'Tomaten', quantity: 250, unit: 'g' }, { name: 'Zwiebel', quantity: 300, unit: 'g' }], 'store-edeka', items);
+  assert.deepEqual(result.counted.map(entry => [entry.id, entry.name, entry.add, entry.after]), [['a', 'Zwiebeln', { quantity: 1, unit: 'Stück' }, { quantity: 3, unit: 'Stück' }], ['b', 'Tomate', { quantity: 250, unit: 'g' }, { quantity: 750, unit: 'g' }]]);
+  assert.deepEqual(result.fresh.map(entry => [entry.name, entry.quantity, entry.unit]), [['Zwiebel', 300, 'g']], 'andere Einheit: eigener Artikel');
+  const batch = foldIntoList([{ name: 'Zwiebel', quantity: 1, unit: 'Stück' }, { name: 'Zwiebeln', quantity: 2, unit: 'Stück' }], '', []);
+  assert.deepEqual(batch.fresh.map(entry => [entry.name, entry.quantity]), [['Zwiebel', 3]], 'auch innerhalb einer Übernahme');
+  const noAmount = foldIntoList([{ name: 'Salze', quantity: 1, unit: 'Stück', noAmount: true }], 'store-edeka', [row('s', 'Salz', 1, 'Stück')]);
+  assert.deepEqual([noAmount.fresh.length, noAmount.skipped], [0, 1]);
+});
+
+test('Vorrat: „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab; Hinzufügen erkennt vorhandene Schreibweisen', () => {
+  const keys = stock('Zwiebeln', 'Eier', 'Salz');
+  assert.equal(inPantry(keys, 'Zwiebel'), true);
+  assert.equal(inPantry(keys, 'Ei'), true);
+  assert.equal(inPantry(keys, 'Salz, Zwiebel'), true);
+  assert.equal(inPantry(keys, 'rote Zwiebel'), false);
+  assert.deepEqual(pantryAdditions(['Zwiebel', 'Tomate', 'Tomaten'], keys), ['Tomate'], 'Zwiebel steht schon da; Tomate und Tomaten sind eins');
 });
