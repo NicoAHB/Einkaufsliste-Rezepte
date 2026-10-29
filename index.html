@@ -240,7 +240,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.50 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.52 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -397,6 +397,8 @@
     <label data-custom hidden>Eigenes Gericht<input name="title" maxlength="80" placeholder="z. B. Pizza bestellen" autocomplete="off"></label>
     <label>Portionen<input name="servings" inputmode="decimal" required maxlength="16"></label>
     <button type="submit">Speichern</button></form></dialog>
+  <dialog id="swap-dialog"><div class="stack"><div class="sheet-head"><h2>Tauschen?</h2><button type="button" data-close="swap-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p id="swap-text"></p><div class="actions"><button id="swap-no" type="button" class="secondary">Nein</button><button id="swap-yes" type="button">Ja</button></div></div></dialog>
   <dialog id="week-dialog"><form id="week-form" class="stack"><div class="sheet-head"><h2>Einkauf für die Woche</h2><button type="button" data-close="week-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="week-intro" class="hint"></p>
     <label class="checkbox-label"><input name="skipDone" type="checkbox" checked> Schon gekochte Gerichte auslassen</label>

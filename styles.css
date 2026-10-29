@@ -3962,3 +3962,19 @@ body.selecting .item .item-copy {
 #week-changes.warn,.meal-listed.changed {
   color:var(--danger, #b3261e)
 }
+
+/* Gericht auf einen anderen Tag ziehen (Version 2.51) */
+.meal.drag-origin {
+  opacity:.3
+}
+.drag-ghost.meal {
+  padding:6px 12px;
+  border-top:0
+}
+.day.drop-target {
+  outline:2px dashed var(--accent);
+  outline-offset:2px
+}
+#swap-dialog .actions button {
+  flex:1
+}

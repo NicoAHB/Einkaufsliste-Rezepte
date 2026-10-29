@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, estimateOf, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, estimateOf, possibleDuplicates, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -293,5 +293,24 @@ describe('Monatsbudget', () => {
     assert.deepEqual(result.data.budgets.map(row => row.cents), [40000]);
     const bare = emptyData(); delete bare.budgets; bare.sync.applied = Array.from({ length: 700 }, (_, index) => `op-${index}`);
     assert.equal(compact(bare, new Date('2026-06-01T00:00:00.000Z')).data.budgets, undefined, 'ohne Budget entsteht keine leere Sammlung');
+  });
+});
+
+// Version 2.51: Ausgaben gegen doppelte Erfassung schützen
+describe('Doppelt erfasst?', () => {
+  const rows = [row('a', '2026-10-27', 4000, { storeId: 'store-edeka' }), row('b', '2026-10-27', 1550), row('c', '2026-10-26', 4000, { storeId: 'store-edeka' }), row('d', '2026-10-27', 4000, { storeId: 'store-edeka', deletedAt: '2026-10-28T10:00:00.000Z' })];
+  test('gleicher Tag, gleiches Geschäft und gleicher Betrag sind ein Hinweis', () => {
+    assert.equal(duplicatePurchase(rows, { date: '2026-10-27', cents: 4000, storeId: 'store-edeka' })?.id, 'a');
+    assert.equal(duplicatePurchase(rows, { date: '2026-10-27', cents: 1550 })?.id, 'b', 'beide ohne Geschäft');
+  });
+  test('anderer Tag, anderes Geschäft, anderer Betrag, gelöschte Einträge und der eigene Eintrag sind kein Hinweis', () => {
+    for (const fields of [{ date: '2026-10-28', cents: 4000, storeId: 'store-edeka' }, { date: '2026-10-27', cents: 4000, storeId: 'store-lidl' }, { date: '2026-10-27', cents: 4001, storeId: 'store-edeka' },
+      { date: '2026-10-27', cents: 1550, storeId: 'store-edeka' }, { date: '2026-10-27', cents: 4000 }]) assert.equal(duplicatePurchase(rows, fields), null, JSON.stringify(fields));
+    assert.equal(duplicatePurchase(rows, { date: '2026-10-27', cents: 4000, storeId: 'store-edeka' }, 'a'), null, 'beim Ändern zählt der Eintrag selbst nicht');
+    assert.equal(duplicatePurchase([rows[3]], { date: '2026-10-27', cents: 4000, storeId: 'store-edeka' }), null, 'gelöscht');
+  });
+  test('Einträge mit Zwilling für den Hinweis in der Liste', () => {
+    assert.deepEqual([...possibleDuplicates([...rows, row('e', '2026-10-27', 4000, { storeId: 'store-edeka' }), row('f', '2026-10-27', 1550)])].sort(), ['a', 'b', 'e', 'f']);
+    assert.deepEqual([...possibleDuplicates(rows)], []);
   });
 });

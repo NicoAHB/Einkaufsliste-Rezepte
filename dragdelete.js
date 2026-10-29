@@ -39,6 +39,7 @@ export const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
  * @param selector  Zeilen, die gezogen werden dürfen
  * @param options   `onHold(id)`: Loslassen mit höchstens 24 px Bewegung (z. B. „Verschieben nach“ öffnen);
  *                  `hint`: Hinweisfläche, die beim Abheben ein- und beim Loslassen ausgeblendet wird;
+ *                  `noZone`: ohne rote Fläche (Löschen durch Ziehen gibt es dort nicht; `zone` und `onDelete` werden nicht gebraucht), z. B. beim Verschieben eines Gerichts auf einen anderen Tag;
  *                  `target`: Ziele zum Ablegen. Die Zeile folgt dann dem Finger frei in alle Richtungen.
  *                    `show(id)` blendet die Ziele ein und gibt die Höhe zurück, die oben belegt ist (px);
  *                    `at(x, y, id)` liefert das Ziel unter dem Finger oder null; `mark(ziel|null)` hebt es hervor;
@@ -63,9 +64,9 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     document.body.append(ghost);
     row.classList.add('drag-origin');
     const reserved = target?.show(row.dataset.id) ?? 0;   // oben belegt (Leiste mit den Geschäften): die rote Fläche rückt darunter
-    const middle = Math.min(Math.max(box.top + box.height / 2, 60 + reserved), innerHeight - 60), half = (zone.offsetHeight || 84) / 2;
-    zone.style.top = `${middle - half}px`;
-    zone.classList.add('show'); options.hint?.classList.add('show');
+    const middle = Math.min(Math.max(box.top + box.height / 2, 60 + reserved), innerHeight - 60), half = ((!options.noZone && zone?.offsetHeight) || 84) / 2;
+    if (!options.noZone) { zone.style.top = `${middle - half}px`; zone.classList.add('show'); }
+    options.hint?.classList.add('show');
     navigator.vibrate?.(12);
     drag = { row, ghost, id: row.dataset.id, startX: point.x, startY: point.y, left: box.left, top: box.top, height: box.height, dx: 0, dy: 0, hot: false, goal: null, band: [middle - half, middle + half] };
     swallow = true;
@@ -77,8 +78,8 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
       drag.dy = clamp(y - drag.startY, -drag.top, innerHeight - drag.top - drag.height);
     } else { drag.dx = shift(x - drag.startX, drag.left, innerWidth); drag.dy = 0; }
     drag.ghost.style.transform = `translate(${drag.dx}px, ${drag.dy}px)`;
-    const hot = overZone(x, innerWidth) && (!target || overBand(y, drag.band[0], drag.band[1]));
-    if (hot !== drag.hot) { drag.hot = hot; zone.classList.toggle('hot', hot); if (hot) navigator.vibrate?.(8); }
+    const hot = !options.noZone && overZone(x, innerWidth) && (!target || overBand(y, drag.band[0], drag.band[1]));
+    if (hot !== drag.hot) { drag.hot = hot; zone?.classList.toggle('hot', hot); if (hot) navigator.vibrate?.(8); }
     if (target) {
       const goal = hot ? null : target.at(x, y, drag.id) ?? null;   // ein Ziel kann auch '' heißen („ohne Geschäft“)
       if (goal !== drag.goal) { drag.goal = goal; target.mark(goal); if (goal !== null) navigator.vibrate?.(8); }
@@ -86,7 +87,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
   }
   function finish(drop) {
     const { row, ghost, id, hot, dx, dy, goal } = drag; drag = null;
-    zone.classList.remove('show', 'hot'); options.hint?.classList.remove('show'); target?.hide();
+    zone?.classList.remove('show', 'hot'); options.hint?.classList.remove('show'); target?.hide();
     const done = () => { ghost.remove(); row.classList.remove('drag-origin'); };
     // Die Zeile „verschwindet“ an der Stelle des Fingers und das Ergebnis wird ausgeführt.
     const away = (extra, then) => {

@@ -42,6 +42,21 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
   return fields;
 }
 
+/* Doppelt erfasst? (Version 2.51) Gleicher Tag, gleiches Geschäft (oder beide ohne Geschäft) und gleicher Betrag sind ein Hinweis, kein Verbot: Zwei gleich teure Einkäufe am selben Tag
+   sind möglich. `rows`: die vorhandenen Einträge, `fields`: der neue (date, cents, storeId), `ignoreId`: der Eintrag, der gerade geändert wird. Ergebnis: der erste gleiche Eintrag oder null. */
+export function duplicatePurchase(rows, fields, ignoreId = '') {
+  return rows.find(row => row.id !== ignoreId && !row.deletedAt && row.date === fields.date && row.cents === fields.cents && (row.storeId || '') === (fields.storeId || '')) ?? null;
+}
+// Alle Einträge, die einen Zwilling haben (für den Hinweis „Doppelt?“ in der Liste).
+export function possibleDuplicates(rows) {
+  const seen = new Map(), result = new Set();
+  for (const row of rows.filter(entry => !entry.deletedAt)) {
+    const key = `${row.date}|${row.cents}|${row.storeId || ''}`;
+    if (seen.has(key)) { result.add(row.id); result.add(seen.get(key)); } else seen.set(key, row.id);
+  }
+  return result;
+}
+
 // Aus der Auswertung eines Kassenbons (receipt.js, parseReceipt) den Betrag: die Summe laut Bon, sonst die Summe der erkannten Zeilen, sonst nichts.
 export function receiptAmount(parsed) {
   if (parsed?.total > 0) return { cents: parsed.total, how: 'bon' };

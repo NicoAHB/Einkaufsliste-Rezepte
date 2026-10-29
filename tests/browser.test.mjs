@@ -1822,6 +1822,49 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Ausgaben gegen doppelte Erfassung: gleicher Tag, Geschäft und Betrag warnen beim ersten Speichern, ein zweites Speichern ist möglich; andere Angaben warnen nicht; die Liste zeigt „Doppelt?“', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    const count = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt).length);
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 1);
+    // derselbe Einkauf noch einmal: Warnung, nichts gespeichert, Fenster bleibt offen
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' });
+    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /Möglicherweise doppelt: Am .+ steht schon ein Einkauf über 40,00\s€ bei Edeka\. War es ein zweiter Einkauf, tippe auf „Speichern“ noch einmal\./);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
+    assert.equal(await count(), 1);
+    // ein zweites Mal Speichern: gespeichert (es kann wirklich ein zweiter Einkauf sein)
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 2);
+    assert.equal(await page.locator('#purchase-list .spend-row', { hasText: 'Doppelt?' }).count(), 2);
+    assert.match(await page.locator('#purchase-list .spend-row').first().getAttribute('aria-label'), /möglicherweise doppelt erfasst/);
+    // anderer Betrag oder anderes Geschäft: keine Warnung
+    await addPurchase(page, { amount: '40,01', store: 'Edeka' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    await addPurchase(page, { amount: '40,00', store: 'Lidl' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 4);
+    assert.equal(await page.locator('#purchase-list .spend-row', { hasText: 'Doppelt?' }).count(), 2);
+    // Warnen, dann den Betrag ändern: die Warnung gilt nicht mehr, es wird ohne zweiten Anlauf gespeichert
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' });
+    await page.waitForSelector('#purchase-dialog [data-dialog-error]');
+    await page.fill('#purchase-form input[name=amount]', '41,00'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 5);
+    // Beim Ändern eines Eintrags zählt er selbst nicht
+    await page.locator('#purchase-list .spend-row', { hasText: '41,00' }).click(); await sheetOpen(page);
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 5);
+    // „Einkauf beenden“ mit Betrag: derselbe Schutz („+“ noch einmal)
+    await page.click('[data-tab=shopping]'); await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await shopTap(page, 'Tomaten').click(); await finishShop(page); await sheetOpen(page);
+    await page.fill('#finish-form input[name=amount]', '40'); await page.click('#finish-form .add-button');
+    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Möglicherweise doppelt[\s\S]*tippe auf „\+“ noch einmal/);
+    assert.equal(await count(), 5);
+    await page.click('#finish-form .add-button'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.equal(await count(), 6);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Ausgaben: Dialogfenster und Einstellungen laufen bei 320 px nicht über; „Jetzt aufräumen“ zählt alte Ausgaben mit', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
     await open(page);
@@ -5067,6 +5110,53 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Es wird nichts von selbst auf die Liste gesetzt oder geändert
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === 'Nudeln').map(row => `${row.quantity} ${row.unit}`).sort()), ['200 g', '500 g']);
     await page.click('#week-dialog [data-close]');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // Version 2.51: ein Gericht lange halten und auf einen anderen Tag ziehen
+  const dragMeal = async (page, name, toDay) => {
+    const from = await page.locator('.meal', { hasText: name }).locator('.meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${toDay}"]`).boundingBox();
+    await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+    await page.waitForSelector(`.day.drop-target[data-day="${toDay}"]`);
+    await page.mouse.up();
+  };
+  const mealDays = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.meals.filter(row => !row.deletedAt).map(row => [row.recipeId, row.date, row.listedServings ?? null]).sort());
+
+  test('Plan: ein Gericht lange halten und auf einen freien Tag ziehen verschiebt es (die Übernahme auf die Liste bleibt); auf einen belegten Tag fragt „Tauschen?“ – Nein ändert nichts, Ja tauscht die Tage', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await planPasta(page, '2');
+    await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    await page.click('[data-tab=plan]');
+    const days = await page.locator('#plan-days .day').evaluateAll(nodes => nodes.map(node => node.dataset.day)), today = await page.locator('.day.today').getAttribute('data-day');
+    const free = days.find(day => day !== today);
+    // 1. freier Tag: umgezogen, Übernahme bleibt, kein Hinweis „entfernt“
+    await dragMeal(page, 'Tomaten-Pasta', free);
+    await page.waitForFunction(day => document.querySelector(`.day[data-day="${day}"] .meal`), free);
+    assert.deepEqual(await mealDays(page), [['recipe-pasta', free, 2]]);
+    assert.match(await page.textContent('#notice-text'), /„Tomaten-Pasta“ auf .+ verschoben/);
+    assert.equal(await page.locator('.day.today .meal').count(), 0);
+    assert.equal(await page.locator(`.day[data-day="${free}"] .meal-listed`).textContent(), 'Zutaten übernommen');
+    assert.equal(await page.locator('#swap-dialog[open]').count(), 0);
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    assert.equal(await page.locator('#week-changes').isHidden(), true, 'verschoben ist nicht entfernt');
+    await page.click('#week-dialog [data-close]');
+    // 2. belegter Tag: Nein
+    await planPasta(page, '4', 'Kichererbsen-Curry');
+    await dragMeal(page, 'Kichererbsen-Curry', free);
+    await page.waitForSelector('#swap-dialog[open]'); await sheetOpen(page);
+    assert.match(await page.textContent('#swap-text'), /„Kichererbsen-Curry“ \(.+\) und „Tomaten-Pasta“ \(.+\) tauschen die Tage\./);
+    await page.click('#swap-no'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
+    const before = [['recipe-curry', today, null], ['recipe-pasta', free, 2]].sort();
+    assert.deepEqual(await mealDays(page), before, 'Nein: nichts ändert sich');
+    // 3. Ja: getauscht
+    await dragMeal(page, 'Kichererbsen-Curry', free);
+    await page.waitForSelector('#swap-dialog[open]'); await sheetOpen(page);
+    await page.click('#swap-yes'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
+    assert.deepEqual(await mealDays(page), [['recipe-curry', free, null], ['recipe-pasta', today, 2]].sort());
+    assert.match(await page.textContent('#notice-text'), /getauscht/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
