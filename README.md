@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.57
+# Einkauf & Rezepte – Version 2.58
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,12 +16,20 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
 
+## Neu in Version 2.58: Wünsche öffnen direkt „Produktlink & Notiz“
+
+Bei **Wünschen** (Artikel in einer **eigenen Liste** wie „Wünsche“, **nur dort**) öffnet ein **Tipp** auf den Wunsch jetzt direkt das Wunsch-Fenster, nicht mehr das große Artikel-Fenster:
+- Es zeigt nur **Name**, **Produktlink**, **Notiz** und **Liste** (zum Verschieben in eine andere Liste) sowie **Wunsch löschen**. **Menge, Einheit, Kategorie (Gang im Laden) und „Preis & Angebot“ fehlen** dort. Eine vorhandene Menge bleibt unverändert gespeichert; neue Wünsche legst du weiter mit Menge und Einheit an.
+- **Langes Drücken** (und die Tastatur-Entsprechung) öffnet dasselbe Fenster. Der Knopf „Produktlink & Notiz“ im Artikel-Fenster entfällt, weil dort für Wünsche nichts mehr zu öffnen ist.
+- Wird ein Wunsch in eine normale Liste verschoben (z. B. Edeka), ist er dort ein **normaler Artikel** mit dem vollen Fenster; Link und Notiz bleiben gespeichert und erscheinen wieder, wenn er zurück in eine eigene Liste kommt. **Normale Einkaufsartikel bleiben unverändert.**
+- Test: Tipp öffnet nur das Wunsch-Fenster (die sichtbaren Felder werden einzeln geprüft), umbenennen, verschieben (mit Rückweg) und löschen, ein leerer Name wird abgelehnt, und ein normaler Artikel öffnet weiter sein volles Fenster.
+
 ## Neu in Version 2.57: Produktlink und Notiz bei Wünschen
 
 In einer **eigenen Liste** wie „Wünsche“ den **Produktnamen eine halbe Sekunde gedrückt halten**: Ein kleines Fenster zeigt den optionalen **Produktlink** und die **Notiz** (z. B. Farbe, Größe, Modell). **Wunschdetails speichern** übernimmt die Angaben. Ein vorhandener Link öffnet sich mit **Produkt ansehen** erst nach einem bewussten Tipp; es gibt keine Shop-Abfrage und keine automatische Preisermittlung.
 
 - Die Liste zeigt weiter nur den Namen, die Menge und die Person; ein kleines Link-/Notizsymbol weist auf hinterlegte Details hin. Normale Supermarktartikel erhalten keine zusätzlichen Felder.
-- Ein **kurzer Tipp** öffnet wie bisher die normale Bearbeitung. Dort gibt es bei Wünschen auch **Produktlink & Notiz** (als Alternative zum langen Drücken). Über das Feld **Geschäft** lässt sich der Wunsch weiter in eine andere Liste verschieben; mit **Artikel löschen** entfernen. Das lange Ziehen bleibt bei normalen Einkaufsartikeln unverändert.
+- Ein **kurzer Tipp** öffnet bei Wünschen seit Version 2.58 ebenfalls dieses Fenster (siehe oben); dort lässt sich der Wunsch auch in eine andere Liste verschieben und löschen. Das lange Ziehen bleibt bei normalen Einkaufsartikeln unverändert.
 - Scrollen, Wischen und ein zweiter Finger öffnen kein Detailfenster. Der Haken bleibt zum Abhaken. Unter „Im Laden“ funktioniert langes Drücken auf einen Wunsch ebenfalls, solange die Ansicht entsperrt ist.
 - Beide Personen sehen die gespeicherten Angaben nach dem Abgleich. Änderungen funktionieren offline; Link und Notiz werden getrennt zusammengeführt. Beim Verschieben bleiben sie erhalten. Wünsche mit Angaben werden zum Schutz verschiedener Modelle nicht mit gleichnamigen Artikeln zusammengelegt.
 - Datenmodell v1 ergänzt optional `items.wishUrl` (HTTPS-Link, höchstens 2000 Zeichen) und `items.wishNote` (höchstens 1000 Zeichen). Beim ersten Speichern solcher Angaben setzt die Datei `sync.minRev: 4`: **Beide Geräte aktualisieren**, bevor ihr Wunschdetails verwendet. Ältere Apps bitten dann um ein Update, damit sie Wünsche nicht versehentlich zusammenlegen. Bestehende Daten bleiben erhalten. JSON- und ZIP-Sicherungen enthalten die Angaben automatisch.
@@ -29,11 +37,11 @@ In einer **eigenen Liste** wie „Wünsche“ den **Produktnamen eine halbe Seku
 
 Kurze Prüfung auf dem iPhone:
 
-- [ ] „Wünsche“ auswählen (als **Eigene Liste** eingestellt), „Springseil“ hinzufügen und den Namen lange drücken.
+- [ ] „Wünsche“ auswählen (als **Eigene Liste** eingestellt), „Springseil“ hinzufügen und auf den Namen tippen (oder lange drücken): Es öffnet sich nur Name, Produktlink, Notiz und Liste.
 - [ ] Produktlink und Notiz eintragen, speichern, erneut öffnen und „Produkt ansehen“ prüfen.
 - [ ] Auf dem zweiten Gerät aktualisieren: beide Angaben sind vorhanden.
 - [ ] Ohne Empfang eine Notiz ändern, App erneut öffnen und später abgleichen: die Notiz bleibt erhalten.
-- [ ] Bei Edeka einen normalen Artikel öffnen: kein Knopf für Wunschdetails. Abhaken, Scrollen und die Mehrfachauswahl funktionieren weiter.
+- [ ] Bei Edeka einen normalen Artikel öffnen: das volle Artikel-Fenster mit Menge, Einheit, Kategorie und Preis, ohne Link und Notiz. Abhaken, Scrollen und die Mehrfachauswahl funktionieren weiter.
 
 ## Neu in Version 2.56: Lange Arbeitsschritte im PDF vollständig, Wochenübernahme genau einmal
 
