@@ -3586,8 +3586,9 @@ html[data-landscape] .turn-hint {
 .price-fold[open] {
   padding-bottom:14px
 }
+/* Die Menge steht immer in einer eigenen Zeile unter dem Namen, bündig mit ihm (wie unter „Im Laden“); nie daneben und nie eingerückt. */
 .item-qty {
-  margin-left:.5em;
+  display:block;
   font-weight:500;
   white-space:nowrap
 }
