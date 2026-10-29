@@ -249,6 +249,7 @@ function render() {
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm();
   if ($('#template-dialog').open) renderTemplates();
+  if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
@@ -1108,6 +1109,14 @@ function weekListedNote(plan) {
     if (more.length) parts.push(`Mehr Portionen seit der Übernahme, nur die zusätzlichen kommen dazu: ${more.map(entry => `${label(entry)} (+${format(entry.extra)})`).join(', ')}.`);
   }
   const note = $('#week-listed'); note.textContent = parts.join(' '); note.hidden = !parts.length; note.classList.toggle('warn', again && listed.length > 0);
+}
+// Woran man erkennt, dass sich die Vorschau überholt hat: welche Gerichte mit wie vielen Portionen aufgenommen werden und welche Zutaten daraus werden.
+const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit])]);
+// Die Vorschau neu aufbauen, ohne abgewählte Zutaten wieder anzuhaken (Schlüssel: Name und Einheit).
+function refreshWeekRows() {
+  const unchecked = new Set([...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => `${productKey(label._row.name)}|${label._row.unit}`));
+  renderWeekRows();
+  for (const label of $('#week-ingredients').children) if (label._row && unchecked.has(`${productKey(label._row.name)}|${label._row.unit}`)) label.querySelector('input').checked = false;
 }
 function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
@@ -2791,7 +2800,11 @@ $('#meal-form').addEventListener('submit', saveMeal);
 $('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
 $('#week-form').elements.skipListed.addEventListener('change', renderWeekRows);
 $('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
+  const form = event.currentTarget;
+  // Unmittelbar vor dem Übernehmen noch einmal den aktuellen Stand prüfen: Hat inzwischen jemand übernommen oder den Plan geändert (das Fenster stand offen), wird nichts addiert;
+  // die Vorschau wird aktualisiert und muss noch einmal bestätigt werden.
+  if (weekSignature(weekPlan()) !== weekSignature(form._plan)) { refreshWeekRows(); throw new Error('Der Wochenplan hat sich geändert (z. B. wurde schon übernommen). Die Vorschau ist aktualisiert; bitte prüfen und noch einmal bestätigen.'); }
+  const selected = [...$('#week-ingredients').children].filter(label => label._row && label.querySelector('input').checked).map(label => label._row);
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const storeId = currentStore(form.elements.storeId.value);
   // Die Gerichte, deren Zutaten jetzt auf die Liste gehen, merken sich das (für wie viele Portionen), damit ein zweites Mal nichts verdoppelt. Dieselbe Änderung wie die Artikel.

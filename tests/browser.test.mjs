@@ -4999,6 +4999,42 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Zwei Geräte, beide Fenster „Einkauf für die Woche“ offen: Übernimmt A, wird B aktualisiert und B addiert nichts mehr (400 g bleiben 400 g); eine überholte Vorschau wird vor dem Übernehmen erkannt', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); }
+    await planPasta(a.page, '2'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Tomaten-Pasta/.test(document.querySelector('#plan-days').textContent), null, { timeout: 20000 });
+    const nudeln = () => remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`).sort();
+    // beide öffnen den Einkauf für dieselbe Woche
+    for (const device of [a, b]) { await device.page.click('[data-tab=plan]'); await device.page.click('#plan-shopping'); await sheetOpen(device.page); }
+    assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)));
+    // A übernimmt
+    await a.page.click('#week-form button[type=submit]'); await a.page.waitForSelector('#week-dialog', { state: 'hidden' }); await synced(a.page);
+    assert.deepEqual(nudeln(), ['200 g', '500 g']);
+    // B gleicht ab, das Fenster steht noch offen: es wird von selbst aktualisiert
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /schon übernommen/.test(document.querySelector('#week-ingredients').textContent), null, { timeout: 20000 });
+    assert.equal(await b.page.locator('#week-dialog[open]').count(), 1);
+    assert.match(await b.page.textContent('#notice-text'), /Der Wochenplan hat sich geändert/);
+    await b.page.click('#week-form button[type=submit]');
+    assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /mindestens eine Zutat/);
+    await synced(b.page);
+    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'nichts wurde noch einmal addiert');
+    // Überholte Vorschau, bevor das Fenster aktualisiert war: die Prüfung unmittelbar vor dem Übernehmen greift
+    await b.page.uncheck('#week-form input[name=skipListed]');
+    await b.page.evaluate(() => { const form = document.querySelector('#week-form'); form._plan = { ...form._plan, basket: { use: [], listed: [] }, rows: [] }; });
+    await b.page.click('#week-form button[type=submit]');
+    assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /Der Wochenplan hat sich geändert[\s\S]*noch einmal bestätigen/);
+    assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)), 'die Vorschau ist aktuell (Haken heraus: alles wieder da)');
+    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'auch jetzt nicht addiert');
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
   test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
