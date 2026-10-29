@@ -92,7 +92,7 @@
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
           <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
           <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" value="Stück" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Der Angebotspreis zählt für die Summe, solange „Im Angebot“ angehakt und das Angebot nicht abgelaufen ist. Ohne Datum gilt es, bis du es ausschaltest. Der normale Preis bleibt erhalten.</p></div>
-          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Ein bereits gemerkter Preis dieses Geschäfts wird beim Eingeben vorgeschlagen.</p>
+          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe.</p>
         </details>
       </form>
       <div class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
@@ -196,7 +196,10 @@
       </div>
       <div id="alias-card" class="card stack"><details id="alias-details" class="fold"><summary><h3>Gemerkte Namen<span id="alias-count"></span></h3></summary><div class="stack">
         <p class="hint">Schreibweisen, die du bestätigt hast („Zwiebel“ → „Zwiebeln“): Die App führt sie in Vorschlägen und beim Zusammenzählen zusammen. Eine falsche Zuordnung entfernst du hier.</p>
-        <ul id="alias-list" class="pantry-list"></ul></div></details>
+        <ul id="alias-list" class="pantry-list"></ul>
+        <div id="alias-doubt" class="stack" hidden><h4>Alte Zuordnungen prüfen</h4>
+          <p class="hint">Frühere Versionen haben Text vom Kassenbon einem Artikel zugeordnet („apfeltasche“ → „Apfel“). Ob zwei so verschiedene Namen dasselbe meinen, lässt sich nicht sicher sagen: Diese Zuordnungen <strong>wirken nicht</strong>. Behalte eine, wenn sie stimmt, oder entferne sie.</p>
+          <ul id="alias-doubt-list" class="pantry-list"></ul></div></div></details>
       </div>
       <div id="storage-card" class="card stack"><details id="storage-details" class="fold"><summary><h3>Datenumfang</h3></summary><div class="stack">
         <progress id="storage-bar" max="100" value="0"></progress>
@@ -237,7 +240,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.46 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.48 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -397,6 +400,8 @@
   <dialog id="week-dialog"><form id="week-form" class="stack"><div class="sheet-head"><h2>Einkauf für die Woche</h2><button type="button" data-close="week-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="week-intro" class="hint"></p>
     <label class="checkbox-label"><input name="skipDone" type="checkbox" checked> Schon gekochte Gerichte auslassen</label>
+    <label class="checkbox-label"><input name="skipListed" type="checkbox" checked> Schon übernommene Gerichte auslassen</label>
+    <p id="week-listed" class="hint" hidden></p>
     <label>Geschäft<select name="storeId"></select></label>
     <div id="week-ingredients"></div>
     <label class="checkbox-label"><input name="rememberPantry" type="checkbox"> Abgewählte Zutaten als Vorrat merken</label>

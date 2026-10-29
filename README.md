@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.46
+# Einkauf & Rezepte – Version 2.48
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,68 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.48: „Zwiebel“ und „Zwiebeln“ sind dasselbe Produkt
+
+Bisher waren „Zwiebel“ im einen Rezept und „Zwiebeln“ im anderen zwei Zeilen im Wochen-Einkauf und zwei Artikel auf der Liste. Jetzt führt die App Namen zusammen, die **dasselbe Produkt** meinen (`sameProduct` in `data.js`).
+
+**Die Regel.** Verglichen wird die **Grundform** jedes Wortes: Groß-/Kleinschreibung, Umlaute und Mehrzahlendungen sind egal („Äpfel“ = „Apfel“, „Tomate“ = „Tomaten“, „Ei“ = „Eier“). Eine reine Buchstabenprozentzahl allein würde „Zwiebel“ und „Zwiebeln“ nicht erkennen (1 von 8 Buchstaben fehlt: 87,5 %); die Grundform ist dieselbe (100 %). Zusätzlich gilt die **95-%-Regel** für **lange Wörter** (ab 20 Buchstaben): Dort verzeiht sie einen Tippfehler. Bei kurzen Wörtern kann ein Buchstabe das Produkt ändern („Ei“ und „Eis“), deshalb gilt dort nur die gleiche Grundform.
+- Zwei Namen müssen **gleich viele Wörter** haben, und jedes Wort muss passen. „Rote Zwiebel“, „Zwiebelmett“, „Hafermilch“ (zu „Milch“) bleiben getrennt.
+- Steht **eine Zahl** im Namen („Cola 1 l“, „Cola 2 l“), werden nur genau gleiche Namen zusammengeführt.
+- Ein Name ohne Buchstaben ist nur mit sich selbst gleich.
+- Die **Einheiten** entscheiden weiter getrennt: „1 Stück Zwiebel“ und „200 g Zwiebeln“ bleiben zwei Zeilen; g und kg, ml und l, Stück und Stk. werden wie bisher addiert.
+
+**Wo es wirkt.**
+- **Einkauf für die Woche:** ein Eintrag je Produkt. Angezeigt wird die Schreibweise, die in den Rezepten am häufigsten vorkommt, bei Gleichstand die längere (meist die Mehrzahl): „Zwiebel“ (1) + „Zwiebeln“ (2) = „3 Stück Zwiebeln“.
+- **Auf die Liste setzen** (Rezept, Woche, Vorlage, Link `?add=`, Eingabefeld, Verschieben): Steht „Zwiebeln“ schon auf der Liste, zählt „Zwiebel“ dort dazu. Der Artikel behält seinen Namen. Auch innerhalb einer Übernahme werden Schreibweisen zusammengezählt.
+- **Vorrat:** „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab (vorab abgewählt, Hinweis „Vorrat“); beim Hinzufügen zum Vorrat wird eine vorhandene Schreibweise erkannt. Die Vorschläge für den Vorrat berücksichtigen das ebenso.
+- **Nicht** verändert: Artikel, die schon getrennt auf der Liste stehen, werden nicht nachträglich zusammengelegt. Das Zusammenlegen gleichzeitig angelegter Doppelter bleibt bei genau gleichen Namen. Die Vorschläge „Meinst du dasselbe wie …?“ und „Gemerkte Namen“ bleiben, wie sie sind.
+
+**Tests:** `tests/list.test.mjs` (Regel mit Beispielen dafür und dagegen, 87,5 % gegen Grundform, Zählen zu vorhandenen Artikeln, Vorrat), `tests/plan.test.mjs` (Wochen-Einkauf, angezeigte Schreibweise, getrennte Fälle) und im Browser: Zwiebel/Zwiebeln über Rezept, Woche, Eingabefeld und Vorrat.
+
+Testpunkte für Version 2.48 (iPhone):
+
+- [ ] Zwei Rezepte, eines mit „Zwiebel“, eines mit „Zwiebeln“, im Wochenplan: Der Einkauf zeigt **eine** Zeile mit der Summe.
+- [ ] „Zwiebeln“ steht auf der Liste: Ein Rezept mit „Zwiebel“ übernehmen zählt zur vorhandenen Menge dazu.
+- [ ] „Zwiebeln“ im Vorrat: Ein Rezept mit „Zwiebel“ steht beim Übernehmen vorab abgewählt mit „Vorrat“.
+
+## Neu in Version 2.47: Drei nachgestellte Fehler behoben, Wochen-Einkauf ohne Verdoppeln
+
+Drei Fälle wurden mit einer leeren Liste, zwei Geschäften und einem Altbestand nachgestellt, mit Tests abgesichert und behoben. Danach wurde die gesamte Übernahme von Rezepten und Wochenplan durchgeprüft.
+
+**1. Rezeptübernahme: „Salz nach Bedarf“ fehlte.** Beim Übernehmen prüft die App, was „schon auf der Liste steht“. Dafür nahm sie auch das **Namensgedächtnis** (Namen aus früheren Einkäufen, die die App für Kategorie und Einheit merkt) wie Artikel auf der Liste. Stand „Salz“ nur dort, hieß es „Alles davon steht schon auf der Liste.“, und Salz wurde nicht hinzugefügt. Jetzt zählt **nur die tatsächliche Einkaufsliste** (`addToList` bekommt die Artikel der Liste und getrennt den Verlauf; `foldIntoList` ignoriert Einträge ohne Kennung). Gelernte Namen helfen weiter nur beim Raten der Kategorie. Das gilt für „Auf die Liste“ am Rezept, „Einkauf für die Woche“, Vorlagen und den Link `?add=`. Mit Menge war der Fehler gefährlicher: „200 ml Milch“ konnte als „Dazuzählen“ zu einem Namen ohne Artikel gebucht werden (eine Änderung ohne Ziel).
+
+**2. „Einkauf beenden“ betraf auch andere Geschäfte.** Waren Tomaten bei Edeka und Milch bei Lidl abgehakt, entfernte das Beenden des Edeka-Einkaufs beide, und die gespeicherte Schätzung enthielt beide. Jetzt gilt bei einem **gewählten Geschäft** nur dessen Einkauf (`finishable` in `shop.js`):
+- die **eigenen Artikel** des Geschäfts, die abgehakt sind,
+- **Artikel ohne Geschäft**, die in diesem Geschäft abgehakt wurden (die Sitzung merkt sich das) oder deren Ort unbekannt ist (die Ansicht wurde zwischendurch neu geladen). Ein bei Lidl abgehakter Artikel ohne Geschäft bleibt beim Abschluss von Edeka stehen. Zeigt ein Geschäft keine Artikel ohne Geschäft (Drogerie, eigene Liste), betrifft der Abschluss nur seine eigenen.
+- Unter **„Alle“** schließt der Abschluss wie bisher alles Abgehakte ein.
+- Das Fenster nennt, was bleibt („Ein abgehakter Artikel eines anderen Geschäfts bleibt bis zum jeweiligen Abschluss stehen.“), und die gespeicherte **Schätzung** enthält nur den beendeten Einkauf. Der Ort eines Artikels wird nur für beendete Artikel vergessen, nicht für alle (vorher löschte `clear()` alles).
+
+**3. Altlasten der Preisfunktion.**
+- **Gemerkte Namen:** Eine alte Zuordnung „apfeltasche → Apfel“ (Text vom Kassenbon aus den Versionen 2.40 bis 2.43) benannte beim erneuten Hinzufügen die Apfeltasche in Apfel um. Jetzt werden **bestätigte Schreibweisen** („Zwiebel“ → „Zwiebeln“: beide Seiten lassen sich gleich schreiben, siehe `aliasKind` in `data.js`) von **fragwürdigen** Zuordnungen unterschieden. Fragwürdige (anderes Wort, oder mit „Sorte“, die nur vom Kassenbon kam) **wirken nicht mehr**: nicht beim Eintippen, nicht im Link, nicht in der Liste. Sie bleiben in der Datei, bis jemand sie prüft.
+- **Einstellungen → Gemerkte Namen** zeigt oben die wirksamen, darunter „Alte Zuordnungen prüfen“ mit **Behalten** (die Zuordnung gilt ab dann; gespeichert als `confirmed: true` an der Zuordnung, ältere Apps ignorieren das Feld) und **Entfernen**. Die Überschrift nennt die Zahl („Gemerkte Namen (1) · 3 prüfen“).
+- **Veraltete Hinweise** im Artikelfenster („Frühere Kaufpreise siehst du im Modus ‚Im Laden‘, wenn du den Artikelnamen antippst“, „Ein bereits gemerkter Preis dieses Geschäfts wird vorgeschlagen“) sind entfernt: Beide Funktionen gibt es seit 2.44 nicht mehr.
+
+**Wochenplan → Einkauf: nichts mehr doppelt.** Vorher setzte ein zweiter „Einkauf für die Woche“ alles noch einmal auf die Liste: 400 g Nudeln wurden 800 g. Jetzt merkt sich **jedes Gericht** (`meals.listedServings` und `listedAt`), für wie viele Portionen seine Zutaten übernommen wurden (zusammen mit den Artikeln in einer Änderung):
+- Im **Plan** steht am Gericht „Zutaten übernommen“ (bei geänderten Portionen: „Zutaten für 2 Portionen übernommen“).
+- Der Wochen-Einkauf hat den Haken **„Schon übernommene Gerichte auslassen“** (gesetzt, bei jedem Öffnen). Der Hinweis nennt, was schon übernommen ist.
+- **Portionen erhöht** (2 → 5): Es kommen nur die **zusätzlichen** 3 Portionen dazu (Rezept mit 150 g Reis für 2: 225 g). **Verringert**: nichts ändert sich.
+- Wer ein anderes **Rezept** an das Gericht setzt, löscht den Merker: Es zählt wieder als neu.
+- **Ausdrücklich noch einmal:** Haken heraus. Der Hinweis warnt rot, dass sich Mengen verdoppeln, wenn die Zutaten noch auf der Liste stehen.
+- **Zwei Personen:** Der Merker ist ein normales Feld des Gerichts und wird wie alles abgeglichen: Hat Nico übernommen, steht es bei Anna als übernommen da. Eine Übernahme ohne Netz kommt beim nächsten Abgleich an; ändert die andere Person zwischendurch die Portionen, kommt nur das Zusätzliche.
+- **Bekannte Grenze:** Übernehmen beide Personen **gleichzeitig ohne Netz** dieselbe Woche, kann niemand das vorher wissen: Beide Zuwächse zählen (100 + 400 + 400 g), die Mengen sind dann doppelt. Danach stehen die Gerichte bei beiden als übernommen da; falsche Mengen lassen sich am Artikel ändern.
+- Der einzelne **Rezept-Weg** („Auf die Liste“ an der Karte) bleibt eine ausdrückliche Einzelaktion ohne Merker.
+
+**Durchgeprüft (ohne Befund):** Umrechnung auf Portionen (Bruchteile wie 66,667 g statt 66,66666666666667; sehr kleine Mengen werden nie 0), Zusammenzählen mehrerer Gerichte (g + kg, ml + l, Stück/Stk.; verschiedene Einheiten wie EL und TL bleiben getrennt), „nach Bedarf“ bleibt 1 Stück und wird nicht doppelt aufgeschrieben. Eine Zufallsprüfung mit 3000 Wochenplänen verglich die Summen mit einer unabhängigen Rechnung: keine Abweichung.
+
+**Tests:** `tests/list.test.mjs` (Salz auf leerer Liste, Eintrag ohne Kennung, Rundung, zwei Geräte, Merker am Gericht), `tests/shop.test.mjs` (`finishable`), `tests/aliases.test.mjs` (`aliasKind`, `confirmed`), `tests/plan.test.mjs` (`weekBasket`) und im Browser: Salz auf leerer Liste mit Namensgedächtnis, Einkauf beenden mit Edeka/Lidl und Artikel ohne Geschäft (mit Schätzung), alte Zuordnungen (Eintippen, Link, Prüfen, Behalten, Entfernen), Hinweise im Artikelfenster, Wochen-Einkauf zweimal, nach Portionsänderung, mit zwei Personen und ohne Netz.
+
+Testpunkte für Version 2.47 (iPhone):
+
+- [ ] Leere Liste, Rezept mit „Salz nach Bedarf“ → „Auf die Liste“ → nur Salz anhaken → Salz steht auf der Liste.
+- [ ] Im Laden Tomaten bei Edeka und Milch bei Lidl abhaken, bei Edeka „Einkauf beenden“: nur die Tomaten verschwinden; das Fenster nennt die Milch. Danach bei Lidl beenden.
+- [ ] Einstellungen → Gemerkte Namen: alte Zuordnungen stehen unter „Alte Zuordnungen prüfen“; „Apfeltasche“ hinzufügen bleibt Apfeltasche.
+- [ ] Plan: Gerichte planen, „Einkauf“ → übernehmen. Im Plan steht „Zutaten übernommen“. Noch einmal „Einkauf“: nichts mehr zu tun. Portionen eines Gerichts erhöhen: nur das Zusätzliche kommt.
 
 ## Neu in Version 2.46: Rezepte im Plan filtern, Zähler in der Einkaufsliste entfernt
 

@@ -79,6 +79,9 @@ export function validateRow(key, row) {
   if (key === 'meals' && (!validDay(row.date) || !Number.isFinite(row.servings) || row.servings <= 0 ||
       (row.recipeId !== undefined && typeof row.recipeId !== 'string') || (row.title !== undefined && typeof row.title !== 'string') ||
       !(row.recipeId || row.title) || (row.done !== undefined && typeof row.done !== 'boolean'))) throw new Error('Ungültiger Eintrag im Wochenplan.');
+  // `listedServings` und `listedAt` (Version 2.47): für wie viele Portionen die Zutaten dieses Gerichts schon auf die Einkaufsliste gesetzt wurden und wann; fehlt oder null = noch nicht.
+  if (key === 'meals' && ((row.listedServings !== undefined && row.listedServings !== null && (!Number.isFinite(row.listedServings) || row.listedServings <= 0)) ||
+      (row.listedAt !== undefined && row.listedAt !== null && !Number.isFinite(Date.parse(row.listedAt))))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
   // Einkaufsvorlage (Version 2.5): Name und bis zu 80 Artikel { name, quantity, unit, storeId? }.
   if (key === 'templates' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 60 || !Array.isArray(row.items) || row.items.length > 80 ||
@@ -94,6 +97,8 @@ export function validateRow(key, row) {
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
   // `variant` (Version 2.40): Sorte, die zur Zuordnung gehört („gala äpfel“ → Äpfel, Gala).
   if (key === 'aliases' && row.variant !== undefined && (typeof row.variant !== 'string' || row.variant.length > 80)) throw new Error('Ungültige Namenszuordnung.');
+  // `confirmed` (Version 2.47): Wer eine fragwürdige alte Zuordnung (z. B. vom Kassenbon) ausdrücklich behält, setzt sie auf true; sie wirkt dann weiter.
+  if (key === 'aliases' && row.confirmed !== undefined && typeof row.confirmed !== 'boolean') throw new Error('Ungültige Namenszuordnung.');
 }
 
 // Stand dieser App für die Datei. Wer die Datei später so ändert, dass ältere Apps sie falsch lesen oder beschädigen würden, trägt in `sync.minRev` die
@@ -280,6 +285,40 @@ export function spellingVariants(typed, known) {
   }
   return found;
 }
+/* Dasselbe Produkt? (Version 2.48) „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“, „Äpfel“ und „Apfel“ führen Rezepte, Wochen-Einkauf und Liste zusammen. Verglichen wird die
+   **Grundform** jedes Wortes (`spellingStem`: Groß-/Kleinschreibung, Umlaute und Mehrzahlendungen egal). Roh unterscheiden sich „Zwiebel“ und „Zwiebeln“ nur um 1 von 8 Buchstaben
+   (87,5 %); die Grundform ist dieselbe (100 %). Zwei Namen sind dasselbe Produkt, wenn sie gleich viele Wörter haben und jedes Wort dieselbe Grundform hat oder – bei langen Wörtern
+   (ab 20 Buchstaben) – zu mindestens 95 % übereinstimmt (das verzeiht dort einen Tippfehler; bei kurzen Wörtern kann ein Buchstabe das Produkt ändern: „Ei“ und „Eis“).
+   Nie zusammengeführt wird, wenn eine Zahl darin vorkommt („Cola 1 l“, „Cola 2 l“); andere Wörter bleiben getrennt („rote Zwiebel“, „Zwiebelmett“, „Hafermilch“).
+   Ein Name ohne Buchstaben (weniger als 2 Zeichen Grundform) ist nur mit sich selbst gleich. */
+export const SAME_PRODUCT = 0.95, LONG_WORD = 20;
+function editDistance(a, b) {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = row;
+  }
+  return previous[b.length];
+}
+// Übereinstimmung zweier Wörter in Prozent (1 = gleich), nach dem Abstand der Buchstaben.
+export const wordSimilarity = (a, b) => { const longest = Math.max(a.length, b.length); return longest ? 1 - editDistance(a, b) / longest : 0; };
+export function sameProduct(a, b) {
+  if (productKey(a) === productKey(b)) return true;
+  const left = spellingStem(a), right = spellingStem(b);
+  if (left.length < 2 || right.length < 2) return false;
+  if (left === right) return true;
+  if (/\d/.test(left) || /\d/.test(right)) return false;
+  const one = left.split(' '), two = right.split(' ');
+  return one.length === two.length && one.every((word, index) => word === two[index] || (Math.max(word.length, two[index].length) >= LONG_WORD && wordSimilarity(word, two[index]) >= SAME_PRODUCT));
+}
+
+/* Gemerkte Namen (Sammlung `aliases`) sind von zwei Herkünften. Eine bestätigte **Schreibweise** („Zwiebel“ → „Zwiebeln“) entsteht durch einen Tipp auf den Vorschlag
+   „Meinst du dasselbe wie …?“; beide Seiten lassen sich gleich schreiben. Frühere Versionen (2.40 bis 2.43) legten auch Zuordnungen von **Kassenbontext** an
+   („apfeltasche“ → „Apfel“, „gala äpfel“ → „Äpfel“ mit Sorte). Ob zwei so verschiedene Namen dasselbe Produkt meinen, kann keine Regel sicher entscheiden: Solche Zuordnungen
+   sind **fragwürdig**, wirken nicht mehr und bleiben in der Datei, bis jemand sie prüft („Behalten“ setzt `confirmed`, oder entfernen). */
+export const aliasKind = alias => alias.confirmed === true ? 'kept' : (!alias.variant && spellingStem(alias.from) === spellingStem(alias.name)) ? 'spelling' : 'doubtful';
+export const aliasApplies = alias => aliasKind(alias) !== 'doubtful';
 // Häufig gekaufte Artikel für die Schnellwahl: mindestens `minCount`-mal vorgekommen und gerade nicht offen auf der Liste.
 export function frequentItems(history, items, limit = 6, minCount = 2) {
   const open = new Set(active(items).filter(row => !row.checked).map(row => productKey(row.name)));
@@ -309,8 +348,12 @@ export function newItems(rows, storeId, actor, at, items = []) {
 }
 
 // Zutaten „nach Bedarf“ (Salz, Pfeffer) haben keine Menge, die sich umrechnen ließe: Sie landen als 1 Stück auf der Liste.
-export const listRow = (row, factor = 1) => row.unit === NO_AMOUNT ?
-  { name: row.name, quantity: 1, unit: 'Stück', noAmount: true } : { name: row.name, quantity: row.quantity * factor, unit: row.unit };
+// Umgerechnete Mengen werden auf drei Stellen gerundet („66,667 g“, nicht 66,66666666666667), nie auf 0.
+export const listRow = (row, factor = 1) => {
+  if (row.unit === NO_AMOUNT) return { name: row.name, quantity: 1, unit: 'Stück', noAmount: true };
+  const quantity = row.quantity * factor, rounded = Math.round(quantity * 1000) / 1000;
+  return { name: row.name, quantity: rounded > 0 ? rounded : quantity, unit: row.unit };
+};
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, items = []) {
   return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, items);
 }
@@ -318,17 +361,19 @@ export function ingredientItems(ingredients, recipeId, storeId, factor, actor, a
 /* Vorrat: Zutaten, die man immer zu Hause hat. Ein Name wie „Salz, Pfeffer“ oder „Salz und Pfeffer“ besteht aus mehreren Teilen
    und zählt nur dann als Vorrat, wenn jeder Teil im Vorrat steht. Klammerzusätze („Zwiebel (rot)“) bleiben unberücksichtigt. */
 const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
-export const pantryKeys = rows => new Set(active(rows || []).map(row => productKey(row.name)));
-export const inPantry = (keys, name) => { const parts = nameParts(name); return parts.length > 0 && parts.every(part => keys.has(productKey(part))); };
+// Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
+export const pantryKey = name => spellingStem(name) || productKey(name);
+export const pantryKeys = rows => new Set(active(rows || []).map(row => pantryKey(row.name)));
+export const inPantry = (keys, name) => { const parts = nameParts(name); return parts.length > 0 && parts.every(part => keys.has(pantryKey(part))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
 export function pantryAdditions(names, keys) {
   const found = new Map();
-  for (const name of names) for (const part of nameParts(name)) { const key = productKey(part); if (!keys.has(key) && !found.has(key)) found.set(key, part); }
+  for (const name of names) for (const part of nameParts(name)) { const key = pantryKey(part); if (!keys.has(key) && !found.has(key)) found.set(key, part); }
   return [...found.values()];
 }
 
 /* Gleiche Artikel zusammenzählen. Eine Menge wird zu einem offenen Artikel mit demselben Namen im selben Geschäft addiert
-   (oder zu „ohne Geschäft“), wenn die Einheiten zusammenpassen. Nichts wird geraten: 500 g und 2 Stück bleiben getrennt, ebenso
+   (oder zu „ohne Geschäft“), wenn die Einheiten zusammenpassen; „Zwiebel“ und „Zwiebeln“ sind derselbe Name (siehe sameProduct). Nichts wird geraten: 500 g und 2 Stück bleiben getrennt, ebenso
    „1 Bund“ und „2 EL“. Eine Zutat „nach Bedarf“ wird nicht noch einmal aufgeschrieben, wenn der Artikel schon auf der Liste steht. */
 const round3 = number => Math.round(number * 1000) / 1000;
 export function combineQuantity(left, right) {
@@ -344,15 +389,14 @@ export function combineQuantity(left, right) {
 // rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
 // `add`: was dazukommt, `after`: neue Gesamtmenge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
-  const pool = active(items).filter(item => !item.checked && (item.storeId || '') === (storeId || ''))
-    .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, added: null }));
+  const pool = active(items).filter(item => item.id && !item.checked && (item.storeId || '') === (storeId || ''))   // nur echte Artikel (mit Kennung), nie gelernte Namen
+    .map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, added: null }));
   const fresh = [], counted = new Map();
   let skipped = 0;
   for (const row of rows) {
-    const key = productKey(row.name);
-    const match = [...pool, ...fresh.map(entry => entry.pool)].find(entry => entry.key === key && (row.noAmount || entry.placeholder || combineQuantity(entry, row)));
+    const match = [...pool, ...fresh.map(entry => entry.pool)].find(entry => sameProduct(entry.name, row.name) && (row.noAmount || entry.placeholder || combineQuantity(entry, row)));
     if (!match) {
-      const entry = { ...row }; entry.pool = { key, name: row.name, quantity: row.quantity, unit: row.unit, placeholder: Boolean(row.noAmount), row: entry };
+      const entry = { ...row }; entry.pool = { name: row.name, quantity: row.quantity, unit: row.unit, placeholder: Boolean(row.noAmount), row: entry };
       fresh.push(entry); continue;
     }
     if (row.noAmount) { if (match.id) skipped++; continue; }
@@ -392,9 +436,11 @@ export function duplicateFolds(items, now = new Date().toISOString()) {
 }
 
 // Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
-export function addToList(rows, storeId, actor, at, items = []) {
+// `items` sind die Artikel der Einkaufsliste und nur sie entscheiden, was „schon vorhanden“ ist. `history` (Standard: die Liste selbst) sind
+// Artikel und gelernte Namen früherer Einkäufe; sie dienen nur dazu, die Kategorie neuer Artikel vorzuschlagen.
+export function addToList(rows, storeId, actor, at, items = [], history = items) {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
-  const created = newItems(fresh, storeId, actor, at, items);
+  const created = newItems(fresh, storeId, actor, at, history);
   // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).
   const ops = [...created, ...counted.map(entry => operation('items', entry.id, { add: entry.add }, actor, at))];
   return { ops, added: created.length, counted, skipped };

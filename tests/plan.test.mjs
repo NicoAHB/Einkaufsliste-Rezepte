@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, relativeDay, weekDays, weekLabel, weekStart } from '../plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, relativeDay, weekBasket, weekDays, weekLabel, weekStart } from '../plan.js';
 import { validDay } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
@@ -58,8 +58,8 @@ test('Zutaten werden über Gerichte hinweg zusammengezählt und auf Portionen um
   const text = Object.fromEntries(rows.map(item => [`${item.name}|${item.unit}`, item.quantity]));
   assert.equal(text['Tomaten|kg'], 2);            // 1600 g + 400 g
   assert.equal(text['Milch|l'], 1.75);            // 250 ml + 1,5 l
-  assert.equal(text['Zwiebel|Stück'], 4);         // 1 x 2 Portionsfaktor + 1 x 2; „Zwiebeln“ ist ein eigener Name
-  assert.equal(text['Zwiebeln|Stück'], 2);
+  assert.equal(text['Zwiebel|Stück'], 6);         // 1 x 2 Portionsfaktor + 1 x 2 + 2 „Zwiebeln“ (dasselbe Produkt, seit Version 2.48); die häufigste Schreibweise wird gezeigt
+  assert.ok(!('Zwiebeln|Stück' in text));
   assert.equal(text['Salz|nach Bedarf'], 1);
   assert.equal(text['Olivenöl|EL'], 4);
   assert.equal(text['Olivenöl|ml'], 100);
@@ -72,4 +72,52 @@ test('Kleine Mengen bleiben in g bzw. ml; unbekannte Rezepte und leere Pläne si
   assert.equal(rows.find(item => item.name === 'Tomaten').quantity, 200);
   assert.equal(rows.find(item => item.name === 'Milch').unit, 'ml');
   assert.deepEqual(aggregateIngredients([], recipes, ingredients), []);
+});
+
+// Version 2.47: Schon auf die Liste übernommene Gerichte nicht noch einmal aufnehmen (sonst verdoppeln sich die Mengen)
+const meal = (id, servings, extra = {}) => ({ id, recipeId: 'r1', servings, ...extra });
+test('Wochen-Einkauf: noch nicht Übernommenes kommt ganz, Übernommenes bleibt draußen', () => {
+  const basket = weekBasket([meal('a', 2), meal('b', 4, { listedServings: 4 }), meal('c', 3, { listedServings: 3, listedAt: '2026-10-28T10:00:00.000Z' })]);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2]]);
+  assert.deepEqual(basket.listed.map(entry => [entry.meal.id, entry.kind]), [['b', 'same'], ['c', 'same']]);
+});
+test('Wochen-Einkauf: mehr Portionen seit der Übernahme: nur die zusätzlichen; weniger: nichts; die Gerichte selbst bleiben unverändert', () => {
+  const original = [meal('a', 6, { listedServings: 4 }), meal('b', 2, { listedServings: 4 }), meal('c', 2.5, { listedServings: 2.25 })];
+  const copy = structuredClone(original);
+  const basket = weekBasket(original);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2], ['c', 0.25]]);
+  assert.deepEqual(basket.listed.map(entry => [entry.meal.id, entry.kind, entry.extra]), [['a', 'more', 2], ['b', 'less', -2], ['c', 'more', 0.25]]);
+  assert.deepEqual(original, copy);
+  // die Zutaten stimmen: 2 zusätzliche von 4 Portionen = die halbe Menge
+  const rows = aggregateIngredients(basket.use.slice(0, 1), [{ id: 'r1', name: 'R', servings: 4 }], [{ recipeId: 'r1', name: 'Mehl', quantity: 400, unit: 'g' }]);
+  assert.deepEqual(rows.map(row => [row.name, row.quantity, row.unit]), [['Mehl', 200, 'g']]);
+});
+test('Wochen-Einkauf: ausdrücklich noch einmal – alle Gerichte mit allen Portionen', () => {
+  const basket = weekBasket([meal('a', 2), meal('b', 4, { listedServings: 4 }), meal('c', 1, { listedServings: 3 })], true);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2], ['b', 4], ['c', 1]]);
+  assert.deepEqual(basket.listed.map(entry => entry.meal.id), ['b', 'c']);
+});
+test('Wochen-Einkauf: Gleitkomma-Reste zählen nicht als „mehr“; ungültige Merker gelten als nicht übernommen', () => {
+  assert.equal(weekBasket([meal('a', 0.1 + 0.2, { listedServings: 0.3 })]).use.length, 0);
+  for (const bad of [null, 0, -1, 'x', undefined, NaN]) assert.deepEqual(weekBasket([meal('a', 2, { listedServings: bad })]).use.map(entry => entry.servings), [2], String(bad));
+  assert.deepEqual(weekBasket([]), { use: [], listed: [] });
+});
+
+// Version 2.48: dasselbe Produkt in anderer Schreibweise wird zusammengezählt
+test('Wochen-Einkauf: „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“ sind ein Eintrag; die häufigere Schreibweise (bei Gleichstand die längere) wird gezeigt', () => {
+  const recipes = [{ id: 'a', name: 'A', servings: 2 }, { id: 'b', name: 'B', servings: 2 }, { id: 'c', name: 'C', servings: 2 }];
+  const meals = ['a', 'b', 'c'].map(recipeId => ({ recipeId, servings: 2 }));
+  const rows = aggregateIngredients(meals, recipes, [
+    { recipeId: 'a', name: 'Zwiebel', quantity: 1, unit: 'Stück' }, { recipeId: 'b', name: 'Zwiebeln', quantity: 2, unit: 'Stück' },
+    { recipeId: 'a', name: 'Tomate', quantity: 100, unit: 'g' }, { recipeId: 'b', name: 'Tomaten', quantity: 0.4, unit: 'kg' }, { recipeId: 'c', name: 'Tomaten', quantity: 100, unit: 'g' },
+    { recipeId: 'a', name: 'Äpfel', quantity: 2, unit: 'Stück' }, { recipeId: 'c', name: 'Apfel', quantity: 1, unit: 'Stück' }]);
+  assert.deepEqual(rows.map(row => [row.name, row.quantity, row.unit, row.sources]), [
+    ['Äpfel', 3, 'Stück', ['A', 'C']], ['Tomaten', 600, 'g', ['A', 'B', 'C']], ['Zwiebeln', 3, 'Stück', ['A', 'B']]]);
+});
+test('Wochen-Einkauf: andere Wörter, andere Einheiten und Zahlen im Namen bleiben getrennt', () => {
+  const recipes = [{ id: 'a', name: 'A', servings: 1 }];
+  const ing = list => list.map(([name, quantity, unit]) => ({ recipeId: 'a', name, quantity, unit }));
+  const rows = aggregateIngredients([{ recipeId: 'a', servings: 1 }], recipes, ing([['Zwiebel', 1, 'Stück'], ['rote Zwiebel', 1, 'Stück'], ['Zwiebeln', 200, 'g'], ['Milch', 1, 'l'], ['Hafermilch', 1, 'l'],
+    ['Cola 1 l', 1, 'Stück'], ['Cola 2 l', 1, 'Stück'], ['Ei', 1, 'Stück'], ['Eis', 1, 'Stück']]));
+  assert.deepEqual(rows.map(row => `${row.name}|${row.unit}`).sort(), ['Cola 1 l|Stück', 'Cola 2 l|Stück', 'Ei|Stück', 'Eis|Stück', 'Hafermilch|l', 'Milch|l', 'Zwiebel|Stück', 'Zwiebeln|g', 'rote Zwiebel|Stück'].sort());
 });

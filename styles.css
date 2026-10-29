@@ -1922,6 +1922,36 @@ body.in-store .tabs {
   min-height:32px;
   height:32px
 }
+/* Gemerkte Namen: alte Zuordnungen zur Prüfung (Version 2.47): je eine ganze Zeile, Text links, „Behalten“ und „×“ rechts */
+#alias-doubt {
+  margin-top:10px
+}
+#alias-doubt h4 {
+  margin:0
+}
+#alias-doubt-list {
+  display:grid;
+  gap:8px
+}
+#alias-doubt-list li {
+  display:flex;
+  flex-wrap:wrap;
+  min-width:0;
+  padding:4px 4px 4px 14px;
+  border-radius:16px
+}
+#alias-doubt-list li span {
+  flex:1 1 9em;
+  min-width:0;
+  padding:6px 0;
+  overflow-wrap:break-word
+}
+#alias-doubt-list li button.small {
+  flex:0 0 auto;
+  min-height:36px;
+  margin-left:auto;
+  padding:0 12px
+}
 /* Geschäfte-Dialog: vorhandene Geschäfte als zugeklappte Karten mit Pfeil; „Neues Geschäft“ unten ist eine feste Karte */
 .store-row {
   display:block;
@@ -3919,4 +3949,13 @@ body.selecting .item .item-copy {
   left:12px;
   z-index:3;
   margin:0
+}
+
+/* Wochenplan (Version 2.47): was schon auf der Einkaufsliste steht */
+.meal-listed {
+  display:block;
+  color:var(--accent)
+}
+#week-listed.warn {
+  color:var(--danger, #b3261e)
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, LOCK_CHOICES, LOCK_DEFAULT, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from '../shop.js';
+import { ALL_STORES, HOLD_FINISH_MS, HOLD_UNLOCK_MS, LOCK_CHOICES, LOCK_DEFAULT, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from '../shop.js';
 
 const item = (id, storeId, checked = false) => ({ id, storeId, checked, name: id });
 const items = [item('milch', 'edeka'), item('brot', ''), item('kaese', 'lidl'), item('nudeln', 'edeka', true), item('eier', '', true)];
@@ -112,4 +112,32 @@ test('Eigene Liste („Wünsche“): ihre Artikel stehen nur, wenn genau dieses 
   assert.deepEqual(all.sections.map(section => section.store?.id ?? null), [null, 'edeka', 'lidl']);
   assert.equal(all.count, 3);
   assert.deepEqual(ids(all.done), []);
+});
+
+// Version 2.47: „Einkauf beenden“ betrifft nur den Einkauf des gewählten Geschäfts (Tomaten bei Edeka und Milch bei Lidl abgehakt: Edeka beendet nur die Tomaten).
+const done = [item('tomaten', 'edeka', true), item('milch', 'lidl', true), item('brot', 'edeka'), item('kaese', 'lidl'), item('salz', '', true), item('pfeffer', '', true), item('essig', '', true)];
+test('Einkauf beenden bei einem Geschäft: nur dessen Abgehaktes, Abgehaktes anderer Geschäfte bleibt', () => {
+  assert.deepEqual(ids(finishable(done, 'edeka')), ['tomaten', 'salz', 'pfeffer', 'essig'], 'Edeka: Tomaten und die Artikel ohne Geschäft ohne bekannten anderen Ort');
+  assert.deepEqual(ids(finishable(done, 'lidl')), ['milch', 'salz', 'pfeffer', 'essig']);
+  assert.deepEqual(ids(finishable(done, 'rewe')), ['salz', 'pfeffer', 'essig'], 'ein Geschäft ohne eigene Artikel: nichts von anderen');
+});
+test('Unter „Alle“ (und ohne Auswahl) schließt der Abschluss alles Abgehakte ein', () => {
+  assert.deepEqual(ids(finishable(done, ALL_STORES)), ['tomaten', 'milch', 'salz', 'pfeffer', 'essig']);
+  assert.deepEqual(ids(finishable(done, '')), ['tomaten', 'milch', 'salz', 'pfeffer', 'essig']);
+});
+test('Artikel ohne Geschäft gehören zu dem Geschäft, in dem sie abgehakt wurden; nur im Laden bleiben sie dem anderen Abschluss erhalten', () => {
+  const session = new Map([['salz', 'lidl'], ['pfeffer', 'edeka']]);   // essig: Ort unbekannt (z. B. nach dem Neuladen)
+  assert.deepEqual(ids(finishable(done, 'edeka', session)), ['tomaten', 'pfeffer', 'essig']);
+  assert.deepEqual(ids(finishable(done, 'lidl', session)), ['milch', 'salz', 'essig']);
+  assert.deepEqual(ids(finishable(done, ALL_STORES, session)), ['tomaten', 'milch', 'salz', 'pfeffer', 'essig'], '„Alle“ schließt alles ein');
+});
+test('Ein Geschäft, das keine Artikel ohne Geschäft zeigt (Drogerie, eigene Liste), beendet nur die eigenen', () => {
+  assert.deepEqual(ids(finishable(done, 'edeka', new Map([['salz', 'edeka']]), false)), ['tomaten']);
+  assert.deepEqual(ids(finishable([item('a', 'wuensche', true), item('b', 'edeka', true), item('c', '', true)], 'wuensche', new Map(), false)), ['a']);
+});
+test('Der Abschluss ändert die Eingabe nicht und lässt Offenes unberührt', () => {
+  const copy = structuredClone(done);
+  finishable(done, 'edeka');
+  assert.deepEqual(done, copy);
+  assert.deepEqual(finishable([item('x', 'edeka'), item('y', '')], 'edeka'), []);
 });
