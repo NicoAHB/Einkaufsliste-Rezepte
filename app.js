@@ -22,7 +22,7 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes } from './cookable.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel as spendDay, estimateOf, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel as spendDay, duplicatePurchase, estimateOf, possibleDuplicates, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -1987,6 +1987,7 @@ function finishShopping(amount = '') {
   // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
     estimate: estimateOf(checked) }, isoDate()) : null;
+  if (fields) duplicateWarning(fields, '', 'tippe auf „+“');
   const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   for (const id of ids) shopChecked.delete(id);   // nur was beendet wird: Artikel ohne Geschäft, die in einem anderen Geschäft abgehakt wurden, behalten ihren Ort
   $('#finish-dialog').close();
@@ -2298,15 +2299,16 @@ function renderSpending() {
   const list = $('#purchase-list'); list.replaceChildren();
   $('#purchase-count').textContent = current.count ? countLabel(current.count, 'Eintrag', 'Einträge') : '';
   if (!current.count) list.append(element('li', 'Noch nichts eingetragen. Tippe oben auf „Einkauf“: Betrag eingeben oder einen Kassenbon lesen lassen.', 'empty'));
+  const twins = possibleDuplicates(current.list);   // gleicher Tag, gleiches Geschäft, gleicher Betrag: möglicherweise doppelt erfasst
   for (const row of current.list) {
-    const item = element('li', undefined, 'spend-item'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores);
+    const item = element('li', undefined, 'spend-item'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores), twin = twins.has(row.id);
     open.type = 'button'; item.dataset.id = row.id;
-    copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : ''].filter(Boolean).join(' · ')));
+    copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : '', twin ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
     const verdict = estimateVerdict(row.cents, row.estimate), amount = element('span', euros(row.cents), 'spend-amount');
     // Kleiner Punkt: bezahlt gegen die geschätzte Summe der abgehakten Artikel (grün: im Rahmen oder günstiger, rot: teurer)
     if (verdict) { const dot = element('span', undefined, `spend-dot ${verdict.level}`); dot.setAttribute('aria-hidden', 'true'); amount.prepend(dot); }
     open.append(copy, amount);
-    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}${verdict ? `, ${estimateWords(row.cents, row.estimate)}` : ''}: ändern`);
+    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}${verdict ? `, ${estimateWords(row.cents, row.estimate)}` : ''}${twin ? ', möglicherweise doppelt erfasst' : ''}: ändern`);
     open.addEventListener('click', () => guard(() => openPurchase(row.id)));
     item.append(open); list.append(item);
   }
@@ -2375,12 +2377,25 @@ async function readPurchasePhoto(files) {
     purchaseStatus(''); message(error.message);
   } finally { purchaseAbort = null; $('#purchase-progress').hidden = true; form.elements.images.value = ''; }
 }
+// Mögliches Doppel: Am gleichen Tag steht schon ein Einkauf mit gleichem Betrag im gleichen Geschäft. Beim ersten Versuch wird gewarnt und nichts gespeichert; der zweite Versuch mit
+// denselben Angaben speichert (es kann ja wirklich ein zweiter Einkauf sein). `warned` merkt sich die Angaben der Warnung.
+let duplicateWarned = '';
+function duplicateWarning(fields, ignoreId, how) {
+  const twin = duplicatePurchase(purchaseRows(), fields, ignoreId);
+  if (!twin) { duplicateWarned = ''; return; }
+  const key = `${fields.date}|${fields.cents}|${fields.storeId || ''}`;
+  if (duplicateWarned === key) { duplicateWarned = ''; return; }
+  duplicateWarned = key;
+  const store = storeNameOf(twin, active(state.stores));
+  throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.createdBy ? ` (von ${twin.createdBy})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
+}
 function savePurchase() {
   const form = $('#purchase-form'), id = form.elements.id.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
   if (purchaseAbort) throw new Error('Die Texterkennung läuft noch. Bitte kurz warten.');
   const storeName = active(state.stores).find(store => store.id === storeId)?.name || (editing?.storeId === storeId ? editing.storeName || '' : '');
   const fields = purchaseFields({ amount: form.elements.amount.value, date: form.elements.date.value, storeId, storeName, note: form.elements.note.value, source: purchaseSource }, isoDate());
   if (id && !purchaseRows().some(row => row.id === id)) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  duplicateWarning(fields, id, 'tippe auf „Speichern“');
   // Beim Ändern auch leer gewordene Felder überschreiben (Geschäft entfernt, Notiz gelöscht).
   const op = id ? nextOp('purchases', id, { storeId: '', storeName: '', ...fields }) : nextOp('purchases', uid(), fields);
   spendMonth = monthOf(fields.date);
@@ -3019,7 +3034,8 @@ $('#purchase-delete').addEventListener('click', () => guard(() => {
   if (id) removeRows('purchases', [id]);
   $('#purchase-dialog').close();
 }));
-$('#purchase-dialog').addEventListener('close', () => purchaseAbort?.abort());
+$('#purchase-dialog').addEventListener('close', () => { purchaseAbort?.abort(); duplicateWarned = ''; });
+$('#finish-dialog').addEventListener('close', () => { duplicateWarned = ''; });
 $('#compact-now').addEventListener('click', () => guard(compactNow));
 $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());

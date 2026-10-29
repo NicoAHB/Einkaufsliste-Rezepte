@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.51
+# Einkauf & Rezepte – Version 2.52
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,19 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.52: Ausgaben gegen doppelte Erfassung geschützt
+
+**Wann die App warnt.** Steht am **gleichen Tag** schon ein Einkauf mit **gleichem Betrag im gleichen Geschäft** (oder beide ohne Geschäft), warnt sie, bevor sie speichert. Das trifft den **erneut übernommenen Kassenbon** ebenso wie **beide Personen, die denselben Einkauf eintragen**. Ein Hinweis, kein Verbot: Zwei gleich teure Einkäufe am selben Tag sind möglich.
+- **Einkauf eintragen** (von Hand oder aus dem Kassenbon): Beim ersten „Speichern“ erscheint im Fenster „Möglicherweise doppelt: Am Di. 27.10. steht schon ein Einkauf über 40,00 € bei Edeka. War es ein zweiter Einkauf, tippe auf „Speichern“ noch einmal.“ Nichts wird gespeichert. Tippt man noch einmal, wird gespeichert. Ändert man vorher Betrag, Tag oder Geschäft, gilt die Warnung nicht mehr.
+- **„Einkauf beenden“ mit Betrag:** derselbe Schutz („…tippe auf „+“ noch einmal“); der Einkauf wird erst beim zweiten Tippen beendet.
+- **Einen Eintrag ändern:** Er zählt nicht als sein eigenes Doppel. Gelöschte Einträge zählen nicht.
+- **In der Liste:** Haben zwei Einträge denselben Tag, dasselbe Geschäft und denselben Betrag (z. B. weil beide Personen **ohne Netz** gleichzeitig dasselbe eingetragen haben), steht an beiden „Doppelt?“; ein Tipp öffnet den Eintrag, der sich dann löschen lässt.
+- Logik: `duplicatePurchase`, `possibleDuplicates` in `spending.js`.
+
+**Tests:** `tests/spending.test.mjs` und im Browser (Warnung, zweites Speichern, andere Angaben ohne Warnung, Ändern, „Einkauf beenden“, Hinweis in der Liste).
+
+Testpunkt (iPhone): Denselben Betrag am selben Tag im selben Geschäft zweimal eintragen: der erste Versuch warnt, der zweite speichert; in der Liste steht „Doppelt?“.
 
 ## Neu in Version 2.51: Gerichte im Wochenplan auf einen anderen Tag ziehen
 

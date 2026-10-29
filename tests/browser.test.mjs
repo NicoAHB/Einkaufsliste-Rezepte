@@ -1822,6 +1822,49 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Ausgaben gegen doppelte Erfassung: gleicher Tag, Geschäft und Betrag warnen beim ersten Speichern, ein zweites Speichern ist möglich; andere Angaben warnen nicht; die Liste zeigt „Doppelt?“', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('[data-tab=spending]');
+    const count = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt).length);
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 1);
+    // derselbe Einkauf noch einmal: Warnung, nichts gespeichert, Fenster bleibt offen
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' });
+    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /Möglicherweise doppelt: Am .+ steht schon ein Einkauf über 40,00\s€ bei Edeka\. War es ein zweiter Einkauf, tippe auf „Speichern“ noch einmal\./);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
+    assert.equal(await count(), 1);
+    // ein zweites Mal Speichern: gespeichert (es kann wirklich ein zweiter Einkauf sein)
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 2);
+    assert.equal(await page.locator('#purchase-list .spend-row', { hasText: 'Doppelt?' }).count(), 2);
+    assert.match(await page.locator('#purchase-list .spend-row').first().getAttribute('aria-label'), /möglicherweise doppelt erfasst/);
+    // anderer Betrag oder anderes Geschäft: keine Warnung
+    await addPurchase(page, { amount: '40,01', store: 'Edeka' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    await addPurchase(page, { amount: '40,00', store: 'Lidl' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 4);
+    assert.equal(await page.locator('#purchase-list .spend-row', { hasText: 'Doppelt?' }).count(), 2);
+    // Warnen, dann den Betrag ändern: die Warnung gilt nicht mehr, es wird ohne zweiten Anlauf gespeichert
+    await addPurchase(page, { amount: '40,00', store: 'Edeka' });
+    await page.waitForSelector('#purchase-dialog [data-dialog-error]');
+    await page.fill('#purchase-form input[name=amount]', '41,00'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 5);
+    // Beim Ändern eines Eintrags zählt er selbst nicht
+    await page.locator('#purchase-list .spend-row', { hasText: '41,00' }).click(); await sheetOpen(page);
+    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await count(), 5);
+    // „Einkauf beenden“ mit Betrag: derselbe Schutz („+“ noch einmal)
+    await page.click('[data-tab=shopping]'); await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await shopTap(page, 'Tomaten').click(); await finishShop(page); await sheetOpen(page);
+    await page.fill('#finish-form input[name=amount]', '40'); await page.click('#finish-form .add-button');
+    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Möglicherweise doppelt[\s\S]*tippe auf „\+“ noch einmal/);
+    assert.equal(await count(), 5);
+    await page.click('#finish-form .add-button'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.equal(await count(), 6);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Ausgaben: Dialogfenster und Einstellungen laufen bei 320 px nicht über; „Jetzt aufräumen“ zählt alte Ausgaben mit', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
     await open(page);
