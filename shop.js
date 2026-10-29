@@ -41,6 +41,16 @@ export function shopAllView(items, stores) {
   return { sections, done: items.filter(item => item.checked), count: open.length };
 }
 
+/* „Einkauf beenden“ (Version 2.47): Was verschwindet von der Liste? Bei „Alle“ alles Abgehakte. Bei einem Geschäft nur dessen Einkauf: seine eigenen Artikel und Artikel ohne
+   Geschäft, die hier abgehakt wurden (`session`: Kennung → Geschäft, siehe `shopView`) oder deren Ort unbekannt ist (die Ansicht wurde zwischendurch neu geladen). Was in einem anderen
+   Geschäft abgehakt wurde, bleibt bis zu dessen Abschluss. Nimmt das Geschäft keine Artikel ohne Geschäft mit auf (`takesAnywhere`), betrifft der Abschluss nur seine eigenen.
+   `items`: die sichtbaren Artikel (wie bei `shopView`). */
+export function finishable(items, storeId, session = new Map(), takesAnywhere = true) {
+  const checked = items.filter(item => item.checked);
+  if (!storeId || storeId === ALL_STORES) return checked;
+  return checked.filter(item => item.storeId ? item.storeId === storeId : takesAnywhere && (session.get(item.id) ?? storeId) === storeId);
+}
+
 /* Schutz vor versehentlichen Berührungen im Laden (Handy in der Hosentasche): „Einkauf beenden“ und „Entsperren“ muss man gedrückt halten,
    und nach einiger Zeit ohne Berührung sperrt sich die Ansicht (Tippen bewirkt dann nichts, Scrollen geht weiter). */
 export const LOCK_CHOICES = [0, 10, 20, 30, 60, 120];   // Sekunden ohne Berührung bis zur Sperre; 0 = nie

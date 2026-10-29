@@ -37,6 +37,24 @@ export function relativeDay(iso, today = isoDate()) {
   return 'vor über einem Jahr';
 }
 
+/* „Schon auf der Liste“ (Version 2.47): Wer die Zutaten der Woche auf die Einkaufsliste setzt, merkt sich an jedem Gericht (`listedServings`, `listedAt`), für wie viele Portionen das geschah.
+   Beim nächsten Mal bleiben solche Gerichte draußen, sonst verdoppelten sich die Mengen auf der Liste. Wurden die Portionen seitdem erhöht, kommen nur die zusätzlichen dazu.
+   `again`: schon Übernommenes ausdrücklich noch einmal aufnehmen (mit allen Portionen). Ergebnis: `use` (Gerichte für die Zutatenliste, mit den Portionen, die gelten) und `listed`
+   (die schon übernommenen Gerichte: `kind` 'same' = unverändert, 'more' = mehr Portionen seit der Übernahme (`extra`), 'less' = weniger). */
+const EPSILON = 1e-9;
+export function weekBasket(meals, again = false) {
+  const use = [], listed = [];
+  for (const meal of meals) {
+    const done = Number(meal.listedServings) > 0 ? Number(meal.listedServings) : 0;
+    if (!done) { use.push(meal); continue; }
+    const extra = Math.round((meal.servings - done) * 1000) / 1000;
+    const kind = extra > EPSILON ? 'more' : extra < -EPSILON ? 'less' : 'same';
+    listed.push({ meal, kind, extra, done });
+    if (again) use.push(meal); else if (kind === 'more') use.push({ ...meal, servings: extra });
+  }
+  return { use, listed };
+}
+
 /* Zutaten aller Gerichte zusammenzählen. Gleicher Name und vergleichbare Einheit werden addiert
    (g und kg zusammen, ml und l zusammen); 1,2 kg statt 1200 g. Unterschiedliche Einheiten wie
    „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt. */

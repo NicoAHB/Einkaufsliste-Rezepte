@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, relativeDay, weekDays, weekLabel, weekStart } from '../plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, relativeDay, weekBasket, weekDays, weekLabel, weekStart } from '../plan.js';
 import { validDay } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
@@ -72,4 +72,33 @@ test('Kleine Mengen bleiben in g bzw. ml; unbekannte Rezepte und leere Pläne si
   assert.equal(rows.find(item => item.name === 'Tomaten').quantity, 200);
   assert.equal(rows.find(item => item.name === 'Milch').unit, 'ml');
   assert.deepEqual(aggregateIngredients([], recipes, ingredients), []);
+});
+
+// Version 2.47: Schon auf die Liste übernommene Gerichte nicht noch einmal aufnehmen (sonst verdoppeln sich die Mengen)
+const meal = (id, servings, extra = {}) => ({ id, recipeId: 'r1', servings, ...extra });
+test('Wochen-Einkauf: noch nicht Übernommenes kommt ganz, Übernommenes bleibt draußen', () => {
+  const basket = weekBasket([meal('a', 2), meal('b', 4, { listedServings: 4 }), meal('c', 3, { listedServings: 3, listedAt: '2026-10-28T10:00:00.000Z' })]);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2]]);
+  assert.deepEqual(basket.listed.map(entry => [entry.meal.id, entry.kind]), [['b', 'same'], ['c', 'same']]);
+});
+test('Wochen-Einkauf: mehr Portionen seit der Übernahme: nur die zusätzlichen; weniger: nichts; die Gerichte selbst bleiben unverändert', () => {
+  const original = [meal('a', 6, { listedServings: 4 }), meal('b', 2, { listedServings: 4 }), meal('c', 2.5, { listedServings: 2.25 })];
+  const copy = structuredClone(original);
+  const basket = weekBasket(original);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2], ['c', 0.25]]);
+  assert.deepEqual(basket.listed.map(entry => [entry.meal.id, entry.kind, entry.extra]), [['a', 'more', 2], ['b', 'less', -2], ['c', 'more', 0.25]]);
+  assert.deepEqual(original, copy);
+  // die Zutaten stimmen: 2 zusätzliche von 4 Portionen = die halbe Menge
+  const rows = aggregateIngredients(basket.use.slice(0, 1), [{ id: 'r1', name: 'R', servings: 4 }], [{ recipeId: 'r1', name: 'Mehl', quantity: 400, unit: 'g' }]);
+  assert.deepEqual(rows.map(row => [row.name, row.quantity, row.unit]), [['Mehl', 200, 'g']]);
+});
+test('Wochen-Einkauf: ausdrücklich noch einmal – alle Gerichte mit allen Portionen', () => {
+  const basket = weekBasket([meal('a', 2), meal('b', 4, { listedServings: 4 }), meal('c', 1, { listedServings: 3 })], true);
+  assert.deepEqual(basket.use.map(entry => [entry.id, entry.servings]), [['a', 2], ['b', 4], ['c', 1]]);
+  assert.deepEqual(basket.listed.map(entry => entry.meal.id), ['b', 'c']);
+});
+test('Wochen-Einkauf: Gleitkomma-Reste zählen nicht als „mehr“; ungültige Merker gelten als nicht übernommen', () => {
+  assert.equal(weekBasket([meal('a', 0.1 + 0.2, { listedServings: 0.3 })]).use.length, 0);
+  for (const bad of [null, 0, -1, 'x', undefined, NaN]) assert.deepEqual(weekBasket([meal('a', 2, { listedServings: bad })]).use.map(entry => entry.servings), [2], String(bad));
+  assert.deepEqual(weekBasket([]), { use: [], listed: [] });
 });

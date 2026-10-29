@@ -79,6 +79,9 @@ export function validateRow(key, row) {
   if (key === 'meals' && (!validDay(row.date) || !Number.isFinite(row.servings) || row.servings <= 0 ||
       (row.recipeId !== undefined && typeof row.recipeId !== 'string') || (row.title !== undefined && typeof row.title !== 'string') ||
       !(row.recipeId || row.title) || (row.done !== undefined && typeof row.done !== 'boolean'))) throw new Error('Ungültiger Eintrag im Wochenplan.');
+  // `listedServings` und `listedAt` (Version 2.47): für wie viele Portionen die Zutaten dieses Gerichts schon auf die Einkaufsliste gesetzt wurden und wann; fehlt oder null = noch nicht.
+  if (key === 'meals' && ((row.listedServings !== undefined && row.listedServings !== null && (!Number.isFinite(row.listedServings) || row.listedServings <= 0)) ||
+      (row.listedAt !== undefined && row.listedAt !== null && !Number.isFinite(Date.parse(row.listedAt))))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
   // Einkaufsvorlage (Version 2.5): Name und bis zu 80 Artikel { name, quantity, unit, storeId? }.
   if (key === 'templates' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 60 || !Array.isArray(row.items) || row.items.length > 80 ||
@@ -94,6 +97,8 @@ export function validateRow(key, row) {
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
   // `variant` (Version 2.40): Sorte, die zur Zuordnung gehört („gala äpfel“ → Äpfel, Gala).
   if (key === 'aliases' && row.variant !== undefined && (typeof row.variant !== 'string' || row.variant.length > 80)) throw new Error('Ungültige Namenszuordnung.');
+  // `confirmed` (Version 2.47): Wer eine fragwürdige alte Zuordnung (z. B. vom Kassenbon) ausdrücklich behält, setzt sie auf true; sie wirkt dann weiter.
+  if (key === 'aliases' && row.confirmed !== undefined && typeof row.confirmed !== 'boolean') throw new Error('Ungültige Namenszuordnung.');
 }
 
 // Stand dieser App für die Datei. Wer die Datei später so ändert, dass ältere Apps sie falsch lesen oder beschädigen würden, trägt in `sync.minRev` die
@@ -280,6 +285,12 @@ export function spellingVariants(typed, known) {
   }
   return found;
 }
+/* Gemerkte Namen (Sammlung `aliases`) sind von zwei Herkünften. Eine bestätigte **Schreibweise** („Zwiebel“ → „Zwiebeln“) entsteht durch einen Tipp auf den Vorschlag
+   „Meinst du dasselbe wie …?“; beide Seiten lassen sich gleich schreiben. Frühere Versionen (2.40 bis 2.43) legten auch Zuordnungen von **Kassenbontext** an
+   („apfeltasche“ → „Apfel“, „gala äpfel“ → „Äpfel“ mit Sorte). Ob zwei so verschiedene Namen dasselbe Produkt meinen, kann keine Regel sicher entscheiden: Solche Zuordnungen
+   sind **fragwürdig**, wirken nicht mehr und bleiben in der Datei, bis jemand sie prüft („Behalten“ setzt `confirmed`, oder entfernen). */
+export const aliasKind = alias => alias.confirmed === true ? 'kept' : (!alias.variant && spellingStem(alias.from) === spellingStem(alias.name)) ? 'spelling' : 'doubtful';
+export const aliasApplies = alias => aliasKind(alias) !== 'doubtful';
 // Häufig gekaufte Artikel für die Schnellwahl: mindestens `minCount`-mal vorgekommen und gerade nicht offen auf der Liste.
 export function frequentItems(history, items, limit = 6, minCount = 2) {
   const open = new Set(active(items).filter(row => !row.checked).map(row => productKey(row.name)));
@@ -309,8 +320,12 @@ export function newItems(rows, storeId, actor, at, items = []) {
 }
 
 // Zutaten „nach Bedarf“ (Salz, Pfeffer) haben keine Menge, die sich umrechnen ließe: Sie landen als 1 Stück auf der Liste.
-export const listRow = (row, factor = 1) => row.unit === NO_AMOUNT ?
-  { name: row.name, quantity: 1, unit: 'Stück', noAmount: true } : { name: row.name, quantity: row.quantity * factor, unit: row.unit };
+// Umgerechnete Mengen werden auf drei Stellen gerundet („66,667 g“, nicht 66,66666666666667), nie auf 0.
+export const listRow = (row, factor = 1) => {
+  if (row.unit === NO_AMOUNT) return { name: row.name, quantity: 1, unit: 'Stück', noAmount: true };
+  const quantity = row.quantity * factor, rounded = Math.round(quantity * 1000) / 1000;
+  return { name: row.name, quantity: rounded > 0 ? rounded : quantity, unit: row.unit };
+};
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, items = []) {
   return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, items);
 }
@@ -344,7 +359,7 @@ export function combineQuantity(left, right) {
 // rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
 // `add`: was dazukommt, `after`: neue Gesamtmenge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
-  const pool = active(items).filter(item => !item.checked && (item.storeId || '') === (storeId || ''))
+  const pool = active(items).filter(item => item.id && !item.checked && (item.storeId || '') === (storeId || ''))   // nur echte Artikel (mit Kennung), nie gelernte Namen
     .map(item => ({ key: productKey(item.name), id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, added: null }));
   const fresh = [], counted = new Map();
   let skipped = 0;
@@ -392,9 +407,11 @@ export function duplicateFolds(items, now = new Date().toISOString()) {
 }
 
 // Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
-export function addToList(rows, storeId, actor, at, items = []) {
+// `items` sind die Artikel der Einkaufsliste und nur sie entscheiden, was „schon vorhanden“ ist. `history` (Standard: die Liste selbst) sind
+// Artikel und gelernte Namen früherer Einkäufe; sie dienen nur dazu, die Kategorie neuer Artikel vorzuschlagen.
+export function addToList(rows, storeId, actor, at, items = [], history = items) {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
-  const created = newItems(fresh, storeId, actor, at, items);
+  const created = newItems(fresh, storeId, actor, at, history);
   // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).
   const ops = [...created, ...counted.map(entry => operation('items', entry.id, { add: entry.add }, actor, at))];
   return { ops, added: created.length, counted, skipped };

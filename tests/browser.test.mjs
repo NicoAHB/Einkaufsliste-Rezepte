@@ -1497,6 +1497,48 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Einkauf beenden bei einem Geschäft: nur dessen Einkauf (auch in der gespeicherten Schätzung); Abgehaktes eines anderen Geschäfts und ein dort abgehakter Artikel ohne Geschäft bleiben; unter „Alle“ geht alles', async () => {
+    const data = structuredClone(demo);
+    data.items.push({ id: 'item-salz', storeId: '', name: 'Salz', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-26T00:00:00.000Z', updatedAt: '2026-10-26T00:00:00.000Z', deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const listed = async () => (await page.locator('#items .item').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim());
+    // Tomaten bei Edeka, Milch und Salz (ohne Geschäft) bei Lidl abhaken
+    await page.click('#mode-shop');
+    await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
+    await shopTap(page, 'Milch').click(); await shopTap(page, 'Salz').click();
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await shopTap(page, 'Tomaten').click();
+    // Edeka beenden: der Text nennt, was bleibt; mit Betrag gespeichert
+    await finishShop(page); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /^1 abgehakter Artikel wird von der Liste entfernt\. 2 abgehakte Artikel anderer Geschäfte bleiben bis zum jeweiligen Abschluss stehen\.$/);
+    await page.fill('#finish-form input[name=amount]', '5'); await page.click('#finish-form .add-button');
+    await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    const after = await stored();
+    assert.deepEqual(after.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Milch', 'Nudeln', 'Salz', 'Äpfel'], 'nur die Tomaten sind weg');
+    assert.deepEqual(after.items.filter(row => !row.deletedAt && row.checked).map(row => row.name).sort(), ['Milch', 'Salz'], 'Milch und Salz bleiben abgehakt stehen');
+    const purchase = after.purchases.filter(row => !row.deletedAt).at(-1);
+    assert.deepEqual([purchase.cents, purchase.estimate], [500, 249], 'die Schätzung enthält nur die Tomaten (nicht die 0,99 € der Milch)');
+    assert.deepEqual([purchase.storeName ?? '', purchase.storeId], ['Edeka', 'store-edeka']);
+    const left = await listed();
+    assert.ok(left.some(text => text.includes('Milch')) && left.some(text => text.includes('Salz')) && !left.some(text => text.includes('Tomaten')), left.join(' | '));
+    // Rewe beenden: weder Milch noch das bei Lidl abgehakte Salz (der Ort des Salzes wurde beim Abschluss von Edeka nicht vergessen)
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Rewe' }).click();
+    await finishShop(page); await sheetOpen(page);
+    assert.equal(await page.textContent('#finish-text'), 'Es ist noch nichts abgehakt. 2 abgehakte Artikel anderer Geschäfte bleiben bis zum jeweiligen Abschluss stehen.');
+    await page.keyboard.press('Escape'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    // Lidl beenden: Milch und das dort abgehakte Salz gehen, Nudeln und Äpfel (offen) bleiben
+    await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
+    await finishShop(page); await sheetOpen(page);
+    assert.equal(await page.textContent('#finish-text'), '2 abgehakte Artikel werden von der Liste entfernt.', 'Milch und das bei Lidl abgehakte Salz; kein Hinweis auf Abgehaktes anderswo');
+    await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    assert.deepEqual((await stored()).items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Nudeln', 'Äpfel']);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; Betrag mit dem „+“ speichert die geschätzte Summe, der kleine Punkt zeigt grün oder rot', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -2071,9 +2113,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => window.__wake.releases === 1);
     await goTab(page, 'shopping');
     await page.waitForFunction(() => window.__wake.requests === 2);
-    // Einkauf beenden: Abgehaktes verschwindet, die App ist zurück in „Planen“
+    // Einkauf bei Rewe beenden: bei Lidl Abgehaktes (Milch, Brot) gehört nicht dazu; nichts wird entfernt, die App ist trotzdem zurück in „Planen“
     await finishShop(page); await sheetOpen(page);
-    assert.match(await page.textContent('#finish-text'), /2 abgehakte Artikel werden von der Liste entfernt/);
+    assert.equal(await page.textContent('#finish-text'), 'Es ist noch nichts abgehakt. 2 abgehakte Artikel anderer Geschäfte bleiben bis zum jeweiligen Abschluss stehen.');
+    await page.click('#finish-only');
+    assert.equal(await page.locator('#plan-view').isVisible(), true);
+    assert.ok((await page.textContent('#items')).includes('Brot') && (await page.textContent('#items')).includes('Milch'), 'Brot und Milch stehen noch da');
+    // Einkauf bei Lidl beenden: Abgehaktes verschwindet (Milch und das bei Lidl abgehakte Brot), die App ist zurück in „Planen“
+    await page.click('#mode-shop'); await chip('Lidl').click();
+    await finishShop(page); await sheetOpen(page);
+    assert.match(await page.textContent('#finish-text'), /^2 abgehakte Artikel werden von der Liste entfernt\.$/);
     assert.equal(await page.locator('#finish-receipt').count(), 0, 'es gibt keinen Kassenbon-Weg mehr');
     await page.click('#finish-only');
     assert.equal(await page.locator('#plan-view').isVisible(), true);
@@ -3491,6 +3540,85 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // Version 2.47: Altlasten der Preisfunktion. „Apfeltasche → Apfel“ (Text vom Kassenbon) benannte beim erneuten Hinzufügen die Apfeltasche in Apfel um.
+  const oldAliasData = () => {
+    const data = structuredClone(demo), stamp = '2026-10-27T10:00:00.000Z';
+    const alias = (id, from, name, extra = {}) => ({ id, from, name, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
+    data.aliases = [alias('al-tasche', 'apfeltasche', 'Apfel'), alias('al-cherry', 'tom cherry', 'Cherrytomaten', { variant: 'Cherry' }), alias('al-zwiebel', 'zwiebel', 'Zwiebeln'), alias('al-joghurt', 'herz.naturjoghurt', 'Joghurt')];
+    data.items.push({ id: 'item-alt', storeId: '', name: 'Apfeltasche', quantity: 2, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+    return data;
+  };
+  const oldAliasContext = async () => {
+    const made = await context();
+    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', oldAliasData()]);
+    return made;
+  };
+  test('Alte Zuordnungen vom Kassenbon wirken nicht mehr: „Apfeltasche“ bleibt Apfeltasche (auch aus dem Link und in der Liste); bestätigte Schreibweisen wirken weiter', async () => {
+    const { ctx, page, problems } = await oldAliasContext();
+    await open(page);
+    const names = async () => (await page.locator('#items .item strong').allTextContents()).map(text => text.trim());
+    assert.ok((await names()).includes('Apfeltasche'), 'ein vorhandener Artikel wird nicht umbenannt');
+    // Eintippen: Apfeltasche bleibt, die Menge wird zu dem vorhandenen Artikel gezählt, nicht zu einem „Apfel“
+    await page.fill('#item-form input[name=name]', 'Apfeltasche'); await page.fill('#item-form input[name=quantity]', '1');
+    await page.click('#item-form button[type=submit]');
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt).map(row => [row.name, row.quantity, row.unit]));
+    const items = await stored();
+    assert.ok(!items.some(row => row[0] === 'Apfel'), `nichts wurde zu „Apfel“: ${JSON.stringify(items)}`);
+    assert.deepEqual(items.filter(row => row[0] === 'Apfeltasche').map(row => row[1]), [3], 'zwei vorhandene und eine neue Apfeltasche');
+    // Eine bestätigte Schreibweise wirkt weiter: „zwiebel“ → „Zwiebeln“
+    await page.fill('#item-form input[name=name]', 'Zwiebel'); await page.fill('#item-form input[name=quantity]', '1'); await page.click('#item-form button[type=submit]');
+    assert.ok((await stored()).some(row => row[0] === 'Zwiebeln') && !(await stored()).some(row => row[0] === 'Zwiebel'), 'Zwiebel wird zu Zwiebeln');
+    // Settings: die bestätigte Schreibweise steht oben, die drei fragwürdigen darunter zur Prüfung; die Zahl nennt beides
+    await openSettings(page);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\) · 3 prüfen$/);
+    assert.deepEqual((await page.locator('#alias-list li').allTextContents()).map(text => text.trim()), ['zwiebel → Zwiebeln']);
+    assert.deepEqual((await page.locator('#alias-doubt-list li span').allTextContents()).sort(), ['apfeltasche → Apfel', 'herz.naturjoghurt → Joghurt', 'tom cherry → Cherrytomaten']);
+    assert.match(await page.textContent('#alias-doubt'), /wirken nicht/);
+    // Entfernen: nur diese eine verschwindet
+    await page.getByRole('button', { name: 'Zuordnung herz.naturjoghurt zu Joghurt entfernen' }).click();
+    assert.deepEqual((await page.locator('#alias-doubt-list li span').allTextContents()).sort(), ['apfeltasche → Apfel', 'tom cherry → Cherrytomaten']);
+    // Behalten: die Zuordnung gilt ab jetzt (ausdrückliche Entscheidung), steht oben bei den wirksamen und wird gespeichert
+    await page.getByRole('button', { name: 'Zuordnung apfeltasche zu Apfel behalten' }).click();
+    assert.deepEqual((await page.locator('#alias-list li span').allTextContents()).sort(), ['apfeltasche → Apfel', 'zwiebel → Zwiebeln']);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(2\) · 1 prüfen$/);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.find(row => row.id === 'al-tasche').confirmed), true);
+    await goTab(page, 'shopping');
+    await page.fill('#item-form input[name=name]', 'Apfeltasche'); await page.fill('#item-form input[name=quantity]', '1'); await page.click('#item-form button[type=submit]');
+    assert.ok((await stored()).some(row => row[0] === 'Apfel'), 'behalten: Apfeltasche heißt jetzt Apfel (so wurde entschieden)');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Hinweise zu Preisen im Artikelfenster versprechen nichts Entferntes mehr (keine früheren Kaufpreise, kein vorgeschlagener Preis)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const hints = async () => (await page.locator('[data-price-hint]').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    await page.fill('#item-form input[name=name]', 'Zucchini');   // das Formular zeigt dann seinen Preishinweis
+    assert.deepEqual(await hints(), ['Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe.']);
+    await page.fill('#item-form input[name=name]', '');
+    await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page);
+    assert.ok((await hints()).includes('Nur eine eigene Schätzung für die Summe.'));
+    const all = (await hints()).join(' ') + ' ' + await page.evaluate(() => document.documentElement.textContent);
+    for (const gone of [/Frühere Kaufpreise/, /Artikelnamen antippst/, /bereits gemerkter Preis/, /Zuletzt bezahlt/]) assert.ok(!gone.test(all), `${gone} steht noch da`);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Alte Zuordnungen: ein Link zum Hinzufügen (…?add=) benennt nichts um; ohne Zuordnungen verschwindet der Prüfbereich', async () => {
+    const { ctx, page, problems } = await oldAliasContext();
+    await open(page, `?add=${encodeURIComponent('Apfeltasche und Zwiebel')}`);
+    await page.waitForTimeout(300);
+    const names = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt).map(row => row.name));
+    assert.ok(names.includes('Apfeltasche') && !names.includes('Apfel'), JSON.stringify(names));
+    assert.ok(names.includes('Zwiebeln'), 'die bestätigte Schreibweise gilt auch im Link');
+    await openSettings(page);
+    for (const [from, name] of [['apfeltasche', 'Apfel'], ['tom cherry', 'Cherrytomaten'], ['herz.naturjoghurt', 'Joghurt']]) await page.getByRole('button', { name: `Zuordnung ${from} zu ${name} entfernen` }).click();
+    assert.equal(await page.locator('#alias-doubt').isHidden(), true, 'nichts mehr zu prüfen');
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)$/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Keine Preiserkennung (Version 2.44): kein Kassenbon-Weg für Artikelpreise, kein Bereich „Bezahlte Preise“; vorhandene Preisnotizen und Zuordnungen bleiben unverändert in der Datei', async () => {
     const data = structuredClone(demo), stamp = '2026-10-27T10:00:00.000Z';
     const price = (id, name, extra = {}) => ({ id, name, storeId: 'store-edeka', quote: { cents: 149, quantity: 1, unit: 'Position' }, regularQuote: { cents: 149, quantity: 1, unit: 'Position' }, onSale: false, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
@@ -3511,8 +3639,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(after.sync.minRev, 3);
     await openSettings(page);
     assert.equal(await page.getByText('Bezahlte Preise').count(), 0);
-    assert.match(await page.textContent('#alias-list'), /tom cherry → Cherrytomaten/);
-    assert.ok(!/Cherry\)/.test(await page.textContent('#alias-list')), 'die Sorte wird nicht mehr angezeigt');
+    assert.match(await page.textContent('#alias-doubt-list'), /tom cherry → Cherrytomaten/, 'eine alte Zuordnung mit Sorte steht zur Prüfung da (Version 2.47)');
+    assert.ok(!/Cherry\)/.test(await page.textContent('#alias-doubt-list')), 'die Sorte wird nicht mehr angezeigt');
     // Im Laden gibt es für den Artikel kein Preisfeld, auch wenn Notizen zu seinem Namen vorhanden sind
     await goTab(page, 'shopping'); await inShop(page, 'Edeka');
     assert.equal(await page.locator('#shop-list .shop-price, #shop-list button.shop-text').count(), 0);
@@ -3759,7 +3887,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await shopTap(page, 'Fahrrad').click();
     await chip('Edeka').click(); await shopTap(page, 'Nudeln').click();
     await finishShop(page); await sheetOpen(page);
-    assert.match(await page.textContent('#finish-text'), /^1 abgehakte Artikel wird/, 'nur Nudeln, nicht das Fahrrad');
+    assert.match(await page.textContent('#finish-text'), /^1 abgehakter Artikel wird/, 'nur Nudeln, nicht das Fahrrad');
     await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     assert.notEqual(remote.content.items.find(row => row.name === 'Nudeln').deletedAt, null, 'Nudeln sind weg');
@@ -4811,6 +4939,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page);
     assert.ok(!(await page.locator('#week-ingredients').textContent()).includes('Nudeln'));
     await page.uncheck('#week-form input[name=skipDone]');
+    assert.ok(!(await page.locator('#week-ingredients').textContent()).includes('Nudeln'), 'schon übernommen (Version 2.47): bleibt auch ohne „gekocht“ draußen');
+    await page.uncheck('#week-form input[name=skipListed]');
     assert.ok((await page.locator('#week-ingredients').textContent()).includes('Nudeln'));
     await page.click('#week-dialog [data-close]');
     // Wochen blättern, löschen
@@ -4820,6 +4950,141 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await today.locator('.meal').count(), 2);
     assert.deepEqual(problems, []);
     await ctx.close();
+  });
+
+  // Version 2.47: Wochen-Einkauf mehrmals, Portionen ändern, zwei Personen
+  const planPasta = async (page, servings = '2', recipe = 'Tomaten-Pasta') => {
+    const today = page.locator('.day.today');
+    await page.click('[data-tab=plan]');
+    await today.locator('.day-head .icon-button').click(); await sheetOpen(page);
+    await page.locator('#recipe-pick .pick-row', { hasText: recipe }).first().click();
+    await page.fill('#meal-form input[name=servings]', servings); await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+  };
+  const weekRowsText = async page => (await page.locator('#week-ingredients .transfer-row').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim());
+  const weekEmpty = async page => (await page.textContent('#week-ingredients')).replace(/\s+/g, ' ').trim();
+  const ALL_LISTED = 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.';
+  const listQty = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === wanted).map(row => `${row.quantity} ${row.unit}`), name);
+  const takeWeek = async (page, store = 'Lidl') => { await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page); if (store) await page.selectOption('#week-form select[name=storeId]', { label: store }); };
+
+  test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await planPasta(page, '2'); await planPasta(page, '4', 'Kichererbsen-Curry');
+    await takeWeek(page);
+    assert.equal(await page.locator('#week-listed').isHidden(), true, 'noch nichts übernommen: kein Hinweis');
+    assert.ok((await weekRowsText(page)).some(row => /Nudeln/.test(row)) && (await weekRowsText(page)).some(row => /Reis/.test(row)));
+    await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    assert.deepEqual((await listQty(page, 'Nudeln')).sort(), ['200 g', '500 g'], 'die 500 g der Beispielliste und 200 g aus dem Rezept (anderes Geschäft)');
+    const before = { nudeln: await listQty(page, 'Nudeln'), reis: await listQty(page, 'Reis') };
+    assert.deepEqual(before.reis, ['300 g'], '4 Portionen Curry statt 2: 300 g Reis');
+    // im Plan steht, was übernommen ist
+    await page.click('[data-tab=plan]');
+    assert.deepEqual(await page.locator('.day.today .meal .meal-listed').allTextContents(), ['Zutaten übernommen', 'Zutaten übernommen']);
+    // zweites Mal: nichts zu tun, der Hinweis sagt es, nichts wird doppelt
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    assert.match(await page.textContent('#week-listed'), /^Schon übernommen: .+: Tomaten-Pasta, .+: Kichererbsen-Curry\.$/);
+    assert.equal(await weekEmpty(page), ALL_LISTED);
+    await page.click('#week-form button[type=submit]');
+    assert.match(await page.textContent('#week-dialog [data-dialog-error]'), /mindestens eine Zutat/);
+    assert.deepEqual({ nudeln: await listQty(page, 'Nudeln'), reis: await listQty(page, 'Reis') }, before, 'nichts hat sich geändert');
+    // Haken heraus: Warnung, Zutaten da; wer es so will, bekommt die doppelte Menge
+    await page.uncheck('#week-form input[name=skipListed]');
+    assert.match(await page.textContent('#week-listed'), /^Diese Gerichte wurden schon übernommen und kommen noch einmal dazu\. Stehen ihre Zutaten noch auf der Liste, verdoppeln sich die Mengen: /);
+    assert.equal(await page.locator('#week-listed.warn').count(), 1);
+    assert.ok((await weekRowsText(page)).some(row => /Reis/.test(row)));
+    await page.selectOption('#week-form select[name=storeId]', { label: 'Lidl' });
+    await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    assert.deepEqual(await listQty(page, 'Reis'), ['600 g'], 'ausdrücklich noch einmal: doppelt');
+    // und danach wieder zu: der Haken ist beim nächsten Öffnen wieder gesetzt
+    await takeWeek(page);
+    assert.equal(await page.isChecked('#week-form input[name=skipListed]'), true);
+    assert.equal(await weekEmpty(page), ALL_LISTED);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Wochen-Einkauf nach Portionsänderung: mehr Portionen nehmen nur das Zusätzliche mit, weniger ändert nichts; ein anderes Rezept am Gericht gilt wieder als neu', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await planPasta(page, '2', 'Kichererbsen-Curry');   // 150 g Reis für 2 Portionen
+    await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    assert.deepEqual(await listQty(page, 'Reis'), ['150 g']);
+    // 2 → 5 Portionen: zusätzlich 3 Portionen = 225 g Reis
+    const edit = async servings => { await page.click('[data-tab=plan]'); await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).click(); await sheetOpen(page); await page.fill('#meal-form input[name=servings]', servings); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' }); };
+    await edit('5');
+    assert.deepEqual(await page.locator('.day.today .meal .meal-listed').allTextContents(), ['Zutaten für 2 Portionen übernommen']);
+    await takeWeek(page);
+    assert.match(await page.textContent('#week-listed'), /^Mehr Portionen seit der Übernahme, nur die zusätzlichen kommen dazu: .+: Kichererbsen-Curry \(\+3\)\.$/);
+    const rows = await weekRowsText(page);
+    assert.ok(rows.some(row => /225\s*g\s*Reis/.test(row)), rows.join(' | '));
+    await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    assert.deepEqual(await listQty(page, 'Reis'), ['375 g'], '150 g + 225 g = 5 Portionen');
+    await page.click('[data-tab=plan]');
+    assert.deepEqual(await page.locator('.day.today .meal .meal-listed').allTextContents(), ['Zutaten übernommen']);
+    // 5 → 3 Portionen: nichts mehr zu übernehmen, der Hinweis erklärt es nicht als neu
+    await edit('3');
+    await takeWeek(page);
+    assert.equal(await weekEmpty(page), ALL_LISTED);
+    await page.click('#week-dialog [data-close]');
+    // anderes Rezept am Gericht: die Übernahme gilt nicht mehr, das Gericht kommt ganz
+    await page.click('[data-tab=plan]'); await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).click(); await sheetOpen(page);
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).click();
+    await page.fill('#meal-form input[name=servings]', '2'); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('.day.today .meal .meal-listed').count(), 0);
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.meals.filter(row => !row.deletedAt).map(row => [row.recipeId, row.listedServings, row.listedAt]));
+    assert.deepEqual(stored, [['recipe-pfannkuchen', null, null]]);
+    await takeWeek(page);
+    assert.equal(await page.locator('#week-listed').isHidden(), true);
+    assert.ok((await weekRowsText(page)).some(row => /Mehl/.test(row)), 'das neue Gericht kommt mit allen Zutaten');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Wochen-Einkauf mit zwei Personen: die Übernahme der einen steht bei der anderen als übernommen da; eine Übernahme ohne Netz kommt nach dem Abgleich an; Mengen addieren sich nicht doppelt', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    let offline = false;
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => offline ? route.abort('connectionfailed') : remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); }
+    await planPasta(a.page, '2'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Tomaten-Pasta/.test(document.querySelector('#plan-days').textContent), null, { timeout: 20000 });
+    // Nico übernimmt die Woche
+    const take = async device => { await device.page.click('[data-tab=plan]'); await device.page.click('#plan-shopping'); await sheetOpen(device.page); await device.page.click('#week-form button[type=submit]'); await device.page.waitForSelector('#week-dialog', { state: 'hidden' }); };
+    await take(a); await synced(a.page);
+    const onList = data => data.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`);
+    assert.deepEqual(onList(remote.content).sort(), ['200 g', '500 g'], 'die 500 g der Beispielliste und 200 g aus dem Rezept');
+    assert.deepEqual(remote.content.meals.map(meal => [meal.listedServings, typeof meal.listedAt]), [[2, 'string']]);
+    // Anna sieht: übernommen, und ihr Wochen-Einkauf nimmt nichts mehr mit
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => document.querySelectorAll('#plan-days .meal-listed').length === 1, null, { timeout: 20000 });
+    await b.page.click('[data-tab=plan]'); await b.page.click('#plan-shopping'); await sheetOpen(b.page);
+    assert.match(await b.page.textContent('#week-listed'), /^Schon übernommen: /);
+    assert.equal(await weekEmpty(b.page), ALL_LISTED);
+    await b.page.click('#week-dialog [data-close]');
+    // Anna ist ohne Netz, plant ein zweites Gericht und übernimmt (nur das neue); Nico erhöht gleichzeitig die Portionen der Pasta
+    offline = true;
+    await planPasta(b.page, '2', 'Kichererbsen-Curry');
+    await take(b);
+    await a.page.click('[data-tab=plan]');
+    await a.page.getByRole('button', { name: /Tomaten-Pasta ändern/ }).click(); await sheetOpen(a.page);
+    await a.page.fill('#meal-form input[name=servings]', '4'); await a.page.click('#meal-form button[type=submit]'); await synced(a.page);
+    offline = false; await b.page.click('#refresh');
+    await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok', null, { timeout: 20000 });
+    await pollNow(a.page); await synced(a.page);
+    await a.page.waitForFunction(() => document.querySelectorAll('#plan-days .meal').length === 2, null, { timeout: 20000 });
+    const nudeln = data => data.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`);
+    assert.deepEqual(nudeln(remote.content).sort(), ['200 g', '500 g'], 'Annas Übernahme hat an den Nudeln nichts geändert');
+    assert.equal(remote.content.items.filter(item => !item.deletedAt && item.name === 'Reis').length, 1, 'Reis steht einmal auf der Liste');
+    assert.deepEqual(remote.content.meals.filter(meal => !meal.deletedAt).map(meal => [meal.recipeId, meal.servings, meal.listedServings]).sort(), [['recipe-curry', 2, 2], ['recipe-pasta', 4, 2]]);
+    // Nico: die Pasta hat 2 Portionen mehr als übernommen, das Curry ist von Anna übernommen
+    await a.page.click('[data-tab=plan]'); await a.page.click('#plan-shopping'); await sheetOpen(a.page);
+    assert.match(await a.page.textContent('#week-listed'), /Schon übernommen: .+: Kichererbsen-Curry\. Mehr Portionen seit der Übernahme, nur die zusätzlichen kommen dazu: .+: Tomaten-Pasta \(\+2\)\./);
+    assert.ok((await weekRowsText(a.page)).some(row => /200\s*g\s*Nudeln/.test(row)), 'nur die zusätzlichen 2 Portionen');
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
   });
 
   const makePhoto = page => page.evaluate(() => {
@@ -4994,6 +5259,47 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('.item.checked').count(), 1, 'Nur die erledigten Artikel der gewählten Ansicht werden entfernt');
     await page.click('#clear-checked');
     assert.equal(await page.locator('.item.checked').count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // Version 2.47: leere Einkaufsliste, „Salz“ steht nur im Namensgedächtnis (aus früheren Einkäufen). Es ist kein Artikel auf der Liste.
+  const saltContext = async (extra = {}) => {
+    const data = structuredClone(demo); data.items = [];
+    data.names = [{ name: 'Salz', category: 'vorrat', unit: 'Stück', at: '2026-09-01T10:00:00.000Z', count: 4 }, { name: 'Milch', category: 'milch', unit: 'l', at: '2026-09-01T10:00:00.000Z', count: 2 }];
+    data.ingredients.push({ id: 'ing-salz', recipeId: 'recipe-pasta', name: 'Salz', quantity: 1, unit: 'nach Bedarf', createdAt: '2026-10-25T00:00:00.000Z', updatedAt: '2026-10-25T00:00:00.000Z', deletedAt: null, _clock: {} });
+    const made = await context(extra);
+    await made.ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    return made;
+  };
+  const transferOnly = async (page, name, recipe = 'Tomaten-Pasta') => {
+    await page.click('[data-tab=recipes]');
+    await page.locator('.recipe-card', { hasText: recipe }).getByRole('button', { name: 'Auf die Liste' }).click();
+    await sheetOpen(page);
+    await page.locator('#transfer-ingredients label').evaluateAll((nodes, wanted) => nodes.forEach(node => { node.querySelector('input').checked = node.querySelector('span').textContent.replace(/\s+/g, ' ').trim().split(' ').includes(wanted); }), name);
+  };
+
+  test('Rezept übernehmen: „Salz nach Bedarf“ kommt auf die leere Liste, auch wenn „Salz“ nur im Namensgedächtnis steht; erst ein echter Artikel Salz verhindert das Doppelte', async () => {
+    const { ctx, page, problems } = await saltContext();
+    await open(page);
+    assert.equal(await page.locator('#items .item').count(), 0, 'die Liste ist leer');
+    await transferOnly(page, 'Salz');
+    await page.click('#transfer-form button:not([data-close])');
+    await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
+    assert.deepEqual(await page.locator('#items .item strong, #items .item .item-name').allTextContents().then(list => list.filter(Boolean)), ['Salz'], 'Salz steht auf der Liste');
+    assert.equal(await page.locator('#status').getAttribute('data-state') !== 'error', true);
+    // Zweites Mal: Salz steht jetzt wirklich auf der Liste, nichts wird doppelt aufgeschrieben
+    await transferOnly(page, 'Salz');
+    await page.click('#transfer-form button:not([data-close])');
+    assert.match(await page.textContent('#transfer-dialog .dialog-error'), /Alles davon steht schon auf der Liste/);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#items .item').count(), 1);
+    // Mit Menge: „Milch“ steht nur im Gedächtnis (Einheit Liter); 250 ml werden ein neuer Artikel, nichts wird „dazugezählt“
+    await transferOnly(page, 'Milch', 'Apfel-Pfannkuchen');
+    await page.click('#transfer-form button:not([data-close])');
+    await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item', { hasText: 'Milch' }).count(), 1);
+    assert.match(await page.locator('#items .item', { hasText: 'Milch' }).textContent(), /250\s*ml/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
