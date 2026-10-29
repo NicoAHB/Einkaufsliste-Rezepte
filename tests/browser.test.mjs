@@ -5071,6 +5071,53 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // Version 2.51: ein Gericht lange halten und auf einen anderen Tag ziehen
+  const dragMeal = async (page, name, toDay) => {
+    const from = await page.locator('.meal', { hasText: name }).locator('.meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${toDay}"]`).boundingBox();
+    await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+    await page.waitForSelector(`.day.drop-target[data-day="${toDay}"]`);
+    await page.mouse.up();
+  };
+  const mealDays = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.meals.filter(row => !row.deletedAt).map(row => [row.recipeId, row.date, row.listedServings ?? null]).sort());
+
+  test('Plan: ein Gericht lange halten und auf einen freien Tag ziehen verschiebt es (die Übernahme auf die Liste bleibt); auf einen belegten Tag fragt „Tauschen?“ – Nein ändert nichts, Ja tauscht die Tage', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await planPasta(page, '2');
+    await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    await page.click('[data-tab=plan]');
+    const days = await page.locator('#plan-days .day').evaluateAll(nodes => nodes.map(node => node.dataset.day)), today = await page.locator('.day.today').getAttribute('data-day');
+    const free = days.find(day => day !== today);
+    // 1. freier Tag: umgezogen, Übernahme bleibt, kein Hinweis „entfernt“
+    await dragMeal(page, 'Tomaten-Pasta', free);
+    await page.waitForFunction(day => document.querySelector(`.day[data-day="${day}"] .meal`), free);
+    assert.deepEqual(await mealDays(page), [['recipe-pasta', free, 2]]);
+    assert.match(await page.textContent('#notice-text'), /„Tomaten-Pasta“ auf .+ verschoben/);
+    assert.equal(await page.locator('.day.today .meal').count(), 0);
+    assert.equal(await page.locator(`.day[data-day="${free}"] .meal-listed`).textContent(), 'Zutaten übernommen');
+    assert.equal(await page.locator('#swap-dialog[open]').count(), 0);
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    assert.equal(await page.locator('#week-changes').isHidden(), true, 'verschoben ist nicht entfernt');
+    await page.click('#week-dialog [data-close]');
+    // 2. belegter Tag: Nein
+    await planPasta(page, '4', 'Kichererbsen-Curry');
+    await dragMeal(page, 'Kichererbsen-Curry', free);
+    await page.waitForSelector('#swap-dialog[open]'); await sheetOpen(page);
+    assert.match(await page.textContent('#swap-text'), /„Kichererbsen-Curry“ \(.+\) und „Tomaten-Pasta“ \(.+\) tauschen die Tage\./);
+    await page.click('#swap-no'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
+    const before = [['recipe-curry', today, null], ['recipe-pasta', free, 2]].sort();
+    assert.deepEqual(await mealDays(page), before, 'Nein: nichts ändert sich');
+    // 3. Ja: getauscht
+    await dragMeal(page, 'Kichererbsen-Curry', free);
+    await page.waitForSelector('#swap-dialog[open]'); await sheetOpen(page);
+    await page.click('#swap-yes'); await page.waitForSelector('#swap-dialog', { state: 'hidden' });
+    assert.deepEqual(await mealDays(page), [['recipe-curry', free, null], ['recipe-pasta', today, 2]].sort());
+    assert.match(await page.textContent('#notice-text'), /getauscht/);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

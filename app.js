@@ -998,7 +998,7 @@ function renderPlan() {
   const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
   const box = $('#plan-days'); box.replaceChildren();
   for (const day of days) {
-    const card = element('article', undefined, `day${day === today ? ' today' : ''}`);
+    const card = element('article', undefined, `day${day === today ? ' today' : ''}`); card.dataset.day = day;
     const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
     title.append(element('small', dayMonthLabel(day)));
     head.append(title, iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
@@ -1011,7 +1011,7 @@ function renderPlan() {
 function mealRow(meal, recipes) {
   const recipe = recipes.get(meal.recipeId);
   const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
-  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`);
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); row.dataset.id = meal.id;
   const check = button('', () => toggleMeal(meal.id), 'check');
   if (meal.done) check.append(icon('check'));
   check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
@@ -1026,6 +1026,40 @@ function mealRow(meal, recipes) {
     iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
   return row;
 }
+// Ein Gericht auf einen anderen Tag verschieben (Version 2.51): Gericht lange halten, auf einen anderen Tag ziehen und loslassen. Ist der Tag frei, zieht es dorthin um; sonst fragt das Fenster
+// „Tauschen?“ (Ja/Nein): Beide Gerichte tauschen dann die Tage. Es ändert sich nur der Tag: Portionen, „gekocht“ und die Übernahme auf die Einkaufsliste bleiben am Gericht.
+const dayCards = () => [...document.querySelectorAll('#plan-days .day[data-day]')];
+const dayTarget = {
+  show: () => 0,
+  at: (x, y, id) => {
+    const card = dayCards().find(node => { const box = node.getBoundingClientRect(); return y >= box.top && y <= box.bottom; });
+    const own = state.meals.find(row => row.id === id)?.date;
+    return card && card.dataset.day !== own ? card.dataset.day : null;
+  },
+  mark: day => dayCards().forEach(node => node.classList.toggle('drop-target', node.dataset.day === day)),
+  hide: () => dayCards().forEach(node => node.classList.remove('drop-target')),
+  drop: (id, day) => guard(() => dropMeal(id, day))
+};
+const mealName = meal => meal.recipeId ? active(state.recipes).find(recipe => recipe.id === meal.recipeId)?.name || 'Gelöschtes Rezept' : meal.title;
+let swapPending = null;
+function dropMeal(id, day) {
+  const meal = active(state.meals).find(row => row.id === id);
+  if (!meal || meal.date === day) return;
+  const others = active(state.meals).filter(row => row.date === day && row.id !== id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  if (!others.length) { commit([nextOp('meals', id, { date: day })], `„${mealName(meal)}“ auf ${dayName(day)} verschoben`); return; }
+  swapPending = { id, otherId: others[0].id, day, from: meal.date };
+  $('#swap-text').textContent = `„${mealName(meal)}“ (${dayName(meal.date)}) und „${mealName(others[0])}“ (${dayName(day)}) tauschen die Tage.${others.length > 1 ? ` Der ${dayName(day)} hat mehrere Gerichte: getauscht wird mit dem ersten.` : ''}`;
+  $('#swap-dialog').showModal();
+}
+$('#swap-yes').addEventListener('click', () => guard(() => {
+  const pending = swapPending; swapPending = null; $('#swap-dialog').close();
+  const meal = pending && active(state.meals).find(row => row.id === pending.id), other = pending && active(state.meals).find(row => row.id === pending.otherId);
+  if (!meal || !other) throw new Error('Eines der Gerichte wurde inzwischen geändert oder gelöscht. Bitte noch einmal versuchen.');
+  commit([nextOp('meals', meal.id, { date: other.date }), nextOp('meals', other.id, { date: meal.date })], `„${mealName(meal)}“ und „${mealName(other)}“ getauscht`);
+}));
+$('#swap-no').addEventListener('click', () => { swapPending = null; $('#swap-dialog').close(); });
+$('#swap-dialog').addEventListener('close', () => { swapPending = null; });
+dragDelete($('#plan-days'), null, () => {}, '.meal[data-id]', { target: dayTarget, noZone: true });
 // „Gekocht“ merkt sich auch am Rezept, wann es zuletzt auf dem Tisch stand.
 function toggleMeal(id) {
   const meal = state.meals.find(row => row.id === id && !row.deletedAt);

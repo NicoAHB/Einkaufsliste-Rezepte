@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.50
+# Einkauf & Rezepte – Version 2.51
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -16,13 +16,26 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
 
+## Neu in Version 2.51: Gerichte im Wochenplan auf einen anderen Tag ziehen
+
+**So geht es.** Im **Plan** ein Gericht **lange gedrückt halten** (es „hebt ab“), auf einen anderen Tag **ziehen** (der Tag bekommt einen gestrichelten Rand) und **loslassen**.
+- **Der Tag ist frei:** Das Gericht zieht um („„Tomaten-Pasta“ auf Freitag verschoben“).
+- **Am Tag steht schon ein Gericht:** Ein Fenster fragt **„Tauschen?“** mit **Ja** und **Nein**. **Ja**: Beide Gerichte tauschen die Tage. **Nein**: Nichts ändert sich. Hat der Tag mehrere Gerichte, wird mit dem ersten getauscht (das Fenster sagt es).
+- Es ändert sich nur der **Tag**. Portionen, „gekocht“ und die **Übernahme auf die Einkaufsliste** bleiben am Gericht: Ein verschobenes Gericht gilt nicht als „aus dem Plan entfernt“ und nimmt beim nächsten Einkauf nichts doppelt auf.
+- Auf den eigenen Tag fallen lassen, loslassen vor Ablauf der Haltezeit (ein Tipp) oder Escape tun nichts. Ein roter Mülleimer zum Löschen erscheint hier **nicht** (löschen geht mit dem Papierkorb am Gericht). Gezogen wird innerhalb der sichtbaren Woche.
+- Technik: `dragdelete.js` (wie das Ziehen von Artikeln zu Geschäften) mit neuer Option `noZone`; `dropMeal` in `app.js`.
+
+**Tests:** Browser: Verschieben auf einen freien Tag (Übernahme bleibt, kein „entfernt“-Hinweis), belegter Tag mit „Nein“ (nichts ändert sich) und „Ja“ (getauscht). Mit der Maus geprüft; das Ziehen mit dem Finger nutzt dieselbe Technik wie das Ziehen von Artikeln, ist hier aber nicht eigens geprüft.
+
+Testpunkt (iPhone): Im Plan ein Gericht lange drücken und auf einen anderen Tag ziehen; auf einen belegten Tag: „Tauschen?“ mit Ja/Nein.
+
 ## Neu in Version 2.50: Nach der Übernahme geändert – was auf der Einkaufsliste zu prüfen ist
 
 Ist die Woche übernommen und ändert sich danach etwas, bleibt die Einkaufsliste, wie sie ist (die App ändert sie nie von selbst), aber sie **zeigt, was zu prüfen ist**:
 - **Rezept geändert** (Zutat dazu, entfernt, andere Menge): Das Gericht merkt sich bei der Übernahme die Zutaten seines Rezepts (`meals.listedRows`, „Name|Menge|Einheit“). Im **Plan** steht am Gericht rot „Rezept seitdem geändert (neu: 50 g Parmesan, Nudeln: 200 g → 300 g): Liste prüfen“.
 - **Rezept gelöscht** oder **Gericht aus dem Plan entfernt**, obwohl seine Zutaten schon übernommen waren: Die Zutaten stehen noch auf der Liste, auch das sagt der Hinweis.
 - Alle Hinweise stehen gesammelt im **Einkauf für die Woche** („Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: …“, rot); ändert sich der Stand bei offenem Fenster, aktualisiert er sich von selbst.
-- **Verschieben:** Ein Gericht lässt sich nicht auf einen anderen Tag verschieben, nur löschen und neu planen. Das neue Gericht zählt als neu, sein altes steht mit dem Hinweis „aus dem Plan entfernt, die Zutaten stehen noch auf der Liste“ da: Wer es noch einmal aufnimmt, sieht die Warnung und entfernt bei Bedarf das Doppelte von Hand.
+- **Verschieben:** Seit Version 2.51 lässt sich ein Gericht auf einen anderen Tag ziehen (lange halten, ziehen, loslassen); es bleibt dabei übernommen. Wer es stattdessen löscht und neu plant, sieht beim alten den Hinweis „aus dem Plan entfernt, die Zutaten stehen noch auf der Liste“ und beim Wiederaufnehmen die Warnung.
 - Wird das Rezept an einem Gericht gewechselt, vergisst es die Übernahme samt Zutaten (es gilt als neu).
 
 **Tests:** `tests/plan.test.mjs` (`recipeChanges`, `snapshotRows`) und im Browser (Rezept geändert, Rezept gelöscht, Gericht entfernt; die Liste bleibt unverändert).
