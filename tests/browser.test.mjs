@@ -2133,6 +2133,28 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Im Laden steht die Anzahl nur beim Geschäft, nicht bei den Kategorien (Alle und ein einzelnes Geschäft); unter „Planen“ bleiben die Zähler', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.fill('#item-form input[name=name]', 'Blumenerde'); await page.click('#item-form button[type=submit]');   // ohne Geschäft
+    await page.click('#mode-shop');
+    await page.locator('#shop-chips .chip', { hasText: 'Alle' }).click();
+    const heads = await page.locator('#shop-list .group-head').count(), stores = await page.locator('#shop-list .store-head').allTextContents();
+    assert.ok(heads >= 2 && stores.length >= 2, `${heads} Kategorien, ${stores.length} Geschäfte`);
+    assert.equal(await page.locator('#shop-list .group-head .count').count(), 0, 'keine Zahl bei den Kategorien');
+    assert.equal(await page.locator('#shop-list .group-head > *').evaluateAll(nodes => nodes.length), heads, 'die Kategorie besteht nur aus ihrem Namen');
+    assert.ok(stores.every(text => /\d$/.test(text.trim())), `das Geschäft behält seine Zahl: ${stores}`);
+    // Zahl am Geschäft = Zahl der offenen Artikel dort
+    const counts = await page.evaluate(() => [...document.querySelectorAll('#shop-list .store-head')].map(head => [Number(head.querySelector('.count').textContent), (() => { let n = 0, node = head.nextElementSibling; while (node && !node.classList.contains('store-head')) { if (node.classList.contains('shop-item')) n++; node = node.nextElementSibling; } return n; })()]));
+    for (const [shown, items] of counts) assert.equal(shown, items);
+    await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    assert.ok(await page.locator('#shop-list .group-head').count() >= 1);
+    assert.equal(await page.locator('#shop-list .group-head .count').count(), 0, 'auch in der Ansicht eines Geschäfts');
+    await page.click('#shop-back');
+    assert.ok(await page.locator('#items .group-head .count').count() >= 1, 'unter „Planen“ bleiben die Zähler');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
   test('Im Laden: Geschäft wählen, Artikel ohne Geschäft überall bis abgehakt (erst Edeka, dann Lidl), Einkauf beenden', async () => {
     const { ctx, page, problems } = await context();
     await ctx.addInitScript(() => {
@@ -2941,7 +2963,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.notEqual(await selectable('#items .group-head span'), 'none', 'unter „Planen“ unverändert');
     assert.equal(await page.evaluate(() => { const node = document.querySelector('#items .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), false);
     await inShop(page);
-    for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-list .group-head .count', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
+    for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
       assert.equal(await selectable(selector), 'none', `${selector}: keine Textauswahl`);
     }
     // Die Auswahl beginnt gar nicht erst …

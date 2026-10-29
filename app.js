@@ -316,9 +316,11 @@ function newsRow(entry) {
 }
 // Reihenfolge der Gänge eines Geschäfts (leer = Standardweg durch den Laden)
 const aislesOf = storeId => (storeId && active(state.stores).find(store => store.id === storeId)?.aisles) || null;
+// `count` fehlt in der Ansicht „Im Laden“: Dort zählt nur das Geschäft, nicht die einzelne Kategorie (seit Version 2.59).
 function groupHead(label, count) {
   const row = element('li', undefined, 'group-head');
-  row.append(element('span', label), element('span', String(count), 'count'));
+  row.append(element('span', label));
+  if (count !== undefined) row.append(element('span', String(count), 'count'));
   return row;
 }
 // Kleines Bild statt Name (Geschenk bei „Wünsche“): Bildschirmleser und der Hinweis beim Berühren bekommen weiter den Namen.
@@ -1966,11 +1968,11 @@ function renderShop() {
   const total = shoppingTotal(here);
   $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : `Alles erledigt bei ${storeName(shopStore)}.`;
   news.forEach(entry => list.append(shopNewsRow(entry)));
-  for (const group of groups(shop.open)) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
+  for (const group of groups(shop.open)) { list.append(groupHead(group.label)); group.items.forEach(item => list.append(shopRow(item))); }
   const anywhere = groups(shop.anywhere);
   if (anywhere.length) {
     list.append(element('li', 'Überall möglich', 'store-head none'));
-    for (const group of anywhere) { list.append(groupHead(group.label, group.items.length)); group.items.forEach(item => list.append(shopRow(item))); }
+    for (const group of anywhere) { list.append(groupHead(group.label)); group.items.forEach(item => list.append(shopRow(item))); }
   }
   const apart = isSeparate(stores.find(store => store.id === shopStore));   // eine eigene Liste steht für sich: keine Hinweise auf Artikel anderswo
   if (shop.elsewhere && !apart) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
@@ -1995,7 +1997,7 @@ function renderShopAll(list, items, stores) {
   for (const section of all.sections) {
     const open = section.open.filter(item => !newIds.has(item.id)); if (!open.length) continue;
     list.append(storeHead(section.store ? section.store.name : 'Ohne Geschäft', open.length, !section.store));
-    for (const group of groupByCategory(open, itemHistory(), aislesOf(section.store?.id))) { const head = groupHead(group.label, group.items.length); head.classList.add('sub'); list.append(head); group.items.forEach(item => list.append(shopRow(item))); }
+    for (const group of groupByCategory(open, itemHistory(), aislesOf(section.store?.id))) { const head = groupHead(group.label); head.classList.add('sub'); list.append(head); group.items.forEach(item => list.append(shopRow(item))); }
   }
   appendShopDone(list, all.done);
 }
