@@ -149,7 +149,7 @@ test('Aufgeräumte Dateien tragen minRev 2 (alte Apps ohne das Feld ignorieren e
 });
 
 test('Ein bezahlter Preis mit Sorte setzt minRev 3: eine ältere App würde Sorten beim Aufräumen zusammenwerfen und liest die Datei nicht mehr', () => {
-  assert.equal(SCHEMA_REV, 3);
+  assert.ok(SCHEMA_REV >= 3);
   const plain = merge(base(), [op('prices', 'p0', { storeId: 'store-edeka', name: 'Mehl', quote: { cents: 100, quantity: 1, unit: 'kg' } }, ago(5))]);
   assert.equal(plain.sync.minRev, undefined, 'eine gewöhnliche Preisnotiz ändert nichts');
   for (const patch of [{ src: 'bon' }, { variant: 'Gala' }, { receipt: 'GALA 1,29' }, { receiptKey: 'k' }]) {

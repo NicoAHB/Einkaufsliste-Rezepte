@@ -2,6 +2,7 @@
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { learnCategories, suggestCategory, validAisles } from './categories.js';
+import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
 // `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
 const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
@@ -56,6 +57,13 @@ export function validateRow(key, row) {
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
   if ((key === 'items' || key === 'prices') && row.saleUntil !== undefined && row.saleUntil !== null && row.saleUntil !== '' && !validDay(row.saleUntil)) throw new Error('Ungültiges Ende des Angebots.');
   if (key === 'items' && row.category !== undefined && row.category !== null && typeof row.category !== 'string') throw new Error('Ungültige Kategorie.');
+  // Optionale Wunschdetails (2.57): getrennte Felder mit eigenen Änderungsuhren.
+  if (key === 'items' && row.wishUrl !== undefined && row.wishUrl !== null) {
+    if (typeof row.wishUrl !== 'string' || row.wishUrl.length > WISH_URL_LIMIT) throw new Error('Ungültiger Produktlink.');
+    productLink(row.wishUrl);
+  }
+  if (key === 'items' && row.wishNote !== undefined && row.wishNote !== null &&
+      (typeof row.wishNote !== 'string' || row.wishNote.length > WISH_NOTE_LIMIT)) throw new Error('Ungültige Notiz zum Wunsch.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
   if (key === 'items' && row._adds !== undefined && (!Array.isArray(row._adds) || !row._base || row._adds.some(entry => !entry || typeof entry.id !== 'string' ||
       !Number.isFinite(Date.parse(entry.at)) || !(entry.quantity > 0) || typeof entry.unit !== 'string'))) throw new Error('Ungültige Mengenänderungen.');
@@ -107,7 +115,9 @@ export function validateRow(key, row) {
 // nötige Mindestzahl ein; eine App mit kleinerer Zahl liest die Datei dann nicht mehr und schreibt nichts (sie verweist auf das Aktualisieren).
 // Apps bis Version 2.36 kennen das Feld noch nicht. Revision 2: Marken für die Liste der angewendeten Änderungen (`sync.marks`, siehe compact.js).
 // Revision 3 (Version 2.40): bezahlte Preise mit Sorte (`prices.variant`, `prices.src`); eine ältere App würde sie beim Aufräumen zusammenwerfen.
-export const SCHEMA_REV = 3;
+// Revision 4 (2.57): Wünsche mit Produktlink/Notiz dürfen nicht mit anderen
+// Artikeln zusammengelegt werden. Ältere Apps erkennen diesen Schutz nicht.
+export const SCHEMA_REV = 4;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -226,6 +236,7 @@ export function merge(data, operations) {
     try { validateRow(collection, row); } catch { next[collection].splice(next[collection].indexOf(row), 1); }
   }
   next.sync.applied = [...applied];
+  if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
   return validate(next);
 }
 
@@ -393,7 +404,7 @@ export function combineQuantity(left, right) {
 // rows: [{name, quantity, unit, noAmount?}]. Ergebnis: neue Zeilen (`fresh`), geänderte vorhandene Artikel (`counted`: id, Name,
 // `add`: was dazukommt, `after`: neue Gesamtmenge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
-  const pool = active(items).filter(item => item.id && !item.checked && (item.storeId || '') === (storeId || ''))   // nur echte Artikel (mit Kennung), nie gelernte Namen
+  const pool = active(items).filter(item => item.id && !item.checked && !hasWishDetails(item) && (item.storeId || '') === (storeId || ''))   // nur echte Artikel; konkrete Wünsche bleiben einzeln
     .map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, added: null }));
   const fresh = [], counted = new Map();
   let skipped = 0;
@@ -418,7 +429,7 @@ export function foldIntoList(rows, storeId, items = []) {
    Zusammenführung nur einmal angewendet. Artikel mit eigenem Preis bleiben getrennt (die Person wollte einen eigenen Eintrag). */
 export function duplicateFolds(items, now = new Date().toISOString()) {
   const groups = new Map();
-  for (const item of active(items).filter(row => !row.checked && (row.price === undefined || row.price === null))) {
+  for (const item of active(items).filter(row => !row.checked && !hasWishDetails(row) && (row.price === undefined || row.price === null))) {
     const key = `${item.storeId || ''}|${productKey(item.name)}`;
     groups.set(key, [...(groups.get(key) || []), item]);
   }
