@@ -5078,6 +5078,59 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
+  test('Zwei Geräte bestätigen dieselbe Wochenübernahme fast gleichzeitig (mit Schreibkollision und erneutem Speichern): genau einmal gezählt; bewusst zusätzlich eingetragene Mengen addieren sich weiter', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    // Sperre: Beide Geräte lesen denselben Stand und wollen schreiben. Erst wenn beide soweit sind, schreibt A; B bekommt dann „409“ (veralteter Stand) und speichert erneut.
+    const gate = { on: false, arrived: [] }; let open_, aWrote; const bothArrived = new Promise(resolve => { open_ = resolve; }), aDone = new Promise(resolve => { aWrote = resolve; });
+    const serve = name => async route => {
+      if (gate.on && route.request().method() === 'PUT' && /daten\.json/.test(route.request().url())) {
+        gate.arrived.push(name); if (gate.arrived.length === 2) { gate.on = false; open_(); }
+        await bothArrived;
+        if (name === 'b') await aDone;
+        await remote.handler(route);
+        if (name === 'a') aWrote();
+        return;
+      }
+      return remote.handler(route);
+    };
+    await a.ctx.route('https://api.github.com/**', serve('a')); await b.ctx.route('https://api.github.com/**', serve('b'));
+    const conflicts = []; b.page.on('response', response => { if (response.request().method() === 'PUT' && response.status() === 409) conflicts.push(response.url()); });
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); }
+    await planPasta(a.page, '2'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Tomaten-Pasta/.test(document.querySelector('#plan-days').textContent), null, { timeout: 20000 });
+    const nudeln = () => remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`).sort();
+    const before = nudeln();
+    for (const device of [a, b]) { await device.page.click('[data-tab=plan]'); await device.page.click('#plan-shopping'); await sheetOpen(device.page); }
+    assert.ok((await weekRowsText(a.page)).some(row => /Nudeln/.test(row)) && (await weekRowsText(b.page)).some(row => /Nudeln/.test(row)), 'beide haben noch dieselbe Vorschau');
+    gate.on = true;
+    await Promise.all([a.page.click('#week-form button[type=submit]'), b.page.click('#week-form button[type=submit]')]);
+    await a.page.waitForSelector('#week-dialog', { state: 'hidden' }); await b.page.waitForSelector('#week-dialog', { state: 'hidden' });
+    await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(a.page); await pollNow(b.page); await synced(a.page); await synced(b.page);
+    assert.ok(conflicts.length >= 1, 'B bekam eine Schreibkollision und speicherte erneut');
+    const once = nudeln();
+    // dieselbe Übernahme, nur einmal gezählt: Nudeln stehen genau um die 200 g mehr da, die das Rezept für 2 Portionen braucht
+    const total = list => list.reduce((sum, text) => sum + Number.parseFloat(text), 0);
+    assert.equal(total(once) - total(before), 200, `vorher ${before}, danach ${once}`);
+    assert.equal(remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').length, once.length);
+    const names = remote.content.items.filter(item => !item.deletedAt).map(item => item.name.toLowerCase());
+    assert.equal(names.length, new Set(names.map((name, index) => `${name}|${remote.content.items.filter(item => !item.deletedAt)[index].storeId}`)).size, 'kein Artikel steht doppelt');
+    // Bewusst zusätzlich eingetragen: beide Geräte tragen von Hand je 100 g Nudeln ein – das zählt, jedes einzeln
+    const manual = async page => {
+      await page.click('[data-tab=shopping]');
+      await page.getByRole('tab', { name: /^Edeka/ }).click();
+      await page.fill('#item-form input[name=name]', 'Nudeln'); await page.fill('#item-form input[name=quantity]', '100'); await page.fill('#item-form input[name=unit]', 'g');
+      await page.click('#item-form button[type=submit]');
+    };
+    await manual(a.page); await synced(a.page); await manual(b.page); await synced(b.page);
+    await pollNow(a.page); await synced(a.page);
+    assert.equal(total(nudeln()) - total(once), 200, `von Hand zweimal 100 g: ${once} → ${nudeln()}`);
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
   test('Nach der Übernahme geändert: Rezept geändert, Rezept gelöscht, Gericht gelöscht – Plan und Wochen-Einkauf sagen, was auf der Einkaufsliste zu prüfen ist; die Liste selbst bleibt unverändert', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
@@ -6437,6 +6490,34 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
     assert.equal(download.suggestedFilename(), 'Kichererbsen-Curry.pdf');
     assert.ok(checkPdf(await pdfBytesOf(download)).includes(`/Count ${pages} `));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  test('Rezeptblatt: ein sehr langer Arbeitsschritt wird nie gekürzt – er läuft auf der nächsten Seite weiter („Fortsetzung“), der Notizbereich bleibt frei, der letzte Satz steht vollständig in Vorschau und PDF', async () => {
+    const data = sheetData(), sentence = number => `Satz ${number} verlangt Ruhe und Sorgfalt beim Verrühren, damit die Masse gleichmäßig bleibt und nichts anbrennt.`;
+    const longStep = `Langer Schritt mit vielen Angaben. ${Array.from({ length: 36 }, (_, index) => sentence(index + 1)).join(' ')} Das ist der allerletzte Satz dieses langen Schritts.`;
+    data.recipes.find(row => row.id === 'recipe-curry').instructions = `Zwiebeln anbraten.\n${longStep}\nFertig servieren.`;
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
+    await open(page);
+    await openCardSheet(page, 'Kichererbsen-Curry');
+    const sheets = await page.evaluate(() => [...document.querySelectorAll('#sheet-pages svg')].map(svg => [...svg.querySelectorAll('text')].map(node => ({ text: node.textContent, x: Number(node.getAttribute('x')), y: Number(node.getAttribute('y')) }))));
+    assert.ok(sheets.length >= 2, `${sheets.length} Seiten`);
+    const stepText = sheets.flatMap(items => items.filter(item => item.x === 324 && item.text !== 'Fortsetzung')).map(item => item.text).join(' ');
+    assert.equal(stepText, `Zwiebeln anbraten. ${longStep} Fertig servieren.`, 'jedes Wort jedes Schritts steht in der Vorschau, in der richtigen Reihenfolge');
+    assert.ok(!sheets.flat().some(item => item.text.includes('…')), 'nirgends „…“');
+    assert.ok(sheets.slice(1, -1).every(items => items.some(item => item.text === 'Fortsetzung')) && !sheets[0].some(item => item.text === 'Fortsetzung'), 'jede Folgeseite beginnt mit „Fortsetzung“, die erste nicht');
+    const last = sheets.at(-1), notes = last.find(item => item.text === 'Meine Notizen');
+    assert.ok(notes, 'die Notizen stehen auf der letzten Seite');
+    for (const items of sheets) for (const item of items.filter(entry => entry.x === 324)) assert.ok(item.y < (items === last ? notes.y - 30 : 780), `„${item.text}“ (y ${item.y}) liegt im Notizbereich oder unter dem Seitenrand`);
+    assert.ok(last.some(item => item.text === 'Fertig servieren.') && sheets.flat().some(item => item.text.includes('Schritts.')), 'der letzte Satz und der folgende Schritt sind da');
+    // die Datei: dieselben Seiten, der letzte Satz des langen Schritts steht darin
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    const body = checkPdf(await pdfBytesOf(download));
+    assert.ok(body.includes(`/Count ${sheets.length} `), 'gleich viele Seiten wie die Vorschau');
+    // Text steht in der Datei als Hexadezimalzahlen der Zeichen (siehe pdf.js)
+    for (const part of ['allerletzte', 'Schritts.', 'Satz 36 verlangt', 'Fortsetzung']) assert.ok(body.includes(Buffer.from(part, 'latin1').toString('hex')), `${part} fehlt in der PDF-Datei`);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

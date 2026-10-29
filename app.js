@@ -13,7 +13,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { emojiFor } from './emoji.js';
 import { GROCERY_NAMES } from './grocery-names.js';
-import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, snapshotRows, weekBasket, weekDays, weekLabel, weekStart } from './plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
@@ -2669,12 +2669,17 @@ for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale
 $('#set-offers').addEventListener('click', () => openStoresDialog(view));   // das Geschäft, dessen Link fehlt, ist gleich aufgeklappt
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
-function addRows(rows, storeId, unchecked = [], remember = false, extraOps = []) {
+// `take`: Kennung einer Wochenübernahme (siehe weekTakeId in plan.js); Zeilen mit `key` bekommen dann feste Kennungen, damit dieselbe Übernahme von zwei Geräten nur einmal zählt.
+function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [], take = '') {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory());
+  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory(), take);
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length && !extraOps.length) throw new Error('Alles davon steht schon auf der Liste.');
-  const pantryOps = stocked.map(name => nextOp('pantry', uid(), { name }));
+  const pantryOps = stocked.map(name => {
+    const id = take ? `take-${take}-pantry-${shortHash(productKey(name))}` : uid(), op = nextOp('pantry', id, { name });
+    if (take) op.id = id;
+    return op;
+  });
   const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
   commit([...result.ops, ...pantryOps, ...extraOps], `Übernommen: ${parts.join(', ') || 'alles stand schon auf der Liste'}`);
@@ -2885,7 +2890,10 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   // Die Gerichte, deren Zutaten jetzt auf die Liste gehen, merken sich das (für wie viele Portionen), damit ein zweites Mal nichts verdoppelt. Dieselbe Änderung wie die Artikel.
   const stamp = new Date().toISOString(), marks = [...new Set(form._plan.basket.use.map(meal => meal.id))].map(id => form._plan.meals.find(meal => meal.id === id)).filter(Boolean)
     .map(meal => nextOp('meals', meal.id, { listedServings: meal.servings, listedAt: stamp, listedRows: snapshotRows(active(state.ingredients).filter(row => row.recipeId === meal.recipeId)) }));
-  addRows(selected.map(row => listRow(row)), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name), form.elements.rememberPantry.checked, marks);
+  // Dieselbe Übernahme von zwei Geräten zählt nur einmal: feste Kennungen aus den Gerichten und den Zeilen (siehe weekTakeId in plan.js)
+  const keys = weekRowKeys(selected);
+  addRows(selected.map((row, index) => ({ ...listRow(row), key: keys[index] })), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name),
+    form.elements.rememberPantry.checked, marks, weekTakeId(form._plan.basket.use));
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {

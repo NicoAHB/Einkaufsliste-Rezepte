@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.55
+# Einkauf & Rezepte – Version 2.56
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,18 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.56: Lange Arbeitsschritte im PDF vollständig, Wochenübernahme genau einmal
+
+**Rezeptblatt (PDF und Vorschau):** Kochanweisungen werden **nie mehr gekürzt** (kein „…“ am Ende).
+- Passt ein Schritt auf die Seite, bleibt er ganz zusammen (wie bisher). Ist er länger als der Rest der Seite und passt auch auf die nächste nicht ganz, **läuft er auf den Folgeseiten weiter**: Die Seite bekommt seine **Nummer im Kreis** und darunter **„Fortsetzung“**; auf jeder Seite bleiben mindestens zwei Zeilen des Schritts.
+- Der **Notizbereich** („Meine Notizen“, nur auf der letzten Seite) bleibt **frei**: Kein Schritttext läuft hinein, und nichts ragt unten oder über den rechten Rand hinaus. Wird es mehr Text, kommt eine weitere Seite dazu.
+- Geprüft wird in den Tests: Jedes Wort jedes Schritts steht in der richtigen Reihenfolge in Vorschau **und** PDF-Datei, auch der letzte Satz; der Text liegt oberhalb der Notizen und innerhalb der Seite.
+
+**Wochenübernahme („Einkauf“ im Plan) zählt genau einmal.** Bestätigen zwei Geräte **fast gleichzeitig** dieselbe Übernahme, bevor sie voneinander wissen, entstehen nicht mehr 800 g statt 400 g Nudeln.
+- Beide Geräte geben jeder Zeile der Übernahme **dieselbe feste Kennung** (aus den übernommenen Gerichten mit ihren Portionen, ihrem bisherigen Übernahme-Stand und Name/Einheit der Zutat). Der Abgleich wendet jede Kennung nur **einmal** an; das gilt auch für den **erneuten Speicherversuch nach einer Schreibkollision** und gleich, ob ein Gerät die Zeile neu anlegt und das andere sie zu einem vorhandenen Artikel zählt. Das gilt auch für die Vorrats-Einträge der Übernahme.
+- Bewusst **zusätzlich eingetragene Mengen addieren sich weiter**: von Hand eingetragene Artikel, der Knopf „Auf die Liste“ an einer Rezeptkarte und eine **zweite, ausdrücklich gewollte Übernahme** (Haken „Schon übernommene Gerichte auslassen“ abgewählt, anderer Übernahme-Stand) haben andere Kennungen.
+- Test: zwei Geräte bestätigen gleichzeitig (der Abgleich von Gerät B wird absichtlich bis nach dem von Gerät A verzögert und endet mit „409“ und erneutem Speichern) – am Ende stehen die Nudeln genau einmal mehr da; danach zählen zweimal 100 g von Hand einzeln.
 
 ## Neu in Version 2.55: Vergangene Tage im Wochenplan sind nur noch zu sehen
 

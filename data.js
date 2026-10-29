@@ -340,12 +340,14 @@ export function frequentItems(history, items, limit = 6, minCount = 2) {
 
 // Neue Listenartikel aus fertig umgerechneten Zeilen {name, quantity, unit}. Die Kategorie (zuletzt verwendete für denselben Namen,
 // sonst geschätzt) wird vorgeschlagen, aber nie erfunden. Einen Preis bekommt ein neuer Artikel nie von selbst (auch nicht aus früheren Käufen).
-export function newItems(rows, storeId, actor, at, items = []) {
+export function newItems(rows, storeId, actor, at, items = [], stableId = () => '') {
   const learned = learnCategories(items);
   return rows.map(row => {
-    const category = suggestCategory(row.name, learned);
-    return operation('items', uid(), { storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
+    const category = suggestCategory(row.name, learned), id = stableId(row);
+    const op = operation('items', id || uid(), { storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
       price: null, onSale: false, ...(category ? { category } : {}) }, actor, at);
+    if (id) op.id = id;   // dieselbe Kennung für Anlage und Artikel: Legt ein zweites Gerät dieselbe Übernahme an, ist es dieselbe Änderung (siehe addToList)
+    return op;
   });
 }
 
@@ -406,10 +408,10 @@ export function foldIntoList(rows, storeId, items = []) {
     const sum = combineQuantity(match, row);
     match.quantity = sum.quantity; match.unit = sum.unit;
     if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; }
-    else { match.added = match.added ? combineQuantity(match.added, row) : { quantity: row.quantity, unit: row.unit }; counted.set(match.id, match); }
+    else { match.added = match.added ? combineQuantity(match.added, row) : { quantity: row.quantity, unit: row.unit }; match.key ||= row.key; counted.set(match.id, match); }
   }
   return { fresh: fresh.map(({ pool: _pool, noAmount: _noAmount, ...row }) => row), skipped,
-    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, add: entry.added, after: { quantity: entry.quantity, unit: entry.unit } })) };
+    counted: [...counted.values()].map(entry => ({ id: entry.id, name: entry.name, add: entry.added, after: { quantity: entry.quantity, unit: entry.unit }, ...(entry.key ? { key: entry.key } : {}) })) };
 }
 /* Gleichzeitig angelegte Doppel („Milch“ auf zwei Geräten) werden deterministisch zusammengeführt: Der zuerst angelegte Artikel bleibt, der
    andere wird gelöscht und seine Menge dem ersten zugerechnet. Beide Geräte erzeugen dieselben Operations-IDs, deshalb wird jede
@@ -440,10 +442,15 @@ export function duplicateFolds(items, now = new Date().toISOString()) {
 // Fertige Änderungen für eine Liste von Zeilen: neue Artikel und erhöhte Mengen vorhandener Artikel.
 // `items` sind die Artikel der Einkaufsliste und nur sie entscheiden, was „schon vorhanden“ ist. `history` (Standard: die Liste selbst) sind
 // Artikel und gelernte Namen früherer Einkäufe; sie dienen nur dazu, die Kategorie neuer Artikel vorzuschlagen.
-export function addToList(rows, storeId, actor, at, items = [], history = items) {
+/* `take` (Version 2.56) kennzeichnet eine Wochenübernahme: Trägt jede Zeile eine `key`, bekommt jede Änderung die feste Kennung „take-<Übernahme>-<Zeile>“ statt einer zufälligen.
+   Bestätigen zwei Geräte dieselbe Übernahme, bevor sie voneinander wissen, sind es dieselben Änderungen: merge wendet jede Kennung nur einmal an, auch nach einem erneuten
+   Speichern wegen einer Schreibkollision (409). Das gilt gleich, ob die Zeile auf einem Gerät neu angelegt und auf dem anderen zu einem vorhandenen Artikel gezählt wird.
+   Ohne `take` (von Hand eingetragen, Rezept auf die Liste) bleibt jede Änderung eigen und addiert sich, wie gewollt. */
+export function addToList(rows, storeId, actor, at, items = [], history = items, take = '') {
   const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
-  const created = newItems(fresh, storeId, actor, at, history);
+  const stableId = row => take && row.key ? `take-${take}-${row.key}` : '';
+  const created = newItems(fresh, storeId, actor, at, history, stableId);
   // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).
-  const ops = [...created, ...counted.map(entry => operation('items', entry.id, { add: entry.add }, actor, at))];
+  const ops = [...created, ...counted.map(entry => { const op = operation('items', entry.id, { add: entry.add }, actor, at), id = stableId(entry); if (id) op.id = id; return op; })];
   return { ops, added: created.length, counted, skipped };
 }

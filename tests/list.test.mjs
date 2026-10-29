@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { active, addToList, combineQuantity, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, sameProduct, validate, wordSimilarity } from '../data.js';
+import { active, addToList, combineQuantity, duplicateFolds, foldIntoList, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, sameProduct, validate, wordSimilarity } from '../data.js';
 
 const demo = JSON.parse(await readFile(new URL('../beispieldaten.json', import.meta.url), 'utf8'));
 const AT = '2026-10-27T10:00:00.000Z';
@@ -154,6 +154,64 @@ test('Übernahme zweier Geräte: dieselbe Zutat gleichzeitig auf beiden Geräten
   assert.deepEqual(view(ab).filter(entry => entry[0] === 'Nudeln'), [['Nudeln', 900, 'g']], '100 + 400 + 400: beide Zuwächse zählen');
   assert.equal(view(ab).filter(entry => entry[0] === 'Salz').length, 2, 'zwei neue Salz-Artikel (jede Person legte ihn an); das Zusammenführen doppelter Artikel macht daraus einen');
   assert.doesNotThrow(() => validate(ab));
+});
+
+/* ---------- Dieselbe Wochenübernahme genau einmal (Version 2.56) ---------- */
+const nudeln = data => active(data.items).filter(item => item.name === 'Nudeln' && !item.checked).map(item => `${item.quantity} ${item.unit}`).sort();
+const settle = data => { const folds = duplicateFolds(data.items, '2026-10-29T10:05:00.000Z'); return folds.length ? merge(data, folds) : data; };   // wie beim Abgleich (app.js sync)
+const take = (key, quantity = 400, name = 'Nudeln') => ({ name, quantity, unit: 'g', key });
+
+test('Dieselbe Wochenübernahme auf zwei Geräten zählt einmal: 400 g bleiben 400 g, egal in welcher Reihenfolge, auch wenn das Gerät sie noch einmal sendet', () => {
+  const start = open([]);
+  const nico = addToList([take('k1')], '', 'Nico', '2026-10-29T10:00:00.000Z', start.items, start.items, 'abc').ops;
+  const anna = addToList([take('k1')], '', 'Anna', '2026-10-29T10:00:01.000Z', start.items, start.items, 'abc').ops;
+  assert.deepEqual(nico.map(op => op.id), anna.map(op => op.id), 'beide Geräte erzeugen dieselbe Änderung');
+  assert.equal(nico[0].entityId, anna[0].entityId);
+  for (const order of [[nico, anna], [anna, nico], [nico, anna, nico, anna]]) {
+    const merged = settle(order.reduce((data, ops) => merge(data, ops), structuredClone(start)));
+    assert.deepEqual(nudeln(merged), ['400 g'], 'genau einmal');
+  }
+  // erneuter Speicherversuch nach einer Schreibkollision: dasselbe Paket noch einmal auf den schon gemischten Stand
+  const once = settle(merge(structuredClone(start), nico)), again = settle(merge(merge(once, anna), nico));
+  assert.deepEqual(nudeln(again), ['400 g']);
+  assert.equal(active(again.items).length, active(once.items).length);
+});
+
+test('Dieselbe Wochenübernahme, ein Gerät legt Nudeln neu an, das andere zählt sie zu einem vorhandenen Eintrag: trotzdem einmal (100 + 400 = 500 g)', () => {
+  const start = open([row('a', 'Nudeln', 100, 'g', { storeId: '' })]), empty = open([]);
+  const creates = addToList([take('k1')], '', 'Anna', '2026-10-29T10:00:00.000Z', empty.items, empty.items, 'abc').ops;
+  const counts = addToList([take('k1')], '', 'Nico', '2026-10-29T10:00:01.000Z', start.items, start.items, 'abc').ops;
+  assert.equal(creates[0].id, counts[0].id, 'dieselbe Kennung, ob angelegt oder dazugezählt');
+  assert.ok(counts[0].patch.add && creates[0].patch.name);
+  for (const order of [[creates, counts], [counts, creates]]) {
+    assert.deepEqual(nudeln(settle(order.reduce((data, ops) => merge(data, ops), structuredClone(start)))), ['500 g'], 'der Zuwachs zählt einmal');
+  }
+});
+
+test('Bewusst zusätzliche Mengen addieren sich weiter: von Hand eingetragen, eine zweite Übernahme in anderem Stand, und der Rezept-Knopf', () => {
+  const start = open([]);
+  const week = addToList([take('k1')], '', 'Nico', '2026-10-29T10:00:00.000Z', start.items, start.items, 'abc').ops;
+  const base = merge(structuredClone(start), week), items = () => base.items;
+  const manual = [addToList([{ name: 'Nudeln', quantity: 200, unit: 'g' }], '', 'Anna', '2026-10-29T10:01:00.000Z', items()).ops, addToList([{ name: 'Nudeln', quantity: 200, unit: 'g' }], '', 'Nico', '2026-10-29T10:01:01.000Z', items()).ops];
+  assert.notEqual(manual[0][0].id, manual[1][0].id, 'ohne Übernahme-Kennung hat jede Eingabe ihre eigene');
+  assert.deepEqual(nudeln(settle(manual.reduce((data, ops) => merge(data, ops), structuredClone(base)))), ['800 g'], '400 + 200 + 200: beide Eingaben von Hand zählen');
+  const second = addToList([take('k1')], '', 'Nico', '2026-10-29T11:00:00.000Z', items(), items(), 'xyz').ops;   // bewusst noch einmal übernommen: andere Kennung
+  assert.notEqual(second[0].id, week[0].id);
+  assert.deepEqual(nudeln(settle(merge(structuredClone(base), second))), ['800 g']);
+  assert.deepEqual(nudeln(settle(merge(merge(structuredClone(base), second), second))), ['800 g'], 'aber auch die zweite nur einmal');
+});
+
+test('Mehrere Zeilen einer Übernahme haben je eine eigene Kennung; ohne Schlüssel bleibt es bei zufälligen Kennungen', () => {
+  const start = open([]);
+  const ops = addToList([take('k1'), take('k2', 2, 'Tomaten'), { name: 'Salz', quantity: 1, unit: 'Stück' }], '', 'Nico', AT, start.items, start.items, 'abc').ops;
+  assert.deepEqual(ops.slice(0, 2).map(op => op.id), ['take-abc-k1', 'take-abc-k2']);
+  assert.deepEqual(ops.slice(0, 2).map(op => op.entityId), ['take-abc-k1', 'take-abc-k2']);
+  assert.ok(!ops[2].id.startsWith('take-'), 'Zeile ohne Schlüssel');
+  const noTake = addToList([take('k1')], '', 'Nico', AT, start.items).ops;
+  assert.ok(!noTake[0].id.startsWith('take-'), 'ohne Übernahme-Kennung zufällig');
+  const merged = merge(structuredClone(start), ops);
+  assert.deepEqual(active(merged.items).map(item => item.name).sort(), ['Nudeln', 'Salz', 'Tomaten']);
+  assert.doesNotThrow(() => validate(merged));
 });
 
 test('Datenmodell: Merker „auf die Liste übernommen“ am Gericht wird geprüft und lässt sich wieder entfernen', () => {
