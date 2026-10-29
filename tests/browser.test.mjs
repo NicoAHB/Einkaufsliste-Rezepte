@@ -30,7 +30,7 @@ before(async () => {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
-  browser = await playwright.chromium.launch();
+  browser = await playwright.chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {});
 });
 after(async () => { await browser?.close(); server?.close(); });
 
@@ -143,6 +143,33 @@ function github(initial) {
 }
 const connectedConfig = { owner: 'haushalt', repo: 'daten', branch: 'main', path: 'daten.json', token: 'test-token' };
 const pollNow = page => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+function wishData() {
+  const data = structuredClone(demo), at = '2026-10-29T09:00:00.000Z';
+  data.stores.push({ id: 'store-wishes', name: 'Wünsche', separate: true, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+  data.items.push({ id: 'wish-rope', name: 'Springseil', quantity: 1, unit: 'Stück', storeId: 'store-wishes', checked: false,
+    createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+  return data;
+}
+async function openWishlist(page) {
+  await goTab(page, 'shopping'); await storeButton(page, '#store-chips', 'Wünsche').click();
+}
+async function holdWish(page, id = 'wish-rope') {
+  const name = page.locator(`#items .item[data-id="${id}"] .item-copy`);
+  await name.scrollIntoViewIfNeeded();
+  const box = await name.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down(); await page.waitForTimeout(620); await page.mouse.up();
+  await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+}
+async function localWishes(options = {}, data = wishData()) {
+  const result = await context(options);
+  await result.ctx.addInitScript(data => {
+    if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] }));
+  }, data);
+  await open(result.page); await openWishlist(result.page);
+  return result;
+}
 
 describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' }, () => {
   for (const [label, viewport] of [['iPhone 390 px', null], ['kleines Gerät 320 px', { width: 320, height: 568 }]]) {
@@ -6603,6 +6630,120 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await first.page.locator('#welcome[open]').count(), 1, 'das Willkommensfenster bleibt offen');
     assert.deepEqual(problems, []);
     await first.ctx.close(); await ctx.close();
+  });
+
+  test('Wünsche: langes Drücken öffnet nur Details; sichere Links und Notizen speichern, erneut öffnen und exportieren', async () => {
+    const { ctx, page, problems } = await localWishes();
+    await holdWish(page);
+    assert.equal(await page.locator('#wish-title').textContent(), 'Springseil');
+    assert.equal(await page.locator('#item-dialog[open], #move-dialog[open]').count(), 0);
+    assert.equal(await page.locator('#wish-product-link').isVisible(), false);
+    await page.fill('#wish-form [name=wishUrl]', 'javascript:alert(1)');
+    await page.click('#wish-form button[type=submit]');
+    assert.match(await page.textContent('#wish-dialog [data-dialog-error]'), /https/);
+    await page.fill('#wish-form [name=wishUrl]', 'https://example.org/springseil?farbe=schwarz');
+    await page.fill('#wish-form [name=wishNote]', 'Schwarz, 3 m lang\nOhne Gewichte');
+    assert.equal(await page.getAttribute('#wish-product-link', 'href'), 'https://example.org/springseil?farbe=schwarz');
+    assert.equal(await page.getAttribute('#wish-product-link', 'target'), '_blank');
+    assert.match(await page.getAttribute('#wish-product-link', 'rel'), /noopener/);
+    await page.click('#wish-form button[type=submit]'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
+    assert.ok(!(await page.textContent('#items')).includes('Ohne Gewichte'), 'die Liste zeigt nicht die ganze Notiz');
+    assert.ok(!(await page.textContent('#items')).includes('example.org'), 'lange Links bleiben im Detailfenster');
+    await holdWish(page);
+    assert.equal(await page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang\nOhne Gewichte');
+    await page.fill('#wish-form [name=wishNote]', 'Nicht speichern');
+    await page.click('#wish-dialog [data-close]'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
+    // Alternative ohne Haltegeste und Fehler im obersten Fenster (zwei offene Dialoge).
+    await page.locator('#items .item-copy').click(); await sheetOpen(page);
+    await page.click('#open-wish-details'); await sheetOpen(page);
+    assert.equal(await page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang\nOhne Gewichte');
+    await page.fill('#wish-form [name=wishUrl]', 'http://example.org'); await page.click('#wish-form button[type=submit]');
+    assert.equal(await page.locator('#wish-dialog [data-dialog-error]').isVisible(), true);
+    await page.click('#wish-dialog [data-close]'); await page.click('#item-dialog [data-close]');
+    await openSettings(page);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
+    const saved = JSON.parse(await readFile(await download.path(), 'utf8')), row = saved.items.find(item => item.id === 'wish-rope');
+    assert.equal(row.wishUrl, 'https://example.org/springseil?farbe=schwarz');
+    assert.equal(row.wishNote, 'Schwarz, 3 m lang\nOhne Gewichte');
+    assert.equal(saved.sync.minRev, 4);
+    await goTab(page, 'shopping'); await storeButton(page, '#store-chips', 'Edeka').click();
+    await page.locator('#items .item-copy').first().click(); await sheetOpen(page);
+    assert.equal(await page.locator('#open-wish-details').isVisible(), false, 'Supermarktartikel erhalten keine Wunschfelder');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Wünsche: Finger halten öffnet Details; Wischen und Abhaken nicht; kleine Ansichten und gesperrter Laden', async () => {
+    const { ctx, page, problems } = await localWishes({ config: { shopLock: 0 } });
+    const cdp = await ctx.newCDPSession(page);
+    const box = await page.locator('#items .item-copy').boundingBox(), x = box.x + 30, y = box.y + 20;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 45 }] });
+    await page.waitForTimeout(620); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0, 'Scrollgeste öffnet nichts');
+    const now = await page.locator('#items .item-copy').boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: now.x + 30, y: now.y + 20 }] });
+    await page.waitForTimeout(620); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 700 });
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.equal(await page.evaluate(() => document.querySelector('#wish-dialog').scrollWidth <= document.querySelector('#wish-dialog').clientWidth), true);
+    }
+    await page.click('#wish-dialog [data-close]');
+    await page.locator('#items .check').click();
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0);
+    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Wünsche').click();
+    // Auch bei erledigten Wünschen bleibt das Detail erreichbar; die Sperre bleibt wirksam.
+    await page.locator('#shop-list .shop-done summary').click();
+    await page.focus('#shop-list .shop-text'); await page.keyboard.press('Enter'); await page.waitForSelector('#wish-dialog[open]');
+    await page.click('#wish-dialog [data-close]'); await page.click('#shop-lock');
+    await page.focus('#shop-list .shop-text'); await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Wünsche: Link und Notiz werden auf zwei Geräten feldweise und nach Offline-Neustart abgeglichen', async () => {
+    const api = github(wishData());
+    const nico = await context({ config: connectedConfig, context: { serviceWorkers: 'allow' } });
+    const anna = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [nico, anna]) { await device.ctx.route('https://api.github.com/**', api.handler); await open(device.page); await openWishlist(device.page); await holdWish(device.page); }
+    await nico.page.fill('#wish-form [name=wishNote]', 'Schwarz'); await nico.page.click('#wish-form button[type=submit]');
+    await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(anna.page); await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await anna.page.fill('#wish-form [name=wishUrl]', 'https://example.org/rope'); await anna.page.click('#wish-form button[type=submit]');
+    await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    let row = api.content.items.find(item => item.id === 'wish-rope');
+    assert.equal(row.wishUrl, 'https://example.org/rope'); assert.equal(row.wishNote, 'Schwarz');
+    await pollNow(nico.page); await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await nico.page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await nico.ctx.setOffline(true); await holdWish(nico.page);
+    await nico.page.fill('#wish-form [name=wishNote]', 'Schwarz, 3 m lang'); await nico.page.click('#wish-form button[type=submit]');
+    await nico.page.reload(); await openWishlist(nico.page); await holdWish(nico.page);
+    assert.equal(await nico.page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang');
+    await nico.page.click('#wish-dialog [data-close]');
+    await anna.page.locator('#items .check').click(); await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await nico.ctx.setOffline(false); await pollNow(nico.page); await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    row = api.content.items.find(item => item.id === 'wish-rope');
+    assert.equal(row.wishNote, 'Schwarz, 3 m lang'); assert.equal(row.wishUrl, 'https://example.org/rope'); assert.equal(row.checked, true);
+    assert.deepEqual(nico.problems, []); assert.deepEqual(anna.problems, []);
+    await nico.ctx.close(); await anna.ctx.close();
+  });
+
+  test('Wünsche: Mehrfachverschieben bewahrt unterschiedliche Produktlinks und Notizen bei gleichen Namen', async () => {
+    const data = wishData(), first = data.items.find(row => row.id === 'wish-rope');
+    first.wishUrl = 'https://example.org/model-a'; first.wishNote = 'Modell A';
+    data.items.push({ ...first, id: 'wish-rope-b', wishUrl: 'https://example.org/model-b', wishNote: 'Modell B' });
+    data.items.push({ ...first, id: 'ordinary-rope', storeId: 'store-edeka', wishUrl: '', wishNote: '' });
+    const { ctx, page, problems } = await localWishes({}, data);
+    assert.equal(await page.locator('#items .item').count(), 2);
+    await page.click('#select-mode'); await page.click('#select-all'); await page.click('#select-move'); await sheetOpen(page);
+    await page.locator('#move-choices button', { hasText: 'Edeka' }).click();
+    await storeButton(page, '#store-chips', 'Edeka').click();
+    assert.equal(await page.locator('#items .item', { hasText: 'Springseil' }).count(), 3);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items);
+    assert.equal(saved.find(row => row.id === 'wish-rope').wishNote, 'Modell A');
+    assert.equal(saved.find(row => row.id === 'wish-rope-b').wishUrl, 'https://example.org/model-b');
+    assert.deepEqual(problems, []); await ctx.close();
   });
 
   test('Neuer Name und Backup', async () => {

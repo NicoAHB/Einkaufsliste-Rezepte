@@ -5,6 +5,7 @@ import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, i
 import { brandOf, defaultSymbol, symbolOf } from './brand.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
+import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
 import { pantrySuggestions } from './pantry-suggestions.js';
@@ -34,6 +35,7 @@ for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStora
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
+let wishBaseline = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null, deferredAdd = null;
 let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
 let pendingPhoto = null, photoRemoved = false, previewUrl = '';
@@ -110,7 +112,7 @@ function iconButton(name, label, action, className = '') {
 }
 function message(text = '') {
   document.querySelectorAll('[data-dialog-error]').forEach(node => { node.hidden = true; });
-  const dialog = document.querySelector('dialog[open]');
+  const dialog = document.querySelector('#wish-dialog[open]') || document.querySelector('dialog[open]');
   $('#message').textContent = text; $('#message').hidden = !text || Boolean(dialog);
   if (text && dialog) {
     let alert = dialog.querySelector('[data-dialog-error]');
@@ -350,8 +352,10 @@ function thumbFor(item) {
    aus oder ab (statt abzuhaken oder zu bearbeiten); unten steht eine Leiste mit „Geschäft zuordnen“ und „Löschen“ für alle ausgewählten. */
 let selecting = false;
 const selected = new Set();
+const isWish = item => isSeparate(active(state.stores).find(store => store.id === item?.storeId));
 function itemRow(item, withStore = false) {
   const row = element('li', undefined, `item${item.checked ? ' checked' : ''}${selecting && selected.has(item.id) ? ' selected' : ''}`); row.dataset.id = item.id;
+  if (isWish(item)) row.dataset.wish = '';
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
@@ -364,6 +368,7 @@ function itemRow(item, withStore = false) {
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
   copy.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: bearbeiten`);
   copy.addEventListener('click', () => guard(() => editItem(item.id)));
+  if (isWish(item)) copy.title = 'Lange drücken: Produktlink & Notiz';
   // Auswahlmodus: statt Abhaken und Bearbeiten ein Auswahlkreis; Kreis und Zeile wählen aus und ab.
   const pick = selecting ? button('', () => toggleSelected(item.id, row), 'check select-mark') : null;
   if (pick) {
@@ -375,6 +380,7 @@ function itemRow(item, withStore = false) {
   // Preisentwicklungen; frühere Kaufpreise zeigt die App nicht (seit Version 2.44).
   copy.append(element('strong', item.name), element('span', `${format(item.quantity)} ${item.unit}`, 'item-qty'),
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
+  if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
   row.append(pick || check, copy);
   if (imagesOn()) row.append(thumbFor(item));
   return row;
@@ -576,6 +582,7 @@ function editItem(id) {
   itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
+  $('#open-wish-details').hidden = !isWish(item);
   for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true);
@@ -587,6 +594,25 @@ function editItem(id) {
   const quote = itemQuote(item), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
   message(); $('#item-dialog').showModal();
+}
+
+// Wunschdetails sind ein eigenes kleines Fenster, damit die Liste ruhig bleibt.
+// Ein kurzer Tipp führt wie bisher zu Name, Menge und Liste; langes Drücken zu diesen Details.
+function showWishProductLink() {
+  const link = $('#wish-product-link');
+  let url = ''; try { url = productLink($('#wish-form').elements.wishUrl.value); } catch { /* unfertige Eingabe */ }
+  link.hidden = !url;
+  if (url) link.href = url; else link.removeAttribute('href');
+}
+function openWish(id) {
+  const item = active(state.items).find(row => row.id === id);
+  if (!item || !isWish(item)) throw new Error('Dieser Wunsch ist nicht mehr in einer Wunschliste. Bitte die Liste aktualisieren.');
+  const form = $('#wish-form'); form.reset();
+  form.elements.id.value = id;
+  wishBaseline = { wishUrl: item.wishUrl || '', wishNote: item.wishNote || '' };
+  form.elements.wishUrl.value = wishBaseline.wishUrl; form.elements.wishNote.value = wishBaseline.wishNote;
+  $('#wish-title').textContent = item.name;
+  showWishProductLink(); message(); $('#wish-dialog').showModal();
 }
 function deleteOps(collection, ids) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
@@ -1867,10 +1893,15 @@ holdToConfirm($('#shop-unlock'), HOLD_UNLOCK_MS, () => setLocked(false));
 // Abgehakt wird nur über den Kreis links (große Tippfläche). Name und Menge tippen tut nichts. So hakt man nicht aus Versehen etwas ab, wenn man das Handy anfasst.
 function shopRow(item) {
   const row = element('li', undefined, `shop-item${item.checked ? ' checked' : ''}`); row.dataset.id = item.id;
+  if (isWish(item)) row.dataset.wish = '';
   const tap = element('button', undefined, 'shop-tap'); tap.type = 'button';
   const mark = element('span', undefined, 'shop-mark'); if (item.checked) mark.append(icon('check'));
   tap.append(mark);
   const text = element('div', undefined, 'shop-text');
+  if (isWish(item)) {
+    text.tabIndex = 0; text.setAttribute('role', 'button'); text.setAttribute('aria-label', `${item.name}: Wunschdetails öffnen (lange drücken)`);
+    text.addEventListener('keydown', event => { if (!isLocked() && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); guard(() => openWish(item.id)); } });
+  }
   text.append(element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
   if (imagesOn()) text.append(thumbFor(item));
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
@@ -2762,7 +2793,9 @@ dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) return;
   removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
-}), '.item[data-id]', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint'), target: moveBar, disabled: () => selecting });
+}), '.item[data-id]:not([data-wish])', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint'), target: moveBar, disabled: () => selecting });
+bindWishHold($('#items'), '.item[data-wish] .item-copy', id => guard(() => openWish(id)), () => selecting);
+bindWishHold($('#shop-list'), '.shop-item[data-wish] .shop-text', id => guard(() => openWish(id)), () => isLocked());
 // Lange halten und loslassen, ohne zu ziehen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
 function openMove(id) {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
@@ -2799,7 +2832,7 @@ function moveSelected(storeId) {
   for (const item of rows) {
     if ((item.storeId || '') === target) continue;
     // Wie beim einzelnen Verschieben: Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt; sonst wechselt nur das Geschäft.
-    const same = !item.checked && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, items).counted[0] : null;
+    const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, items).counted[0] : null;
     if (same) {
       ops.push(nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [item.id])); merged++;
       items = items.map(row => row.id === same.id ? { ...row, quantity: same.after.quantity, unit: same.after.unit } : row.id === item.id ? { ...row, deletedAt: stamp } : row);
@@ -2822,7 +2855,7 @@ function moveItem(id, storeId) {
   if ((item.storeId || '') === target) { $('#move-dialog').close(); return; }
   const label = target ? storeName(target) : 'ohne Geschäft';
   // Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt (wie beim Hinzufügen); sonst wechselt nur das Geschäft.
-  const same = !item.checked && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, state.items).counted[0] : null;
+  const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, state.items).counted[0] : null;
   if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   else commit([nextOp('items', id, { storeId: target })], `„${item.name}“ → ${label}`);
   $('#move-dialog').close();
@@ -2836,6 +2869,16 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const delta = changed(patch, itemBaseline);
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
   commit(ops); $('#item-dialog').close();
+}); });
+$('#open-wish-details').addEventListener('click', () => guard(() => openWish($('#edit-item-form').elements.id.value)));
+$('#wish-form').elements.wishUrl.addEventListener('input', showWishProductLink);
+$('#wish-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
+  const form = event.currentTarget, item = active(state.items).find(row => row.id === form.elements.id.value);
+  if (!item || !isWish(item)) throw new Error('Dieser Wunsch wurde inzwischen gelöscht oder verschoben. Bitte schließen und die Liste aktualisieren.');
+  const patch = { wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim() };
+  const delta = changed(patch, wishBaseline);
+  if (Object.keys(delta).length) commit([nextOp('items', item.id, delta)]);
+  $('#wish-dialog').close();
 }); });
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));

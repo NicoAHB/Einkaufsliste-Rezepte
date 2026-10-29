@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.56
+# Einkauf & Rezepte – Version 2.57
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,25 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.57: Produktlink und Notiz bei Wünschen
+
+In einer **eigenen Liste** wie „Wünsche“ den **Produktnamen eine halbe Sekunde gedrückt halten**: Ein kleines Fenster zeigt den optionalen **Produktlink** und die **Notiz** (z. B. Farbe, Größe, Modell). **Wunschdetails speichern** übernimmt die Angaben. Ein vorhandener Link öffnet sich mit **Produkt ansehen** erst nach einem bewussten Tipp; es gibt keine Shop-Abfrage und keine automatische Preisermittlung.
+
+- Die Liste zeigt weiter nur den Namen, die Menge und die Person; ein kleines Link-/Notizsymbol weist auf hinterlegte Details hin. Normale Supermarktartikel erhalten keine zusätzlichen Felder.
+- Ein **kurzer Tipp** öffnet wie bisher die normale Bearbeitung. Dort gibt es bei Wünschen auch **Produktlink & Notiz** (als Alternative zum langen Drücken). Über das Feld **Geschäft** lässt sich der Wunsch weiter in eine andere Liste verschieben; mit **Artikel löschen** entfernen. Das lange Ziehen bleibt bei normalen Einkaufsartikeln unverändert.
+- Scrollen, Wischen und ein zweiter Finger öffnen kein Detailfenster. Der Haken bleibt zum Abhaken. Unter „Im Laden“ funktioniert langes Drücken auf einen Wunsch ebenfalls, solange die Ansicht entsperrt ist.
+- Beide Personen sehen die gespeicherten Angaben nach dem Abgleich. Änderungen funktionieren offline; Link und Notiz werden getrennt zusammengeführt. Beim Verschieben bleiben sie erhalten. Wünsche mit Angaben werden zum Schutz verschiedener Modelle nicht mit gleichnamigen Artikeln zusammengelegt.
+- Datenmodell v1 ergänzt optional `items.wishUrl` (HTTPS-Link, höchstens 2000 Zeichen) und `items.wishNote` (höchstens 1000 Zeichen). Beim ersten Speichern solcher Angaben setzt die Datei `sync.minRev: 4`: **Beide Geräte aktualisieren**, bevor ihr Wunschdetails verwendet. Ältere Apps bitten dann um ein Update, damit sie Wünsche nicht versehentlich zusammenlegen. Bestehende Daten bleiben erhalten. JSON- und ZIP-Sicherungen enthalten die Angaben automatisch.
+- Neues Modul `wishes.js`; Offline-Paket `einkauf-shell-v69`.
+
+Kurze Prüfung auf dem iPhone:
+
+- [ ] „Wünsche“ auswählen (als **Eigene Liste** eingestellt), „Springseil“ hinzufügen und den Namen lange drücken.
+- [ ] Produktlink und Notiz eintragen, speichern, erneut öffnen und „Produkt ansehen“ prüfen.
+- [ ] Auf dem zweiten Gerät aktualisieren: beide Angaben sind vorhanden.
+- [ ] Ohne Empfang eine Notiz ändern, App erneut öffnen und später abgleichen: die Notiz bleibt erhalten.
+- [ ] Bei Edeka einen normalen Artikel öffnen: kein Knopf für Wunschdetails. Abhaken, Scrollen und die Mehrfachauswahl funktionieren weiter.
 
 ## Neu in Version 2.56: Lange Arbeitsschritte im PDF vollständig, Wochenübernahme genau einmal
 
@@ -1087,7 +1106,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `wishes.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
