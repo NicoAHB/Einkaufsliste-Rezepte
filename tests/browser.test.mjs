@@ -1010,7 +1010,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // ... und die App lernt es für denselben Namen (andere Einheit, sonst würde die Menge des vorhandenen Artikels erhöht).
     await expandForm(page); await page.fill('#item-form input[name=unit]', 'Flasche');
     await add('Xyzzy');
-    assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').textContent(), '2');
+    assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').count(), 0, 'keine Zahl bei der Kategorie (seit 2.60)');
+    assert.equal(await page.locator('#items .item', { hasText: 'Xyzzy' }).count(), 2, 'beide Xyzzy stehen auf der Liste');
     assert.ok(!(await heads()).includes('Sonstiges'));
     // Erledigt steht unten.
     await page.locator('.item', { hasText: 'Butter' }).locator('.check').click();
@@ -2133,7 +2134,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
-  test('Im Laden steht die Anzahl nur beim Geschäft, nicht bei den Kategorien (Alle und ein einzelnes Geschäft); unter „Planen“ bleiben die Zähler', async () => {
+  test('Die Anzahl steht nur beim Geschäft, nicht bei den Kategorien: im Laden (Alle und ein einzelnes Geschäft) und unter „Planen“; „Erledigt“ behält seine Zahl', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.fill('#item-form input[name=name]', 'Blumenerde'); await page.click('#item-form button[type=submit]');   // ohne Geschäft
@@ -2151,8 +2152,36 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#shop-list .group-head').count() >= 1);
     assert.equal(await page.locator('#shop-list .group-head .count').count(), 0, 'auch in der Ansicht eines Geschäfts');
     await page.click('#shop-back');
-    assert.ok(await page.locator('#items .group-head .count').count() >= 1, 'unter „Planen“ bleiben die Zähler');
+    await page.getByRole('tab', { name: /^Alle/ }).click();
+    const planHeads = await page.locator('#items .group-head').evaluateAll(nodes => nodes.map(node => [node.firstElementChild.textContent, node.querySelectorAll('.count').length]));
+    assert.ok(planHeads.length >= 2);
+    for (const [label, counts] of planHeads) assert.equal(counts, label === 'Erledigt' ? 1 : 0, `${label}: unter „Planen“ nur „Erledigt“ hat eine Zahl`);
+    assert.ok((await page.locator('#items .store-head').allTextContents()).every(text => /\d$/.test(text.trim())), 'das Geschäft behält seine Zahl');
+    await page.locator('#store-chips .chip, #store-chips [role=tab]', { hasText: 'Edeka' }).first().click();
+    assert.ok(await page.locator('#items .group-head').count() >= 1);
+    assert.equal(await page.locator('#items .group-head:not(:has-text("Erledigt")) .count').count(), 0, 'auch in der Ansicht eines Geschäfts');
     assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Planen: die Menge steht bei jedem Artikel in einer eigenen Zeile unter dem Namen, bündig mit ihm – kurze und lange Namen, schmale und breite Bildschirme', async () => {
+    for (const width of [320, 390, 430]) {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 800 } } });
+      await open(page);
+      for (const name of ['Honig', 'Domol Feinwaschmittel für empfindliche Haut', 'Zahnpasta']) { await page.fill('#item-form input[name=name]', name); await page.click('#item-form button[type=submit]'); }
+      await page.getByRole('tab', { name: /^Alle/ }).click();
+      const rows = await page.locator('#items .item:not(.news)').evaluateAll(nodes => nodes.filter(node => node.querySelector('.item-qty')).map(node => {
+        const name = node.querySelector('.item-copy strong').getBoundingClientRect(), qty = node.querySelector('.item-qty').getBoundingClientRect(), meta = node.querySelector('.item-meta').getBoundingClientRect();
+        return { text: node.querySelector('.item-copy strong').textContent, nameLeft: name.left, nameBottom: name.bottom, qtyLeft: qty.left, qtyTop: qty.top, qtyBottom: qty.bottom, metaTop: meta.top };
+      }));
+      assert.ok(rows.length >= 4, `${width}: ${rows.length} Artikel`);
+      for (const row of rows) {
+        assert.ok(row.qtyTop >= row.nameBottom - 1, `${width} px, ${row.text}: die Menge steht nicht unter dem Namen`);
+        assert.ok(Math.abs(row.qtyLeft - row.nameLeft) <= 1, `${width} px, ${row.text}: die Menge ist eingerückt (${row.qtyLeft} statt ${row.nameLeft})`);
+        assert.ok(row.metaTop >= row.qtyBottom - 1, `${width} px, ${row.text}: die Person steht unter der Menge`);
+      }
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.deepEqual(problems, []); await ctx.close();
+    }
   });
 
   test('Im Laden: Geschäft wählen, Artikel ohne Geschäft überall bis abgehakt (erst Edeka, dann Lidl), Einkauf beenden', async () => {

@@ -316,7 +316,7 @@ function newsRow(entry) {
 }
 // Reihenfolge der Gänge eines Geschäfts (leer = Standardweg durch den Laden)
 const aislesOf = storeId => (storeId && active(state.stores).find(store => store.id === storeId)?.aisles) || null;
-// `count` fehlt in der Ansicht „Im Laden“: Dort zählt nur das Geschäft, nicht die einzelne Kategorie (seit Version 2.59).
+// `count` fehlt bei Kategorien („Im Laden“ seit Version 2.59, „Planen“ seit 2.60): Es zählt nur das Geschäft; „Erledigt“ behält seine Zahl.
 function groupHead(label, count) {
   const row = element('li', undefined, 'group-head');
   row.append(element('span', label));
@@ -432,7 +432,7 @@ function renderItems() {
   const addOpen = (items, nested, order = null) => {
     if (!grouped) { items.sort(byName).forEach(item => list.append(itemRow(item))); return; }
     for (const group of groupByCategory(items, itemHistory(), order)) {
-      const head = groupHead(group.label, group.items.length); if (nested) head.classList.add('sub');
+      const head = groupHead(group.label); if (nested) head.classList.add('sub');
       list.append(head); group.items.forEach(item => list.append(itemRow(item)));
     }
   };
