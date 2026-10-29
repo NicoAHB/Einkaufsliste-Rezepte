@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.58
+# Einkauf & Rezepte – Version 2.59
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,12 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.59: Im Laden keine Anzahl bei den Kategorien
+
+In der Ansicht **Im Laden** (**Alle** und ein einzelnes Geschäft) steht die Zahl der Artikel nur noch **beim Geschäft** („Lidl 1“), nicht mehr bei jeder **Kategorie** (z. B. „Sonstiges“, „Vorrat & Konserven“, „Haushalt & Drogerie“): Der Kategoriename steht allein in seiner Zeile. Die Zahl am Geschäft und „Noch … offen“ oben bleiben.
+- **Unter „Planen“ ändert sich nichts**: Dort zeigt die Kategorie ihre Anzahl weiter.
+- Test: In „Alle“ und in der Ansicht eines Geschäfts hat keine Kategorie eine Zahl, jedes Geschäft behält seine (sie stimmt mit den offenen Artikeln darunter überein), unter „Planen“ bleiben die Zähler.
 
 ## Neu in Version 2.58: Wünsche öffnen direkt „Produktlink & Notiz“
 
