@@ -67,6 +67,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     const middle = Math.min(Math.max(box.top + box.height / 2, 60 + reserved), innerHeight - 60), half = ((!options.noZone && zone?.offsetHeight) || 84) / 2;
     if (!options.noZone) { zone.style.top = `${middle - half}px`; zone.classList.add('show'); }
     options.hint?.classList.add('show');
+    getSelection?.()?.removeAllRanges();   // was beim Halten doch markiert wurde (iOS), verschwindet beim Abheben
     navigator.vibrate?.(12);
     drag = { row, ghost, id: row.dataset.id, startX: point.x, startY: point.y, left: box.left, top: box.top, height: box.height, dx: 0, dy: 0, hot: false, goal: null, band: [middle - half, middle + half] };
     swallow = true;

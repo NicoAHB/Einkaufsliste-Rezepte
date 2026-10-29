@@ -5132,8 +5132,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-tab=plan]');
     const days = await page.locator('#plan-days .day').evaluateAll(nodes => nodes.map(node => node.dataset.day)), today = await page.locator('.day.today').getAttribute('data-day');
     const free = days.find(day => day !== today);
+    // Nichts wird blau markiert (iOS markiert beim langen Halten sonst Text): Auswahl aus, und nach dem Ziehen ist nichts markiert
+    assert.equal(await page.locator('#plan-days').evaluate(node => getComputedStyle(node).userSelect), 'none');
+    await page.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('#plan-days h3')); getSelection().removeAllRanges(); getSelection().addRange(range); });
     // 1. freier Tag: umgezogen, Übernahme bleibt, kein Hinweis „entfernt“
     await dragMeal(page, 'Tomaten-Pasta', free);
+    assert.equal(await page.evaluate(() => getSelection().toString()), '', 'nach dem Abheben ist nichts markiert');
     await page.waitForFunction(day => document.querySelector(`.day[data-day="${day}"] .meal`), free);
     assert.deepEqual(await mealDays(page), [['recipe-pasta', free, 2]]);
     assert.match(await page.textContent('#notice-text'), /„Tomaten-Pasta“ auf .+ verschoben/);
@@ -5932,7 +5936,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openCardSheet(page);
     assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1);
     const text = await sheetText(page);
-    for (const part of ['REZEPT', 'Tomaten-Pasta', 'PORTIONEN', 'ZUTATEN', 'ZUBEREITUNG', '200 g', 'Nudeln', '400 g', 'Tomaten', '1.', 'Nudeln in Salzwasser kochen.', 'schnell, vegetarisch', 'Eigenes Rezept']) assert.ok(text.includes(part), `${part} fehlt auf dem Blatt`);
+    for (const part of ['REZEPT', 'Tomaten-Pasta', 'PORTIONEN', 'ZUTATEN', 'Zubereitung', '200 g', 'Nudeln', '400 g', 'Tomaten', 'Nudeln in Salzwasser kochen.', 'Schnell · vegetarisch', 'Meine Notizen', 'Eigenes Rezept']) assert.ok(text.includes(part), `${part} fehlt auf dem Blatt`);
     assert.equal(await page.locator('#sheet-pages image').count(), 0, 'ohne Foto kein Bild');
     // „×“ oben rechts, immer erreichbar
     const viewport = page.viewportSize(), close = await page.locator('#sheet-close').boundingBox();
@@ -6384,7 +6388,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const pages = await page.locator('#sheet-pages .sheet-page').count();
     assert.ok(pages >= 2, `${pages} Seiten`);
     const text = await sheetText(page);
-    assert.ok(text.includes('Zutat Nummer 40') && text.includes('Arbeitsgang 24:') && text.includes(`Seite 2 von ${pages}`) && text.includes('REZEPT · FORTSETZUNG'));
+    assert.ok(text.includes('Zutat Nummer 40') && text.includes('Arbeitsgang 24:') && text.includes(`Seite 2 / ${pages}`) && text.includes('REZEPTSAMMLUNG · FORTSETZUNG'));
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
     assert.equal(download.suggestedFilename(), 'Kichererbsen-Curry.pdf');
     assert.ok(checkPdf(await pdfBytesOf(download)).includes(`/Count ${pages} `));

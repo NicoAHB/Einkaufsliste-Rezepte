@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.52
+# Einkauf & Rezepte – Version 2.54
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,27 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.54: Neues Rezeptblatt nach dem Entwurf („Rezeptblatt-Entwurf.pdf“)
+
+Das Rezeptblatt (Vorschau, „PDF speichern“, „Teilen“) hat für **alle Rezepte** das Aussehen des angehängten Entwurfs: größere Schrift, weniger Linien, klar getrennte Arbeitsschritte.
+- **Kopf:** klein „REZEPTSAMMLUNG“ (links, rostrot) und „EINKAUF & REZEPTE“ (rechts), der **Titel groß** in einer Schrift mit Serifen, darunter (bei importierten Rezepten) „Gesamtzeit: 25 Min.“. Ein **Foto** steht klein oben rechts (der Titel läuft nicht hinein).
+- **Eckdaten** zwischen zwei Linien: **Portionen**, **Zutaten** (Zahl), **Gesamtzeit** (wenn bekannt), **Stichworte** („Schnell · vegetarisch“, ohne: „–“), **Quelle** (wenn bekannt).
+- **Zutaten** links in einem hellen **Kasten** („Für 2 Portionen“): je Zutat ein **Kästchen zum Abhaken**, die **Menge hervorgehoben** (fett, rechtsbündig), der Name; „nach Bedarf“ steht klein und ohne Zahl.
+- **Zubereitung** rechts in **nummerierten Schritten** (Zahl im Kreis). Der **erste Satz** jedes Schritts steht **fett** als Überschrift, der Rest darunter (`stepParts` in `recipe-sheet.js`; „5 Min. köcheln“, „ca. 1½ Std.“ und „z. B.“ beenden keinen Satz; ein langer Satz ohne kurzen Anfang ist nur Text).
+- **Meine Notizen** unten mit drei Linien („Für Ideen, Änderungen und das nächste Mal.“), bei mehreren Seiten auf der **letzten**. Fußzeile: „Eigenes Rezept“ oder „Quelle: …“ und „Seite 1 / 1“.
+- **Lange Rezepte** gehen auf weiteren Seiten weiter („REZEPTSAMMLUNG · FORTSETZUNG“, „Zutaten · Fortsetzung“, „Zubereitung · Fortsetzung“); ein Schritt und eine Zutat bleiben ganz auf einer Seite.
+- **Schriften:** Der Entwurf nutzt eingebettete Schriften (DejaVu Sans, Noto Serif). Die App schreibt die PDF-Datei selbst, ohne Schriftdateien: Sie verwendet die Standardschriften jedes PDF-Programms (Helvetica, Times). Aufbau, Größen, Abstände und Farben folgen dem Entwurf; die Buchstabenformen weichen leicht ab.
+
+**Tests:** `tests/recipe-sheet.test.mjs` (neues Layout, Schritte, Eckdaten, Titel und Foto, Kasten und Ränder, mehrere Seiten, Notizen nur auf der letzten, leere Rezepte, Fußzeile) und die Browser-Tests zum Rezeptblatt.
+
+Testpunkt: Rezeptkarte → Dokument-Symbol: Vorschau wie im Entwurf; „PDF speichern“ öffnet dieselbe Seite im PDF-Programm.
+
+## Neu in Version 2.53: Beim Ziehen eines Gerichts wird nichts mehr blau markiert
+
+Beim langen Halten und Ziehen eines Gerichts im Wochenplan markierte iOS Text blau (Tagesnamen, Teile des Gerichts), auch nach dem Loslassen. Jetzt ist die Textauswahl im Plan aus (`user-select:none` und `-webkit-touch-callout:none` für `#plan-days` und das abgehobene Gericht, wie bei den Artikeln der Einkaufsliste), und beim Abheben wird eine eventuell vorhandene Markierung entfernt (`dragdelete.js`). Ein Tipp auf Gericht, Stift, Papierkorb und Haken geht wie bisher.
+
+**Test:** Browser: Auswahl ist im Plan aus; eine vorhandene Markierung ist nach dem Abheben weg. Das blaue Markieren selbst tritt auf dem iPhone (Safari) auf und lässt sich in Chromium nicht erzeugen; bitte auf dem iPhone prüfen: Gericht lange drücken und ziehen, nichts wird blau.
 
 ## Neu in Version 2.52: Ausgaben gegen doppelte Erfassung geschützt
 

@@ -3978,3 +3978,10 @@ body.selecting .item .item-copy {
 #swap-dialog .actions button {
   flex:1
 }
+
+/* Wochenplan: beim langen Halten und Ziehen eines Gerichts wird nichts blau markiert (wie bei den Artikeln); Texte bleiben per Tipp bedienbar */
+#plan-days,.drag-ghost {
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
+}
