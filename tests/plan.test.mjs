@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, relativeDay, weekBasket, weekDays, weekLabel, weekStart } from '../plan.js';
+import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, recipeChanges, relativeDay, snapshotRows, weekBasket, weekDays, weekLabel, weekStart } from '../plan.js';
 import { validDay } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
@@ -120,4 +120,18 @@ test('Wochen-Einkauf: andere Wörter, andere Einheiten und Zahlen im Namen bleib
   const rows = aggregateIngredients([{ recipeId: 'a', servings: 1 }], recipes, ing([['Zwiebel', 1, 'Stück'], ['rote Zwiebel', 1, 'Stück'], ['Zwiebeln', 200, 'g'], ['Milch', 1, 'l'], ['Hafermilch', 1, 'l'],
     ['Cola 1 l', 1, 'Stück'], ['Cola 2 l', 1, 'Stück'], ['Ei', 1, 'Stück'], ['Eis', 1, 'Stück']]));
   assert.deepEqual(rows.map(row => `${row.name}|${row.unit}`).sort(), ['Cola 1 l|Stück', 'Cola 2 l|Stück', 'Ei|Stück', 'Eis|Stück', 'Hafermilch|l', 'Milch|l', 'Zwiebel|Stück', 'Zwiebeln|g', 'rote Zwiebel|Stück'].sort());
+});
+
+// Version 2.50: Was hat sich am Rezept seit der Übernahme geändert?
+test('Rezept nach der Übernahme geändert: neue, entfernte und geänderte Zutaten werden erkannt; gleiche nicht', () => {
+  const rows = [{ name: 'Mehl', quantity: 150, unit: 'g' }, { name: 'Zwiebel', quantity: 1, unit: 'Stück' }, { name: 'Salz', quantity: 1, unit: 'nach Bedarf' }];
+  const snapshot = snapshotRows(rows);
+  assert.deepEqual(snapshot, ['Mehl|150|g', 'Zwiebel|1|Stück', 'Salz|1|nach Bedarf']);
+  assert.equal(recipeChanges(snapshot, rows).any, false, 'unverändert');
+  assert.equal(recipeChanges(snapshot, [...rows].reverse()).any, false, 'die Reihenfolge ist egal');
+  const changes = recipeChanges(snapshot, [{ name: 'mehl', quantity: 200, unit: 'g' }, { name: 'Salz', quantity: 1, unit: 'nach Bedarf' }, { name: 'Öl', quantity: 1, unit: 'EL' }]);
+  assert.deepEqual([changes.added.map(row => row.name), changes.removed.map(row => row.name), changes.changed.map(entry => [entry.name, entry.from.quantity, entry.to.quantity])], [['Öl'], ['Zwiebel'], [['mehl', 150, 200]]]);
+  assert.deepEqual(recipeChanges(snapshot, [{ name: 'Mehl', quantity: 0.15, unit: 'kg' }, rows[1], rows[2]]).added.map(row => row.unit), ['kg'], 'andere Einheit: neu und entfernt');
+  assert.deepEqual(recipeChanges(undefined, rows).added.length, 3, 'ohne Merker alles neu (wird in der App nicht verwendet)');
+  assert.deepEqual(snapshotRows([{ name: 'A|B', quantity: 1, unit: 'g' }]), ['A/B|1|g'], 'ein senkrechter Strich im Namen stört nicht');
 });

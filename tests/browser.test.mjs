@@ -4999,6 +4999,78 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Zwei Geräte, beide Fenster „Einkauf für die Woche“ offen: Übernimmt A, wird B aktualisiert und B addiert nichts mehr (400 g bleiben 400 g); eine überholte Vorschau wird vor dem Übernehmen erkannt', async () => {
+    const remote = github(demo);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); }
+    await planPasta(a.page, '2'); await synced(a.page);
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /Tomaten-Pasta/.test(document.querySelector('#plan-days').textContent), null, { timeout: 20000 });
+    const nudeln = () => remote.content.items.filter(item => !item.deletedAt && item.name === 'Nudeln').map(item => `${item.quantity} ${item.unit}`).sort();
+    // beide öffnen den Einkauf für dieselbe Woche
+    for (const device of [a, b]) { await device.page.click('[data-tab=plan]'); await device.page.click('#plan-shopping'); await sheetOpen(device.page); }
+    assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)));
+    // A übernimmt
+    await a.page.click('#week-form button[type=submit]'); await a.page.waitForSelector('#week-dialog', { state: 'hidden' }); await synced(a.page);
+    assert.deepEqual(nudeln(), ['200 g', '500 g']);
+    // B gleicht ab, das Fenster steht noch offen: es wird von selbst aktualisiert
+    await pollNow(b.page);
+    await b.page.waitForFunction(() => /schon übernommen/.test(document.querySelector('#week-ingredients').textContent), null, { timeout: 20000 });
+    assert.equal(await b.page.locator('#week-dialog[open]').count(), 1);
+    assert.match(await b.page.textContent('#notice-text'), /Der Wochenplan hat sich geändert/);
+    await b.page.click('#week-form button[type=submit]');
+    assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /mindestens eine Zutat/);
+    await synced(b.page);
+    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'nichts wurde noch einmal addiert');
+    // Überholte Vorschau, bevor das Fenster aktualisiert war: die Prüfung unmittelbar vor dem Übernehmen greift
+    await b.page.uncheck('#week-form input[name=skipListed]');
+    await b.page.evaluate(() => { const form = document.querySelector('#week-form'); form._plan = { ...form._plan, basket: { use: [], listed: [] }, rows: [] }; });
+    await b.page.click('#week-form button[type=submit]');
+    assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /Der Wochenplan hat sich geändert[\s\S]*noch einmal bestätigen/);
+    assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)), 'die Vorschau ist aktuell (Haken heraus: alles wieder da)');
+    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'auch jetzt nicht addiert');
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('Nach der Übernahme geändert: Rezept geändert, Rezept gelöscht, Gericht gelöscht – Plan und Wochen-Einkauf sagen, was auf der Einkaufsliste zu prüfen ist; die Liste selbst bleibt unverändert', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await planPasta(page, '2'); await planPasta(page, '2', 'Kichererbsen-Curry'); await planPasta(page, '2', 'Apfel-Pfannkuchen');
+    await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
+    await page.click('[data-tab=plan]');
+    assert.equal(await page.locator('.meal-listed.changed').count(), 0, 'nichts geändert: kein Hinweis');
+    // Rezept (Pasta) ändern: Mehl-artig – mehr Nudeln, neues Öl; Rezept (Curry) löschen; Gericht (Pfannkuchen) aus dem Plan entfernen
+    const edit = change => page.evaluate(code => {
+      const key = 'einkauf-demo-v1', stored = JSON.parse(localStorage.getItem(key)), now = new Date().toISOString();
+      new Function('base', 'now', code)(stored.base, now); localStorage.setItem(key, JSON.stringify(stored));
+    }, change);
+    await edit(`
+      const nudeln = base.ingredients.find(row => row.recipeId === 'recipe-pasta' && row.name === 'Nudeln'); nudeln.quantity = 300; nudeln.updatedAt = now;
+      base.ingredients.push({ id: 'ing-neu', recipeId: 'recipe-pasta', name: 'Parmesan', quantity: 50, unit: 'g', createdAt: now, updatedAt: now, deletedAt: null, _clock: {} });
+      base.recipes.find(row => row.id === 'recipe-curry').deletedAt = now;
+      base.meals.find(row => row.recipeId === 'recipe-pfannkuchen').deletedAt = now;`);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.click('[data-tab=plan]');
+    const planText = (await page.locator('.day.today .meal-listed.changed').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim());
+    assert.equal(planText.length, 1, planText.join(' | '));
+    assert.match(planText[0], /Rezept seitdem geändert \(neu: 50 g Parmesan, Nudeln: 200 g → 300 g\): Liste prüfen/);
+    await page.click('#plan-shopping'); await sheetOpen(page);
+    const notes = (await page.textContent('#week-changes')).replace(/\s+/g, ' ');
+    assert.match(notes, /^Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: /);
+    assert.match(notes, /Tomaten-Pasta: Das Rezept wurde seit der Übernahme geändert \(neu: 50 g Parmesan, Nudeln: 200 g → 300 g\)\./);
+    assert.match(notes, /Kichererbsen-Curry: Das Rezept wurde gelöscht, die Zutaten stehen noch auf der Liste\./);
+    assert.match(notes, /Apfel-Pfannkuchen wurde aus dem Plan entfernt, die Zutaten stehen noch auf der Liste\./);
+    assert.equal(await page.locator('#week-changes.warn').count(), 1);
+    // Es wird nichts von selbst auf die Liste gesetzt oder geändert
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === 'Nudeln').map(row => `${row.quantity} ${row.unit}`).sort()), ['200 g', '500 g']);
+    await page.click('#week-dialog [data-close]');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
     const { ctx, page, problems } = await context();
     await open(page);

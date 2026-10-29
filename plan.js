@@ -56,6 +56,19 @@ export function weekBasket(meals, again = false) {
   return { use, listed };
 }
 
+/* Nachträgliche Änderungen (Version 2.50): Bei der Übernahme merkt sich das Gericht die Zutaten seines Rezepts (`listedRows`, „Name|Menge|Einheit“). Wurde das Rezept danach geändert,
+   zeigt `recipeChanges`, was sich geändert hat (hinzugekommen, entfernt, andere Menge), damit man die Einkaufsliste prüfen kann. Die Liste selbst ändert die App nie von selbst. */
+const snapshotKey = entry => `${productKey(entry.name)}|${productKey(entry.unit)}`;
+export const snapshotRows = rows => rows.map(row => `${String(row.name).replace(/\|/g, '/').trim()}|${row.quantity}|${String(row.unit).replace(/\|/g, '/').trim()}`);
+const parseRow = text => { const [name, quantity, unit] = String(text).split('|'); return { name, quantity: Number(quantity), unit: unit ?? '' }; };
+export function recipeChanges(snapshot, rows) {
+  const before = new Map((snapshot || []).map(parseRow).map(entry => [snapshotKey(entry), entry])), now = new Map(rows.map(row => [snapshotKey(row), row]));
+  const added = [], removed = [], changed = [];
+  for (const [key, row] of now) { const old = before.get(key); if (!old) added.push(row); else if (Math.abs(old.quantity - row.quantity) > 1e-9) changed.push({ name: row.name, from: old, to: row }); }
+  for (const [key, old] of before) if (!now.has(key)) removed.push(old);
+  return { added, removed, changed, any: Boolean(added.length || removed.length || changed.length) };
+}
+
 /* Zutaten aller Gerichte zusammenzählen. Gleicher Name und vergleichbare Einheit werden addiert
    (g und kg zusammen, ml und l zusammen); 1,2 kg statt 1200 g. Unterschiedliche Einheiten wie
    „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt.

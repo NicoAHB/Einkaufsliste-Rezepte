@@ -1,4 +1,4 @@
-# Einkauf & Rezepte – Version 2.48
+# Einkauf & Rezepte – Version 2.50
 
 Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,31 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.50: Nach der Übernahme geändert – was auf der Einkaufsliste zu prüfen ist
+
+Ist die Woche übernommen und ändert sich danach etwas, bleibt die Einkaufsliste, wie sie ist (die App ändert sie nie von selbst), aber sie **zeigt, was zu prüfen ist**:
+- **Rezept geändert** (Zutat dazu, entfernt, andere Menge): Das Gericht merkt sich bei der Übernahme die Zutaten seines Rezepts (`meals.listedRows`, „Name|Menge|Einheit“). Im **Plan** steht am Gericht rot „Rezept seitdem geändert (neu: 50 g Parmesan, Nudeln: 200 g → 300 g): Liste prüfen“.
+- **Rezept gelöscht** oder **Gericht aus dem Plan entfernt**, obwohl seine Zutaten schon übernommen waren: Die Zutaten stehen noch auf der Liste, auch das sagt der Hinweis.
+- Alle Hinweise stehen gesammelt im **Einkauf für die Woche** („Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: …“, rot); ändert sich der Stand bei offenem Fenster, aktualisiert er sich von selbst.
+- **Verschieben:** Ein Gericht lässt sich nicht auf einen anderen Tag verschieben, nur löschen und neu planen. Das neue Gericht zählt als neu, sein altes steht mit dem Hinweis „aus dem Plan entfernt, die Zutaten stehen noch auf der Liste“ da: Wer es noch einmal aufnimmt, sieht die Warnung und entfernt bei Bedarf das Doppelte von Hand.
+- Wird das Rezept an einem Gericht gewechselt, vergisst es die Übernahme samt Zutaten (es gilt als neu).
+
+**Tests:** `tests/plan.test.mjs` (`recipeChanges`, `snapshotRows`) und im Browser (Rezept geändert, Rezept gelöscht, Gericht entfernt; die Liste bleibt unverändert).
+
+Testpunkt: Woche übernehmen, danach eine Zutat im Rezept ändern: Im Plan steht der rote Hinweis am Gericht, im „Einkauf“-Fenster die Zusammenfassung.
+
+## Neu in Version 2.49: Offenes Fenster „Einkauf für die Woche“ addiert nichts doppelt
+
+**Der Fehler (mit zwei Geräten nachgestellt).** Beide Personen öffnen den „Einkauf für die Woche“ für dieselbe Woche. A übernimmt 400 g Nudeln. B gleicht erfolgreich ab und kennt die Übernahme, aber das noch offene Fenster arbeitete mit seinem alten Stand: Bestätigte B, standen 800 g statt 400 g auf der Liste, auch mit Internetverbindung.
+
+**Die Korrektur.**
+- Ändert sich der Stand, während das Fenster offen ist (Abgleich, Änderung der anderen Person), baut sich die **Vorschau von selbst neu auf** und eine Meldung sagt es („Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.“). Abgewählte Zutaten bleiben abgewählt.
+- **Unmittelbar vor dem Übernehmen** wird der aktuelle Wochenplan samt den schon übernommenen Portionen noch einmal berechnet. Weicht er von der Vorschau ab, wird **nichts addiert**: Die Vorschau wird aktualisiert, die Meldung bittet, sie zu prüfen und noch einmal zu bestätigen. Eine schon bestätigte Übernahme wird so nie ein zweites Mal addiert.
+
+**Tests:** Browser: zwei Geräte mit offenen Fenstern (A übernimmt, B wird aktualisiert, B addiert nichts; eine absichtlich überholte Vorschau wird vor dem Übernehmen erkannt). Beide Schutzstufen wurden einzeln ausgeschaltet geprüft: Der Test schlägt dann fehl.
+
+Testpunkt (zwei iPhones): Beide öffnen „Einkauf“ im Plan, eine Person übernimmt; beim anderen Gerät ändert sich das offene Fenster von selbst („schon übernommen“), Bestätigen fügt nichts hinzu.
 
 ## Neu in Version 2.48: „Zwiebel“ und „Zwiebeln“ sind dasselbe Produkt
 

@@ -82,6 +82,8 @@ export function validateRow(key, row) {
   // `listedServings` und `listedAt` (Version 2.47): für wie viele Portionen die Zutaten dieses Gerichts schon auf die Einkaufsliste gesetzt wurden und wann; fehlt oder null = noch nicht.
   if (key === 'meals' && ((row.listedServings !== undefined && row.listedServings !== null && (!Number.isFinite(row.listedServings) || row.listedServings <= 0)) ||
       (row.listedAt !== undefined && row.listedAt !== null && !Number.isFinite(Date.parse(row.listedAt))))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
+  // `listedRows` (Version 2.50): die Zutaten des Rezepts („Name|Menge|Einheit“) zum Zeitpunkt der Übernahme, um spätere Änderungen am Rezept zu erkennen.
+  if (key === 'meals' && row.listedRows !== undefined && row.listedRows !== null && (!Array.isArray(row.listedRows) || row.listedRows.length > 80 || row.listedRows.some(entry => typeof entry !== 'string' || entry.length > 200))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
   // Einkaufsvorlage (Version 2.5): Name und bis zu 80 Artikel { name, quantity, unit, storeId? }.
   if (key === 'templates' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 60 || !Array.isArray(row.items) || row.items.length > 80 ||
