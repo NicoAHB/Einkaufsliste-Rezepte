@@ -1,3 +1,4 @@
+import {hasUnitChoice,unitChoice,compareUnitChoice} from './buying.js';
 /* Aufräumen: hält die gemeinsame Datendatei klein. Reine Logik ohne DOM.
    Hintergrund: Die App löscht nie sofort, sondern markiert („Löschmarkierung“), damit „Rückgängig“ und der Abgleich zweier
    Geräte funktionieren. Ohne Aufräumen wächst die Datei um knapp 2 KB je Artikel, also bei 20 Artikeln pro Woche in einem
@@ -68,6 +69,8 @@ function remember(names, rows, max) {
     entry.count += Number(row.weight) || 1;
     if (at >= entry.at) { entry.at = at; if (isCategory(row.category)) entry.category = row.category; if (typeof row.unit === 'string' && row.unit) entry.unit = row.unit; }
     else if (!entry.category && isCategory(row.category)) entry.category = row.category;
+    const prefAt=row.purchaseAt || row._clock?.purchaseUnit?.at || row.createdAt || at;
+    if(hasUnitChoice(row) ? compareUnitChoice(row,entry)>=0 : !hasUnitChoice(entry)&&row.purchaseUnit!==undefined&&prefAt>=(entry.purchaseAt||'')) { entry.purchaseUnit=row.purchaseUnit;entry.purchaseAt=prefAt; if(hasUnitChoice(row))Object.assign(entry,unitChoice(row)); }
     known.set(key, entry);
   }
   return [...known.values()].sort((a, b) => b.count - a.count || b.at.localeCompare(a.at)).slice(0, max);
@@ -142,6 +145,8 @@ export function compact(input, now = new Date(), policy = POLICY) {
   const changed = Object.values(removed).some(Boolean);
   if (changed) {
     next.sync.compactedAt = now.toISOString();
+    if (next.items.some(row=>row.purchaseUnit!==undefined) || next.names?.some(row=>row.purchaseUnit!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,7);
+    if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
     if (next.purchases?.length || next.members?.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
     if (trimmed.marks.length) { next.sync.marks = trimmed.marks; next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 2); }
     else delete next.sync.marks;

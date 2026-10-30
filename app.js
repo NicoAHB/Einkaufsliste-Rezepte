@@ -20,6 +20,8 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
+import { shoppingAmount, purchaseView, newerUnitChoice } from './buying.js';
+import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
@@ -79,7 +81,7 @@ function itemHistory() {
   if (historyMemo.for !== state) {
     const rename = new Map(appliedAliases().map(alias => [alias.from, alias.name]));
     const named = row => { const to = rename.get(aliasKey(row.name)); return to ? { ...row, name: to } : row; };
-    historyMemo = { for: state, rows: [...listItems(), ...(state.names || []).map(entry => named({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count }))] };
+    historyMemo = { for: state, rows: [...listItems(), ...(state.names || []).map(entry => named({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count, purchaseUnit: entry.purchaseUnit, purchaseAt: entry.purchaseAt, purchaseMeasure:entry.purchaseMeasure }))] };
   }
   return historyMemo.rows;
 }
@@ -96,6 +98,7 @@ function suggestionHistory() {
   return vocabMemo.rows;
 }
 const recognizeName = typed => { suggestionHistory(); return vocabMemo.match(typed); };
+let itemQuantity = null, editQuantity = null;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Ausschließlich Textknoten für Nutzereingaben: Rezeptnamen können kein HTML ausführen.
@@ -325,7 +328,7 @@ function newsRow(entry) {
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
   copy.setAttribute('aria-label', `${item.name}: bearbeiten`); copy.addEventListener('click', () => guard(() => editItem(item.id)));
   const notes = entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`);
-  copy.append(element('strong', item.name), element('small', `${format(item.quantity)} ${item.unit}${view === 'all' ? ` · ${storeName(item.storeId)}` : ''} · ${notes.join(', ')}`));
+  copy.append(element('strong', item.name), element('small', `${shoppingAmount(item)}${view === 'all' ? ` · ${storeName(item.storeId)}` : ''} · ${notes.join(', ')}`));
   const actions = element('div', undefined, 'item-actions');
   actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
   row.append(copy);
@@ -401,19 +404,19 @@ function itemRow(item, withStore = false) {
   check.setAttribute('aria-pressed', String(Boolean(item.checked)));
   // Die Zeile antippen öffnet die Bearbeitung; dort steht auch „Artikel löschen“.
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
-  copy.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: bearbeiten`);
+  copy.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: bearbeiten`);
   copy.addEventListener('click', () => guard(() => editItem(item.id)));
   if (isWish(item)) copy.title = 'Lange drücken: Produktlink & Notiz';
   // Auswahlmodus: statt Abhaken und Bearbeiten ein Auswahlkreis; Kreis und Zeile wählen aus und ab.
   const pick = selecting ? button('', () => toggleSelected(item.id, row), 'check select-mark') : null;
   if (pick) {
-    const mark = () => { const on = selected.has(item.id); pick.replaceChildren(...(on ? [icon('check')] : [])); pick.classList.toggle('on', on); pick.setAttribute('aria-pressed', String(on)); pick.setAttribute('aria-label', `${item.name}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); copy.setAttribute('aria-pressed', String(on)); copy.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); };
+    const mark = () => { const on = selected.has(item.id); pick.replaceChildren(...(on ? [icon('check')] : [])); pick.classList.toggle('on', on); pick.setAttribute('aria-pressed', String(on)); pick.setAttribute('aria-label', `${item.name}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); copy.setAttribute('aria-pressed', String(on)); copy.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); };
     row._mark = mark; mark();
     copy.addEventListener('click', event => { event.stopImmediatePropagation(); toggleSelected(item.id, row); }, true);
   }
   // Erste Zeile: Name und Menge, deutlich. Zweite Zeile klein: Person (und das Geschäft in der Gesamtliste). Unter „Planen“ stehen in der Zeile keine Preise, Vergleiche oder
   // Preisentwicklungen; frühere Kaufpreise zeigt die App nicht (seit Version 2.44).
-  copy.append(element('strong', item.name), element('span', `${format(item.quantity)} ${item.unit}`, 'item-qty'),
+  copy.append(element('strong', item.name), element('span', `${shoppingAmount(item)}`, 'item-qty'),
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
   row.append(pick || check, copy);
@@ -490,12 +493,13 @@ function renderItems() {
 // schon etwas im Namensfeld steht oder „Kategorie, Preis & Angebot“ aufgeklappt ist.
 function syncForm() {
   const form = $('#item-form');
-  const open = form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
+  const open = form.dataset.choosingUnit === 'yes' || form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
   form.classList.toggle('compact', !open);
 }
 function renderItemSuggestions(event) {
   if (event?.type === 'input') delete $('#item-form').dataset.keepName;
   const form = $('#item-form'), box = $('#item-suggestions'), typed = form.elements.name.value.trim();
+  itemQuantity?.suggest(isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?'':typed);
   const confirmed = appliedAliases().some(alias => alias.from === aliasKey(typed));
   const history = itemHistory(), correction = !confirmed && !isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) && form.dataset.keepName !== typed ? recognizeName(typed) : { suggestions: [], correction: null };
   // Ausdrücklich bestätigte ältere Schreibweisen bleiben weiterhin gültig.
@@ -512,7 +516,7 @@ function renderItemSuggestions(event) {
     for (const name of variants) same.append(button(name, () => {
       commit([nextOp('aliases', uid(), { from: aliasKey(typed), name })], `„${typed}“ heißt jetzt immer „${name}“`);
       form.elements.name.value = name; box.hidden = true;
-      rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
+      itemQuantity?.suggest(name); rememberPriceInForm(); document.activeElement?.blur?.();
     }));
     box.append(same);
   }
@@ -520,7 +524,7 @@ function renderItemSuggestions(event) {
     const choices = element('div', undefined, 'suggestion-choices');
     for (const name of names) choices.append(button(name, () => {
       form.elements.name.value = name; box.hidden = true;
-      rememberPriceInForm(); form.elements.quantity.focus(); form.elements.quantity.select();
+      itemQuantity?.suggest(name); rememberPriceInForm(); document.activeElement?.blur?.();
     }));
     box.append(choices);
   }
@@ -533,7 +537,7 @@ function renderQuickPick() {
   for (const pick of picks) {
     const chip = element('button', pick.name, 'chip'); chip.type = 'button';
     chip.addEventListener('click', () => {
-      form.elements.name.value = pick.name; form.elements.quantity.value = '1'; form.elements.unit.value = pick.unit || 'Stück';
+      form.elements.name.value = pick.name; itemQuantity.suggest(pick.name,true);
       form.requestSubmit();
     });
     box.append(chip);
@@ -614,7 +618,8 @@ function editItem(id) {
   itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
-  for (const key of ['id', 'name', 'quantity', 'unit']) form.elements[key].value = item[key];
+  for (const key of ['id', 'name']) form.elements[key].value = item[key];
+  editQuantity.load(item);
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true);
   setQuoteFields(form, itemQuote(item), item.unit);
@@ -2058,10 +2063,10 @@ function shopRow(item) {
     text.tabIndex = 0; text.setAttribute('role', 'button'); text.setAttribute('aria-label', `${item.name}: Wunschdetails öffnen (lange drücken)`);
     text.addEventListener('keydown', event => { if (!isLocked() && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); guard(() => openWish(item.id)); } });
   }
-  text.append(element('span', item.name, 'shop-name'), element('span', `${format(item.quantity)} ${item.unit}`, 'shop-qty'));
+  text.append(element('span', item.name, 'shop-name'), element('span', `${shoppingAmount(item)}`, 'shop-qty'));
   if (imagesOn()) text.append(thumbFor(item));
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
-  tap.setAttribute('aria-label', `${item.name}, ${format(item.quantity)} ${item.unit}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
+  tap.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   tap.addEventListener('click', () => guard(() => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
@@ -2081,7 +2086,7 @@ function shopRow(item) {
 function shopNewsRow(entry) {
   const item = entry.item, row = element('li', undefined, 'shop-item news');
   const copy = element('div', undefined, 'item-copy');
-  copy.append(element('strong', item.name, 'shop-name'), element('small', `${format(item.quantity)} ${item.unit} · ${entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`).join(', ')}`));
+  copy.append(element('strong', item.name, 'shop-name'), element('small', `${shoppingAmount(item)} · ${entry.entries.map(e => e.kind === 'neu' ? `neu von ${e.by}` : `+${format(e.quantity)} ${e.unit} von ${e.by}`).join(', ')}`));
   row.append(copy, button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
   return row;
 }
@@ -2645,7 +2650,7 @@ $('#template-form').addEventListener('submit', event => { event.preventDefault()
   if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (!source.length) throw new Error('Es gibt keine offenen Artikel zum Speichern.');
   if (source.length > 80) throw new Error('Eine Vorlage nimmt höchstens 80 Artikel auf. Bitte erst die Ansicht auf ein Geschäft eingrenzen.');
-  const items = source.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit, ...(item.storeId ? { storeId: item.storeId } : {}) }));
+  const items = source.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit, ...(item.purchaseUnit!==undefined?{purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt}:{}), ...(item.storeId ? { storeId: item.storeId } : {}) }));
   const same = templateRows().find(entry => entry.name.toLowerCase() === name.toLowerCase());
   commit([same ? nextOp('templates', same.id, { items }) : nextOp('templates', uid(), { name, items })], `Vorlage „${same?.name || name}“ gespeichert (${items.length} Artikel)`);
   form.reset(); renderTemplates();
@@ -2729,6 +2734,8 @@ const photosApi = () => `https://api.github.com/repos/${encodeURIComponent(confi
 
 /* ---------- Ereignisse ---------- */
 fillCategorySelects();
+itemQuantity = mountQuantityControls($('#item-form'), { getHistory:itemHistory });
+editQuantity = mountQuantityControls($('#edit-item-form'), { getHistory:itemHistory });
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
 // Ein Tipp auf den Bereich außerhalb eines Fensters (oben, auf den abgedunkelten Hintergrund) schließt es wie das „×“. Das Drücken und das Loslassen müssen beide außerhalb liegen:
@@ -2756,6 +2763,7 @@ $('#item-form').elements.name.addEventListener('input', renderQuickPick);
 for (const event of ['focusin', 'focusout', 'input', 'toggle']) $('#item-form').addEventListener(event, () => setTimeout(syncForm, 0), true);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); const form=$('#item-form'); const correction=isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?null:recognizeName(form.elements.name.value).correction; if(correction && form.dataset.keepName!==form.elements.name.value.trim()) form.elements.name.value=correction; itemQuantity.suggest(isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?'':form.elements.name.value.trim()); $('#item-suggestions').hidden=true; document.activeElement?.blur?.(); return; }
   if (event.key === 'Escape') $('#item-suggestions').hidden = true;
   if (event.key === 'ArrowDown' && !$('#item-suggestions').hidden) {
     event.preventDefault(); $('#item-suggestions button')?.focus();
@@ -2817,23 +2825,21 @@ function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [],
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
   commit([...result.ops, ...pantryOps, ...extraOps], `Übernommen: ${parts.join(', ') || 'alles stand schon auf der Liste'}`);
 }
-// Das „+“ im Namensfeld: Ein Tipp darauf fügt hinzu und schließt die Tastatur. Mit der Eingabetaste der Tastatur bleibt sie offen, für den nächsten Artikel.
-let plusTapped = 0;
-$('#item-form .add-button').addEventListener('pointerdown', () => { plusTapped = Date.now(); });
+// Fertig/Enter prüft den Namen und schließt die Tastatur. Das „+“ bestätigt die Einkaufsmenge.
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, closeKeyboard = Date.now() - plusTapped < 1500, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
-  plusTapped = 0;
+  const form = event.currentTarget, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   if (!typed || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const known = appliedAliases().find(alias => alias.from === aliasKey(typed)), correction = form.dataset.keepName === typed || isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) ? null : recognizeName(typed).correction, name = known?.name || correction || typed;
+  if(name!==typed) itemQuantity.suggest(name);
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
-  const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
-    unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
+  const item = { storeId: currentStore(form.elements.storeId.value), name, ...itemQuantity.read(), checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   if (!item.saleUntil) delete item.saleUntil;
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
-  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
+  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit:item.unit, purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt }], item.storeId, state.items).counted[0];
   const renamed = name !== typed ? `„${typed}“ → „${name}“` : '';
   if (same) {
-    commit([nextOp('items', same.id, { add: same.add })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
+    const current=state.items.find(row=>row.id===same.id),preference=newerUnitChoice(item,current);
+    commit([nextOp('items', same.id, { add: same.add, ...preference })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${shoppingAmount({ ...current, ...same.after, ...preference, name:same.name })}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
     // Erscheint der neue Artikel nicht in der gerade gewählten Ansicht (anderes oder kein Geschäft), sagt die App, wo er steht.
@@ -2841,8 +2847,8 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; delete form.dataset.keepName; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
-  if (closeKeyboard) document.activeElement?.blur?.(); else form.elements.name.focus();
+  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; delete form.dataset.keepName; itemQuantity.reset(); rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
+  document.activeElement?.blur?.();
 }); });
 $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.id.value;
@@ -2905,7 +2911,7 @@ function openMove(id) {
   if (!item) return;
   moveDeleteIds = [id]; moveScope = namespace(); $('#move-delete-label').textContent = 'Artikel löschen';
   $('#move-dialog').dataset.id = id;
-  $('#move-text').textContent = `„${item.name}“ (${format(item.quantity)} ${item.unit}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'ohne Geschäft'}. Wohin soll er?`;
+  $('#move-text').textContent = `„${item.name}“ (${shoppingAmount(item)}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'ohne Geschäft'}. Wohin soll er?`;
   const box = $('#move-choices'); box.replaceChildren();
   const choice = (storeId, label, name) => {
     const entry = element('button', undefined, 'secondary move-choice'); entry.type = 'button';
@@ -2946,7 +2952,7 @@ function moveSelected(storeId) {
   for (const item of rows) {
     if ((item.storeId || '') === target) continue;
     // Wie beim einzelnen Verschieben: Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt; sonst wechselt nur das Geschäft.
-    const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, items).counted[0] : null;
+    const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit:item.purchaseUnit }], target, items).counted[0] : null;
     if (same) {
       ops.push(nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [item.id])); merged++;
       items = items.map(row => row.id === same.id ? { ...row, quantity: same.after.quantity, unit: same.after.unit } : row.id === item.id ? { ...row, deletedAt: stamp } : row);
@@ -2969,15 +2975,15 @@ function moveItem(id, storeId) {
   if ((item.storeId || '') === target) { $('#move-dialog').close(); return; }
   const label = target ? storeName(target) : 'ohne Geschäft';
   // Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt (wie beim Hinzufügen); sonst wechselt nur das Geschäft.
-  const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit }], target, state.items).counted[0] : null;
-  if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
+  const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit:item.purchaseUnit }], target, state.items).counted[0] : null;
+  if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${shoppingAmount({ ...state.items.find(row=>row.id===same.id), ...same.after, name:same.name })}`);
   else commit([nextOp('items', id, { storeId: target })], `„${item.name}“ → ${label}`);
   $('#move-dialog').close();
 }
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
-  const patch = { name: form.elements.name.value.trim(), quantity: positive(form.elements.quantity.value), unit: form.elements.unit.value.trim(),
+  const patch = { name: form.elements.name.value.trim(), ...editQuantity.read(),
     category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value), ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
@@ -3036,7 +3042,7 @@ pantryView = mountPantry({
   getData: () => ({ pantry: state.pantry || [], items: listItems(), favorites: state.productFavorites || [] }), getScope: namespace,
   getStores: () => active(state.stores).filter(store => !isSeparate(store)),
   getPreferredStore: () => $('#open-products').hidden ? '' : $('#item-form').elements.storeId.value,
-  imagesOn, recognizeName,
+  imagesOn, recognizeName, getHistory:itemHistory,
   onChange: changes => commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch))),
   onRemove: ids => removeRows('pantry', ids), onBuy: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onProducts: mode => productPicker.open('', { target: 'pantry', mode }),

@@ -1,9 +1,11 @@
 /* Produktauswahl als eigenes Fenster. Keine Händler-/Bilddienste: Fotos und Katalog liegen in der App.
    Änderungen gehen ausschließlich über die vorhandenen Speicher-Callbacks der App. */
+import { mountQuantityControls } from './quantity-controls.js';
+import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice } from './buying.js';
 import { CATEGORIES } from './categories.js';
 import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic } from './product-catalog.js';
 import { PRODUCT_GROUP_IMAGES, groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
-import { productKey } from './prices.js';
+import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys } from './data.js';
 import { bindWishHold } from './wishes.js';
 
@@ -45,27 +47,34 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     $('product-picker-count').disabled = !count;
     $('product-picker-count').setAttribute('aria-label', `${count} ausgewählt: ${target === 'list' ? 'Mengen ändern' : 'Auswahl ansehen'}`);
   }
+  const cartControls=new Map();
   function renderCart() {
+    cartControls.clear();
     const box = $('product-picker-cart-rows'); box.replaceChildren();
     for (const product of selection.values()) {
       const row = node('div', undefined, 'product-cart-row'), label = node('span', product.name);
       const qtyLabel = node('label'), qty = node('input'), unitLabel = node('label'), unit = node('input');
       qtyLabel.append(node('span', 'Menge', 'sr-only')); qty.value = product.quantity; qty.inputMode = 'decimal'; qty.maxLength = 16;
-      qty.setAttribute('aria-label', `${product.name}: Menge`); qty.addEventListener('input', () => { product.quantity = qty.value; clearError(); updateAmount(product); }); qtyLabel.append(qty);
+      qty.setAttribute('aria-label', `${product.name}: Menge`);  qtyLabel.append(qty);
       unitLabel.append(node('span', 'Einheit', 'sr-only')); unit.value = product.unit; unit.maxLength = 30; unit.setAttribute('list', 'units');
-      unit.setAttribute('aria-label', `${product.name}: Einheit`); unit.addEventListener('input', () => { product.unit = unit.value; clearError(); updateAmount(product); }); unitLabel.append(unit);
+      unit.setAttribute('aria-label', `${product.name}: Einheit`);  unitLabel.append(unit);
       const remove = node('button', undefined, 'icon-button product-cart-remove'); remove.type = 'button'; remove.setAttribute('aria-label', `${product.name}: Auswahl entfernen`); remove.append(svg('x'));
       remove.addEventListener('click', () => { selection.delete(product.id); renderCart(); renderProducts(); });
       if (target === 'list') row.append(label, qtyLabel, unitLabel, remove);
       else { row.classList.add('product-cart-simple'); row.append(label, remove); }
       box.append(row);
+      if(target==='list'){const controls=mountQuantityControls({elements:{quantity:qty,unit}},{getHistory:()=>getData().history||[],getName:()=>product.name});controls.load(product);cartControls.set(product.id,controls);
+        const update=()=>{try{Object.assign(product,controls.read());}catch{product.quantity=qty.value;}clearError();updateAmount(product);};
+        qty.addEventListener('input',update);qty.addEventListener('change',update);unit.addEventListener('change',update);
+      }
     }
     updateFooter();
   }
   function updateAmount(product) {
     const label = grid.querySelector(`.product-card[data-product="${CSS.escape(product.id)}"] .product-amount`);
-    if (label) label.textContent = `${product.quantity} ${product.unit}`;
+    if (label) label.textContent = shoppingAmount(product);
   }
+  const purchaseStart = product => { const p=preferredPurchase(product.name,getData().history||[]); if(p.purchaseUnit)return {...product,...rawPurchase(1,p.purchaseUnit,p.unit),...unitChoice(p)};if(p.remembered){const a=unitSpec(product.unit),b=unitSpec(p.unit);return {...product,purchaseUnit:null,...unitChoice(p),unit:p.unit,quantity:a.group===b.group?product.quantity*a.factor/b.factor:product.quantity};}return product; };
   function renderProducts() {
     $('product-picker-title').textContent = target === 'pantry' ? mode === 'basics' ? 'Grundvorrat auswählen' : 'Vorrat auswählen' : target === 'image' ? 'Produktbild auswählen' : 'Produkte auswählen';
     const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
@@ -93,7 +102,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       section.append(heading, cards); grid.append(section);
       for (const product of matches) {
         const chosen = selection.get(product.id), picked = target === 'image' ? product.image?.key === dialog.dataset.imageKey || product.id === dialog.dataset.imageKey : Boolean(chosen);
-        const amount = chosen ? `${chosen.quantity} ${chosen.unit}` : `${number(product.quantity)} ${product.unit}`;
+        const amount = shoppingAmount(chosen || purchaseStart(product));
         const stocked = available.has(pantryKey(product.name));
         const card = node('div', undefined, `product-card${picked ? ' picked' : ''}`);
         card.dataset.product = product.id; card.dataset.id = product.id;
@@ -107,13 +116,13 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         pick.append(check);
         const inList = exactOnList.get(productKey(product.name));
         if (target === 'pantry' && stockNames.has(pantryKey(product.name))) pick.append(node('small', stocked ? 'Schon vorhanden' : 'Aufgebraucht', 'product-on-list'));
-        else if (target === 'list' && inList) pick.append(node('small', `Auf Liste: ${number(inList.quantity)} ${inList.unit}`, 'product-on-list'));
+        else if (target === 'list' && inList) pick.append(node('small', `Auf Liste: ${shoppingAmount(inList)}`, 'product-on-list'));
         else if (product.own) pick.append(node('small', 'Eigener Artikel', 'product-on-list'));
         pick.addEventListener('click', () => {
           clearError();
           if (target === 'pantry' && stocked) return;
           if (target === 'image') { try { chooseImage?.((product.image || imageForProduct(product)).key); dialog.close(); } catch (error) { fail(error); } return; }
-          if (selection.has(product.id)) selection.delete(product.id); else selection.set(product.id, { ...product, quantity: number(product.quantity) });
+          if (selection.has(product.id)) selection.delete(product.id); else selection.set(product.id, target==='list' ? purchaseStart(product) : { ...product, quantity: number(product.quantity) });
           renderCart(); renderProducts();
         });
         const star = node('button', undefined, 'product-star'); star.type = 'button'; star.dataset.productAction = 'star'; star.dataset.product = product.id;
@@ -148,7 +157,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   form.addEventListener('submit', event => {
     event.preventDefault(); if (!dialog.open || submitting || !selection.size) return;
     try {
-      clearError(); const selected = target === 'pantry' ? [...selection.values()] : selectedProducts(selection);
+      clearError(); if(target==='list')for(const [id,controls]of cartControls){try{Object.assign(selection.get(id),controls.read());}catch(error){throw new Error(`${selection.get(id).name}: ${error.message}`);}} const selected = target === 'pantry' ? [...selection.values()] : selectedProducts(selection);
       if (target === 'list' && store.value && !getStores().some(shop => shop.id === store.value)) throw new Error('Dieses Geschäft wurde gelöscht. Bitte wähle ein anderes.');
       submitting = true; updateFooter();
       if (target === 'pantry') onPantry(selected); else onAdd(selected, store.value);

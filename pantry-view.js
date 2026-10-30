@@ -1,6 +1,8 @@
 /* Vorratsoberfläche. Keine eigenen Speicherwege: Änderungen gehen über die App-Warteschlange.
    Geöffnete Formulare bleiben bei Abgleich erhalten und senden nur tatsächlich geänderte Felder. */
-import { pantryKey, pantryKeys, pantryRows, positive } from './data.js';
+import { shoppingAmount } from './buying.js';
+import { mountQuantityControls } from './quantity-controls.js';
+import { pantryKey, pantryKeys, pantryRows } from './data.js';
 import { CATEGORIES, categoryLabel, groupByCategory, itemCategory } from './categories.js';
 import { GROCERY_PRODUCTS, pantryProductAllowed, pantryProductLibrary } from './product-catalog.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
@@ -16,9 +18,10 @@ const button = (text, label, callback, cls = 'secondary small') => {
   const el = node('button', text, cls); el.type = 'button'; if (label) el.setAttribute('aria-label', label); el.addEventListener('click', callback); return el;
 };
 
-export function mountPantry({ getData, getScope, getStores, getPreferredStore, imagesOn, recognizeName, onChange, onRemove, onBuy, onProducts, onImages, onCancelImages, onShopping }) {
+export function mountPantry({ getData, getScope, getStores, getPreferredStore, imagesOn, recognizeName, getHistory, onChange, onRemove, onBuy, onProducts, onImages, onCancelImages, onShopping }) {
   const $ = id => document.getElementById(id), form = $('pantry-form'), search = $('pantry-search'), category = $('pantry-category');
   const edit = $('pantry-edit-dialog'), editor = $('pantry-edit-form'), buy = $('pantry-buy-dialog'), buyer = $('pantry-buy-form');
+  const quantityControls=mountQuantityControls(buyer,{getHistory,getName:()=>buyingProduct?.name||liveRow(buyingId)?.name||''});
   let keepName = '';
   let status = 'all', scope = getScope(), baseline = null, imageKey = null, buyingId = '', buyingProduct = null, lastBuyStore = '', sending = false;
   const failure = (id, error) => { $(id).textContent = error.message; $(id).hidden = false; };
@@ -70,8 +73,7 @@ export function mountPantry({ getData, getScope, getStores, getPreferredStore, i
     scope = getScope(); buyingId = row.id; buyingProduct = direct ? { ...row } : null;
     $('pantry-buy-title').textContent = direct ? 'Auf die Einkaufsliste' : 'Nachkaufen';
     $('pantry-buy-hint').textContent = direct ? 'Wähle Menge und Geschäft. Ein passendes Produkt auf der Liste wird um diese Menge ergänzt.' : 'Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.'; $('pantry-buy-error').hidden = true;
-    const product = GROCERY_PRODUCTS.find(product => pantryKey(product.name) === pantryKey(row.name));
-    buyer.elements.quantity.value = String((direct ? row.quantity : product?.quantity) || 1).replace('.', ','); buyer.elements.unit.value = (direct ? row.unit : product?.unit) || 'Stück';
+    quantityControls.reset(); quantityControls.suggest(row.name,true);
     renderBuyStores(); const preferred = direct && lastBuyStore ? lastBuyStore : getPreferredStore(); buyer.elements.storeId.value = getStores().some(store => store.id === preferred) ? preferred : '';
     buy.showModal(); buy.scrollTop = 0; updateBuy(); buy.querySelector('[data-close]').focus({ preventScroll: true });
   }
@@ -178,13 +180,13 @@ export function mountPantry({ getData, getScope, getStores, getPreferredStore, i
     try {
       $('pantry-buy-error').hidden = true;
       const row = buyingProduct || liveRow(buyingId); if (!row) throw new Error('Dieser Vorrat wurde inzwischen entfernt.');
-      const storeId = buyer.elements.storeId.value, quantity = positive(buyer.elements.quantity.value), unit = buyer.elements.unit.value.trim();
+      const storeId = buyer.elements.storeId.value, amount=quantityControls.read(), quantity=amount.quantity, unit=amount.unit;
       if (quantity > 1000000 || !unit || unit.length > 30) throw new Error('Bitte Menge und Einheit prüfen.');
       if (storeId && !getStores().some(store => store.id === storeId)) throw new Error('Bitte ein verfügbares Geschäft wählen.');
       if (!buyingProduct && pantryOnList(row, getData().items || [], storeId)) { updateBuy(); return; }
       if (scope !== getScope()) throw new Error('Die Datenverbindung hat sich geändert. Bitte erneut öffnen.');
-      sending = true; updateBuy(); onBuy([{ name: row.name, quantity, unit, category: itemCategory(row), imageKey: row.imageKey || null }], storeId); lastBuyStore = storeId; buy.close();
-      if (buyingProduct) { $('product-picker-feedback').textContent = `${row.name}: ${quantity} ${unit} auf die Einkaufsliste gesetzt.`; $('product-picker-feedback').hidden = false; }
+      sending = true; updateBuy(); onBuy([{ name: row.name, ...amount, category: itemCategory(row), imageKey: row.imageKey || null }], storeId); lastBuyStore = storeId; buy.close();
+      if (buyingProduct) { $('product-picker-feedback').textContent = `${row.name}: ${shoppingAmount({name:row.name,...amount})} auf die Einkaufsliste gesetzt.`; $('product-picker-feedback').hidden = false; }
     } catch (error) { failure('pantry-buy-error', error); }
     finally { sending = false; updateBuy(); }
   });
