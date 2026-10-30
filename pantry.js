@@ -1,14 +1,18 @@
 /* Leichter Haushaltsvorrat: vorhanden/aufgebraucht, keine automatische Mengenbuchhaltung.
    Die App speichert jeden Eintrag und jedes Feld mit ihrer vorhandenen Offline-/Merge-Logik. */
+import { matchProductName } from './product-names.js';
 import { pantryKey, pantryRows } from './data.js';
 import { isCategory, itemCategory, suggestCategory } from './categories.js';
-import { searchProductText } from './product-catalog.js';
+import { searchProductText, pantryProductAllowed } from './product-catalog.js';
 
 export function filterPantry(rows, { query = '', status = 'all', category = '' } = {}) {
   const words = searchProductText(query).split(/\s+/).filter(Boolean);
-  return pantryRows(rows).filter(row => (status === 'all' || (status === 'out' ? row.available === false : row.available !== false)) &&
-    (!category || itemCategory(row) === category) && words.every(word => searchProductText(row.name).includes(word)))
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const eligible = pantryRows(rows).filter(row => (status === 'all' || (status === 'out' ? row.available === false : row.available !== false)) && (!category || itemCategory(row) === category));
+  let found = eligible.filter(row => words.every(word => searchProductText(row.name).includes(word)));
+  if (!found.length && words.length) {
+    const near = new Set(matchProductName(query, eligible).suggestions); found = eligible.filter(row => near.has(row.name));
+  }
+  return found.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
@@ -23,6 +27,7 @@ export function pantryChanges(products, rows = []) {
   for (const product of products) {
     const name = String(typeof product === 'string' ? product : product?.name || '').trim().replace(/\s+/g, ' ');
     if (!name || name.length > 120) throw new Error('Bitte einen Produktnamen mit 1 bis 120 Zeichen eingeben.');
+    if (!pantryProductAllowed({ name })) throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht. Technik und Einrichtungsartikel gehören auf die Einkaufsliste oder den Wunschzettel.');
     const key = pantryKey(name); if (seen.has(key)) continue; seen.add(key);
     const matches = rows.filter(row => pantryKey(row.name) === key), live = matches.filter(row => !row.deletedAt);
     if (live.length) {

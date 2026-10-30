@@ -94,6 +94,7 @@ export function validateRow(key, row) {
   if (key === 'recipes' && (typeof row.name !== 'string' || !Number.isFinite(row.servings) ||
       row.servings <= 0 || typeof row.instructions !== 'string' || !Array.isArray(row.tags) ||
       row.tags.some(tag => typeof tag !== 'string'))) throw new Error('Ungültiges Rezept.');
+  if (key === 'recipes' && row.notes !== undefined && (typeof row.notes !== 'string' || row.notes.length > 10000)) throw new Error('Ungültige Rezeptnotizen (höchstens 10.000 Zeichen).');
   // Optionale Erweiterung von v1: Quelle eines importierten Rezepts.
   if (key === 'recipes' && row.sourceUrl !== undefined && typeof row.sourceUrl !== 'string') throw new Error('Ungültige Rezeptquelle.');
   if (key === 'recipes' && row.favorite !== undefined && typeof row.favorite !== 'boolean') throw new Error('Ungültige Favoritenmarkierung.');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, estimateOf, possibleDuplicates, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -226,31 +226,10 @@ describe('Notiz-Vorschläge', () => {
   });
 });
 
-describe('Geschätzt gegen bezahlt', () => {
-  test('die Schätzung wird nur mit einer gültigen Zahl gespeichert', () => {
-    const base = { amount: '23,45', date: '2026-05-10' };
-    assert.equal(purchaseFields({ ...base, estimate: 2000 }, '2026-05-10').estimate, 2000);
-    for (const bad of [0, -5, 1.5, NaN, '20', null, undefined, 100000000]) assert.ok(!('estimate' in purchaseFields({ ...base, estimate: bad }, '2026-05-10')), String(bad));
-  });
-  test('Punkt: grün im Rahmen oder günstiger, rot ab mehr als 5 % (mindestens 0,50 €) darüber, nichts ohne Schätzung', () => {
-    assert.equal(estimateVerdict(2345, undefined), null);
-    assert.equal(estimateVerdict(2345, 0), null);
-    assert.deepEqual(estimateVerdict(1500, 2000), { diff: -500, level: 'ok' }, 'günstiger');
-    assert.deepEqual(estimateVerdict(2000, 2000), { diff: 0, level: 'ok' });
-    assert.deepEqual(estimateVerdict(2100, 2000), { diff: 100, level: 'ok' }, '5 % darüber: noch im Rahmen');
-    assert.equal(estimateVerdict(2101, 2000).level, 'over', 'mehr als 5 % darüber');
-    assert.equal(estimateVerdict(2050, 500).level, 'over');
-    assert.equal(estimateVerdict(540, 500).level, 'ok', 'bei kleinen Beträgen zählen erst 0,50 € mehr');
-    assert.equal(estimateVerdict(551, 500).level, 'over');
-  });
-  test('Schätzung der Artikel: nur mit Preisen für mindestens 70 %', () => {
-    const item = (name, price) => ({ name, quantity: 2, unit: 'Stück', price, onSale: false });
-    const priced = price => ({ cents: price, quantity: 1, unit: 'Stück' });
-    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(250))]), 700);
-    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(100)), item('C', undefined)]), 0, '2 von 3 (67 %): zu wenig');
-    assert.equal(estimateOf([item('A', priced(100)), item('B', priced(100)), item('C', priced(100)), item('D', undefined)]), 600, '3 von 4 (75 %)');
-    assert.equal(estimateOf([]), 0);
-    assert.equal(estimateOf([item('A', undefined)]), 0);
+describe('Alte Schätzwerte ohne neue Berechnung', () => {
+  test('neue Eingaben speichern keine Schätzung mehr', () => {
+    const fields = purchaseFields({ amount: '23,45', date: '2026-05-10', estimate: 2000 }, '2026-05-10');
+    assert.ok(!('estimate' in fields)); assert.equal(fields.cents, 2345);
   });
   test('Schätzung ist im Datenmodell nur als ganze positive Zahl gültig und überlebt das Zusammenführen', () => {
     for (const bad of [0, -1, 1.5, '20', 100000000]) assert.equal(merge(emptyData(), [make('p', { date: '2026-05-02', cents: 100, estimate: bad })]).purchases.length, 0, String(bad));

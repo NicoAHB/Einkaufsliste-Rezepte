@@ -1,5 +1,5 @@
 import { active, addToList, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
-import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, shoppingTotal, storeOfferUrl, unitRate } from './prices.js';
+import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
@@ -10,7 +10,7 @@ import { mountPantry } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
 import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMember } from './family.js';
 import { pantryChanges } from './pantry.js';
-import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
+import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, dailyRecord, dailyHistory, dailySnapshot, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
@@ -19,6 +19,7 @@ import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngre
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
+import { makeNameMatcher } from './product-names.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
@@ -29,7 +30,7 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes } from './cookable.js';
-import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, estimateOf, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
+import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -90,9 +91,11 @@ function suggestionHistory() {
     const extra = [...active(state.ingredients).filter(row => recipes.has(row.recipeId)).map(row => plainName(row.name)), ...active(state.pantry || []).map(row => row.name), ...active(state.prices).map(row => row.name), ...appliedAliases().map(row => row.name)];
     vocabMemo = { for: state, rows: [...itemHistory(), ...extra.filter(Boolean).map(name => ({ name, weight: 0.5 })), ...GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 })),
       ...GROCERY_PRODUCTS.filter(product => !GROCERY_NAMES.includes(product.name)).map(product => ({ ...product, weight: 0.05 }))] };
+    vocabMemo.match = makeNameMatcher(vocabMemo.rows);
   }
   return vocabMemo.rows;
 }
+const recognizeName = typed => { suggestionHistory(); return vocabMemo.match(typed); };
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Ausschließlich Textknoten für Nutzereingaben: Rezeptnamen können kein HTML ausführen.
@@ -179,9 +182,9 @@ function commit(ops, notice = '') {
 }
 
 function tab(name) {
-  for (const id of ['shopping', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
+  for (const id of ['shopping', 'pantry', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
-    if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
+    if (node.dataset.tab === (name === 'pantry' ? 'shopping' : name)) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
@@ -249,7 +252,7 @@ function renderStorePick() {
 }
 function storeChanged() {
   const form = $('#item-form');
-  form.elements.onSale.checked = false; delete form.dataset.manualPrice; rememberPriceInForm();
+  form.elements.onSale.checked = false; delete form.dataset.manualPrice; rememberPriceInForm(); renderItemSuggestions();
 }
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
@@ -270,7 +273,7 @@ function render() {
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
   $('#open-products').disabled = !ready;
-  $('#open-pantry').disabled = !ready; $('#pantry-products').disabled = !ready; $('#pantry-favorites').disabled = !ready;
+  $('#open-pantry').disabled = !ready; $('#pantry-products').disabled = !ready; $('#pantry-favorites').disabled = !ready; $('#pantry-basics').disabled = !ready;
   const favorites = active(state.productFavorites || []).length;
   $('#product-favorite-count').textContent = favorites ? `★ ${favorites}` : '';
   $('#product-favorite-count').hidden = !favorites;
@@ -490,15 +493,19 @@ function syncForm() {
   const open = form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
   form.classList.toggle('compact', !open);
 }
-function renderItemSuggestions() {
+function renderItemSuggestions(event) {
+  if (event?.type === 'input') delete $('#item-form').dataset.keepName;
   const form = $('#item-form'), box = $('#item-suggestions'), typed = form.elements.name.value.trim();
-  const history = itemHistory();
-  // Andere Schreibweise eines bekannten Namens („Zwiebel“ statt „Zwiebeln“): nur vorschlagen, erst die Bestätigung wird gemerkt.
   const confirmed = appliedAliases().some(alias => alias.from === aliasKey(typed));
+  const history = itemHistory(), correction = !confirmed && !isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) && form.dataset.keepName !== typed ? recognizeName(typed) : { suggestions: [], correction: null };
+  // Ausdrücklich bestätigte ältere Schreibweisen bleiben weiterhin gültig.
   const variants = typed && !confirmed ? spellingVariants(typed, [...new Set(history.map(row => row.name))]).slice(0, 3) : [];
-  const names = suggestItemNames(suggestionHistory(), typed).filter(name => !variants.includes(name));
-  box.replaceChildren(); box.hidden = !names.length && !variants.length;
+  const names = [...new Set([...suggestItemNames(suggestionHistory(), typed), ...correction.suggestions])].filter(name => !variants.includes(name));
+  box.replaceChildren(); box.hidden = !names.length && !variants.length && !correction.correction;
   if (box.hidden) return;
+  if (correction.correction) {
+    const info = element('div', undefined, 'name-correction'); info.append(element('span', `Beim Hinzufügen: „${correction.correction}“`, 'hint'), button('Original behalten', () => { form.dataset.keepName = typed; box.hidden = true; }, 'text-button small')); box.append(info);
+  }
   if (variants.length) {
     box.append(element('span', 'Meinst du dasselbe wie …?', 'hint'));
     const same = element('div', undefined, 'suggestion-choices');
@@ -537,15 +544,7 @@ function renderShoppingInfo() {
   $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
   if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
   else $('#offers-link').removeAttribute('href');
-  const total = shoppingTotal(visibleItems(true).filter(inView));
-  const box = $('#shopping-total'); box.replaceChildren();
-  // Eine Zeile, die Geschäftsauswahl darüber sagt schon, wofür die Summe gilt.
-  if (!total.count) box.append(element('strong', 'Alles erledigt'));
-  else if (!total.priced) box.append(element('small', 'Noch keine Preise notiert'));
-  else {
-    box.append(element('strong', `Geschätzt ${euros(total.cents)}`));
-    if (total.missing) box.append(element('small', `${total.missing} ohne Preis, nicht eingerechnet`));
-  }
+  $('.shop-tools').hidden = !store;
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
 function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
@@ -585,10 +584,10 @@ function rememberPriceInForm() {
   const form = $('#item-form');
   categoryHint(form.elements.category, form.elements.name.value);
   if (form.dataset.manualPrice === 'yes') return;
-  // Ein früher bezahlter Preis wird nie von selbst eingetragen: Das Preisfeld ist nur für eine eigene Schätzung (Summe).
+  // Ein früher bezahlter Preis wird nie von selbst eingetragen: Das Preisfeld ist eine freiwillige eigene Notiz.
   setQuoteFields(form, null, form.elements.unit.value.trim());
   setSaleFields(form);
-  form.querySelector('[data-price-hint]').textContent = 'Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe.';
+  form.querySelector('[data-price-hint]').textContent = 'Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.';
 }
 function readQuote(form, prefix = 'price') {
   const value = form.elements[`${prefix}Euros`].value.trim();
@@ -621,7 +620,7 @@ function editItem(id) {
   setQuoteFields(form, itemQuote(item), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice, item.saleUntil);
-  form.querySelector('[data-price-hint]').textContent = 'Nur eine eigene Schätzung für die Summe.';
+  form.querySelector('[data-price-hint]').textContent = 'Freiwillige Preisnotiz für diesen Artikel.';
   // Preis & Angebot sind zugeklappt (Name, Menge, Einheit, Geschäft stehen oben); die Zeile verrät den Stand.
   const quote = itemQuote(item), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
@@ -829,6 +828,7 @@ function recipeCard(recipe, ingredients) {
   servingInput.addEventListener('input', () => { try { updateAmounts(); } catch { /* Eingabe noch unvollständig */ } });
   details.append(stepper, list);
   details.append(element('h4', 'Zubereitung'), element('p', recipe.instructions || 'Keine Zubereitung eingetragen.', 'recipe-steps'));
+  if (recipe.notes?.trim()) details.append(element('h4', 'Meine Notizen'), element('p', recipe.notes, 'recipe-steps'));
   if (source) {
     const link = element('a', `Quelle: ${hostLabel(source)}`, 'source-link');
     link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.append(icon('external'));
@@ -883,14 +883,17 @@ function writeDrafts(drafts) {
 let recipeDraftKey = null, recipeOpenState = null, draftTimer = null;
 function recipeFormState() {
   const form = $('#recipe-form');
-  return { name: form.elements.name.value, servings: form.elements.servings.value, tags: form.elements.tags.value, instructions: form.elements.instructions.value, sourceUrl: form.elements.sourceUrl.value,
+  return { name: form.elements.name.value, servings: form.elements.servings.value, tags: form.elements.tags.value, instructions: form.elements.instructions.value, notes: form.elements.notes.value, sourceUrl: form.elements.sourceUrl.value,
     ingredients: [...$('#ingredient-editor').children].map(row => ({ id: row.dataset.id, name: row.querySelector('[data-field=name]').value, quantity: row.querySelector('[data-field=quantity]').value, unit: row.querySelector('[data-field=unit]').value })) };
 }
 function saveRecipeDraft() {
   clearTimeout(draftTimer); draftTimer = null;
   if (!recipeDraftKey) return;
   const current = recipeFormState(), text = JSON.stringify(current), drafts = readDrafts();
-  const blank = !current.name.trim() && !current.instructions.trim() && !current.tags.trim() && !current.sourceUrl.trim() && current.ingredients.every(row => !row.name.trim());
+  // Ein nur angebotener Entwurf wurde noch nicht ins Formular geladen. Das
+  // unveränderte, leere Formular darf ihn beim Schließen nicht löschen.
+  if (!$('#recipe-draft-note').hidden && text === recipeOpenState) return;
+  const blank = !current.name.trim() && !current.instructions.trim() && !current.notes.trim() && !current.tags.trim() && !current.sourceUrl.trim() && current.ingredients.every(row => !row.name.trim());
   if (blank || text === recipeOpenState) delete drafts[recipeDraftKey];
   else drafts[recipeDraftKey] = { at: new Date().toISOString(), state: current };
   writeDrafts(drafts);
@@ -903,7 +906,7 @@ function dropRecipeDraft() {
 }
 function applyRecipeDraft(state) {
   const form = $('#recipe-form');
-  for (const field of ['name', 'servings', 'tags', 'instructions', 'sourceUrl']) form.elements[field].value = state[field] ?? '';
+  for (const field of ['name', 'servings', 'tags', 'instructions', 'notes', 'sourceUrl']) form.elements[field].value = state[field] ?? '';
   $('#ingredient-editor').replaceChildren();
   (state.ingredients?.length ? state.ingredients : [{}]).forEach(row => ingredientRow({ id: typeof row.id === 'string' ? row.id : undefined, name: String(row.name ?? ''), quantity: String(row.quantity ?? '1'), unit: String(row.unit ?? 'Stück') }));
 }
@@ -928,10 +931,11 @@ function editRecipe(id = '', draft = null) {
   const form = $('#recipe-form'); form.reset();
   recipeBaseline = id ? clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt)) : null;
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
+  if (recipeBaseline) recipeBaseline.notes ??= '';
   ingredientBaseline = id ? clone(active(state.ingredients).filter(row => row.recipeId === id)) : [];
   form.elements.id.value = id;
   $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : draft ? 'Importiertes Rezept prüfen' : 'Neues Rezept';
-  if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'tags', 'sourceUrl']) {
+  if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'notes', 'tags', 'sourceUrl']) {
     form.elements[field].value = field === 'tags' ? recipeBaseline.tags.join(', ') : recipeBaseline[field] ?? '';
   }
   if (draft) {
@@ -970,8 +974,9 @@ function saveRecipe(event) {
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
     const patch = { name: form.elements.name.value.trim(), servings: positive(form.elements.servings.value),
-      instructions: form.elements.instructions.value.trim(), tags: [...new Set(form.elements.tags.value.split(',').map(tag => tag.trim()).filter(Boolean))] };
+      instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: [...new Set(form.elements.tags.value.split(',').map(tag => tag.trim()).filter(Boolean))] };
     if (sourceUrl || recipeBaseline?.sourceUrl) patch.sourceUrl = sourceUrl;
+    if (patch.notes.length > 10000) throw new Error('Meine Notizen dürfen höchstens 10.000 Zeichen enthalten.');
     if (!patch.name) throw new Error('Bitte dem Rezept einen Namen geben.');
     const rows = [...$('#ingredient-editor').children].map(row => ({ id: row.dataset.id, recipeId: id,
       name: row.querySelector('[data-field=name]').value.trim(), quantity: positive(row.querySelector('[data-field=quantity]').value),
@@ -1413,18 +1418,19 @@ $('#open-help').addEventListener('click', () => guard(openHelp));
 // Mit einem Link in den Einstellungen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
 // noch nicht entschiedenen Rezepte kommen einzeln zum Durchklicken. Gemerkt wird nur auf diesem Gerät: heutige Auswahl, Stand und alles Entschiedene.
 const dailyStore = () => `einkauf-daily:${namespace()}`;
-let daily = null, dailyTicket = 0, dailyTried = '', builtinCollection = null;
-const dailyDrafts = new Map();
+let daily = null, dailyTicket = 0, dailyTried = '', builtinCollection = null, dailyScope = '', dailyReview = null, dailyLoading = null;
+const dailyDrafts = new Map(), dailyDraftJobs = new Map();
 const dailySource = () => webUrl(config.dailySource);
 const dailySourceKey = () => dailySource() || BUILTIN_SOURCE;
 function loadDaily() {
+  if (dailyScope !== namespace()) { if (dailyScope && $('#daily-dialog').open) $('#daily-dialog').close(); dailyScope = namespace(); daily = null; dailyReview = null; dailyDrafts.clear(); dailyDraftJobs.clear(); dailyTried = ''; dailyTicket++; }
   if (daily) return daily;
   try { const saved = JSON.parse(localStorage.getItem(dailyStore())); if (saved && typeof saved === 'object' && Array.isArray(saved.queue)) daily = saved; } catch { /* neu anlegen */ }
   daily ||= { day: '', source: '', queue: [], index: 0, outcome: {}, decided: [] };
   daily.decided ||= []; daily.outcome ||= {}; daily.index ||= 0;
   return daily;
 }
-function saveDaily() { try { localStorage.setItem(dailyStore(), JSON.stringify({ ...daily, decided: daily.decided.slice(-600) })); } catch { /* nur ein Merkzettel */ } }
+function saveDaily() { daily.history = dailyHistory(daily, localDay()); try { localStorage.setItem(dailyStore(), JSON.stringify({ ...daily, decided: daily.decided.slice(-600) })); } catch { /* nur ein Merkzettel */ } }
 // Schlüssel der eigenen Rezepte: Quelle (Link) und Name, damit dasselbe Rezept nicht noch einmal vorgeschlagen wird.
 const knownRecipeKeys = () => new Set(active(state.recipes).flatMap(row => [row.name ? builtinKey(row.name) : '', row.sourceUrl ? recipeKey(row.sourceUrl) : '']).filter(Boolean));
 // Wie viele sind heute noch offen? null = heute noch nicht geladen.
@@ -1444,21 +1450,27 @@ async function loadBuiltin() {
   }
   return builtinCollection;
 }
+function dailyContext() { return JSON.stringify([namespace(), localDay(), dailySourceKey()]); }
 async function loadDailyList(signal) {
-  const source = dailySource(), old = loadDaily(), key = dailySourceKey();
-  if (dailyFresh(old)) return old;
-  if (!source) {
-    const collection = await loadBuiltin(), known = knownRecipeKeys(), queue = planBuiltin(collection, localDay(), new Set(old.decided), known);
-    // Ist die Sammlung durch, kommen die fehlenden Plätze des Tages aus neu zusammengestellten Rezepten (recipe-maker.js, wird erst dann geladen).
-    if (queue.length < BUILTIN_PER_DAY) queue.push(...(await import('./recipe-maker.js')).planGenerated(localDay(), known, queue.length));
-    daily = { day: localDay(), source: key, queue, index: 0, outcome: {}, decided: old.decided, found: collection.length, builtin: true };
-  } else {
-    const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) }, signal);
-    const links = extractRecipeLinks(html, source);
-    daily = { day: localDay(), source: key, queue: planDay(links, new Set(old.decided), knownRecipeKeys(), DAILY_MAX), index: 0, outcome: {}, decided: old.decided, found: links.length };
-  }
-  saveDaily();
-  return daily;
+  const old = loadDaily(); if (dailyFresh(old)) return old;
+  const context = dailyContext(); if (dailyLoading?.context === context) return dailyLoading.promise;
+  const task = { context, promise: null };
+  task.promise = (async () => {
+    const source = dailySource(), key = dailySourceKey(); let queue, found, builtin = !source;
+    if (!source) {
+      const collection = await loadBuiltin(), known = knownRecipeKeys(); found = collection.length;
+      queue = planBuiltin(collection, localDay(), new Set(old.decided), known);
+      if (queue.length < BUILTIN_PER_DAY) queue.push(...(await import('./recipe-maker.js')).planGenerated(localDay(), known, queue.length));
+    } else {
+      const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) }, signal);
+      const links = extractRecipeLinks(html, source); found = links.length;
+      queue = planDay(links, new Set(old.decided), knownRecipeKeys(), DAILY_MAX);
+    }
+    if (dailyContext() !== context) throw new Error('Die Auswahl hat sich geändert. Bitte die Tagesrezepte erneut öffnen.');
+    daily = { day: localDay(), source: key, queue, index: 0, outcome: {}, decided: old.decided, drafts: {}, history: dailyHistory(old, localDay()), found, builtin };
+    saveDaily(); return daily;
+  })();
+  dailyLoading = task; try { return await task.promise; } finally { if (dailyLoading === task) dailyLoading = null; }
 }
 // Pro Tag einmal still vorladen, sobald man den Rezepte-Bereich öffnet, damit die Zahl der offenen Rezepte schon dasteht.
 function prefetchDaily() {
@@ -1466,25 +1478,73 @@ function prefetchDaily() {
   dailyTried = localDay();
   loadDailyList().then(renderDailyButton).catch(() => { /* erst beim Öffnen melden */ });
 }
-async function dailyDraft(item) {
-  if (!dailyDrafts.has(item.key)) {
-    if (item.gen !== undefined) dailyDrafts.set(item.key, draftFromBuiltin((await import('./recipe-maker.js')).makeRecipe(item.gen)));
+const dailyCacheKey = (item, record) => JSON.stringify([record.day, record.source, item.key]);
+const shownDaily = () => dailyReview?.record || loadDaily();
+function dailyKnown(item, draft) {
+  const known = knownRecipeKeys(); return known.has(item.key) || known.has(builtinKey(draft?.name || item.title)) || Boolean(draft?.sourceUrl && known.has(recipeKey(draft.sourceUrl)));
+}
+async function dailyDraft(item, record = shownDaily()) {
+  const cache = dailyCacheKey(item, record);
+  if (dailyDrafts.has(cache)) return dailyDrafts.get(cache);
+  if (dailyDraftJobs.has(cache)) return dailyDraftJobs.get(cache);
+  const job = fetchDailyDraft(item, record); dailyDraftJobs.set(cache, job);
+  try { return await job; } finally { if (dailyDraftJobs.get(cache) === job) dailyDraftJobs.delete(cache); }
+}
+async function fetchDailyDraft(item, record) {
+  const scope = namespace(), cache = dailyCacheKey(item, record);
+  if (dailyDrafts.has(cache)) return dailyDrafts.get(cache);
+  let draft = record.drafts?.[item.key];
+  if (!draft) {
+    if (item.gen !== undefined) draft = draftFromBuiltin((await import('./recipe-maker.js')).makeRecipe(item.gen));
     else if (item.builtin) {
       const entry = (await loadBuiltin()).find(candidate => candidate.n === item.builtin);
       if (!entry) throw new Error('Dieses Rezept gibt es in der Sammlung nicht mehr.');
-      dailyDrafts.set(item.key, draftFromBuiltin(entry));
+      draft = draftFromBuiltin(entry);
     } else {
       const { html } = await fetchRecipePage(item.url, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) });
-      dailyDrafts.set(item.key, recipeFromHtml(html, item.url));
+      draft = recipeFromHtml(html, item.url);
     }
   }
-  return dailyDrafts.get(item.key);
+  if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte erneut öffnen.');
+  draft = dailySnapshot(draft); dailyDrafts.set(cache, draft);
+  record.drafts ||= {}; record.drafts[item.key] = draft;
+  const current = loadDaily();
+  if (current.day === record.day && current.source === record.source) { current.drafts ||= {}; current.drafts[item.key] = draft; }
+  else current.history = [...dailyHistory(current, localDay()).filter(row => row.day !== record.day), dailyRecord(record)];
+  saveDaily(); return draft;
+}
+function dailyReviewChoices() {
+  const d = loadDaily(), records = dailyHistory(d, localDay()), yesterday = addDays(localDay(), -1);
+  $('#daily-review-choices').hidden = false;
+  $('#daily-review-today').disabled = !records.some(row => row.day === localDay() && row.queue.length);
+  $('#daily-review-yesterday').disabled = !records.some(row => row.day === yesterday && row.queue.length);
+  $('#daily-review-unavailable').hidden = !$('#daily-review-yesterday').disabled;
+}
+async function showDailyReview() {
+  const review = dailyReview, record = review?.record;
+  if (!review || review.scope !== namespace() || ![localDay(), addDays(localDay(), -1)].includes(record.day)) { dailyReview = null; return showDaily(); }
+  const ticket = ++dailyTicket, item = record.queue[review.index]; dailyButtons(); $('#daily-dialog').scrollTop = 0;
+  $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = false;
+  $('#daily-review-prev').disabled = review.index <= 0; $('#daily-review-next').disabled = review.index >= record.queue.length - 1;
+  $('#daily-progress').textContent = `${record.day === localDay() ? 'Heute' : 'Gestern'} erneut · Rezept ${review.index + 1} von ${record.queue.length}`;
+  $('#daily-note').textContent = ''; $('#daily-card').replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
+  try {
+    const draft = await dailyDraft(item, record); if (ticket !== dailyTicket) return;
+    fillDailyCard(draft, item, true); const known = dailyKnown(item, draft);
+    dailyButtons({ add: !known }); $('#daily-add').disabled = !draft.ingredients.length;
+    if (known) $('#daily-note').textContent = 'Dieses Rezept steht bereits in deinen Rezepten.';
+  } catch (error) { if (ticket !== dailyTicket) return; $('#daily-note').textContent = error.message; dailyButtons({ retry: true }); }
+}
+function openDailyReview(day) {
+  const record = dailyHistory(loadDaily(), localDay()).find(row => row.day === day);
+  if (!record?.queue.length) return;
+  dailyReview = { record, index: 0, scope: namespace() }; return showDailyReview();
 }
 function dailyButtons({ add = false, skip = false, retry = false } = {}) {
   $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
   $('#daily-add').disabled = $('#daily-skip').disabled = false;
 }
-function fillDailyCard(draft, item) {
+function fillDailyCard(draft, item, full = false) {
   const card = $('#daily-card'); card.replaceChildren();
   card.append(element('h3', draft.name || item.title));
   const time = /Gesamtzeit:\s*([^\n]+)/.exec(draft.instructions || '')?.[1];
@@ -1493,18 +1553,20 @@ function fillDailyCard(draft, item) {
   if (draft.via === 'text') card.append(element('p', 'Keine strukturierten Rezeptdaten: Zutaten und Schritte sind geschätzt.', 'warn'));
   if (draft.ingredients.length) {
     const list = element('ul', undefined, 'daily-ingredients');
-    for (const row of draft.ingredients.slice(0, 8)) list.append(element('li', ingredientLabel(row)));
-    if (draft.ingredients.length > 8) list.append(element('li', `… und ${draft.ingredients.length - 8} weitere`, 'more'));
+    for (const row of draft.ingredients.slice(0, full ? undefined : 8)) list.append(element('li', ingredientLabel(row)));
+    if (!full && draft.ingredients.length > 8) list.append(element('li', `… und ${draft.ingredients.length - 8} weitere`, 'more'));
     card.append(list);
   } else card.append(element('p', 'Es wurden keine Zutaten erkannt. Dieses Rezept lässt sich über „Import“ von Hand übernehmen.', 'warn'));
   const steps = (draft.instructions || '').replace(/Gesamtzeit:[^\n]*\n*/, '').replace(/\n{2,}/g, '\n').trim();
-  if (steps) card.append(element('p', steps.length > 260 ? `${steps.slice(0, 260).trim()} …` : steps, 'daily-steps'));
+  if (steps) card.append(element('p', !full && steps.length > 260 ? `${steps.slice(0, 260).trim()} …` : steps, 'daily-steps'));
   if (item.url) {
     const link = element('a', `Auf ${hostLabel(item.url)} ansehen`, 'daily-link'); link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
     card.append(link);
   } else card.append(element('p', item.gen === undefined ? 'Aus der eingebauten Sammlung' : 'Neu zusammengestellt. Gespeichert wird nur, was du hinzufügst.', 'hint'));
 }
 async function showDaily() {
+  loadDaily(); if (dailyReview) return showDailyReview();
+  $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = true;
   const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress'), note = $('#daily-note');
   note.textContent = ''; dailyButtons();
   $('#daily-add').disabled = $('#daily-skip').disabled = true;
@@ -1518,24 +1580,24 @@ async function showDaily() {
     saveDaily(); renderDailyButton();
     if (!d.queue.length) {
       card.replaceChildren(element('p', d.builtin ? 'Heute gibt es keine neuen Vorschläge. Morgen geht es weiter.' : d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
-      dailyButtons(); return;
+      dailyButtons(); dailyReviewChoices(); return;
     }
     if (d.index >= d.queue.length) {
       const added = Object.values(d.outcome).filter(value => value === 'added').length;
       progress.textContent = '';
       card.replaceChildren(element('h3', 'Für heute geschafft'), element('p', `${added} von ${d.queue.length} Rezepten hinzugefügt, ${d.queue.length - added} übersprungen oder schon vorhanden. Morgen gibt es neue Vorschläge.`));
-      dailyButtons(); return;
+      dailyButtons(); dailyReviewChoices(); return;
     }
     const item = d.queue[d.index];
     progress.textContent = `Rezept ${d.index + 1} von ${d.queue.length}`;
     card.replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
-    const draft = await dailyDraft(item);
+    const draft = await dailyDraft(item, d);
     if (ticket !== dailyTicket) return;
     fillDailyCard(draft, item);
     dailyButtons({ add: true, skip: true });
     $('#daily-add').disabled = !draft.ingredients.length;
     const next = d.queue[d.index + 1];
-    if (next) dailyDraft(next).catch(() => { /* beim Anzeigen erneut versuchen */ });
+    if (next) dailyDraft(next, d).catch(() => { /* beim Anzeigen erneut versuchen */ });
   } catch (error) {
     if (ticket !== dailyTicket || error?.name === 'AbortError') return;
     note.textContent = error.message;
@@ -1553,22 +1615,39 @@ function decideDaily(outcome) {
   return showDaily();
 }
 function addDailyRecipe() {
-  const d = loadDaily(), item = d.queue[d.index], draft = item && dailyDrafts.get(item.key);
-  if (!draft?.ingredients.length) return;
+  const d = shownDaily(), item = d.queue[dailyReview ? dailyReview.index : d.index], draft = item && dailyDrafts.get(dailyCacheKey(item, d));
+  if (!draft?.ingredients.length) return false;
+  if (dailyKnown(item, draft)) return false;
   const id = uid(), name = (draft.name || item.title).trim().slice(0, 120);
   const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags: draft.tags || [] };
   if (draft.sourceUrl || item.url) patch.sourceUrl = draft.sourceUrl || item.url;
   const ops = [nextOp('recipes', id, patch), ...draft.ingredients.map(row => nextOp('ingredients', uid(), { recipeId: id, name: row.name.slice(0, 120), quantity: row.quantity, unit: String(row.unit).slice(0, 30) }))];
-  commit(ops, `„${name}“ zu deinen Rezepten hinzugefügt`);
+  commit(ops, `„${name}“ zu deinen Rezepten hinzugefügt`); return true;
 }
 $('#daily-open').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
-  $('#daily-dialog').showModal(); showDaily();
+  loadDaily(); dailyReview = null; $('#daily-dialog').showModal(); showDaily();
 }));
-$('#daily-add').addEventListener('click', () => guard(() => { addDailyRecipe(); return decideDaily('added'); }));
+function confirmDailyRecipe() {
+  if (!dailyReview) return decideDaily(addDailyRecipe() ? 'added' : 'known');
+  if (addDailyRecipe()) {
+    const record = dailyReview.record, item = record.queue[dailyReview.index], current = loadDaily();
+    record.outcome[item.key] = 'added';
+    if (current.day === record.day && current.source === record.source) current.outcome[item.key] = 'added';
+    else current.history = [...dailyHistory(current, localDay()).filter(row => row.day !== record.day), dailyRecord(record)];
+    saveDaily();
+  }
+  return showDailyReview();
+}
+$('#daily-add').addEventListener('click', () => guard(confirmDailyRecipe));
 $('#daily-skip').addEventListener('click', () => guard(() => decideDaily('skipped')));
 $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
-$('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; });
+$('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; });
+$('#daily-review-today').addEventListener('click', () => guard(() => openDailyReview(localDay())));
+$('#daily-review-yesterday').addEventListener('click', () => guard(() => openDailyReview(addDays(localDay(), -1))));
+$('#daily-review-prev').addEventListener('click', () => { if (dailyReview?.index > 0) { dailyReview.index--; showDailyReview(); } });
+$('#daily-review-next').addEventListener('click', () => { if (dailyReview && dailyReview.index < dailyReview.record.queue.length - 1) { dailyReview.index++; showDailyReview(); } });
+$('#daily-review-finish').addEventListener('click', () => { dailyReview = null; showDaily(); });
 
 /* ---------- Was kann ich kochen? ---------- */
 // Ordnet die Rezepte danach, wie viele Zutaten schon da sind (Vorrat, Eingekauftes) oder noch kommen (offen auf der Einkaufsliste). Logik in cookable.js.
@@ -1581,7 +1660,7 @@ function renderCookable() {
   $('#cookable-count').textContent = !recipes.length ? 'Noch kein Rezept.' : !ranked.length ? 'Noch passt kein Rezept zu euren Vorräten und der Einkaufsliste.' :
     [ready && `${ready} ${ready === 1 ? 'Rezept' : 'Rezepte'} könnt ihr sofort kochen`, soon && `${soon} nach dem Einkauf`].filter(Boolean).join(' · ') || (ranked.length === 1 ? '1 Vorschlag, bei dem nur wenig fehlt' : `${ranked.length} Vorschläge, bei denen nur wenig fehlt`);
   const box = $('#cookable-list'); box.replaceChildren();
-  if (recipes.length && !ranked.length) box.append(element('p', 'Tippe unter Einstellungen → Vorrat ein, was ihr immer zu Hause habt, oder setze Artikel auf die Einkaufsliste. Dann erscheinen hier passende Rezepte.', 'empty'));
+  if (recipes.length && !ranked.length) box.append(element('p', 'Tippe unter Einkauf → Vorrat ein, was ihr immer zu Hause habt, oder setze Artikel auf die Einkaufsliste. Dann erscheinen hier passende Rezepte.', 'empty'));
   const line = (label, list) => { const item = element('li'); item.append(element('strong', `${label}: `), document.createTextNode(list.join(', '))); return item; };
   const later = action => () => { $('#cookable-dialog').close(); action(); };
   for (const entry of ranked) {
@@ -1840,11 +1919,11 @@ async function backupFull() {
 
 /* ---------- Im Laden ---------- */
 // Umschalter „Planen | Im Laden“ (gilt für dieses Gerät). Im Laden: Geschäft oben wählen, nur das Wichtige sehen, abhaken.
-let shopStore = '', shopDoneOpen = false;
+let shopStore = ALL_STORES, shopDoneOpen = false;
 const shopChecked = new Map();   // Artikel ohne Geschäft, die in dieser Sitzung in einem Geschäft abgehakt wurden: Kennung → Geschäft
 const shopOn = () => config.shopMode === true;
 // Beim Öffnen von „Im Laden“ (ein Tipp der Person) wird der Bildschirm neu angefordert, auch wenn es vorher nicht klappte; ebenso beim Zurückkehren in die App.
-function setShopMode(on) { awake.shop.failed = false; if (on && selecting) setSelecting(false); saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
+function setShopMode(on) { if (on) shopStore = ALL_STORES; awake.shop.failed = false; if (on && selecting) setSelecting(false); saveConfig({ ...config, shopMode: on }); applyMode(); window.scrollTo(0, 0); }
 function applyMode() {
   const on = shopOn();
   $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
@@ -1853,7 +1932,11 @@ function applyMode() {
   syncChrome(); syncShopLock();
 }
 // Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
-function syncChrome() { document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden); armLock(); }
+function syncChrome() {
+  document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden);
+  document.body.classList.toggle('in-pantry', !$('#pantry').hidden);
+  armLock();
+}
 function syncShopAwake() {
   const supported = 'wakeLock' in navigator;
   // Standardmäßig an; nur ein ausdrückliches Abwählen (`shopScreenOn: false`) gilt. Das frühere Feld `shopAwake` (Version 1.9 bis 2.35, damals Standard „aus“) wird nicht mehr gelesen.
@@ -2004,7 +2087,7 @@ function shopNewsRow(entry) {
 }
 function renderShop() {
   const stores = active(state.stores), everything = visibleItems(true);
-  if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = '';
+  if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = ALL_STORES;
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
   const chips = $('#shop-chips'); chips.replaceChildren();
   // „Alle“ steht vor den Geschäften (wie unter „Planen“): alles Offene aus allen Geschäften und ohne Geschäft
@@ -2035,8 +2118,7 @@ function renderShop() {
   const shop = shopView(items, shopStore, shopChecked, takesAnywhere(stores.find(store => store.id === shopStore))), here = [...shop.open, ...shop.anywhere];
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory(), aislesOf(shopStore));
-  const total = shoppingTotal(here);
-  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : `Alles erledigt bei ${storeName(shopStore)}.`;
+  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen` : `Alles erledigt bei ${storeName(shopStore)}.`;
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const group of groups(shop.open)) { list.append(groupHead(group.label)); group.items.forEach(item => list.append(shopRow(item))); }
   const anywhere = groups(shop.anywhere);
@@ -2061,8 +2143,7 @@ function appendShopDone(list, rows) {
 function renderShopAll(list, items, stores) {
   const all = shopAllView(items, stores), here = all.sections.flatMap(section => section.open);
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
-  const total = shoppingTotal(here);
-  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen${total.cents > 0 ? ` · ca. ${euros(total.cents)}` : ''}` : 'Alles erledigt.';
+  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen` : 'Alles erledigt.';
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const section of all.sections) {
     const open = section.open.filter(item => !newIds.has(item.id)); if (!open.length) continue;
@@ -2095,7 +2176,7 @@ function finishShopping(amount = '') {
   const storeId = shopStore === ALL_STORES ? '' : shopStore;
   const buyer = typed ? purchaseBuyer($('#finish-form').elements.buyerId.value) : null;
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
-    kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name, estimate: estimateOf(checked) }, isoDate()) : null;
+    kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
   if (fields) duplicateWarning(fields, '', 'tippe auf „+“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   const notice = fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '';
@@ -2140,7 +2221,7 @@ async function recipeLayout(recipeId, servings) {
   const count = servings > 0 ? servings : recipe.servings, source = webUrl(recipe.sourceUrl);
   const rows = active(state.ingredients).filter(row => row.recipeId === recipeId);
   const photo = recipe.photoId ? await photoForPdf(recipe.photoId) : null;
-  return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: recipe.tags, sourceHost: source ? hostLabel(source) : '', sourceUrl: source },
+  return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: recipe.tags, sourceHost: source ? hostLabel(source) : '', sourceUrl: source, notes: recipe.notes || '' },
     ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo });
 }
 let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
@@ -2335,11 +2416,6 @@ function purchaseBuyer(id, original = null) {
   if (original?.buyerId === id) return { id, name: original.buyerName || '', change: null };
   throw new Error('Diese Person ist nicht mehr vorhanden. Bitte erneut auswählen.');
 }
-// „Geschätzt 20,00 €, bezahlt 3,45 € mehr“ für Bildschirmleser und das Änderungsfenster.
-function estimateWords(cents, estimate) {
-  const diff = cents - estimate;
-  return `geschätzt ${euros(estimate)}, ${!diff ? 'genau so viel bezahlt' : diff > 0 ? `${euros(diff)} mehr bezahlt` : `${euros(-diff)} weniger bezahlt`}`;
-}
 const budgetCents = () => active(state.budgets || []).find(row => row.id === 'monthly')?.cents || 0;
 // Kurzer Zusatz für die Meldung nach dem Speichern: ab 80 % des Budgets („85 % des Budgets verbraucht“, „Budget um 12,30 € überschritten“).
 function budgetNote(total) {
@@ -2414,7 +2490,7 @@ function openPurchase(id = '') {
   form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
   $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
   $('#purchase-delete').hidden = !row;
-  $('#purchase-estimate').hidden = !row?.estimate; $('#purchase-estimate').textContent = row?.estimate ? `Zum Vergleich: ${estimateWords(row.cents, row.estimate)}.` : '';
+
   $('#purchase-dialog').showModal();
   if (!row) form.elements.amount.focus();
 }
@@ -2748,14 +2824,14 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const form = event.currentTarget, closeKeyboard = Date.now() - plusTapped < 1500, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
   plusTapped = 0;
   if (!typed || !unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
-  const known = appliedAliases().find(alias => alias.from === aliasKey(typed)), name = known?.name || typed;
+  const known = appliedAliases().find(alias => alias.from === aliasKey(typed)), correction = form.dataset.keepName === typed || isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) ? null : recognizeName(typed).correction, name = known?.name || correction || typed;
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
   const item = { storeId: currentStore(form.elements.storeId.value), name, quantity: positive(form.elements.quantity.value),
     unit, checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   if (!item.saleUntil) delete item.saleUntil;
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
   const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit }], item.storeId, state.items).counted[0];
-  const renamed = known && productKey(known.name) !== productKey(typed) ? `„${typed}“ → „${known.name}“` : '';
+  const renamed = name !== typed ? `„${typed}“ → „${name}“` : '';
   if (same) {
     commit([nextOp('items', same.id, { add: same.add })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${format(same.after.quantity)} ${same.after.unit}`);
   } else {
@@ -2765,7 +2841,7 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
   const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
+  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; delete form.dataset.keepName; rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
   if (closeKeyboard) document.activeElement?.blur?.(); else form.elements.name.focus();
 }); });
 $('#delete-item').addEventListener('click', () => guard(() => {
@@ -2823,9 +2899,11 @@ dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
 bindWishHold($('#items'), '.item[data-wish] .item-copy', id => guard(() => openWish(id)), () => selecting);
 bindWishHold($('#shop-list'), '.shop-item[data-wish] .shop-text', id => guard(() => openWish(id)), () => isLocked());
 // Lange halten und loslassen, ohne zu ziehen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
+let moveDeleteIds = [], moveScope = '';
 function openMove(id) {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) return;
+  moveDeleteIds = [id]; moveScope = namespace(); $('#move-delete-label').textContent = 'Artikel löschen';
   $('#move-dialog').dataset.id = id;
   $('#move-text').textContent = `„${item.name}“ (${format(item.quantity)} ${item.unit}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'ohne Geschäft'}. Wohin soll er?`;
   const box = $('#move-choices'); box.replaceChildren();
@@ -2841,6 +2919,7 @@ function openMove(id) {
 // Mehrere ausgewählte Artikel in ein Geschäft (oder ohne Geschäft) verschieben: eine Änderung für alle; gleiche offene Artikel im Ziel werden zusammengezählt.
 function openMoveSelected() {
   const rows = selectedItems(); if (!rows.length) return;
+  moveDeleteIds = rows.map(row => row.id); moveScope = namespace(); $('#move-delete-label').textContent = `${rows.length} Artikel löschen`;
   $('#move-dialog').dataset.id = '';
   $('#move-text').textContent = `${rows.length} Artikel ausgewählt. Wohin sollen sie?`;
   const box = $('#move-choices'); box.replaceChildren();
@@ -2851,6 +2930,15 @@ function openMoveSelected() {
   };
   fillMoveChoices(choice);
 }
+$('#move-delete').addEventListener('click', () => guard(() => {
+  if (!$('#move-dialog').open) return;
+  if (moveScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte die Auswahl erneut öffnen.');
+  const ids = moveDeleteIds.filter(id => active(state.items).some(row => row.id === id));
+  if (!ids.length) { $('#move-dialog').close(); showNotice('Diese Artikel wurden inzwischen entfernt.'); return; }
+  if (ids.length > 1 && !confirm(`${ids.length} Artikel löschen?`)) return;
+  removeRows('items', ids); selected.clear(); setSelecting(false); $('#move-dialog').close();
+  showNotice(ids.length === 1 ? 'Artikel gelöscht' : `${ids.length} Artikel gelöscht`);
+}));
 function moveSelected(storeId) {
   const target = currentStore(storeId), label = target ? storeName(target) : 'ohne Geschäft', rows = selectedItems(), ops = [];
   let items = state.items, merged = 0, moved = 0;
@@ -2934,6 +3022,7 @@ productPicker = mountProductPicker({
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onPantry: addToPantry,
+  onQuickBuy: product => pantryView.buyProduct(product),
   onFavorite: product => {
     const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
     const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {
@@ -2947,13 +3036,13 @@ pantryView = mountPantry({
   getData: () => ({ pantry: state.pantry || [], items: listItems(), favorites: state.productFavorites || [] }), getScope: namespace,
   getStores: () => active(state.stores).filter(store => !isSeparate(store)),
   getPreferredStore: () => $('#open-products').hidden ? '' : $('#item-form').elements.storeId.value,
-  imagesOn,
+  imagesOn, recognizeName,
   onChange: changes => commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch))),
   onRemove: ids => removeRows('pantry', ids), onBuy: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onProducts: mode => productPicker.open('', { target: 'pantry', mode }),
   onImages: (imageKey, onImage) => productPicker.open('', { target: 'image', imageKey, onImage }),
   onCancelImages: () => productPicker.cancelImage(),
-  onShopping: () => tab('shopping')
+  onShopping: event => { tab('shopping'); window.scrollTo(0, pantryReturnScroll); if (!event.detail) $('#open-pantry').focus({ preventScroll: true }); }
 });
 spendingView = mountSpending({
   getData: () => ({ purchases: state.purchases || [], members: state.members || [], stores: state.stores }), getScope: namespace,
@@ -2975,7 +3064,8 @@ spendingView = mountSpending({
     commit([nextOp('members', id, { archived })]);
   }
 });
-$('#open-pantry').addEventListener('click', () => { tab('settings'); pantryView.open(); });
+let pantryReturnScroll = 0;
+$('#open-pantry').addEventListener('click', () => { pantryReturnScroll = window.scrollY; tab('pantry'); pantryView.open(); });
 $('#open-products').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
   productPicker.open($('#item-form').elements.storeId.value);

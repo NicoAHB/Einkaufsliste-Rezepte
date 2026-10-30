@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { itemCost, itemQuote, offerUrl, parseCents, productKey, shoppingTotal, storeOfferUrl, unitRate, unitSpec } from '../prices.js';
+import { itemCost, itemQuote, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from '../prices.js';
 
 test('Preise in Euro werden zu ganzen Cent', () => {
   assert.equal(parseCents('1,99'), 199);
@@ -29,20 +29,12 @@ test('Kosten: 2 kg bei 1,99 € je 500 g sind 7,96 €; Angebot ersetzt den Norm
   assert.equal(itemCost({ ...item, price: { cents: 0, quantity: 1, unit: 'kg' } }), 0);
 });
 
-test('Summe: erledigte und gelöschte Artikel zählen nicht, fehlende Preise werden gemeldet', () => {
-  const quote = { cents: 100, quantity: 1, unit: 'Stück' };
-  const items = [{ quantity: 2, unit: 'Stück', price: quote }, { quantity: 1, unit: 'Stück', price: quote, checked: true },
-    { quantity: 1, unit: 'Stück', price: quote, deletedAt: '2026-01-01T00:00:00.000Z' }, { quantity: 1, unit: 'Stück', price: null }];
-  assert.deepEqual(shoppingTotal(items), { cents: 200, missing: 1, count: 2, priced: 1 });
-});
-
 test('Der Preis eines Artikels ist nur der eigene: nie ein früher bezahlter oder notierter Preis (auch nicht bei Altbestand ohne Feld)', () => {
   assert.equal(itemQuote({ name: 'Milch', unit: 'l' }), null, 'fehlendes Feld heißt kein Preis');
   assert.equal(itemQuote({ name: 'Milch', unit: 'l', price: null }), null);
   assert.equal(itemQuote({ name: 'Milch', unit: 'l', price: { cents: -1, quantity: 1, unit: 'l' } }), null, 'ungültiger Preis zählt nicht');
   const own = { cents: 120, quantity: 1, unit: 'l' };
   assert.deepEqual(itemQuote({ name: 'Milch', unit: 'l', price: own }), own);
-  assert.equal(shoppingTotal([{ name: 'Milch', quantity: 1, unit: 'l' }]).priced, 0);
   assert.equal(productKey('  Äpfel  Rot '), 'äpfel rot');
 });
 

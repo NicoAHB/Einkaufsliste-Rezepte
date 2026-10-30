@@ -102,3 +102,24 @@ export function draftFromBuiltin(entry) {
   const steps = entry.s.map((step, index) => `${index + 1}. ${step}`).join('\n\n');
   return { name: entry.n, servings: entry.p, tags: entry.c ? [entry.c] : [], ingredients, instructions: `Gesamtzeit: ${durationLabel(entry.t)}\n\n${steps}`, warnings: [], via: 'schema', sourceUrl: '' };
 }
+
+/* Lokaler Tagesverlauf: nur die tatsächlichen Auswahlen von heute und gestern.
+   Keine neue Planung beim Zurückblättern und keine Änderung an „schon entschieden“. */
+export function dailyRecord(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value.day || '') || !Array.isArray(value.queue)) return null;
+  return JSON.parse(JSON.stringify({ day: value.day, source: value.source || '', queue: value.queue, index: value.index || 0,
+    outcome: value.outcome || {}, drafts: value.drafts || {}, builtin: Boolean(value.builtin), found: value.found || 0 }));
+}
+export function dailyHistory(value, today) {
+  const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86400000).toISOString().slice(0, 10), records = new Map();
+  for (const candidate of [...(Array.isArray(value?.history) ? value.history : []), value]) {
+    const record = dailyRecord(candidate);
+    if (record && [yesterday, today].includes(record.day)) records.set(record.day, record);
+  }
+  return [...records.values()].sort((a, b) => a.day.localeCompare(b.day));
+}
+export function dailySnapshot(draft) {
+  return { name: String(draft.name || '').slice(0, 120), servings: Number(draft.servings) || 2, tags: Array.isArray(draft.tags) ? draft.tags.filter(t => typeof t === 'string') : [],
+    instructions: String(draft.instructions || ''), sourceUrl: String(draft.sourceUrl || ''), via: draft.via || 'schema',
+    ingredients: (draft.ingredients || []).map(row => ({ name: String(row.name), quantity: row.quantity, unit: String(row.unit) })) };
+}

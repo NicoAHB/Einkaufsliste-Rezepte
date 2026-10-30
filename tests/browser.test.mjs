@@ -86,7 +86,8 @@ const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
 // Im Laden ist die Leiste unten ausgeblendet; der Reiterwechsel läuft hier deshalb per Skript (wie ein Tipp auf den Reiter).
 const goTab = (page, name) => page.evaluate(name => document.querySelector(`[data-tab=${name}]`).click(), name);
-const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold, #settings .pantry-suggest-fold').forEach(node => { node.open = true; })); };
+const openPantry = async page => { await goTab(page, 'shopping'); if (await page.locator('#shop-back').isVisible()) await page.click('#shop-back'); await page.click('#open-pantry'); await page.evaluate(() => { document.querySelector('#pantry .pantry-suggest-fold').open = true; }); };
+const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
 // Ein Geschäft als Bild („Wünsche“ ist ein Geschenk) trägt seinen Namen als Beschriftung des Bildes, nicht als Text.
 const storeButton = (page, box, name) => { const byText = page.locator(`${box} .chip, ${box} button`, { hasText: name }); return byText.or(page.locator(`${box} .chip, ${box} button`, { has: page.getByRole('img', { name, exact: true }) })).first(); };
 const pickStore = async (page, name) => { await expandForm(page); await storeButton(page, '#store-pick', name).click(); };
@@ -449,7 +450,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#add-ingredient');
     await page.fill('#ingredient-editor .ingredient-row:nth-child(2) [data-field=name]', 'Zwiebel');
     await page.fill('#recipe-form textarea[name=instructions]', 'Alles kochen.');
-    await page.waitForFunction(() => /Linsensuppe/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    await page.waitForFunction(() => { const draft = JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}').new?.state; return draft?.name === 'Linsensuppe' && draft.instructions === 'Alles kochen.' && draft.ingredients?.[1]?.name === 'Zwiebel'; });
     assert.deepEqual((await drafts()).new.state.ingredients.map(row => row.name), ['Rote Linsen', 'Zwiebel']);
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.recipes)).some(row => row.name === 'Linsensuppe'), false, 'nichts davon ist gespeichert');
     // Schließen mit X, dann erneut „Neu“: der Entwurf wird angeboten
@@ -459,7 +460,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#recipe-draft-note'), /nicht gespeicherten Entwurf von \d\d\.\d\d\.\d\d.*\d\d:\d\d/);
     assert.equal(await page.inputValue('#recipe-form input[name=name]'), '', 'angeboten, aber nicht von selbst eingesetzt');
     // Die App ganz neu laden (wie nach vollständigem Schließen): der Entwurf ist noch da
-    await page.keyboard.press('Escape');
+    await Promise.all([
+      page.evaluate(() => new Promise(resolve => document.querySelector('#recipe-dialog').addEventListener('close', () => resolve(), { once: true }))),
+      page.keyboard.press('Escape')
+    ]);
+    assert.equal((await drafts()).new.state.name, 'Linsensuppe', 'auch ein vollständig abgearbeitetes Schließen bewahrt den angebotenen Entwurf');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
     await page.click('[data-tab=recipes]'); await page.click('#add-recipe'); await sheetOpen(page);
     assert.equal(await page.locator('#recipe-draft-note').isVisible(), true, 'auch nach dem Neuladen');
@@ -1064,7 +1069,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Vorrat: Vorschläge häufiger Vorräte zum Übernehmen (Tipp auf einen Namen, „Alle übernehmen“); Vorhandenes wird nicht mehr angeboten, Entferntes kommt zurück', async () => {
     for (const width of [280, 390]) {
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 700 } } });
-      await open(page); await openSettings(page);
+      await open(page); await openPantry(page);
       const box = page.locator('#pantry-suggestions'), chips = box.locator('.suggest-chips .chip');
       const pantry = () => page.locator('#pantry-list .pantry-name').allTextContents();
       const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.pantry.filter(row => !row.deletedAt).map(row => row.name));
@@ -1111,15 +1116,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
-  test('Vorrat: in den Einstellungen pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
+  test('Vorrat: im Einkauf pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    await openSettings(page);
+    await openPantry(page);
     for (const name of ['Nudeln', 'olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
     await page.fill('#pantry-form input[name=name]', 'NUDELN'); await page.click('#pantry-form button');   // Doppelte werden nicht angelegt
     assert.deepEqual((await page.locator('#pantry-list .pantry-name').allTextContents()).sort(), ['Nudeln', 'olivenöl']);
     const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
-    await page.click('[data-tab=recipes]');
+    await page.click('#pantry-to-list'); await page.click('[data-tab=recipes]');
     await card.locator('summary').click();
     await card.getByRole('button', { name: 'Auf die Liste' }).click();
     await sheetOpen(page);
@@ -1134,14 +1139,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /in den Vorrat/);
-    await openSettings(page);
+    await openPantry(page);
     assert.ok((await page.locator('#pantry-list .pantry-name').allTextContents()).includes('Tomaten'));
     // Entfernen
     await page.getByRole('button', { name: 'Tomaten aus dem Vorrat entfernen' }).click();
     await page.getByRole('button', { name: 'Nudeln aus dem Vorrat entfernen' }).click();
     assert.deepEqual(await page.locator('#pantry-list .pantry-name').allTextContents(), ['olivenöl']);
     // Wochenliste: Vorrat ebenfalls gekennzeichnet
-    await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
+    await page.click('#pantry-to-list'); await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
     await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
     await page.click('#plan-shopping'); await sheetOpen(page);
     assert.equal(await page.locator('#week-ingredients .transfer-row', { hasText: 'Olivenöl' }).locator('input').isChecked(), false);
@@ -1163,12 +1168,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#purchase-save');
   };
 
-  test('Gemerkte Namen: bestätigte Schreibweisen stehen in den Einstellungen und lassen sich entfernen', async () => {
+  test('Gemerkte Schreibweisen: bestätigte Schreibweisen stehen in den Einstellungen und lassen sich entfernen', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const aliases = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.filter(row => !row.deletedAt).map(row => [row.from, row.name]));
     await openSettings(page);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen$/);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Schreibweisen$/);
     assert.match(await page.textContent('#alias-list'), /Noch nichts gemerkt/);
     // Eine Zuordnung entsteht, wenn eine andere Schreibweise ausdrücklich bestätigt wird
     await goTab(page, 'shopping'); await pickStore(page, 'Rewe');
@@ -1176,7 +1181,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#item-suggestions button', { hasText: 'Äpfel' }).click();
     assert.deepEqual(await aliases(), [['apfel', 'Äpfel']]);
     await openSettings(page);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)/);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Schreibweisen \(1\)/);
     assert.equal((await page.locator('#alias-list li').allTextContents()).join('|'), 'apfel → Äpfel');
     await page.getByRole('button', { name: 'Zuordnung apfel zu Äpfel entfernen' }).click();
     assert.deepEqual(await aliases(), []);
@@ -1526,7 +1531,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Einkauf beenden bei einem Geschäft: nur dessen Einkauf (auch in der gespeicherten Schätzung); Abgehaktes eines anderen Geschäfts und ein dort abgehakter Artikel ohne Geschäft bleiben; unter „Alle“ geht alles', async () => {
+  test('Einkauf beenden bei einem Geschäft: nur dessen Einkauf und tatsächlicher Betrag; Abgehaktes eines anderen Geschäfts und ein dort abgehakter Artikel ohne Geschäft bleiben; unter „Alle“ geht alles', async () => {
     const data = structuredClone(demo);
     data.items.push({ id: 'item-salz', storeId: '', name: 'Salz', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', createdAt: '2026-10-26T00:00:00.000Z', updatedAt: '2026-10-26T00:00:00.000Z', deletedAt: null, _clock: {} });
     const { ctx, page, problems } = await context();
@@ -1549,7 +1554,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(after.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Milch', 'Nudeln', 'Salz', 'Äpfel'], 'nur die Tomaten sind weg');
     assert.deepEqual(after.items.filter(row => !row.deletedAt && row.checked).map(row => row.name).sort(), ['Milch', 'Salz'], 'Milch und Salz bleiben abgehakt stehen');
     const purchase = after.purchases.filter(row => !row.deletedAt).at(-1);
-    assert.deepEqual([purchase.cents, purchase.estimate], [500, 249], 'die Schätzung enthält nur die Tomaten (nicht die 0,99 € der Milch)');
+    assert.equal(purchase.cents, 500); assert.ok(!('estimate' in purchase), 'nur der tatsächlich eingegebene Betrag wird gespeichert');
     assert.deepEqual([purchase.storeName ?? '', purchase.storeId], ['Edeka', 'store-edeka']);
     const left = await listed();
     assert.ok(left.some(text => text.includes('Milch')) && left.some(text => text.includes('Salz')) && !left.some(text => text.includes('Tomaten')), left.join(' | '));
@@ -1568,7 +1573,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; alte Schätzung bleibt nur unter weiteren Angaben lesbar', async () => {
+  test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; nur tatsächliche Beträge ohne Schätzung oder Vergleich', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
@@ -1585,7 +1590,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
     const purchase = (await stored()).purchases.filter(row => !row.deletedAt).at(-1);
     assert.equal(purchase.cents, 9900);
-    assert.ok(Number.isSafeInteger(purchase.estimate) && purchase.estimate > 0 && purchase.estimate < 9900, `geschätzte Summe gemerkt: ${purchase.estimate}`);
+    assert.ok(!('estimate' in purchase), 'kein neuer Schätzwert, auch mit Preisnotizen');
     // 3. Ein günstiger Einkauf: grün (Beispiel: Äpfel bei Rewe, dort 1,00 € bezahlt)
     await finish('Rewe', ['Äpfel'], async () => { await page.fill('#finish-form input[name=amount]', '1'); await page.click('#finish-form .add-button'); });
     await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
@@ -1599,10 +1604,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const red = rows.filter({ hasText: '99,00' });
     // Beim Ändern steht der Vergleich in Worten
     await red.click(); await sheetOpen(page); await page.locator('#purchase-more summary').click();
-    assert.match(await page.textContent('#purchase-estimate'), /Zum Vergleich: geschätzt [\d,.]+\s€, [\d,.]+\s€ mehr bezahlt/);
+    assert.equal(await page.locator('#purchase-estimate').count(), 0, 'kein Vergleich mehr im Formular');
     await page.keyboard.press('Escape');
     await rows.filter({ hasText: '7,00' }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#purchase-estimate').isHidden(), true);
+    assert.equal(await page.locator('#purchase-estimate').count(), 0);
     await page.keyboard.press('Escape');
     // Ohne genug Preise keine Schätzung: ein Artikel ohne Preis, abgehakt, beendet mit Betrag
     await page.click('[data-tab=shopping]'); await page.fill('#item-form input[name=name]', 'Gartenschlauch'); await page.click('#item-form button[type=submit]');
@@ -1998,12 +2003,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Angebote mit „gültig bis“: abgelaufene zählen nicht mehr in der Schätzung; die Zeile unter „Planen“ zeigt weder Angebot noch Preis', async () => {
+  test('Angebote mit „gültig bis“ bleiben freiwillige Notizen; keine Schätzung oder Preise in der Liste', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const day = offset => { const date = new Date(Date.now() + offset * 86400000); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
     const apples = () => page.locator('#items .item', { hasText: 'Äpfel' });
-    const total = async () => Number((await page.textContent('#shopping-total')).match(/Geschätzt ([\d.]+),(\d\d)/).slice(1).join('.').replace('.', '') ) ;
     const edit = async until => {
       await apples().getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
       await page.click('#item-price-fold > summary');   // Preis & Angebot sind zugeklappt
@@ -2013,17 +2017,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       }
       await page.fill('#edit-item-form input[name=saleUntil]', until);
     };
-    const before = await total();
+    assert.equal(await page.locator('#shopping-total').count(), 0);
     await edit(day(-1));
     assert.equal(await page.locator('#price-comparison').count(), 0, 'kein Preisvergleich im Bearbeiten-Fenster');
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.equal(await apples().locator('.sale-badge, small.price-note').count(), 0, 'keine Angebotsangaben in der Zeile');
     assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./);
-    assert.equal(await total(), before, 'ein abgelaufenes Angebot ändert die Schätzung nicht');
+    assert.equal(await page.locator('#shopping-total').count(), 0);
     await edit(day(2));
     await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./, 'auch ein gültiges Angebot steht nicht in der Zeile');
-    assert.ok(await total() < before, 'solange das Angebot gilt, ist die Schätzung niedriger');
+    assert.equal(await page.locator('#shopping-total').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2195,8 +2199,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#plan-view').isHidden(), true);
     assert.equal(await page.locator('#item-form').isHidden(), true, 'kein Eingabeformular im Laden');
     const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.querySelector('.count')?.textContent ?? '', node.getAttribute('aria-selected')]));
-    assert.deepEqual(await chips(), [['Alle', '5', 'false'], ['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'nichts vorgewählt; „Alle“ zählt alles Offene; Brot zählt in jedem Geschäft mit');
-    assert.match(await page.textContent('#shop-list'), /Tippe oben auf das Geschäft/);
+    assert.deepEqual(await chips(), [['Alle', '5', 'true'], ['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'Alle ist vorgewählt und zählt alles Offene; Brot zählt in jedem Geschäft mit');
+    assert.equal(await page.locator('#shop-chips .chip[aria-selected=true]').first().textContent().then(text => text.startsWith('Alle')), true);
+    assert.ok(await page.locator('#shop-list .shop-name').count() > 0);
     const names = () => page.locator('#shop-list .shop-item .shop-name').allTextContents();
     const chip = name => page.locator('#shop-chips .chip', { hasText: name });
     // Bei Edeka
@@ -3317,8 +3322,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.keyboard.press('Escape');
     await page.click('#mode-shop');
     const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.getAttribute('aria-selected')]));
-    assert.deepEqual(await chips(), [['Alle', 'false'], ['Edeka', 'false'], ['Lidl', 'false']], 'Rewe ist weg, nichts ist mehr gewählt');
-    assert.match(await page.textContent('#shop-list'), /Tippe oben auf das Geschäft/);
+    assert.deepEqual(await chips(), [['Alle', 'true'], ['Edeka', 'false'], ['Lidl', 'false']], 'Rewe ist weg, Alle ist gewählt');
+    assert.equal(await page.locator('#shop-chips .chip[aria-selected=true]').first().textContent().then(text => text.startsWith('Alle')), true);
+    assert.ok(await page.locator('#shop-list .shop-name').count() > 0);
     await page.locator('#shop-chips .chip').first().click();
     assert.deepEqual(await page.locator('#shop-list .store-head > span:nth-of-type(1)').allTextContents(), ['Edeka', 'Lidl']);
     assert.ok(!(await page.textContent('#shop-list')).includes('Äpfel'), 'Artikel eines gelöschten Geschäfts bleiben verborgen');
@@ -3604,7 +3610,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const cards = () => page.locator('#cookable-list .cookable-card');
     const status = name => cards().filter({ hasText: name }).locator('.cookable-status').textContent();
-    const openList = async () => { await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page); };
+    const openList = async () => { if (await page.locator('#pantry').isVisible()) await page.click('#pantry-to-list'); await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page); };
     // 1. Die Beispielliste hat Nudeln und Tomaten (offen): Tomaten-Pasta fehlen Zwiebel und Olivenöl; Curry und Pfannkuchen passen kaum
     await openList();
     assert.deepEqual(await cards().locator('h3').allTextContents(), ['Tomaten-Pasta']);
@@ -3618,7 +3624,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(picked.map(entry => entry[1]), [false, false, true, true], JSON.stringify(picked));
     await page.keyboard.press('Escape');
     // 3. Zwiebel und Olivenöl im Vorrat: alles da, sobald ihr einkauft
-    await openSettings(page);
+    await openPantry(page);
     for (const name of ['Zwiebeln', 'Olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button[type=submit]'); }
     await openList();
     assert.match(await status('Tomaten-Pasta'), /Alles da, sobald ihr einkauft \(2 von der Liste\)/);
@@ -3659,7 +3665,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     for (const name of ['Tomaten', 'Nudeln', 'Milch', 'Äpfel']) { await page.locator('#items .item', { hasText: name }).locator('.item-copy').click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('dialog[open]', { state: 'detached' }); }
     await page.click('[data-tab=recipes]'); await page.click('#cookable-open'); await sheetOpen(page);
     assert.match(await page.textContent('#cookable-count'), /Noch passt kein Rezept/);
-    assert.match(await page.textContent('#cookable-list'), /Einstellungen → Vorrat/);
+    assert.match(await page.textContent('#cookable-list'), /Einkauf → Vorrat/);
     assert.equal(await page.locator('#cookable-list .cookable-card').count(), 0, 'gelöschte, nicht abgehakte Artikel gelten nicht als eingekauft');
     await page.keyboard.press('Escape');
     assert.deepEqual(problems, []);
@@ -3672,7 +3678,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await page.click('[data-tab=settings]');
-    const ids = ['display-details', 'pantry-details', 'alias-details', 'storage-details', 'import-details', 'connection-details'];
+    const ids = ['display-details', 'shop-details', 'alias-details', 'storage-details', 'import-details', 'connection-details'];
     for (const id of ids) assert.equal(await page.locator(`#${id}`).evaluate(node => node.open), false, `${id} startet eingeklappt`);
     for (const id of ids) {
       const summary = page.locator(`#${id} > summary`);
@@ -3684,8 +3690,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     // Aufgeklappt sind Inhalte bedienbar, zugeklappt nicht sichtbar
     assert.equal(await page.locator('#pantry-form input').isVisible(), false);
-    await page.click('#pantry-details > summary');
-    assert.equal(await page.locator('#pantry-form input').isVisible(), true);
+    assert.equal(await page.locator('#settings #pantry-card').count(), 0);
+    assert.equal(await page.locator('#settings #shop-details').count(), 1);
     await page.click('#display-details > summary');
     await page.click('#palette button[data-palette=rose]');
     assert.equal(await page.getAttribute('html', 'data-palette'), 'rose');
@@ -3738,12 +3744,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context();
     await open(page); await page.click('[data-tab=settings]');
     assert.equal(await page.locator('#connection-details').evaluate(node => node.open), true, 'ohne Verbindung steht „Gemeinsame Liste“ offen');
-    await page.click('#display-details > summary'); await page.click('#pantry-details > summary');
-    await page.click('#pantry-details > summary');   // wieder zu
+    await page.click('#display-details > summary'); await page.click('#shop-details > summary');
+    await page.click('#shop-details > summary');   // wieder zu
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'pantry-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });
@@ -3947,7 +3953,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok((await stored()).some(row => row[0] === 'Zwiebeln') && !(await stored()).some(row => row[0] === 'Zwiebel'), 'Zwiebel wird zu Zwiebeln');
     // Settings: die bestätigte Schreibweise steht oben, die drei fragwürdigen darunter zur Prüfung; die Zahl nennt beides
     await openSettings(page);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\) · 3 prüfen$/);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Schreibweisen \(1\) · 3 prüfen$/);
     assert.deepEqual((await page.locator('#alias-list li').allTextContents()).map(text => text.trim()), ['zwiebel → Zwiebeln']);
     assert.deepEqual((await page.locator('#alias-doubt-list li span').allTextContents()).sort(), ['apfeltasche → Apfel', 'herz.naturjoghurt → Joghurt', 'tom cherry → Cherrytomaten']);
     assert.match(await page.textContent('#alias-doubt'), /wirken nicht/);
@@ -3957,7 +3963,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Behalten: die Zuordnung gilt ab jetzt (ausdrückliche Entscheidung), steht oben bei den wirksamen und wird gespeichert
     await page.getByRole('button', { name: 'Zuordnung apfeltasche zu Apfel behalten' }).click();
     assert.deepEqual((await page.locator('#alias-list li span').allTextContents()).sort(), ['apfeltasche → Apfel', 'zwiebel → Zwiebeln']);
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(2\) · 1 prüfen$/);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Schreibweisen \(2\) · 1 prüfen$/);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.aliases.find(row => row.id === 'al-tasche').confirmed), true);
     await goTab(page, 'shopping');
     await page.fill('#item-form input[name=name]', 'Apfeltasche'); await page.fill('#item-form input[name=quantity]', '1'); await page.click('#item-form button[type=submit]');
@@ -3971,10 +3977,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const hints = async () => (await page.locator('[data-price-hint]').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim()).filter(Boolean);
     await page.fill('#item-form input[name=name]', 'Zucchini');   // das Formular zeigt dann seinen Preishinweis
-    assert.deepEqual(await hints(), ['Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe.']);
+    assert.deepEqual(await hints(), ['Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.']);
     await page.fill('#item-form input[name=name]', '');
     await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page);
-    assert.ok((await hints()).includes('Nur eine eigene Schätzung für die Summe.'));
+    assert.ok((await hints()).includes('Freiwillige Preisnotiz für diesen Artikel.'));
     const all = (await hints()).join(' ') + ' ' + await page.evaluate(() => document.documentElement.textContent);
     for (const gone of [/Frühere Kaufpreise/, /Artikelnamen antippst/, /bereits gemerkter Preis/, /Zuletzt bezahlt/]) assert.ok(!gone.test(all), `${gone} steht noch da`);
     assert.deepEqual(problems, []);
@@ -3991,7 +3997,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     for (const [from, name] of [['apfeltasche', 'Apfel'], ['tom cherry', 'Cherrytomaten'], ['herz.naturjoghurt', 'Joghurt']]) await page.getByRole('button', { name: `Zuordnung ${from} zu ${name} entfernen` }).click();
     assert.equal(await page.locator('#alias-doubt').isHidden(), true, 'nichts mehr zu prüfen');
-    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Namen \(1\)$/);
+    assert.match(await page.textContent('#alias-details summary'), /Gemerkte Schreibweisen \(1\)$/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4877,32 +4883,48 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   for (const width of [280, 314, 360, 390, 430]) {
-    test(`Platz oben (${width} px): Summe und Knöpfe überlappen nicht, Artikel beginnen früh, Im Laden: Geschäfte ganz oben`, async () => {
+    test(`Schnellzugriffe (${width} px): auch große Favoriten- und Vorratszahlen verdecken keine Beschriftung`, async () => {
+      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 844 } } });
+      await open(page); await storeButton(page, '#store-chips', 'Edeka').click();
+      await page.evaluate(() => { const count = document.querySelector('#product-favorite-count'); count.hidden = false; count.textContent = '★ 1000'; document.querySelector('#pantry-shortcut-count').textContent = '999'; });
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+        const sizes = await page.locator('#open-products,#open-pantry,#offers-link').evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height, fits: node.scrollWidth <= node.clientWidth + 1 })));
+        assert.ok(sizes.every(row => row.width >= 44 && row.height >= 44 && row.fits), JSON.stringify(sizes));
+        assert.equal(await horizontalOverflow(page), 0);
+        assert.ok((await page.locator('#items .item').first().boundingBox()).y < 420);
+      }
+      await page.click('#open-products'); await sheetOpen(page); assert.equal(await page.locator('#product-picker-dialog[open]').count(), 1);
+      assert.deepEqual(problems, []); await ctx.close();
+    });
+  }
+
+  for (const width of [280, 314, 360, 390, 430]) {
+    test(`Platz oben (${width} px): kompakte Schnellzugriffe, keine Schätzung, Artikel beginnen früh, Im Laden: Geschäfte ganz oben`, async () => {
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 664 } } });
       await open(page);
       const box = async selector => page.locator(selector).first().boundingBox();
-      const total = await box('#shopping-total'), tools = await box('.shop-tools');
-      assert.ok(total.x + total.width <= tools.x + 1, 'Summentext reicht nicht unter die Knöpfe');
+      assert.equal(await page.locator('#shopping-total').count(), 0);
+      assert.ok(await page.locator('#open-products').isVisible()); assert.ok(await page.locator('#open-pantry').isVisible());
       const modes = await box('#mode-switch'), stores = await box('#manage-stores');
       assert.ok(modes.x + modes.width <= stores.x + 1 && modes.height <= 52, 'Planen/Im Laden bleibt einzeilig');
       assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
-      assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
+      assert.ok((await box('#items .item')).y < 420, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
       assert.equal(await horizontalOverflow(page), 0);
-      // In jedem Geschäft (mit und ohne Angebotslink): Summentext und Knopf liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
+      // In jedem Geschäft (mit und ohne Angebotslink): Schnellzugriffe liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
       for (const name of ['Edeka', 'Lidl', 'Rewe']) {
         await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
         const layout = await page.evaluate(() => {
           const rect = selector => { const node = document.querySelector(selector); return node && !node.hidden && node.getClientRects().length ? node.getBoundingClientRect() : null; };
-          const card = rect('.summary'), text = rect('#shopping-total'), buttons = ['#offers-link', '#set-offers'].map(rect).filter(Boolean);
-          const inner = document.querySelector('#shopping-total').querySelector('strong, small');
-          return { card, text, buttons, textFits: !inner || inner.scrollWidth <= document.querySelector('#shopping-total').clientWidth + 1 };
+          const card = rect('.list-shortcuts'), text = rect('#open-products'), pantry = rect('#open-pantry'), buttons = ['#offers-link', '#set-offers'].map(rect).filter(Boolean);
+          return { card, text, pantry, buttons, textFits: text.width >= 44 };
         });
         assert.equal(layout.buttons.length, 1, `${name}: der Angebote-Knopf ist sichtbar (kein Kassenbon-Knopf mehr)`);
-        assert.ok(layout.textFits, `${name}: Summentext ragt über seinen Platz hinaus`);
-        const parts = [layout.text, ...layout.buttons].sort((a, b) => a.left - b.left);
-        for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5, `${name}: Summe und Knöpfe überlappen bei ${width} px`);
+        assert.ok(layout.textFits, `${name}: Produktknopf hat keine ausreichende Tippfläche`);
+        const parts = [layout.text, layout.pantry, ...layout.buttons].sort((a, b) => a.left - b.left);
+        for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5, `${name}: Schnellzugriffe überlappen bei ${width} px`);
         assert.ok(parts.every(part => part.left >= layout.card.left - 0.5 && part.right <= layout.card.right + 0.5 && part.top >= layout.card.top - 0.5 && part.bottom <= layout.card.bottom + 0.5), `${name}: etwas liegt außerhalb der Karte`);
-        assert.ok(layout.card.height <= 64, `${name}: Karte ist ${layout.card.height} px hoch`);
+        assert.ok(layout.card.height <= 52, `${name}: Schnellzugriff ist ${layout.card.height} px hoch`);
       }
       await page.getByRole('tab', { name: /^Alle/ }).click();
       // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
@@ -5207,7 +5229,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
-  test('Einstellungen: Verbindung eingeklappt und unten, sobald verbunden; Vorrat und Darstellung oben', async () => {
+  test('Einstellungen: Verbindung eingeklappt und unten, sobald verbunden; Alltagseinstellungen oben und Vorrat im Einkauf', async () => {
     const remote = github(demo);
     const a = await context({ config: connectedConfig });
     await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
@@ -5217,7 +5239,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await a.page.textContent('#connection-state'), /✓ haushalt\/daten · Nico/);
     const order = await a.page.evaluate(() => [...document.querySelectorAll('#settings > *')].map(node => ({ id: node.id || node.className.split(' ').pop(), top: Math.round(node.getBoundingClientRect().top) })).filter(entry => entry.id && entry.id !== 'settings-title').sort((x, y) => x.top - y.top).map(entry => entry.id));
     assert.deepEqual(order.slice(-1), ['settings-form'], 'die Verbindung steht ganz unten');
-    assert.ok(order.indexOf('pantry-card') < order.indexOf('storage-card'));
+    assert.equal(await a.page.locator('#settings #pantry-card').count(), 0);
+    assert.ok(order.indexOf('shop-card') < order.indexOf('storage-card'));
+    assert.ok(order.indexOf('alias-card') < order.indexOf('storage-card'));
     await a.page.locator('#connection-details summary').click();
     assert.equal(await a.page.locator('#settings-form input[name=owner]').isVisible(), true);
     assert.deepEqual(a.problems, []);
@@ -5281,13 +5305,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Gericht planen: Der Tag steht in der Überschrift und wird nicht noch einmal gewählt (nur von der Rezeptkarte aus gibt es die Tagesauswahl)', async () => {
+  for (const fixedDay of ['2026-10-26', '2026-10-30', '2026-11-01']) {
+  test(`Gericht planen (${fixedDay}): Der Tag steht in der Überschrift und wird nicht noch einmal gewählt (nur von der Rezeptkarte aus gibt es die Tagesauswahl)`, async () => {
     const { ctx, page, problems } = await context();
+    await page.clock.setFixedTime(new Date(`${fixedDay}T12:00:00Z`));
     await open(page);
     await page.click('[data-tab=plan]');
     const titleOf = () => page.locator('#meal-title').textContent();
     const dayField = () => page.locator('#meal-form [data-day]').isVisible();
     // ＋ am Donnerstag: Der Tag steht in der Überschrift, kein Auswahlfeld
+    await page.click('#week-next');
     const thursday = page.locator('.day').nth(3);
     const label = (await thursday.locator('h3').textContent()).replace(/^(\D+?)\s*(\d)/, '$1 $2');   // „Donnerstag29.10.“ (Datum steht im eigenen Element) → „Donnerstag 29.10.“
     assert.match(label, /^Donnerstag \d{2}\.\d{2}\.$/);
@@ -5319,7 +5346,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).getByRole('button', { name: /im Wochenplan einplanen/ }).click(); await sheetOpen(page);
     assert.equal(await titleOf(), 'Gericht planen');
     assert.equal(await dayField(), true, 'Tagesauswahl vorhanden');
-    const later = new Date(); later.setDate(later.getDate() + 9);
+    const later = new Date(`${fixedDay}T12:00:00Z`); later.setDate(later.getDate() + 9);
     const iso = `${later.getFullYear()}-${String(later.getMonth() + 1).padStart(2, '0')}-${String(later.getDate()).padStart(2, '0')}`, dm = `${String(later.getDate()).padStart(2, '0')}.${String(later.getMonth() + 1).padStart(2, '0')}.`;
     await page.fill('#meal-form input[name=date]', iso); await page.click('#meal-form button[type=submit]');
     await page.waitForSelector('#plan:not([hidden])');
@@ -5329,6 +5356,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+
+  }
 
   test('Wochenplan: planen, abhaken, Wochen-Einkaufsliste, eigenes Gericht, Rückgängig', async () => {
     const { ctx, page, problems } = await context();
@@ -5419,9 +5448,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form input[name=name]', 'Zwiebel'); await page.fill('#item-form input[name=quantity]', '1'); await page.click('#item-form button[type=submit]');
     assert.deepEqual(await onList(), ['Zwiebeln 5 Stück']);
     // Vorrat: „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab
-    await openSettings(page);
+    await openPantry(page);
     await page.fill('#pantry-form input[name=name]', 'Zwiebeln'); await page.click('#pantry-form button[type=submit]');
-    await page.click('[data-tab=recipes]');
+    await page.click('#pantry-to-list'); await page.click('[data-tab=recipes]');
     await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Auf die Liste' }).click(); await sheetOpen(page);
     const zwiebel = page.locator('#transfer-ingredients label', { hasText: 'Zwiebel' });
     assert.equal(await zwiebel.locator('input').isChecked(), false, 'schon im Vorrat: vorab abgewählt');
@@ -5607,13 +5636,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Wochenplan: vergangene Tage sind nur zu sehen (kein Plus, kein Ändern, Löschen, Ziehen); heute und spätere Tage bleiben bearbeitbar; neue Gerichte nicht für vergangene Tage', async () => {
-    const past = ago(2).slice(0, 10), todayIso = ago(0).slice(0, 10);
+  for (const fixedDay of ['2026-10-26', '2026-10-30', '2026-11-01']) {
+  test(`Wochenplan (${fixedDay}): vergangene Tage sind nur zu sehen (kein Plus, kein Ändern, Löschen, Ziehen); heute und spätere Tage bleiben bearbeitbar; neue Gerichte nicht für vergangene Tage`, async () => {
     const data = structuredClone(demo);
     // ein Gericht gestern/vorgestern (nicht abgehakt) und eines heute
-    const at = '2026-10-25T00:00:00.000Z', day = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+    const at = '2026-10-25T00:00:00.000Z', day = offset => { const date = new Date(`${fixedDay}T12:00:00Z`); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
     data.meals = [{ id: 'm-past', date: day(-1), recipeId: 'recipe-curry', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }, { id: 'm-today', date: day(0), recipeId: 'recipe-pasta', servings: 2, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }];
     const { ctx, page, problems } = await context();
+    await page.clock.setFixedTime(new Date(`${fixedDay}T12:00:00Z`));
     await ctx.addInitScript(([key, value]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base: value, pending: [] })); }, ['einkauf-demo-v1', data]);
     await open(page);
     await page.click('[data-tab=plan]');
@@ -5627,8 +5657,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     if (yesterday) assert.deepEqual([yesterday.edit, yesterday.check, yesterday.id], [0, [true], [false]], 'gestern: kein Stift, kein Papierkorb, Haken gesperrt, nicht ziehbar');
     // Ziehen auf einen vergangenen Tag tut nichts (und aus einem vergangenen Tag geht es nicht)
     if (yesterday) {
+      await page.locator('.day.today .meal .meal-copy').evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await page.waitForTimeout(80);
       const from = await page.locator('.day.today .meal .meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${day(-1)}"]`).boundingBox();
-      await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
+      await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost', { timeout: 3000 });
       await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
       assert.equal(await page.locator('.day.drop-target').count(), 0, 'ein vergangener Tag ist kein Ziel');
       await page.mouse.up();
@@ -5650,6 +5682,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+
+  }
 
   test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
     const { ctx, page, problems } = await context();
@@ -5848,7 +5882,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Start: „Alle“, alle Geschäfte mit ihren Artikeln (Beispieldaten: Edeka, Lidl, Rewe)
     assert.deepEqual((await chips())[0], ['Alle', 'true']);
     assert.deepEqual(await heads(), ['Edeka', 'Lidl', 'Rewe']);
-    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d/, 'Summe der Gesamtliste, ohne Geschäftsname');
+    assert.equal(await page.locator('#shopping-total').count(), 0, 'keine Preisschätzung');
     assert.equal(await page.locator('#offers-link').isHidden(), true, 'Angebote gibt es je Geschäft, nicht in der Gesamtliste');
     // Das Formular bietet „Kein Geschäft“ und alle Geschäfte als Schnellwahl an; Standard in „Alle“: kein Geschäft (nichts ist vorausgewählt).
     const pick = () => page.locator('#store-pick button').evaluateAll(nodes => nodes.map(node => [node.textContent, node.getAttribute('aria-pressed')]));
@@ -5879,7 +5913,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await pick()).filter(row => row[1] === 'true').map(row => row[0]), ['Kein Geschäft']);
     assert.equal(await page.inputValue('#item-form input[name=storeId]'), '');
     await pickStore(page, 'Rewe');
-    assert.match(await page.textContent('#shopping-total'), /Geschätzt \d|Noch keine Preise|Alles erledigt/);
+    assert.equal(await page.locator('#shopping-total').count(), 0);
     // Ohne Geschäft später zuweisen: wandert in den Abschnitt des Geschäfts
     await page.getByRole('tab', { name: /^Ohne Geschäft/ }).click();
     await page.locator('.item', { hasText: 'Klopapier' }).getByRole('button', { name: /bearbeiten/ }).click();
@@ -5921,17 +5955,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Gesamtliste: Summe über alle Geschäfte, Erledigtes mit Geschäft, „Erledigte entfernen“ gilt für die Ansicht', async () => {
+  test('Gesamtliste ohne Schätzung: Erledigtes mit Geschäft, Entfernen gilt für die gewählte Ansicht', async () => {
     const { ctx, page, problems } = await context();
-    await open(page);
-    const total = async () => (await page.textContent('#shopping-total')).match(/[\d.,]+ €/)?.[0];
-    const alle = await total();
-    await page.getByRole('tab', { name: /^Edeka/ }).click(); const edeka = await total();
-    await page.getByRole('tab', { name: /^Lidl/ }).click(); const lidl = await total();
-    await page.getByRole('tab', { name: /^Rewe/ }).click(); const rewe = await total();
-    const cents = text => text ? Number(text.replace(/[^\d,]/g, '').replace(',', '.')) : 0;
-    assert.ok(Math.abs(cents(alle) - (cents(edeka) + cents(lidl) + cents(rewe))) < 0.011, `${alle} ≠ ${edeka} + ${lidl} + ${rewe}`);
-    await page.getByRole('tab', { name: /^Alle/ }).click();
+    await open(page); assert.equal(await page.locator('#shopping-total').count(), 0);
     await page.locator('.item', { hasText: 'Milch' }).locator('.check').click();
     await page.locator('.item', { hasText: 'Äpfel' }).locator('.check').click();
     const done = page.locator('#items .group-head', { hasText: 'Erledigt' });
@@ -7277,7 +7303,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(saved.pantry.find(row => row.name === 'Meine Testmischung').available, false);
     await page.getByRole('button', { name: 'Meine Testmischung: nachkaufen', exact: true }).click(); await page.selectOption('#pantry-buy-form select[name=storeId]', 'store-lidl');
     assert.equal(await page.locator('#pantry-buy-add').isDisabled(), true); await page.click('#pantry-buy-dialog [data-close]');
-    await page.click('[data-tab=recipes]'); const recipe = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }); await recipe.locator('summary').click(); await recipe.getByRole('button', { name: 'Auf die Liste' }).click();
+    await page.click('#pantry-to-list'); await page.click('[data-tab=recipes]'); const recipe = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }); await recipe.locator('summary').click(); await recipe.getByRole('button', { name: 'Auf die Liste' }).click();
     const noodles = page.locator('#transfer-ingredients .transfer-row', { hasText: 'Nudeln' });
     assert.equal(await noodles.locator('input').isChecked(), true); assert.equal(await noodles.locator('.pantry-badge').count(), 0);
     assert.deepEqual(problems, []); await ctx.close();
@@ -7323,12 +7349,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Vorrat mit Bildern: Auswahl und manuelles Gruppenbild nach komplettem Offline-Neustart nutzbar', async () => {
     const { ctx, page, problems } = await context({ config: { productImages: true }, context: { serviceWorkers: 'allow' } });
     await open(page); await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
-    await ctx.setOffline(true); await page.reload(); await page.click('#open-pantry'); await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Blumendünger');
-    await page.locator('.product-card[data-product=blumenduenger] .product-pick').click(); await page.click('#product-picker-add');
+    await ctx.setOffline(true); await page.reload(); await page.click('#open-pantry'); await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Zahnpasta');
+    await page.locator('.product-card[data-product=zahnpasta] .product-pick').click(); await page.click('#product-picker-add');
     await page.fill('#pantry-form input[name=name]', 'Mein Spezialgewürz'); await page.click('#pantry-form button');
     await page.reload(); await page.click('#open-pantry');
     const photos = await page.locator('#pantry-list .product-picture').evaluateAll(async nodes => Promise.all(nodes.map(async node => { const image = new Image(); image.src = getComputedStyle(node).backgroundImage.slice(5, -2); await image.decode(); return [node.dataset.photoKey, image.naturalWidth > 500]; })));
-    assert.equal(photos.length, 2); assert.ok(photos.every(([, decoded]) => decoded)); assert.ok(photos.some(([key]) => key === 'blumenduenger'));
+    assert.equal(photos.length, 2); assert.ok(photos.every(([, decoded]) => decoded)); assert.ok(photos.some(([key]) => key === 'zahnpasta'));
     assert.deepEqual(problems, []); await ctx.close();
   });
 
@@ -7358,6 +7384,25 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#spending-period-form input[name=from]', from); await page.fill('#spending-period-form input[name=to]', to);
     await page.click('#spending-period-form button[type=submit]');
   };
+  test('Keine Preisschätzung: Altbestände bleiben im Backup, erzeugen weder Summe noch Vergleich', async () => {
+    const data = familyExpenseData(); data.purchases[0].estimate = 2580;
+    const { ctx, page, problems } = await localExpenses({}, data);
+    await page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(page);
+    await page.locator('#purchase-more summary').click();
+    assert.doesNotMatch(await page.textContent('#purchase-dialog'), /geschätzt|Zum Vergleich/i);
+    await page.fill('#purchase-form input[name=amount]', '24,45'); await page.click('#purchase-save');
+    assert.equal((await expenseStored(page)).purchases.find(row => row.id === 'nico-buy').estimate, 2580);
+    await goTab(page, 'shopping');
+    assert.equal(await page.locator('#shopping-total').count(), 0);
+    assert.doesNotMatch(await page.textContent('#shopping'), /Geschätzt|ohne Preis, nicht eingerechnet/);
+    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Edeka').click();
+    assert.doesNotMatch(await page.textContent('#shop-status'), /€|ca\./);
+    await openSettings(page); const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
+    const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
+    assert.equal(backup.purchases.find(row => row.id === 'nico-buy').estimate, 2580); assert.equal(backup.purchases.find(row => row.id === 'nico-buy').cents, 2445);
+    assert.deepEqual(backup.items.map(row => row.price), data.items.map(row => row.price));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
   test('Familienausgaben: Summe, Personenfilter, Altbestände, Zeitraum einschließlich und Budget nur für die ganze Familie', async () => {
     const { ctx, page, problems } = await localExpenses(); const month = isoDay(new Date()).slice(0, 7);
     assert.match(await page.textContent('#spending-summary'), /Familie insgesamt[\s\S]*68,45\s€[\s\S]*3 Einkäufe · 1 Rückerstattung/);
@@ -7544,6 +7589,288 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
+  test('Im Laden Standard: beim Öffnen und Neuladen sofort Alle, nach Geschäftswahl zurück zu Planen wieder Alle', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await page.click('#mode-shop');
+    const selected = () => page.locator('#shop-chips .chip[aria-selected=true]').first().textContent();
+    assert.match(await selected(), /^Alle/); assert.ok(await page.locator('#shop-list .shop-name').count() >= 4);
+    await storeButton(page, '#shop-chips', 'Lidl').click(); assert.match(await selected(), /^Lidl/);
+    await page.click('#shop-back'); await page.click('#mode-shop'); assert.match(await selected(), /^Alle/);
+    await page.reload(); await page.waitForSelector('#shop-chips .chip[aria-selected=true]'); assert.match(await selected(), /^Alle/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Verschieben löschen: Mülleimer unter allen Geschäften, getrennte Linie und einzelner Artikel bleibt gelöscht', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    const before = await storedDemo(page), target = before.items.find(row => row.name === 'Nudeln' && !row.deletedAt);
+    await holdRow(page, 'Nudeln'); await page.waitForSelector('.drag-ghost'); await page.mouse.up(); await sheetOpen(page);
+    const geometry = await page.evaluate(() => {
+      const choices = document.querySelector('#move-choices'), rule = document.querySelector('.move-delete-rule'), button = document.querySelector('#move-delete');
+      return { choicesBottom: choices.getBoundingClientRect().bottom, ruleY: rule.getBoundingClientRect().top, buttonY: button.getBoundingClientRect().top,
+        ruleHeight: rule.getBoundingClientRect().height, ruleBackground: getComputedStyle(rule).backgroundImage, icon: button.querySelector('use').getAttribute('href'), label: button.textContent.trim() };
+    });
+    assert.ok(geometry.ruleY > geometry.choicesBottom); assert.ok(geometry.buttonY > geometry.ruleY); assert.equal(geometry.ruleHeight, 1);
+    assert.match(geometry.ruleBackground, /linear-gradient/); assert.equal(geometry.icon, '#i-trash'); assert.equal(geometry.label, 'Artikel löschen');
+    await page.click('#move-delete'); await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    let after = await storedDemo(page); assert.ok(after.items.find(row => row.id === target.id).deletedAt);
+    assert.deepEqual(after.items.filter(row => row.id !== target.id), before.items.filter(row => row.id !== target.id));
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    after = await storedDemo(page); assert.ok(after.items.find(row => row.id === target.id).deletedAt); assert.equal(await page.locator('#items .item', { hasText: 'Nudeln' }).count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Verschieben löschen: mehrere Artikel brauchen Bestätigung, Abbrechen erhält Daten und Auswahl', async () => {
+    const { ctx, page, problems } = await context(); await open(page); const before = await storedDemo(page);
+    await page.click('#select-mode');
+    for (const name of ['Tomaten', 'Nudeln']) await page.locator('#items .item', { hasText: name }).locator('.item-copy').click();
+    await page.click('#select-move'); await sheetOpen(page); assert.equal(await page.textContent('#move-delete-label'), '2 Artikel löschen');
+    page.once('dialog', dialog => dialog.dismiss()); await page.click('#move-delete');
+    assert.deepEqual(await storedDemo(page), before); assert.equal(await page.locator('#move-dialog').evaluate(node => node.open), true); assert.equal(await page.textContent('#select-count'), '2 ausgewählt');
+    page.once('dialog', dialog => dialog.accept()); await page.click('#move-delete'); await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    const after = await storedDemo(page); for (const name of ['Tomaten', 'Nudeln']) assert.ok(after.items.find(row => row.name === name).deletedAt);
+    assert.deepEqual(after.items.filter(row => !['Tomaten', 'Nudeln'].includes(row.name)), before.items.filter(row => !['Tomaten', 'Nudeln'].includes(row.name)));
+    assert.equal(await page.locator('#select-bar').isHidden(), true); assert.equal(await page.getAttribute('#select-mode', 'aria-pressed'), 'false');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  for (const width of [280, 320, 390, 430]) test(`Vorratszeilen: feste Bildspalten und lesbare Namen bei ${width} px`, async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true, theme: width === 430 ? 'dark' : 'light' }, context: { viewport: { width, height: 844 }, deviceScaleFactor: 1 } });
+    await open(page); await page.click('#open-pantry');
+    for (const name of ['Knoblauchzehen', 'Thymian', 'Zwiebel', 'Backpulver', 'Haferflocken', 'Mehl', 'Nudeln', 'Reis', 'Tomatenmark', 'Zucker', 'Selbstgemachte Gemüsebrühengewürzmischung']) {
+      await page.fill('#pantry-form [name=name]', name); await page.click('#pantry-form button');
+    }
+    await page.locator('#pantry-card').evaluate(node => node.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(100);
+    const geometry = () => page.locator('#pantry-list .pantry-entry').evaluateAll(nodes => nodes.map(node => {
+      const image = node.querySelector('.pantry-photo').getBoundingClientRect(), text = node.querySelector('.pantry-entry-text').getBoundingClientRect(), name = node.querySelector('.pantry-name'), rect = name.getBoundingClientRect(), style = getComputedStyle(name);
+      return { name: name.textContent, imageX: image.x, imageWidth: image.width, textX: text.x, height: node.getBoundingClientRect().height, font: parseFloat(style.fontSize), lines: rect.height / parseFloat(style.lineHeight), width: name.scrollWidth, available: text.width };
+    }));
+    let rows = await geometry(); const short = rows.filter(row => !row.name.startsWith('Selbstgemachte'));
+    for (const row of rows) {
+      assert.ok(Math.abs(row.imageX - rows[0].imageX) < .1, JSON.stringify(rows)); assert.ok(Math.abs(row.textX - rows[0].textX) < .1);
+      assert.equal(row.imageWidth, width <= 340 ? 36 : 44); assert.ok(row.font >= 12, JSON.stringify(row)); assert.ok(row.lines < 2.1);
+    }
+    if (width >= 320) for (const row of short) assert.ok(row.lines < 1.1, JSON.stringify(row));
+    assert.ok(Math.max(...short.map(row => row.height)) - Math.min(...short.map(row => row.height)) < 1);
+    assert.ok(await horizontalOverflow(page) <= 1);
+    // Nach Drehen darf die kleinere Schrift wieder größer werden; Bildpositionen bleiben stabil.
+    await page.setViewportSize({ width: 600, height: 844 }); await page.waitForTimeout(100); rows = await geometry();
+    assert.ok(rows.find(row => row.name === 'Knoblauchzehen').font >= short.find(row => row.name === 'Knoblauchzehen').font);
+    for (const row of rows) assert.ok(Math.abs(row.imageX - rows[0].imageX) < .1);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  // ---- Vorratsgesten, Tagesrückblick und Rezeptnotizen (2.69) ----
+  const storedDemo = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+  const dailySaved = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-daily:einkauf-demo-v1')));
+  async function finishDailyForReview(page, addFirst = false, count = 3) {
+    await goTab(page, 'recipes'); await page.click('#daily-open'); await sheetOpen(page);
+    const titles = [];
+    for (let i = 0; i < count; i++) {
+      await page.waitForFunction(() => !document.querySelector('#daily-skip').hidden && !document.querySelector('#daily-skip').disabled && document.querySelector('#daily-card .daily-ingredients'));
+      titles.push(await page.textContent('#daily-card h3'));
+      await page.click(addFirst && i === 0 ? '#daily-add' : '#daily-skip');
+    }
+    await page.waitForSelector('#daily-review-choices:not([hidden])'); return titles;
+  }
+  async function holdProduct(page, id) {
+    const pick = page.locator(`.product-card[data-product="${id}"] .product-pick`);
+    await pick.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const box = await pick.boundingBox(); await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.waitForSelector('#pantry-buy-dialog[open]', { timeout: 4000 }); await page.mouse.up(); await sheetOpen(page);
+  }
+  test('Vorratsgeste: langes Drücken fügt mit Bild und Menge zur Liste hinzu, ohne Vorrat oder Auswahl zu ändern', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } }); await open(page); await page.click('#open-pantry'); await page.click('#pantry-products');
+    await page.fill('#product-picker-search', 'Kidneybohnen');
+    await page.locator('.product-card[data-product=kidneybohnen] .product-pick').click();
+    const before = await storedDemo(page); await holdProduct(page, 'kidneybohnen');
+    assert.equal(await page.textContent('#pantry-buy-title'), 'Auf die Einkaufsliste');
+    await page.fill('#pantry-buy-form [name=quantity]', '2'); await page.selectOption('#pantry-buy-form [name=storeId]', 'store-edeka'); await page.click('#pantry-buy-add');
+    assert.equal(await page.textContent('#product-picker-count'), '1 ausgewählt');
+    const after = await storedDemo(page), rows = after.items.filter(row => !row.deletedAt && row.name === 'Kidneybohnen');
+    assert.equal(rows.length, 1); assert.equal(rows[0].quantity, 2); assert.equal(rows[0].storeId, 'store-edeka'); assert.equal(rows[0].imageKey, 'kidneybohnen');
+    assert.deepEqual(after.pantry || [], before.pantry || []); assert.deepEqual(after.productFavorites || [], before.productFavorites || []);
+    assert.match(await page.textContent('#product-picker-feedback'), /Kidneybohnen.*Einkaufsliste/);
+    await holdProduct(page, 'kidneybohnen'); assert.equal(await page.inputValue('#pantry-buy-form [name=storeId]'), 'store-edeka');
+    await page.fill('#pantry-buy-form [name=quantity]', '1'); await page.click('#pantry-buy-add');
+    assert.equal((await storedDemo(page)).items.find(row => !row.deletedAt && row.name === 'Kidneybohnen').quantity, 3);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Vorratsgeste: auch vorhandene Produkte lassen sich per Tastatur auf die Liste setzen', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await page.click('#open-pantry');
+    await page.fill('#pantry-form [name=name]', 'Salz'); await page.click('#pantry-form button'); await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Salz');
+    const pick = page.locator('.product-card[data-product=salz] .product-pick'); assert.equal(await pick.getAttribute('aria-disabled'), 'true');
+    await pick.focus(); await page.keyboard.press('Shift+F10'); await sheetOpen(page);
+    assert.match(await page.textContent('#pantry-buy-name'), /Salz/); await page.click('#pantry-buy-add');
+    assert.equal((await storedDemo(page)).pantry.find(row => row.name === 'Salz').available, true);
+    assert.equal(await page.textContent('#product-picker-count'), '0 ausgewählt');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Vorratsgeste: Touch und Kontextmenü markieren nichts blau; Wischen und Abbruch lösen keinen Kauf aus', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await page.click('#open-pantry'); await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Milch');
+    const pick = page.locator('.product-card[data-product=milch] .product-pick'); await pick.scrollIntoViewIfNeeded();
+    assert.ok(await pick.evaluate(node => [node, ...node.querySelectorAll('*')].every(el => getComputedStyle(el).userSelect === 'none')));
+    assert.ok(await pick.evaluate(node => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); node.dispatchEvent(e); return e.defaultPrevented; }));
+    await pick.dispatchEvent('pointerdown', { isPrimary: true, pointerId: 7, pointerType: 'touch', clientX: 100, clientY: 400 });
+    await page.dispatchEvent('body', 'pointermove', { isPrimary: true, pointerId: 7, pointerType: 'touch', clientX: 101, clientY: 430 });
+    await page.waitForTimeout(600); assert.equal(await page.locator('#pantry-buy-dialog[open]').count(), 0);
+    await pick.dispatchEvent('pointerdown', { isPrimary: true, pointerId: 8, pointerType: 'touch', clientX: 100, clientY: 400 });
+    await page.dispatchEvent('body', 'pointercancel', { isPrimary: true, pointerId: 8 }); await page.waitForTimeout(600); assert.equal(await page.locator('#pantry-buy-dialog[open]').count(), 0);
+    const cdp = await ctx.newCDPSession(page), box = await pick.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('.product-card[data-product=milch] .product-name')); getSelection().addRange(range); });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+    await page.waitForSelector('#pantry-buy-dialog[open]', { timeout: 4000 }); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.equal(await page.evaluate(() => getSelection().toString()), ''); assert.equal(await page.textContent('#product-picker-count'), '0 ausgewählt');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Grundvorrat: 28 Kochzutaten, Favoriten und keine automatische Übernahme; TV bleibt außerhalb der Vorratsauswahl', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.fill('#item-form [name=name]', 'TV'); await page.click('#item-form button[type=submit]');
+    await page.click('#open-pantry'); await page.click('#pantry-basics'); await sheetOpen(page);
+    assert.equal(await page.getAttribute('[data-product-mode=basics]', 'aria-pressed'), 'true'); assert.equal(await page.locator('.product-card').count(), 28);
+    assert.equal((await storedDemo(page)).pantry.length, 0);
+    await page.locator('.product-card[data-product=mehl] .product-star').click(); assert.equal((await storedDemo(page)).pantry.length, 0);
+    await page.locator('.product-card[data-product=mehl] .product-pick').click(); await page.click('#product-picker-add'); assert.equal((await storedDemo(page)).pantry.filter(row => !row.deletedAt).length, 1);
+    await page.click('#pantry-products'); await page.click('[data-product-mode=all]');
+    for (const name of ['TV', 'Fernseher', 'Blumendünger', 'AA-Batterien']) { await page.fill('#product-picker-search', name); assert.equal(await page.locator('.product-card').count(), 0, name); }
+    await page.fill('#product-picker-search', 'Zahnpasta'); assert.equal(await page.locator('.product-card[data-product=zahnpasta]').count(), 1);
+    await page.click('#product-picker-dialog [data-close]'); await page.fill('#pantry-form [name=name]', 'TV'); await page.click('#pantry-form button'); assert.match(await page.textContent('#pantry-error'), /Vorrat/);
+    await page.getByRole('button', { name: 'Mehl: Vorrat bearbeiten', exact: true }).click(); await sheetOpen(page); await page.fill('#pantry-edit-form [name=name]', 'TV'); await page.click('#pantry-edit-form button[type=submit]'); assert.match(await page.textContent('#pantry-edit-error'), /Vorrat/); await page.click('#pantry-edit-dialog [data-close]');
+    await goTab(page, 'shopping'); await page.click('#open-products'); await page.click('[data-product-mode=own]'); await page.fill('#product-picker-search', 'TV'); assert.equal(await page.locator('.product-card').count(), 1, 'eigene Einkaufsliste darf Technik enthalten');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Tagesrückblick: heute dieselben drei erneut ansehen, später hinzufügen, ohne Fortschritt oder Duplikate', async () => {
+    const { ctx, page, problems } = await context(); await open(page); const titles = await finishDailyForReview(page, true), before = await dailySaved(page), count = (await storedDemo(page)).recipes.length;
+    assert.equal(await page.locator('#daily-review-yesterday').isDisabled(), true); assert.match(await page.textContent('#daily-review-unavailable'), /keine Auswahl/);
+    await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.equal(await page.textContent('#daily-card h3'), titles[0]); assert.equal(await page.locator('#daily-add').isHidden(), true);
+    await page.click('#daily-review-next'); await page.waitForFunction(title => document.querySelector('#daily-card h3').textContent === title && !document.querySelector('#daily-add').hidden, titles[1]);
+    await page.click('#daily-add'); assert.equal((await storedDemo(page)).recipes.length, count + 1); assert.equal(await page.locator('#daily-add').isHidden(), true);
+    await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[2]); assert.equal(await page.locator('#daily-review-next').isDisabled(), true);
+    await page.click('#daily-review-prev'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[1]);
+    const after = await dailySaved(page); assert.equal(after.index, before.index); assert.deepEqual(after.decided, before.decided); assert.deepEqual(after.queue, before.queue);
+    await page.click('#daily-review-finish'); assert.match(await page.textContent('#daily-card'), /2 von 3 Rezepten hinzugefügt/);
+    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[0]);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Tagesrückblick: gestern bleibt über Tageswechsel und Offline-Neustart gespeichert', async () => {
+    const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow', locale: 'de-DE', timezoneId: 'Europe/Berlin' } }); await withDayOffset(ctx); await open(page);
+    await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => navigator.serviceWorker.controller);
+    const yesterdayTitles = await finishDailyForReview(page); await page.click('#daily-dialog [data-close]');
+    await page.evaluate(() => localStorage.setItem('test-day-offset', '1')); await page.reload(); const todayTitles = await finishDailyForReview(page);
+    assert.ok(!yesterdayTitles.includes(todayTitles[0])); const before = await dailySaved(page);
+    await page.click('#daily-dialog [data-close]'); await ctx.setOffline(true); await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open');
+    assert.equal(await page.locator('#daily-review-yesterday').isEnabled(), true); await page.click('#daily-review-yesterday'); await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.match(await page.textContent('#daily-progress'), /Gestern erneut/); assert.equal(await page.textContent('#daily-card h3'), yesterdayTitles[0]);
+    await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), yesterdayTitles[1]);
+    assert.deepEqual((await dailySaved(page)).queue, before.queue); assert.equal((await dailySaved(page)).index, before.index);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []); await ctx.close();
+  });
+  test('Tagesrückblick: externe Rezepte werden vollständig zwischengespeichert und beim Wiederansehen nicht neu geladen', async () => {
+    const { ctx, page, problems } = await context({ config: dailyConfig }); let requests = 0;
+    const handler = dailySite(2); await ctx.route(`${PROXY}/**`, route => { requests++; return handler(route); }); await open(page);
+    const titles = await finishDailyForReview(page, false, 2), loaded = requests; await page.click('#daily-dialog [data-close]');
+    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.equal(await page.textContent('#daily-card h3'), titles[0]); await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[1]);
+    assert.equal(requests, loaded); const saved = await dailySaved(page); assert.equal(Object.keys(saved.drafts).length, 2);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Rezeptnotizen: speichern, Entwurf wiederherstellen, bearbeiten und im tatsächlichen PDF ausgeben', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }); await card.locator('details').evaluate(node => { node.open = true; }); await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page);
+    const note = 'Weniger Salz verwenden.\nMit Zitrone servieren.'; await page.fill('#recipe-form [name=notes]', note); await page.click('#recipe-form .sheet-actions button');
+    assert.equal((await storedDemo(page)).recipes.find(row => row.id === 'recipe-pasta').notes, note);
+    await page.reload(); await openCardSheet(page); assert.match(await sheetText(page), /Weniger Salz verwenden/); assert.match(await sheetText(page), /Mit Zitrone servieren/);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]); const bytes = await pdfBytesOf(download); checkPdf(bytes);
+    assert.ok(bytes.toString('latin1').includes(Buffer.from('Weniger Salz verwenden.', 'latin1').toString('hex')), 'die Notiz steht als PDF-Text in der Datei');
+    await page.click('#sheet-close'); await card.locator('details').evaluate(node => { node.open = true; }); await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page); await page.fill('#recipe-form [name=notes]', 'Noch ein Tipp.');
+    await page.click('#recipe-dialog [data-close]'); await card.locator('details').evaluate(node => { node.open = true; }); await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page); await page.getByRole('button', { name: 'Entwurf zurückholen' }).click();
+    assert.equal(await page.inputValue('#recipe-form [name=notes]'), 'Noch ein Tipp.'); await page.fill('#recipe-form [name=notes]', ''); await page.click('#recipe-form .sheet-actions button');
+    assert.equal((await storedDemo(page)).recipes.find(row => row.id === 'recipe-pasta').notes, '');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Rezeptnotizen: zwei Geräte bearbeiten Notizen und Titel unabhängig, unverändertes leeres Feld löscht keine neue Notiz', async () => {
+    const remote = github(demo), a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', route => remote.handler(route)); await open(device.page); await synced(device.page); await goTab(device.page, 'recipes'); await device.page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('details').evaluate(node => { node.open = true; }); await device.page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(device.page); }
+    await a.page.fill('#recipe-form [name=notes]', 'Mit Kräutern.'); await a.page.click('#recipe-form .sheet-actions button'); await synced(a.page); await pollNow(b.page); await synced(b.page);
+    await b.page.fill('#recipe-form [name=name]', 'Familien-Pasta'); await b.page.click('#recipe-form .sheet-actions button'); await synced(b.page);
+    assert.equal(remote.content.recipes.find(row => row.id === 'recipe-pasta').notes, 'Mit Kräutern.'); assert.equal(remote.content.recipes.find(row => row.id === 'recipe-pasta').name, 'Familien-Pasta');
+    await b.page.locator('.recipe-card', { hasText: 'Familien-Pasta' }).locator('details').evaluate(node => { node.open = true; }); await b.page.locator('.recipe-card', { hasText: 'Familien-Pasta' }).getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(b.page); await b.page.fill('#recipe-form [name=notes]', 'Mit Zitronensaft.'); await b.page.click('#recipe-form .sheet-actions button'); await synced(b.page);
+    assert.equal(remote.content.recipes.find(row => row.id === 'recipe-pasta').notes, 'Mit Zitronensaft.');
+    assert.deepEqual([...a.problems, ...b.problems], []); await a.ctx.close(); await b.ctx.close();
+  });
+  for (const width of [280, 320, 390]) for (const theme of ['light', 'dark']) {
+    test(`Neue Funktionen (${width} px ${theme}): Grundvorrat, schneller Einkauf, Tagesrückblick und Notizen bleiben lesbar`, async () => {
+      const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 844 }, colorScheme: theme } }); await open(page); await page.click('#open-pantry'); await page.click('#pantry-basics'); await sheetOpen(page);
+      const fits = async label => { assert.equal(await horizontalOverflow(page), 0, label); assert.ok(await page.evaluate(() => [...document.querySelectorAll('dialog[open]')].every(n => n.scrollWidth <= n.clientWidth + 1)), `${label}: Dialog`); };
+      assert.equal(await page.textContent('#product-picker-title'), 'Grundvorrat auswählen');
+      assert.equal(await page.locator('[data-product-mode=basics]').evaluate(node => { const r = node.getBoundingClientRect(), box = node.parentElement.getBoundingClientRect(); return r.left >= box.left - 1 && r.right <= box.right + 1; }), true, 'aktiver Grundvorrat-Filter sichtbar');
+      await fits('Grundvorrat'); await holdProduct(page, 'salz'); await fits('Auf Einkaufsliste'); await page.click('#pantry-buy-dialog [data-close]'); await page.click('#product-picker-dialog [data-close]');
+      await finishDailyForReview(page); await fits('Tagesübersicht'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients'); await fits('Tagesrückblick'); await page.click('#daily-dialog [data-close]');
+      await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('details').evaluate(node => { node.open = true; }); await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page); await page.fill('#recipe-form [name=notes]', 'Eigene Notizen bleiben gut lesbar.'); await fits('Notizen');
+      assert.deepEqual(problems, []); await ctx.close();
+    });
+  }
+
+  test('Vorratsansicht: ohne untere Leiste, Zur Liste erhält Eingabe und Geschäft und zeigt die Navigation wieder', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.click('#open-pantry'); await page.click('#pantry-to-list'); await page.waitForTimeout(30);
+    assert.equal(await page.locator('.tabs').isVisible(),true,'Navigation nach Rückweg wieder da');
+    assert.equal(await page.locator('#item-form').evaluate(node => node.classList.contains('compact')),true,'Rückweg ohne Eingabe bleibt kompakt');
+    await storeButton(page, '#store-chips', 'Lidl').click();
+    await page.fill('#item-form [name=name]', 'Mein Wocheneinkauf'); await page.fill('#item-form [name=quantity]', '3');
+    await page.click('#open-pantry');
+    assert.equal(await page.locator('#pantry').isVisible(), true); assert.equal(await page.locator('#settings').isHidden(), true); assert.equal(await page.locator('#shopping').isHidden(), true);
+    assert.equal(await page.locator('[data-tab=shopping]').getAttribute('aria-current'), 'page'); assert.equal(await page.locator('.tabs button').count(), 5); assert.equal(await page.locator('.tabs').isHidden(),true,'im Vorrat keine Hauptleiste');
+    assert.equal(await page.locator('#pantry details.fold').count(), 0); assert.equal(await page.locator('#pantry-title').textContent(), 'Vorrat');
+    await page.click('#pantry-to-list'); assert.equal(await page.locator('#shopping').isVisible(), true);
+    assert.equal(await page.inputValue('#item-form [name=name]'), 'Mein Wocheneinkauf'); assert.equal(await page.inputValue('#item-form [name=quantity]'), '3'); assert.equal(await page.inputValue('#item-form [name=storeId]'), 'store-lidl');
+    await page.click('#open-pantry'); await page.click('[data-pantry-filter=out]');
+    for (const name of ['recipes','plan','spending','settings']) { await page.click('#pantry-to-list'); assert.equal(await page.locator('.tabs').isVisible(),true); await page.click(`[data-tab=${name}]`); assert.equal(await page.locator('#pantry').isHidden(), true); await goTab(page,'shopping'); await page.click('#open-pantry'); }
+    assert.equal(await page.getAttribute('[data-pantry-filter=all]','aria-pressed'),'true');
+    await page.reload(); await page.waitForSelector('#status[data-state]',{state:'attached'}); assert.equal(await page.locator('#pantry').isHidden(),true); assert.equal(await page.locator('#shopping').isVisible(),true);
+    await goTab(page,'settings'); assert.equal(await page.locator('#settings #pantry-card').count(),0); assert.match(await page.textContent('#alias-details summary'),/Gemerkte Schreibweisen/);
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+  for (const width of [280,320,390]) for (const theme of ['light','dark']) test(`Vorratsansicht Layout (${width} px ${theme}): flach, Rückweg sichtbar und kein seitlicher Überlauf`, async () => {
+    const { ctx, page, problems } = await context({config:{productImages:true,theme},context:{viewport:{width,height:844},colorScheme:theme}}); await open(page); await page.click('#open-pantry');
+    await page.fill('#pantry-form [name=name]','Knoblauchzehen'); await page.click('#pantry-form button');
+    await page.evaluate(()=>{document.activeElement.blur();window.scrollTo(0,0)});
+    assert.ok(await horizontalOverflow(page)<=1); assert.equal(await page.locator('#pantry-to-list').isVisible(),true);
+    const rect=await page.locator('#pantry-to-list').boundingBox(); assert.ok(rect.height>=44); assert.ok(rect.y>=0 && rect.y+rect.height<844-70);
+    assert.equal(await page.locator('.tabs').isHidden(),true); assert.equal(await page.evaluate(()=>getComputedStyle(document.body).getPropertyValue('--tabs-h').trim()),'0px');
+    await page.fill('#pantry-form [name=name]','Zuchini'); assert.equal(await page.locator('#pantry-name-hint').isVisible(),true); assert.ok(await horizontalOverflow(page)<=1);
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+  test('Produktschreibweise: eindeutiger Tippfehler wird offline richtig addiert, Original bleibt wählbar und es entstehen keine Zuordnungen', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await pickStore(page,'Edeka'); await ctx.setOffline(true);
+    await page.fill('#item-form [name=name]','Tmoaten'); await page.fill('#item-form [name=quantity]','100'); await page.fill('#item-form [name=unit]','g');
+    assert.match(await page.textContent('#item-suggestions'),/Tomaten/); await page.click('#item-form button[type=submit]');
+    let data=await storedDemo(page); assert.equal(data.items.find(row=>row.id==='item-tomaten').quantity,600); assert.equal(data.items.filter(row=>row.name==='Tmoaten').length,0); assert.equal((data.aliases||[]).length,0);
+    assert.match(await page.textContent('#notice-text'),/Tmoaten.*Tomaten/);
+    await page.fill('#item-form [name=name]','Spagetti'); await page.getByRole('button',{name:'Original behalten',exact:true}).click(); await page.click('#item-form button[type=submit]');
+    data=await storedDemo(page); assert.equal(data.items.filter(row=>!row.deletedAt&&row.name==='Spagetti').length,1); assert.equal((data.aliases||[]).length,0);
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+  test('Produktschreibweise: bei mehreren ähnlichen Produkten bleibt die Eingabe erhalten und beide Vorschläge sind erreichbar', async () => {
+    const data=structuredClone(demo); data.items.push({...data.items[0],id:'own-mulch',name:'Mulch',quantity:1});
+    const {ctx,page,problems}=await context(); await ctx.addInitScript(data=>{if(!localStorage.getItem('einkauf-demo-v1'))localStorage.setItem('einkauf-demo-v1',JSON.stringify({base:data,pending:[]}));},data);
+    await open(page); await page.fill('#item-form [name=name]','Mylch');
+    const choices=await page.locator('#item-suggestions button').allTextContents(); assert.ok(choices.includes('Milch')); assert.ok(choices.includes('Mulch')); assert.ok(!choices.includes('Original behalten'));
+    await page.click('#item-form button[type=submit]'); assert.ok((await storedDemo(page)).items.some(row=>row.name==='Mylch'));
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+  test('Produktschreibweise: eigene Wunschlisten behalten Produkt- und Modellnamen unverändert', async () => {
+    const data=structuredClone(demo); data.stores.push({ ...data.stores[0],id:'store-wishes',name:'Wünsche',separate:true });
+    const {ctx,page,problems}=await context(); await ctx.addInitScript(data=>{if(!localStorage.getItem('einkauf-demo-v1'))localStorage.setItem('einkauf-demo-v1',JSON.stringify({base:data,pending:[]}));},data);
+    await open(page); await storeButton(page,'#store-chips','Wünsche').click(); await page.fill('#item-form [name=name]','Spagetti');
+    assert.equal(await page.getByRole('button',{name:'Original behalten',exact:true}).count(),0); await page.click('#item-form button[type=submit]');
+    assert.ok((await storedDemo(page)).items.some(row=>row.name==='Spagetti'&&row.storeId==='store-wishes'));
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+  test('Produktschreibweise: Vorrat zeigt die Korrektur samt Bild, behält auf Wunsch eigene Namen und findet Tippfehler in beiden Suchen', async () => {
+    const {ctx,page,problems}=await context({config:{productImages:true}}); await open(page); await page.click('#open-pantry');
+    await page.fill('#pantry-form [name=name]','Zuchini'); assert.match(await page.textContent('#pantry-name-hint'),/Zucchini/); await page.click('#pantry-form button');
+    assert.ok((await storedDemo(page)).pantry.some(row=>row.name==='Zucchini')); await page.fill('#pantry-search','Zuchini'); assert.deepEqual(await page.locator('#pantry-list .pantry-name').allTextContents(),['Zucchini']);
+    await page.fill('#pantry-search',''); await page.fill('#pantry-form [name=name]','Spagetti'); await page.click('#pantry-keep-name'); await page.click('#pantry-form button'); assert.ok((await storedDemo(page)).pantry.some(row=>row.name==='Spagetti'));
+    await page.click('#pantry-products'); await page.fill('#product-picker-search','Tmoaten'); assert.ok(await page.locator('.product-card[data-product=tomaten]').count());
+    assert.equal(((await storedDemo(page)).aliases||[]).length,0); assert.deepEqual(problems,[]); await ctx.close();
+  });
   test('Neuer Name und Backup', async () => {
     const { ctx, page } = await context({ seed: false });
     await open(page);

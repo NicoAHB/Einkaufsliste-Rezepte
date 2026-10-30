@@ -26,8 +26,10 @@ export function wrapText(text, font, size, maxWidth) {
     let line = '';
     for (let word of paragraph.split(/[ \t]+/).filter(Boolean)) {
       while (textWidth(word, font, size) > maxWidth && word.length > 1) {
-        let cut = word.length - 1;
-        while (cut > 1 && textWidth(`${word.slice(0, cut)}-`, font, size) > maxWidth) cut--;
+        // Binäre Suche hält auch lange eingefügte URLs/Notizen zügig.
+        let low = 1, high = word.length - 1;
+        while (low < high) { const middle = Math.ceil((low + high) / 2); if (textWidth(`${word.slice(0, middle)}-`, font, size) <= maxWidth) low = middle; else high = middle - 1; }
+        const cut = low;
         if (line) { lines.push(line); line = ''; }
         lines.push(`${word.slice(0, cut)}-`);
         word = word.slice(cut);
@@ -176,9 +178,14 @@ function stepsColumn(items, top, blocks, continued) {
     y += block.height;
   }
 }
-function notes(items, top) {
+function notes(items, top, lines = []) {
   items.push({ type: 'line', x1: LEFT, y1: top, x2: RIGHT, y2: top, color: COLOR.rule, width: 0.8 });
   items.push({ type: 'text', x: LEFT, y: top + 26, text: 'Meine Notizen', font: 'serifBold', size: 15, color: COLOR.ink });
+  if (lines.length) {
+    const count = Math.max(1, Math.floor((BOTTOM - 8 - (top + 52)) / 15) + 1);
+    for (const [index, text] of lines.splice(0, count).entries()) items.push({ type: 'text', x: LEFT, y: top + 52 + index * 15, text, font: 'sans', size: 11, color: COLOR.body });
+    return;
+  }
   items.push({ type: 'text', x: LEFT, y: top + 41, text: 'Für Ideen, Änderungen und das nächste Mal.', font: 'sans', size: 8, color: COLOR.soft });
   for (let line = 0; line < 3; line++) items.push({ type: 'line', x1: LEFT, y1: top + 72 + line * 28, x2: RIGHT, y2: top + 72 + line * 28, color: COLOR.rule, width: 0.7 });
 }
@@ -237,7 +244,7 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
     right = flowSteps(stepRows, Array.from({ length: count }, (_, index) => room(index) - 60));
     if (count >= 200 || (left.fits && right.fits)) break;
   }
-  const sheets = [];
+  const sheets = [], noteText = String(recipe.notes || '').trim(), noteLines = noteText ? wrapText(noteText, 'sans', 11, WIDTH) : [];
   for (let index = 0; index < count; index++) {
     const items = index === 0 ? first : [];
     if (index > 0) {
@@ -248,7 +255,16 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
     const top = index === 0 ? firstTop : otherTop;
     if (left.pages[index].length) ingredientCard(items, LEFT, top, left.pages[index], servings, index > 0);
     if (right.pages[index].length) stepsColumn(items, top, right.pages[index], index > 0);
-    if (index === count - 1) notes(items, BOTTOM - NOTES.height + 14);
+    if (index === count - 1) notes(items, BOTTOM - NOTES.height + 14, noteLines);
+    sheets.push({ width: PAGE.width, height: PAGE.height, items });
+  }
+  while (noteLines.length) {
+    const items = []; header(items, true);
+    const heading = fitText(title, 'serifBold', 22, WIDTH, 14);
+    items.push({ type: 'text', x: LEFT, y: 78, text: heading.text, font: 'serifBold', size: heading.size, color: COLOR.ink });
+    items.push({ type: 'text', x: LEFT, y: 112, text: 'Meine Notizen · Fortsetzung', font: 'serifBold', size: 15, color: COLOR.ink });
+    const capacity = Math.floor((BOTTOM - 8 - 142) / 15) + 1;
+    for (const [index, text] of noteLines.splice(0, capacity).entries()) items.push({ type: 'text', x: LEFT, y: 142 + index * 15, text, font: 'sans', size: 11, color: COLOR.body });
     sheets.push({ width: PAGE.width, height: PAGE.height, items });
   }
   sheets.forEach((sheet, index) => footer(sheet.items, index + 1, sheets.length, recipe.sourceUrl ? `${recipe.sourceHost || ''}${shortPath(recipe.sourceUrl)}` : ''));
