@@ -52,7 +52,7 @@ test('Rezeptblatt (Entwurf Version 2.54): A4, „REZEPTSAMMLUNG“, großer Tite
   assert.equal(layout.pages.length, 1);
   assert.deepEqual([layout.pages[0].width, layout.pages[0].height], [PAGE.width, PAGE.height]);
   const text = content(layout);
-  for (const part of ['REZEPTSAMMLUNG', 'EINKAUF & REZEPTE', 'Spiegeleierkuchen', 'PORTIONEN', 'ZUTATEN', 'STICHWORTE', 'Backen · Kuchen', 'Zutaten', 'Für 12 Portionen', 'Zubereitung', 'Eier', '6 Stück',
+  for (const part of ['REZEPTSAMMLUNG', 'SATTPLAN', 'Spiegeleierkuchen', 'PORTIONEN', 'ZUTATEN', 'STICHWORTE', 'Backen · Kuchen', 'Zutaten', 'Für 12 Portionen', 'Zubereitung', 'Eier', '6 Stück',
     'Zucker', '200 g', 'Butter, weich', 'nach Bedarf', 'Salz', 'Den Backofen vorheizen.', 'Eier und Zucker schaumig rühren.', 'Meine Notizen', 'Für Ideen, Änderungen und das nächste Mal.', 'Eigenes Rezept', 'Seite 1 / 1']) assert.ok(text.includes(part), `${part} fehlt`);
   const kinds = new Set(layout.pages[0].items.map(item => item.type));
   assert.deepEqual([...kinds].sort(), ['line', 'rect', 'text']);

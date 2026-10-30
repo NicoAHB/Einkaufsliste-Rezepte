@@ -1,5 +1,5 @@
 /* Das Rezeptblatt (Version 2.54): ein Rezept als lesbare DIN-A4-Seite. Reine Logik ohne DOM.
-   Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und „EINKAUF & REZEPTE“, der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
+   Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und „SATTPLAN“, der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
    Gesamtzeit, Stichworte, Quelle); links ein heller Kasten mit den Zutaten (Kästchen zum Abhaken, Menge hervorgehoben), rechts die Zubereitung in klar getrennten, nummerierten
    Schritten (erster Satz fett als Überschrift); unten „Meine Notizen“ mit eigenem Platz zum Schreiben. Ein Foto steht klein oben rechts. Ist das Rezept lang, geht es auf einer zweiten
    (dritten …) Seite weiter; die Notizen stehen auf der letzten. Zubereitungsschritte werden nie gekürzt: ein langer Schritt läuft auf der nächsten Seite weiter („Fortsetzung“).
@@ -78,7 +78,7 @@ export function stepParts(step) {
 const capital = text => text.charAt(0).toLocaleUpperCase('de') + text.slice(1);
 function header(items, continued) {
   items.push({ type: 'text', x: LEFT, y: 50, text: continued ? 'REZEPTSAMMLUNG · FORTSETZUNG' : 'REZEPTSAMMLUNG', font: 'sansBold', size: 7, color: COLOR.accent, charSpace: 1.8 });
-  items.push({ type: 'text', x: RIGHT, y: 50, text: 'EINKAUF & REZEPTE', font: 'sans', size: 7, color: COLOR.soft, charSpace: 0.9, align: 'right' });
+  items.push({ type: 'text', x: RIGHT, y: 50, text: 'SATTPLAN', font: 'sans', size: 7, color: COLOR.soft, charSpace: 0.9, align: 'right' });
 }
 function footer(items, page, pages, source) {
   const y = PAGE.height - 30;

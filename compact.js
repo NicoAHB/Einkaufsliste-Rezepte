@@ -22,8 +22,7 @@ export const POLICY = {
   maxApplied: 2500,      // Obergrenze (etwa 100 KB), danach fallen die ältesten weg
   keepPrices: 4,         // bezahlte Preise je Geschäft, Produkt, Sorte und Einheitengruppe (der neueste steht im Laden, die übrigen sind „frühere Käufe“)
   maxNames: 300,         // Namensgedächtnis für Vorschläge
-  maxAliases: 400,       // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
-  purchaseMonths: 36     // Ausgaben (Einkaufsbeträge) bleiben so viele Monate in der Datei; ältere liegen weiter im Git-Verlauf
+  maxAliases: 400        // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
 };
 const DAY = 86400000;
 
@@ -84,7 +83,11 @@ export function compact(input, now = new Date(), policy = POLICY) {
   const gone = [];   // entfernte Artikel für das Namensgedächtnis
 
   // 1. Gelöschtes endgültig entfernen, erledigte Artikel nach langer Zeit ebenfalls.
-  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets']) {
+  // Vorrat hat seit 2.65 feste Kennungen. Seine Löschmarken bleiben wie Favoriten erhalten,
+  // damit ein lange offline gebliebenes Gerät entfernte Einträge nicht wiederbelebt.
+  // Auch Ausgaben und ihre Löschmarken bleiben erhalten: Historie bewahren und späte
+  // Offline-Anlagen nicht nachträglich wieder als neue Ausgabe zählen.
+  for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'aliases', 'templates', 'budgets']) {
     next[key] = next[key].filter(row => {
       const drop = (row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
         (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays));
@@ -100,9 +103,8 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // 3. Vergangene Gerichte (das Kochdatum steht am Rezept).
   const mealCutoff = new Date(now.getTime() - policy.mealDays * DAY).toISOString().slice(0, 10);
   next.meals = next.meals.filter(row => { const drop = row.date < mealCutoff; if (drop) removed.meals++; return !drop; });
-  // 3b. Ausgaben: nach 36 Monaten aus der Datei (Auswertung und Diagramm brauchen nur die letzten Monate).
-  const purchaseCutoff = new Date(now.getFullYear(), now.getMonth() - (policy.purchaseMonths ?? POLICY.purchaseMonths), 1, 12).toISOString().slice(0, 10);
-  next.purchases = next.purchases.filter(row => { const drop = row.date < purchaseCutoff; if (drop) removed.purchases++; return !drop; });
+  // Ausgaben werden nicht altersbedingt entfernt (seit 2.67). Zeitstempel je Feld
+  // können weiterhin verdichtet werden; Personen und die Buchung selbst bleiben erhalten.
   // 4. Gemerkte Preise: je Geschäft, Produkt, Sorte und Einheitengruppe nur die neuesten. Bestätigte (`src: 'bon'`) und ungeprüfte Notizen zählen getrennt: Eine neue ungeprüfte Notiz verdrängt keinen bezahlten Preis.
   const groups = new Map();
   for (const row of next.prices) {
@@ -140,6 +142,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
   const changed = Object.values(removed).some(Boolean);
   if (changed) {
     next.sync.compactedAt = now.toISOString();
+    if (next.purchases?.length || next.members?.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
     if (trimmed.marks.length) { next.sync.marks = trimmed.marks; next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 2); }
     else delete next.sync.marks;
   }

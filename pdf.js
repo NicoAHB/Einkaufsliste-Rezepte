@@ -170,7 +170,7 @@ export function makePdf(pages, { title = '', author = '', subject = '', created 
     stream(imageId(name), `/Type /XObject /Subtype /Image /Width ${photo.width} /Height ${photo.height} /ColorSpace /${photo.components === 1 ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode`, photo.bytes);
   }
   for (const [value, name] of alphas) object(alphaId(name), `<< /Type /ExtGState /ca ${num(value)} /CA ${num(value)} >>`);
-  object(infoId, `<< /Title ${pdfString(title)} /Author ${pdfString(author)} /Subject ${pdfString(subject)} /Creator ${pdfString('Einkauf & Rezepte')} /Producer ${pdfString('Einkauf & Rezepte')} /CreationDate (${dateText(created)}) >>`);
+  object(infoId, `<< /Title ${pdfString(title)} /Author ${pdfString(author)} /Subject ${pdfString(subject)} /Creator ${pdfString('Sattplan')} /Producer ${pdfString('Sattplan')} /CreationDate (${dateText(created)}) >>`);
   const xref = length;
   push(`xref\n0 ${total}\n0000000000 65535 f \n`);
   for (let id = 1; id < total; id++) push(`${String(offsets[id]).padStart(10, '0')} 00000 n \n`);

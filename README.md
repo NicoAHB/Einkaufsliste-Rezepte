@@ -1,6 +1,6 @@
-# Einkauf & Rezepte – Version 2.60
+# Sattplan – Version 2.67
 
-Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
 ## 1. Was diese Version kann
 
@@ -15,6 +15,163 @@ Eine deutsche Web-App für zwei Personen: auf dem iPhone große Bedienelemente, 
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.67: einfache Ausgaben für die Familie
+
+**Betrag eingeben → speichern.** Unter **Ausgaben → Einkauf** sind heute und dein Name vorbelegt. Geschäft und Notiz bleiben freiwillig. Auch wenn du gerade einen alten Monat ansiehst, startet ein neuer Einkauf mit **heute**. Kassenbon-Erkennung und **Im Laden → Einkauf beenden** verwenden dieselbe Personenauswahl. Die Erkennung liest weiterhin nur Betrag, Datum und Geschäft als prüfbaren Vorschlag; keine automatische Produkt- oder Preiszuordnung.
+
+- **Eingekauft von:** den eigenen Namen übernehmen oder eine andere Person wählen. Über **+** direkt im Formular eine Person ergänzen, ohne den eingegebenen Betrag zu verlieren. Diese Auswahl gilt für den einzelnen Einkauf.
+- **Personen verwalten:** Namen ergänzen, umbenennen und aus-/einblenden. Feste IDs erhalten die Zuordnung und Personensummen beim Umbenennen. Ausblenden entfernt weder Einkäufe noch die frühere Personenzuordnung. Der gespeicherte Gerätename bleibt die Vorgabe für neue Käufe; die Person eines bearbeiteten Einkaufs bleibt erhalten.
+- **Übersicht:** zuerst Familiensumme, dann Beträge je Person und Einträge mit Geschäft, Datum, Person und Betrag. Eine Person antippen filtert die Anzeige; **Alle** kehrt zur Familie zurück. Ältere Einträge ohne gespeicherte Person heißen **Nicht zugeordnet**. Eintrag antippen und die Person ausdrücklich wählen; die App rät sie nicht aus Notizen oder alten Bearbeitern.
+- **Zeitraum wählen:** diesen Monat, letzten Monat, dieses Jahr oder frei **Von → Bis einschließlich**. Personen- und Zeitraumfilter wirken zusammen. Das gemeinsame Monatsbudget erscheint ausschließlich für **Alle** und einen vollständigen Kalendermonat. Im laufenden Monat heißt der Vergleich ausdrücklich **Vormonat insgesamt**, damit ein angefangener Monat nicht wie ein vollständiger Vergleich wirkt.
+- **Weitere Auswertungen** ist zunächst zugeklappt: letzte sechs Monate (bei Monatsauswahl), Geschäfte, Durchschnitt sowie **CSV herunterladen** für genau die angezeigte Person und den Zeitraum. Die CSV enthält Datum, Art, Person, Geschäft, Eurobetrag und Notiz. Auf unterstützten iPhones öffnet der Export den Teilen-Dialog; sonst wird die Datei heruntergeladen. Die JSON-/ZIP-Gesamtsicherung bleibt unter Einstellungen verfügbar.
+- **Rückerstattung / Retoure:** freiwillig unter **Weitere Angaben** beim Eintragen. Einen positiven Betrag eingeben; die App zieht ihn von der Summe ab und kennzeichnet ihn in der Liste und CSV mit Minus. Keine neue Preisverwaltung und kein automatischer Kostenausgleich zwischen Personen.
+- **Doppelt?** wird auch zwischen verschiedenen Personen geprüft. Erster Speicherversuch warnt, ein bewusst zweiter Versuch erlaubt einen zweiten gleich teuren Einkauf. Eine Rückerstattung gilt nicht als derselbe Einkauf.
+- **Dauerhafte Historie:** Ausgaben werden nicht mehr nach 36 Monaten entfernt. Auch ihre Löschmarken bleiben gegen verspätete Offline-Änderungen erhalten; gelöschte Ausgaben zählen nicht in Summen oder Berichten.
+- **Gemeinsam/offline:** neue Mitglieder und Käufe werden lokal gesichert und später feldweise abgeglichen. Beim Bearbeiten werden nur geänderte Felder gesendet. Eine reine Betragsänderung überschreibt daher keine zwischenzeitlich auf einem anderen Gerät korrigierte Person. Reicht der Gerätespeicher nicht, bleiben Betrag und Formular zur Korrektur offen.
+
+**Daten:** JSON bleibt `version: 1`. Neu ist die optionale Sammlung `members` mit `id`, `name`, `archived` und den üblichen Zeitstempeln/`_clock`. `purchases` hat optional `buyerId` (fehlend/null = nicht zugeordnet), `buyerName` (Namens-Snapshot), `kind` (`purchase`/`refund`; fehlend = Einkauf). Beträge bleiben positive ganze Cent; `kind` bestimmt die Wirkung auf Summen. Ein Name wird beim Anzeigen aus der festen Personenzuordnung aufgelöst, andernfalls aus dem Snapshot. Öffnen einer alten Datei erzeugt keine geratenen Personen. Bei Änderungen oder Aufräumen einer Datei mit Ausgaben/Personen wird **`sync.minRev: 6`** gesetzt; **beide Geräte auf 2.67 aktualisieren**. Unterstützende ältere Apps stoppen dann, statt Rückerstattungen zu addieren oder alte Einkäufe zu entfernen. Offline-Paket: **einkauf-shell-v79**. Keine neue Einrichtung nötig; Browserdaten nicht löschen.
+
+Kurze Prüfung auf euren Handys:
+
+- [ ] Nico und die Partnerin tragen je einen Betrag ein; Familiensumme und Personensummen stimmen nach Abgleich auf beiden Geräten.
+- [ ] Nur Betrag eintragen: heute/eigener Name; beim Bearbeiten eines fremden Einkaufs bleibt dessen Person ausgewählt.
+- [ ] Personenfilter und eigenen Zeitraum einschließlich beider Grenztage prüfen; Budget nur bei Alle + ganzem Monat.
+- [ ] Eine alte, nicht zugeordnete Ausgabe von Hand zuordnen. Person umbenennen/ausblenden: ihre alten Beträge bleiben erhalten.
+- [ ] Einkauf beenden und Kassenbon-Erkennung behalten die ausgewählte Person; nur beenden erzeugt keinen Betrag.
+- [ ] Unter Weitere Angaben eine Retoure erfassen: Minus in Liste/CSV, Gesamtsumme sinkt.
+- [ ] Offline je einen Einkauf erfassen, App neu öffnen und später abgleichen: beide Einträge und Personen bleiben erhalten.
+- [ ] CSV für eine Person und einen Zeitraum sowie JSON-Backup speichern; kein Token enthalten.
+
+## Bisher in Version 2.66: Favoriten im Vorrat schneller finden
+
+Unter **Vorrat** steht neben **Mit Bildern auswählen** jetzt ein direkter **★ Favoriten**-Knopf mit der Zahl gemerkter Produkte. Er öffnet sofort die Favoriten zum Übernehmen. Die Bildauswahl erklärt die schon vorhandenen Sterne ausdrücklich: Stern antippen merkt ein Produkt, ein zweiter Tipp entfernt nur den Favoriten. Ein Stern fügt nichts in den Vorrat oder auf die Einkaufsliste ein und verändert keinen Vorratsstatus.
+
+Markierte Produkte erscheinen beim nächsten normalen Öffnen der Vorratsauswahl automatisch zuerst. Auch Produkte, die schon vorhanden sind, lassen sich mit dem Stern merken; der Stern bleibt neben der ausgegrauten Übernahme bedienbar. Eigene manuell eingetragene Produkte findet ihr über Suche oder **Eigene** und könnt sie samt ihrem gewählten Bild als Favoriten behalten. Noch leere Favoriten erklären den Weg über **Alle → Stern**.
+
+Einkauf und Vorrat verwenden dieselben gemeinsamen Produktfavoriten. Sie bleiben nach Neustart erhalten, funktionieren offline und werden auf dem zweiten Gerät abgeglichen. Es gibt keine zusätzliche Einrichtung und keine Änderung am JSON-Modell. Das Offline-Paket heißt **einkauf-shell-v78**.
+
+- [ ] **Vorrat → ★ Favoriten** öffnet direkt die Favoriten; eine leere Auswahl zeigt die kurze Anleitung.
+- [ ] Unter **Alle** einen Stern setzen. Es wird noch kein Vorrat eingetragen; die Zahl am Favoriten-Knopf steigt.
+- [ ] Favorit auswählen und in den Vorrat übernehmen; beim nächsten Öffnen erscheint er zuerst und ist als vorhanden gekennzeichnet.
+- [ ] Auch bei einem vorhandenen Produkt den Stern setzen oder entfernen; der Vorrat bleibt bestehen.
+- [ ] Eigenen Artikel mit Bild offline merken, App neu öffnen und später auf dem zweiten Gerät wiederfinden.
+
+## Bisher in Version 2.65: 1.024 Produktbilder und ein einfacher bebilderter Vorrat
+
+Der Katalog enthält jetzt **1.024 einzelne Produktmotive** und weiterhin **32 Gruppenmotive**. Dazu kamen 832 eigene Bilder in 26 Tafeln: Obstsorten, Gemüse/Salate/Pilze/Kräuter, Brot/Teige/Gebäck, Käse/Milch/Eier, pflanzliche Alternativen, Fleisch/Aufschnitt/Fisch, Tiefkühl, Nudeln/Reis/Getreide, Konserven, Soßen/Gewürze, Backen/Nüsse, Frühstück, Süßigkeiten/Snacks, Getränke/Kaffee/Tee sowie Reinigung/Wäsche/Pflege/Hygiene, Baby/Tiere und Garten/Alltagsbedarf. Es sind allgemeine Beispielmotive, keine Datenbank aller Markenartikel. Für weitere eigene Produkte bleiben die 32 passenden Gruppenbilder verfügbar. Alle 1.056 Motive benötigen zusammen **rund 6,16 MB**, liegen lokal und funktionieren offline.
+
+`product-catalog-data.js` hält Namen, Startmengen, Kategorien und stabile Bildpositionen. Die bisherigen 192 Kennungen und alle Favoriten bleiben erhalten. Die Produktauswahl zeigt anfangs **96 Produkte**; **Weitere Produkte anzeigen** lädt die nächsten 96 in die Ansicht. Die Suche durchsucht sofort den gesamten Katalog, auch nicht angezeigte Produkte. Kategorie, Favoriten und häufige Käufe bleiben verfügbar. Auch die Vorschläge beim Tippen kennen die zusätzlichen Namen. Vollständige Katalognamen haben eine geprüfte Kategorie; unklare Teilwörter werden dadurch nicht gleichgesetzt. Frischer und getrockneter Oregano sowie verzehrfertiger Milchreis heißen ausdrücklich unterschiedlich.
+
+**Vorrat bedienen:**
+
+1. Unter **Einkauf → Planen** auf **Vorrat** tippen oder **Einstellungen → Vorrat** öffnen. Es gibt keinen zusätzlichen Tab.
+2. **Mit Bildern auswählen** öffnet denselben Katalog. Mehrere Produkte markieren und **… in den Vorrat** drücken; Mengen und Geschäft sind dabei nicht nötig. Bereits Vorhandenes ist gekennzeichnet.
+3. Alternativ im Feld **Oder selbst eingeben** einen Produktnamen schreiben und **+** drücken. Das Produkt bekommt automatisch ein passendes Einzel- oder Gruppenbild. Namen bleiben genau eure Eingabe, auch zusammengesetzte Namen.
+4. Das Produkt antippen: Name/Kategorie ändern, **Bild auswählen** (Einzel- oder Gruppenmotiv) oder **Automatisch zuordnen**. Ein bewusst gewähltes Bild wird mit dem Eintrag gespeichert und mit dem anderen Gerät geteilt.
+5. Links auf den Kreis tippen: **Vorhanden** ↔ **Aufgebraucht**. Es gibt keine Pflichtmengen, Haltbarkeitsdaten oder automatische Verbrauchsschätzung. Suche, Kategorien und Statusfilter halten große Listen übersichtlich; der Vorrat-Knopf zeigt die Zahl aufgebrauchter Produkte.
+6. Bei Aufgebrauchtem auf **Nachkaufen** tippen, Menge/Einheit und optional Geschäft wählen, dann bestätigen. Das eigene Bild kommt auf die Einkaufsliste mit. Steht derselbe Artikel dort im Zielgeschäft schon offen, wird er nicht versehentlich ein zweites Mal hinzugefügt oder erhöht. Nachkaufen markiert den Vorrat noch nicht als vorhanden: Das bestätigt ihr, wenn das Produkt wieder zu Hause ist.
+
+Nur **vorhandener** Vorrat wird bei der Rezeptübernahme und beim Wocheneinkauf vorab abgewählt. **Aufgebraucht** zählt auch bei „Was kann ich kochen?“ nicht als vorhanden; die ausdrückliche Markierung hat Vorrang vor einer alten Einkaufserinnerung. Die bereits vorhandenen Grundvorrat-Vorschläge stehen nun in einem aufklappbaren Bereich.
+
+Eine eigene Vorratskategorie wird beim Nachkaufen übernommen; eine zuvor bewusst verwendete Einkaufskategorie desselben Produkts behält Vorrang. Produktauswahl- und Vorratsfenster beginnen beim erneuten Öffnen oben. Artikelvorschläge stehen direkt unter dem Namensfeld; die Tab-Beschriftung passt auch bei 375 Pixeln Breite vollständig in die schwebende Leiste.
+
+Technisch bleibt die JSON-Datei bei `version: 1`. `pantry` ist weiterhin eine optionale Sammlung. Neu sind die freiwilligen Felder `available` (fehlt = vorhanden), `category` und `imageKey` (fehlt/null = automatisch). `imageKey` enthält ausschließlich eine lokale Produkt- oder Gruppenkennung, keine URL. Auch Listenartikel und Favoriten können diese Kennung erhalten. Neue Vorräte haben pro Produkt eine feste ID, damit dieselbe gleichzeitige Anlage nicht doppelt erscheint; alte IDs werden weiterverwendet. Status-, Namens- und Bildänderungen werden feldweise zusammengeführt; geöffnete Entwürfe senden nur geänderte Felder. Vorrats-Löschmarkierungen bleiben beim Aufräumen als Schutz vor späten Offline-Änderungen erhalten.
+
+Sobald „Aufgebraucht“ genutzt wird, trägt die Datei **`sync.minRev: 5`**. Beide Geräte brauchen dann diese neue App-Version; eine ältere unterstützende App stoppt verständlich, statt den leeren Vorrat weiter als vorhanden zu behandeln. Keine Daten werden gelöscht. Das Offline-Paket heißt jetzt **`einkauf-shell-v77`**.
+
+Kurze Prüfung:
+
+- [ ] Im Katalog nach einem neuen Produkt wie „Kühlakku“, „Kichererbsen“, „Säuglingsnahrung“ oder „Roggenmehl“ suchen; Suche findet auch Produkte außerhalb der ersten 96 Karten.
+- [ ] Mehrere Produkte per Bild in den Vorrat übernehmen; erneutes Hinzufügen erzeugt keine Dubletten.
+- [ ] Einen eigenen Namen eintippen, passendes Bild wählen, App schließen/neu öffnen: Name und Bild bleiben erhalten.
+- [ ] Einen vorhandenen Vorrat als aufgebraucht markieren; die Rezeptübernahme wählt ihn wieder zum Einkaufen aus.
+- [ ] Nachkaufen: eigenes Bild, Menge und Zielgeschäft prüfen; erneuter Versuch zeigt „Steht schon auf der Liste“.
+- [ ] Flugmodus: App neu öffnen, Bildauswahl/Vorrat bearbeiten; nach Rückkehr ins Netz auf dem zweiten Gerät kontrollieren.
+- [ ] Auf zwei Geräten gleichzeitig Status und Bild desselben Vorrats ändern: beide Änderungen bleiben erhalten.
+
+## Bisher in Version 2.64: Eigene Bilder unter Planen, Im Laden und in der Produktauswahl
+
+Die **grün markierten Bilder aus den Screenshots waren Emojis**: `app.js` setzte sie über `emoji.js` in die Kacheln. Ihre Darstellung kam aus den Schriften **Apple Color Emoji**, **Segoe UI Emoji** bzw. **Noto Color Emoji** des Geräts. Die App verwendete 82 unterschiedliche Zeichen; dahinter stand kein Bilddienst mit über 1.000 Produktfotos. Der frühere Versuch mit Internet-Produktfotos (Version 2.13) ist seit 2.14 entfernt.
+
+Jetzt verwenden **Planen**, **Im Laden**, die Zeilen **Neu von …** und die **Produktauswahl** denselben eigenen Bildbestand:
+
+- **192 einzelne Produktmotive**: die bisherigen 128 Bilder plus 64 neue. Alle 159 schon im Programm hinterlegten Vorschlagsnamen haben damit ein eigenes passendes Motiv bzw. eine ausdrücklich geprüfte Zuordnung. Neu sind unter anderem Blumenerde, Feinwaschmittel, weitere Reiniger, Gemüse, Kräuter und Vorräte. Die Schnellauswahl ist auf 192 Produkte erweitert; vorhandene Favoriten-Kennungen bleiben gültig.
+- **32 eigene Gruppenmotive** für Produkte ohne individuelles Bild: etwa Obst, Gemüse, Brot, Milchprodukte, Tiefkühl, Gebäck, Reinigung, Körperpflege, Garten, Baby, Tierbedarf, Technik, Sport und Werkzeuge. Unbekannte Namen bleiben dadurch bebildert. Dies ist ein erweiterbarer Bildbestand, keine Behauptung, dass für jeden künftig frei eingegebenen Produktnamen bereits ein Einzelbild existiert.
+- Die **quadratischen, abgerundeten Kästchen mit dünnem Rahmen** bleiben an derselben Stelle rechts: 56×56 Pixel, auf sehr schmalen Geräten 44×44. Name/Menge, Abhaken und Bearbeiten behalten ihre Bedienung. Die Bilder sind dekorativ und selbst nicht antippbar.
+- `product-images.js` löst die Bildzuordnung zentral auf: vollständige Namen und geprüfte Schreibweisen zuerst; bekannte Marken-/Mengen-Zusätze nur dann entfernen, wenn ein vollständiger bekannter Produktname übrig bleibt. So findet „Domol Feinwaschmittel“ das neue Waschmittelmotiv. **Keine unscharfe Teilwortsuche:** „Apfeltasche“/„Apfelkuchen“ bekommen Gebäck, „Milchreis“ ein Dessert-Gruppenbild, „Birnensaft“ Getränke und „Zwiebelmett“ Fleisch. Namen, Preise und Mengen werden durch die Bildauswahl niemals verändert.
+- Fehlende Bilddateien wechseln auf das passende Gruppenmotiv; ist auch das technisch nicht verfügbar, bleibt eine neutrale Kachel erhalten. Es gibt keine externe Ersatz-Bildsuche und keine KI-Aufrufe beim Benutzen der App.
+- Alle **224 Motive zusammen benötigen rund 1,53 MB**. Sie liegen in sieben lokalen WebP-Bildtafeln und sind im Offline-Paket. Der Schalter **Produktbilder anzeigen** wirkt weiterhin auf beide Listenansichten und wird auf dem Gerät gespeichert.
+- Bei einem neuen Katalogprodukt mit eindeutig hinterlegter Kategorie, für dessen Namen die bisherige Schätzung nichts findet (z. B. Rote Bete), bleibt die Katalog-Kategorie bei der Übernahme erhalten. Eure zuletzt gelernte Kategorie hat weiter Vorrang.
+- Neu eingegebene Apfel-/Quarktaschen werden ausdrücklich als Backwaren eingeordnet, statt das Wort „Apfel“ als Obst zu deuten. Bereits ausdrücklich gemerkte Kategorien bleiben eure Entscheidung.
+- Neues Offline-Paket: `einkauf-shell-v76`. Nach dem Hochladen die App ganz schließen und neu öffnen. Die Erweiterung ändert weder die privaten Daten-Dateiversion noch vorhandene Listen und Favoriten.
+
+Kurze Prüfung:
+
+- [ ] Unter Planen und Im Laden dieselben Motive für Butter, Eier, Milch, Blumenerde, Honig, Domol Feinwaschmittel und Zahnpasta.
+- [ ] In der Produktauswahl sind bei denselben Namen genau dieselben Bilder zu sehen.
+- [ ] „Apfeltasche“ und ein unbekanntes Produkt erhalten passende Gruppenbilder, keine falsch zugeordneten Obst-/Einzelbilder.
+- [ ] Schalter aus/an, heller/dunkler Modus und kleine iPhone-Breite: Kacheln bleiben korrekt; kein Text läuft darunter.
+- [ ] Nach dem ersten vollständigen Laden offline neu starten: Produkt- und Gruppenbilder sind weiter sichtbar.
+
+## Neu in Version 2.63: Name und Logo „Sattplan“
+
+Die App heißt jetzt **Sattplan**. Verwendet wird genau das Logo der Titelseite aus dem bereitgestellten **Sattplan_AppStore-Vorbereitung.pdf**: grüne Fläche, weiße Einkaufstasche, orange-/gelbfarbene Henkel und grüner Haken mit Blatt. Das eingebettete 800×800-Pixel-Bild wurde samt Transparenzmaske direkt aus dem PDF übernommen; das Motiv wurde nicht neu erzeugt. Andere Inhalte oder Empfehlungen des PDFs wurden nicht umgesetzt.
+
+- Neuer Name im Browser, auf dem Homescreen, im App-Manifest, in der Anleitung, auf Rezeptblättern/PDF-Metadaten und in Backup-Beschreibungen. Die Einstellungen zeigen Name und Logo als kompakten Kopf.
+- Erneuerte iPhone-/Android-/Browser-Symbole. `assets/branding/sattplan-logo.png` enthält das Original mit Transparenz; `assets/branding/sattplan-appstore-1024.png` ist ein quadratischer 1024-Pixel-Export für eine spätere App-Store-Verpackung. Das PDF enthält nur 800 Pixel; der größere Export fügt keine Bilddetails hinzu.
+- Die bestehende GitHub-Adresse, Manifest-Kennung, Verbindungsdaten und Browserspeicher-Schlüssel bleiben erhalten. Listen, Rezepte, Favoriten und noch nicht gesendete Änderungen werden durch die Umbenennung nicht zurückgesetzt.
+- Neues Offline-Paket: `einkauf-shell-v75`. App nach dem Hochladen vollständig schließen und erneut öffnen. Ein bereits vorhandenes iPhone-Homescreen-Symbol kann seinen alten Namen behalten: Den Titel dort gegebenenfalls bearbeiten. Für ein altes Bild erst die aktualisierte Seite in Safari prüfen; bei Bedarf eine neue Verknüpfung anlegen. Die App-Daten und Browserdaten dabei erhalten.
+
+Prüfung: Browser-Titel und Manifest heißen Sattplan, alle Icons zeigen das PDF-Logo, unter Einstellungen steht Sattplan, Rezeptblätter tragen SATTPLAN, bestehende Daten und die schnelle Produktauswahl sind weiter vorhanden.
+
+## Neu in Version 2.62: Alltagsprodukte mit Bildern und Favoriten
+
+Direkt unter **„Was brauchst du?“** steht jetzt der kompakte Knopf **Produkte auswählen**. Er ist auch bei zugeklapptem Eingabefeld sichtbar und öffnet ein eigenes Fenster mit **128 Alltagsprodukten und passenden lokalen Beispielbildern**, nach Gängen geordnet. Die Einkaufsliste selbst bleibt kompakt; bei eigenen Wunschlisten wird der Knopf ausgeblendet.
+
+1. **Alle**, **★ Favoriten**, **Häufig gekauft** oder **Eigene** auswählen; mit Suche und Kategorie eingrenzen. Die Suche versteht auch „Aepfel“ und „Mueller“-artige Umlautschreibweisen.
+2. Auf Produktkarten tippen, um mehrere Produkte auszuwählen. Ein erneuter Tipp nimmt die Auswahl zurück. Der **Stern** merkt einen Favoriten, ohne einen Einkaufsartikel anzulegen.
+3. Bei **Auswahl (…) · Mengen ändern** bei Bedarf Mengen und Einheiten anpassen. Unten das **Geschäft** wählen (oder **Kein Geschäft**). **… Produkte hinzufügen** übernimmt die Auswahl gesammelt. Sinnvolle Anfangsmengen stehen auf jeder Karte, etwa Milch 1 l, Butter 250 g, Eier 6 Stück.
+
+- Sobald Favoriten vorhanden sind, öffnet die Auswahl beim nächsten Mal direkt dort. Beide Personen sehen dieselben Favoriten; Sterne funktionieren offline und sind nach dem Abgleich auf dem zweiten Gerät sowie im JSON-/ZIP-Backup enthalten. Jeder Favorit hat seine eigene Kennung und Änderungsuhren. Das Entfernen eines Sterns ändert die Einkaufsliste nicht. Ein leerer Favoritenbereich erklärt, wie man Sterne setzt.
+- **Häufig gekauft** nutzt euren bisherigen Einkaufsverlauf, unabhängig von den manuell gesetzten Sternen. **Eigene** bietet eure selbst eingetragenen Artikel an. Ein gesuchter neuer Name lässt sich ausdrücklich auswählen und als Favorit merken. Eigene Namen erhalten ein neutrales Symbol, niemals das Foto eines nur ähnlich benannten Produkts (z. B. Apfeltasche/Äpfel).
+- Bereits offene Artikel werden an der Produktkarte für das gewählte Geschäft vermerkt. Bewusst zusätzlich übernommene Mengen werden mit der bisherigen sicheren Mengen-/Einheitenlogik dazugezählt; andere Geschäfte und unklare Fälle bleiben getrennt. Die Übernahme legt keine geschätzten Preise an.
+- Die Auswahl ist ein Entwurf: Schließen verwirft die Markierungen, während bewusst gesetzte Sterne gespeichert bleiben. Ein zwischenzeitlich gelöschtes Geschäft muss ausdrücklich ersetzt werden. Ein Wechsel des Daten-Repositorys schließt eine geöffnete Auswahl, damit keine Produkte in der falschen Liste landen.
+- Datenmodell v1 ergänzt die optionale Sammlung `productFavorites`: `id`, `name`, `productId` (Katalogkennung oder `null` bei eigenen Artikeln), `quantity`, `unit`, `category`, `createdAt`, `updatedAt`, `deletedAt`, `_clock`. Alte Daten bleiben ohne Migration lesbar. Favoriten-Löschmarken bleiben erhalten, damit ein altes Offline-Gerät gelöschte Sterne nicht zurückbringt.
+- `product-catalog.js` enthält Sortiment und reine Logik; `product-picker.js` enthält die Oberfläche. Vier lokale Bildtafeln in `assets/products` zeigen je 32 Motive und brauchen zusammen weniger als 1 MB. Keine Foto- oder Händlerabfragen, auch die Bilder funktionieren offline. Herkunft und Anordnung: [`assets/products/README.md`](assets/products/README.md).
+- Neues Offline-Paket: `einkauf-shell-v74`. Nach dem Hochladen die App ganz schließen und neu öffnen (bei Bedarf zweimal).
+
+Kurze Prüfung auf dem iPhone:
+
+- [ ] Produktauswahl öffnen, „aepfel“ suchen, Milch und Butter auswählen, Zielgeschäft prüfen und gesammelt hinzufügen.
+- [ ] Eine Menge unter **Auswahl → Mengen ändern** auf `0,5 kg` setzen; ungültige/fehlende Mengen und Einheiten werden mit verständlichem Hinweis abgelehnt, die Auswahl bleibt erhalten.
+- [ ] Einen Stern setzen, Fenster schließen und neu öffnen: Favoritenansicht; Stern entfernen, ohne den Einkaufsartikel zu verändern.
+- [ ] Eigenen Artikel suchen und merken. „Apfeltasche“ erhält kein Apfelfoto. Häufig eingetragene Artikel erscheinen unter **Häufig gekauft**.
+- [ ] Offline neu öffnen: Fotos und Sterne sind da; Produkte hinzufügen. Später abgleichen und auf dem zweiten Gerät prüfen.
+
+## Neu in Version 2.61: Geschäfte aus dem Händlerkatalog auswählen
+
+Unter **Einkauf → Geschäfte-Symbol → Neues Geschäft → Supermarkt oder Drogerie auswählen** stehen **30 Händler in Deutschland** bereit: große Supermärkte und Discounter, regionale Ketten, Biomärkte sowie dm, ROSSMANN, Müller und BUDNI. Suche und Bereichsfilter helfen bei der Auswahl. Bereits vorhandene Händler sind gekennzeichnet. ALDI Nord/SÜD, Netto Marken-Discount/Netto mit dem Hund sowie famila Nordost/Nordwest sind getrennt.
+
+1. Händler antippen: Name, lokales Logo und Händlerseite werden vorbereitet. Es wird noch kein Geschäft gespeichert.
+2. Bei Bedarf einen Filialnamen oder einen eigenen Angebotslink eintragen.
+3. **Geschäft hinzufügen** speichert die Auswahl für eure gemeinsame Liste, auch offline.
+
+**Eigene Geschäfte bleiben möglich:** Statt der Auswahl einfach einen Namen wie „Baumarkt“, „Technik“ oder „Sonstiges“ eintragen; ein Link ist freiwillig. **Auswahl aufheben** verwirft die Vorlage. Im vorhandenen Geschäftsformular kann **Händler / Logo** auch nachträglich zugeordnet werden. Eine ausdrückliche Zuordnung bleibt beim Umbenennen erhalten; eigene Angebotslinks haben Vorrang. Unter **Einstellungen → Darstellung → Geschäfte anzeigen als → Händlerlogo** erscheinen die lokalen Logos auch an den Geschäftsreitern. Die Textansicht bleibt wählbar.
+
+- Keine Händlerabfragen beim Anzeigen: Alle Logos liegen im Ordner `assets/stores`, funktionieren offline und sind im Service-Worker-Paket enthalten. Erst **Angebote** öffnet die Händlerseite. Dort kann eine Filial-/PLZ-Auswahl nötig sein. dm hat statt eines Wochenprospekts den Bereich Neuheiten & Aktionen; nah & gut nutzt die EDEKA-Angebotssuche.
+- `store-catalog.js` ist der wiederverwendbare Katalog für die jetzige Auswahl und einen späteren Einrichtungsmodus. **Ein neuer Einrichtungsmodus wurde noch nicht eingebaut.**
+- Optionale Daten-Erweiterung: `stores.chainKey` verweist auf den Katalog. Bestehende Geschäfte werden anhand ihrer Namen erkannt; Namen, eigene Links, Einstellungen und Artikel werden nicht umgeschrieben. Ein mehrdeutiges „ALDI“, „Netto“ oder „famila“ erhält keinen geratenen Link; die passende Kette im Formular zuordnen.
+- Quellen und Hinweise zu den Markenabbildungen: [`assets/stores/README.md`](assets/stores/README.md). Vor einem kommerziellen App-Store-Angebot die Nutzungsrechte der Markenabbildungen klären.
+- App aktualisieren: ganz schließen und neu öffnen (bei Bedarf zweimal). Das neue Offline-Paket heißt `einkauf-shell-v73`.
+
+Kurze Prüfung:
+
+- [ ] Händler suchen, nach Drogerien filtern, Auswahl abbrechen: kein neues Geschäft.
+- [ ] dm auswählen, „dm Innenstadt“ nennen, hinzufügen: Logo und Händlerlink bleiben passend; Artikel ohne Geschäft werden dort wie bisher nicht angezeigt.
+- [ ] ALDI Nord/SÜD und die beiden Netto-Ketten haben unterschiedliche Links. Bereits hinzugefügte Händler werden gekennzeichnet.
+- [ ] „Mein Baumarkt“ mit eigenem Link anlegen und nachträglich bearbeiten; eine weitere Filiale lässt sich weiterhin per eigenem Namen anlegen.
+- [ ] Offline neu öffnen: Auswahl und Logos sind da. Ein neues Geschäft wird später mit dem zweiten Gerät abgeglichen. JSON-/ZIP-Backup behält die Händlerzuordnung.
 
 ## Neu in Version 2.60: Keine Kategorie-Anzahl unter „Planen“, Menge immer unter dem Namen
 
@@ -753,7 +910,7 @@ Weitere Testpunkte für Version 2.16:
 - **Foto oder Screenshot des Kassenbons:** im selben Fenster **Kassenbon fotografieren oder Screenshot wählen**. Die Texterkennung (`ocr.js`, wie beim Rezept-Import) läuft **auf dem Gerät**, das Bild wird nirgends hochgeladen. Aus dem erkannten Text liest `receipt.js` die **Summe** (sonst die Summe der erkannten Zeilen), das **Datum** und, falls der Markt erkannt wird, das **Geschäft**. Alles steht nur als **Vorschlag in den Feldern**; gespeichert wird erst mit **Speichern**, nachdem du den Betrag geprüft hast. **Ehrlich:** Fotos von Thermo-Kassenzetteln werden oft ungenau gelesen (Falten, Schatten, verblasste Schrift). Screenshots digitaler Bons aus der Markt-App sind viel zuverlässiger. Wird kein Betrag gefunden, sagt die App das und du gibst ihn von Hand ein.
 - **Artikelpreise gleich mit übernehmen:** Hat die App im Foto Artikelzeilen erkannt, erscheint **Danach die Artikelpreise prüfen und übernehmen**. Nach dem Speichern öffnet sich der bekannte Kassenbon-Dialog mit diesen Zeilen (Preise, Namen, Preisentwicklung).
 - **Kassenbon-Dialog (Einkauf → Kassenbon):** Neu ist **Gesamtbetrag unter Ausgaben speichern** (vorab angehakt). Ein Betrag, der für **denselben Tag, dasselbe Geschäft und dieselbe Summe** schon eingetragen ist, wird nicht doppelt gezählt (das Häkchen ist dann nicht gesetzt, und beim Speichern wird ebenfalls nichts doppelt angelegt). Auch „Einkauf beenden → Beenden und Kassenbon einfügen“ nutzt das.
-- **Beide sehen dasselbe:** Die Einträge liegen in der gemeinsamen Datei (Sammlung `purchases`, siehe Abschnitt 9). Wer ohne GitHub arbeitet (Beispielmodus), speichert sie nur auf dem Gerät. Einträge, die **älter als 36 Monate** sind, räumt die App beim Aufräumen aus der Datei (sie bleiben im Verlauf des privaten Repos); „Jetzt aufräumen“ zählt sie mit.
+- **Beide sehen dasselbe:** Die Einträge liegen in der gemeinsamen Datei (Sammlung `purchases`, siehe Abschnitt 9). Wer ohne GitHub arbeitet (Beispielmodus), speichert sie nur auf dem Gerät. Seit 2.67 bleiben auch Ausgaben über 36 Monate dauerhaft erhalten; die frühere Altersbereinigung entfällt.
 - **Ältere App-Fassung auf dem zweiten Gerät:** Sie ignoriert die Ausgaben, löscht sie aber nicht (unbekannte Felder bleiben erhalten); sie sieht den neuen Bereich erst nach dem Update.
 - **Leiste unten:** Mit fünf Reitern ist sie auf kleinen Telefonen enger; Schrift und Symbole werden unter 421 und unter 361 Pixel Breite etwas kleiner. Beschriftungen werden nicht abgeschnitten.
 
@@ -768,6 +925,8 @@ Weitere Testpunkte für Version 2.15:
 - [ ] Kassenbon-Text einfügen → **Gesamtbetrag unter Ausgaben speichern** angehakt → Speichern: Der Betrag steht unter Ausgaben. Denselben Bon noch einmal: Das Häkchen ist nicht gesetzt, nichts wird doppelt gezählt.
 
 ## Neu in Version 2.14: farbige Symbole statt Internet-Fotos
+
+> Seit Version 2.64 verwenden alle Listen dieselben eigenen Produkt- und Gruppenbilder wie die Schnellauswahl. Die folgende Beschreibung dokumentiert den früheren Emoji-Stand.
 
 **Warum:** In Version 2.13 holte die App Produktfotos von Open Food Facts. Der erste Treffer der Suche war oft falsch (für „Birne“ ein Foto von Birnensaft, für „Reis“ Reiswaffeln). Du wolltest stattdessen die farbigen Symbole, und echte Bilder auch nicht als Option. Deshalb ist die Foto-Suche **vollständig entfernt**:
 
@@ -1127,7 +1286,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `wishes.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `wishes.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `store-catalog.js`, `product-catalog.js`, `product-catalog-data.js`, `product-picker.js`, `product-images.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `family.js`, `spending-view.js`, `cookable.js`, `grocery-names.js`, `pantry-suggestions.js`, `pantry.js`, `pantry-view.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `assets`** (Händlerlogos und Produktbilder; mit den Unterordnern `stores`, `products` und `branding` hochladen) und den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.
@@ -1200,7 +1359,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 - **Kein Zugriff (403):** Mitgliedschaft, Write-Rolle, Contents-Berechtigung und Token-Freigabe prüfen. GitHub kann auch wegen eines API-Limits 403 melden. Dann abwarten. Beim Daten-Repo keine erzwungenen Pull Requests für App-Schreibzugriffe voraussetzen.
 - **Nicht gefunden (404):** Eigentümer, Repo, `main` und `daten.json` einschließlich Groß-/Kleinschreibung prüfen. GitHub versteckt private Repos auch bei fehlenden Token-Rechten hinter 404; es ist nicht automatisch eine fehlende Datei.
 - **Schreibkonflikt (409/422):** Die App lädt und mischt bis zu viermal erneut. Bleibt der Fehler, später aktualisieren und Branch-Regeln prüfen. Lokale Änderungen bleiben erhalten.
-- **Versehentlich gelöscht:** Seit Version 1.7 gibt es keinen Rückgängig-Knopf mehr. Ein Häkchen setzt man durch erneutes Antippen zurück; Gelöschtes legt man neu an. Gelöschte Einträge bleiben noch 14 Tage in der Datei (danach räumt die App auf), die App zeigt sie aber nicht mehr an. Ältere Stände findet man im Verlauf des privaten Daten-Repositorys auf GitHub.
+- **Versehentlich gelöscht:** Seit Version 1.7 gibt es keinen Rückgängig-Knopf mehr. Ein Häkchen setzt man durch erneutes Antippen zurück; Gelöschtes legt man neu an. Gelöschte Einkaufsartikel bleiben noch 14 Tage in der Datei (danach räumt die App auf); Ausgaben behalten ihre Löschmarken dauerhaft, die App zeigt sie aber nicht mehr an. Ältere Stände findet man im Verlauf des privaten Daten-Repositorys auf GitHub.
 - **Zweiter Tab:** pro Browser-Ursprung darf nur ein App-Tab aktiv sein, damit zwei Tabs nicht dieselbe lokale Warteschlange überschreiben. Den ersten Tab schließen und den zweiten neu laden. Zwei Geräte sind ausdrücklich unterstützt.
 
 Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browsers. Es werden keine externen Skripte, Analysewerkzeuge oder Schriften geladen. Trotzdem nur auf vertrauenswürdigen Geräten verwenden und Browserdaten nicht löschen, solange Änderungen ausstehen. Andere Seiten unter demselben Pages-Ursprung gehören ebenfalls zu dieser Vertrauensgrenze. **Token entfernen** entfernt die Zugangsdaten; lokale Daten und Warteschlangen bleiben für die spätere erneute Verbindung erhalten. Für vollständiges Entfernen erst synchronisieren und sichern, dann die Website-Daten in den Geräteeinstellungen löschen. Safari im privaten Modus ist für dauerhafte Daten ungeeignet.
@@ -1220,7 +1379,8 @@ Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browser
 | `pantry` (optional) | Vorrat (Version 1.6): `name` und die üblichen Zeitstempel |
 | `names` (optional) | Namensgedächtnis aus aufgeräumten Artikeln (Version 1.6): `name`, `count`, `at`, optional `category`, `unit` |
 | `templates` (optional) | Einkaufsvorlagen (Version 2.5): `name` (höchstens 60 Zeichen) und `items`: bis zu 80 Artikel `{ name, quantity, unit, storeId? }`; die ganze Artikelliste wird als ein Feld zusammengeführt (die neuere Fassung gewinnt) |
-| `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`), `estimate` (Version 2.21: geschätzte Summe der abgehakten Artikel in Cent, nur bei „Einkauf beenden“ mit Betrag); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Beim Aufräumen entfallen Einträge, die älter als 36 Monate sind |
+| `purchases` (optional) | Ausgaben (Version 2.15): `date` (`JJJJ-MM-TT`), `cents` (ganze Cent, 1 bis 99.999.999), optional `storeId`, `storeName` (der beim Erfassen gemerkte Name, bleibt nach dem Löschen des Geschäfts lesbar), `note` (höchstens 200 Zeichen), `source` (`bon` = aus Kassenbon-Foto/-Screenshot oder Kassenbon-Text, `hand`), `estimate` (Version 2.21: geschätzte Summe der abgehakten Artikel in Cent, nur bei „Einkauf beenden“ mit Betrag); jeder Eintrag ist ein eigener Datensatz, zwei gleichzeitig erfasste Einkäufe bleiben also beide erhalten. Seit 2.67 optional `buyerId`, `buyerName`, `kind` (Einkauf/Rückerstattung). Historie und Löschmarken bleiben dauerhaft erhalten |
+| `members` (optional, 2.67) | Gemeinsame Personen: `id` (fest beim Umbenennen), `name` (1–30 Zeichen), `archived` (optional); normale Zeitstempel, Löschmarkierung und Feld-Uhren. `purchases.buyerId` verweist darauf. Alte Käufe bleiben unzugeordnet, bis jemand die Person auswählt |
 | `budgets` (optional) | Monatsbudget (Version 2.21): eine Zeile mit der festen Kennung `monthly` und `cents` (ganze Cent, 0 = kein Budget); beide Geräte setzen dieselbe Zeile, der jüngere Wert gewinnt |
 | `aliases` (optional) | Bestätigte Namenszuordnungen (Version 1.8), heute nur noch Schreibweisen („Zwiebel“ → „Zwiebeln“): `from` (normalisierter Text), `name` (Name in der App), optional `variant` (nur von Version 2.41 bis 2.43 geschrieben, wird nicht mehr angezeigt) |
 | `sync.applied` | IDs bereits angewendeter Änderungen; verhindert Doppelübertragung (wird beim Aufräumen auf die letzten 600 gekürzt); `sync.compactedAt` nennt den Zeitpunkt des letzten Aufräumens |
