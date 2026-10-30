@@ -4,6 +4,7 @@
 import { CATEGORIES, isCategory, suggestCategory } from './categories.js';
 import { matchProductName } from './product-names.js';
 import { productKey } from './prices.js';
+import { amountChoice } from './buying.js';
 
 import { PRODUCT_ROWS, PRODUCT_SHEETS } from './product-catalog-data.js';
 
@@ -73,7 +74,7 @@ export function selectedProducts(selection) {
     const quantity = Number(String(product.quantity).trim().replace(',', '.')), unit = String(product.unit || '').trim();
     if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000) throw new Error(`„${product.name}“: Bitte eine Menge zwischen 0 und 1.000.000 eingeben (größer als 0).`);
     if (!unit || unit.length > 30) throw new Error(`„${product.name}“: Bitte eine Einheit eingeben (höchstens 30 Zeichen).`);
-    return { name: product.name, quantity, unit, category: product.category, ...(product.purchaseUnit!==undefined?{purchaseUnit:product.purchaseUnit,purchaseMeasure:product.purchaseMeasure,purchaseAt:product.purchaseAt}:{}), ...(product.imageKey ? { imageKey: product.imageKey } : {}) };
+    return { name: product.name, quantity, unit, category: product.category, ...(product.purchaseUnit!==undefined?{purchaseUnit:product.purchaseUnit,purchaseMeasure:product.purchaseMeasure,purchaseAt:product.purchaseAt}:{}), ...amountChoice(product), ...(product.imageKey ? { imageKey: product.imageKey } : {}) };
   });
 }
 

@@ -1,4 +1,4 @@
-import {hasUnitChoice,unitChoice,compareUnitChoice} from './buying.js';
+import {hasUnitChoice,unitChoice,compareUnitChoice,hasAmountChoice,amountChoice,compareAmountChoice} from './buying.js';
 /* Aufräumen: hält die gemeinsame Datendatei klein. Reine Logik ohne DOM.
    Hintergrund: Die App löscht nie sofort, sondern markiert („Löschmarkierung“), damit „Rückgängig“ und der Abgleich zweier
    Geräte funktionieren. Ohne Aufräumen wächst die Datei um knapp 2 KB je Artikel, also bei 20 Artikeln pro Woche in einem
@@ -22,7 +22,7 @@ export const POLICY = {
   appliedDays: 45,       // … und alle, die jünger als das sind (Marken, siehe `trimApplied`); ein Gerät, dessen Antwort verloren ging, sendet sonst alte Änderungen erneut
   maxApplied: 2500,      // Obergrenze (etwa 100 KB), danach fallen die ältesten weg
   keepPrices: 4,         // bezahlte Preise je Geschäft, Produkt, Sorte und Einheitengruppe (der neueste steht im Laden, die übrigen sind „frühere Käufe“)
-  maxNames: 300,         // Namensgedächtnis für Vorschläge
+  maxNames: 1500,        // Platz für gelernte Einheiten/Mengen und eigene Artikel
   maxAliases: 400        // gemerkte Zuordnungen von Kassenbon-Zeilen zu Namen
 };
 const DAY = 86400000;
@@ -71,9 +71,10 @@ function remember(names, rows, max) {
     else if (!entry.category && isCategory(row.category)) entry.category = row.category;
     const prefAt=row.purchaseAt || row._clock?.purchaseUnit?.at || row.createdAt || at;
     if(hasUnitChoice(row) ? compareUnitChoice(row,entry)>=0 : !hasUnitChoice(entry)&&row.purchaseUnit!==undefined&&prefAt>=(entry.purchaseAt||'')) { entry.purchaseUnit=row.purchaseUnit;entry.purchaseAt=prefAt; if(hasUnitChoice(row))Object.assign(entry,unitChoice(row)); }
+    if(hasAmountChoice(row)&&compareAmountChoice(row,entry)>=0)Object.assign(entry,amountChoice(row));
     known.set(key, entry);
   }
-  return [...known.values()].sort((a, b) => b.count - a.count || b.at.localeCompare(a.at)).slice(0, max);
+  return [...known.values()].sort((a, b) => Number(hasAmountChoice(b)||hasUnitChoice(b))-Number(hasAmountChoice(a)||hasUnitChoice(a)) || b.count - a.count || b.at.localeCompare(a.at)).slice(0, max);
 }
 
 /* Gibt { data, changed, removed } zurück. `data` ist eine Kopie; die Eingabe bleibt unverändert. Ohne etwas aufzuräumen
@@ -147,6 +148,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
     next.sync.compactedAt = now.toISOString();
     if (next.items.some(row=>row.purchaseUnit!==undefined) || next.names?.some(row=>row.purchaseUnit!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,7);
     if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
+    if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
     if (next.purchases?.length || next.members?.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
     if (trimmed.marks.length) { next.sync.marks = trimmed.marks; next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 2); }
     else delete next.sync.marks;

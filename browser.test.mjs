@@ -1038,7 +1038,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     await page.getByRole('tab', { name: /^Edeka/ }).click();
     const add = async (name, quantity, unit) => {
-      await page.fill('#item-form input[name=name]', name); await page.fill('#item-form input[name=quantity]', quantity); await chooseUnit(page, '#item-form input[name=unit]', unit);
+      await page.fill('#item-form input[name=name]', name); await chooseUnit(page, '#item-form input[name=unit]', unit); await page.fill('#item-form input[name=quantity]', quantity);
       await page.click('#item-form button[type=submit]');
     };
     const rows = name => page.locator('#items .item', { hasText: name });
@@ -4027,7 +4027,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form input[name=name]', 'Zucchini'); await page.click('#item-form button[type=submit]');
     const after = await stored();
     assert.deepEqual(keep([...after.prices, ...after.aliases]), seeded, 'Preisnotizen und Zuordnungen sind unverändert');
-    assert.equal(after.sync.minRev, 7, 'neue Einkaufseinheiten schützen die Datei; alte Preisnotizen bleiben erhalten');
+    assert.equal(after.sync.minRev, 9, 'gemerkte manuelle Mengen schützen die Datei; alte Preisnotizen bleiben erhalten');
     await openSettings(page);
     assert.equal(await page.getByText('Bezahlte Preise').count(), 0);
     assert.match(await page.textContent('#alias-doubt-list'), /tom cherry → Cherrytomaten/, 'eine alte Zuordnung mit Sorte steht zur Prüfung da (Version 2.47)');
@@ -7895,7 +7895,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const before=await storedDemo(page);assert.equal(await page.isDisabled('#item-form .quantity-down'),true);
     await page.click('#item-form .quantity-up');assert.equal(await page.inputValue('#item-form [name=quantity]'),'2');assert.equal(await page.isDisabled('#item-form .quantity-down'),false);
     await page.click('#item-form .quantity-down');assert.equal(await page.inputValue('#item-form [name=quantity]'),'1');assert.equal(await page.isDisabled('#item-form .quantity-down'),true);assert.deepEqual((await storedDemo(page)).items,before.items);
-    await page.click('#item-form button[type=submit]');const row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch'&&!r.storeId);assert.equal(row.quantity,1);assert.equal(row.unit,'l');assert.equal(row.purchaseUnit.quantity,1);assert.equal((await storedDemo(page)).sync.minRev,7);assert.deepEqual(problems,[]);await ctx.close();
+    await page.click('#item-form button[type=submit]');const row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch'&&!r.storeId);assert.equal(row.quantity,1);assert.equal(row.unit,'l');assert.equal(row.purchaseUnit.quantity,1);assert.equal((await storedDemo(page)).sync.minRev,9);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('Einkaufsmengen: Vorschlag fokussiert keine Menge und Einheitenmenü öffnet ohne Tastatur',async()=>{
     const {ctx,page,problems}=await context();await open(page);await page.fill('#item-form [name=name]','mi');await page.locator('#item-suggestions').getByRole('button',{name:'Milch',exact:true}).click();
@@ -7939,7 +7939,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await seedLocal(ctx,milkRecipes());await open(page);
     await page.fill('#item-form [name=name]','Mandeln');await chooseUnit(page,'#item-form [name=unit]','g');await page.fill('#item-form [name=quantity]','600');await page.click('#item-form button[type=submit]');
     await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');await page.fill('#item-form [name=quantity]','800');await page.click('#item-form button[type=submit]');
-    let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');assert.match(await page.textContent('#items'),/1.400 g/);assert.equal((await storedDemo(page)).sync.minRev,8);
+    let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');assert.match(await page.textContent('#items'),/1.400 g/);assert.equal((await storedDemo(page)).sync.minRev,9);
     await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');
     await page.fill('#item-form [name=name]','');await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'1400');await page.click('#edit-item-form button[type=submit]');
     row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg','unverändertes Speichern erhält die Rechenmenge');
@@ -7976,6 +7976,52 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     offline=false;await b.ctx.setOffline(false);await pollNow(b.page);await synced(b.page);
     const row=api.content.items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,700);assert.equal(row.purchaseMeasure,'kg');await b.page.fill('#item-form [name=name]','Mandeln');assert.equal(await b.page.inputValue('#item-form [name=unit]'),'kg');
     assert.deepEqual(a.problems,[]);assert.deepEqual(b.problems.filter(text=>!/Failed to load resource|Failed to fetch/.test(text)),[]);await a.ctx.close();await b.ctx.close();
+  });
+  const eggRecipes=()=>{const d=milkRecipes();d.recipes[0].name='Eiergericht A';d.recipes[1].name='Eiergericht B';d.ingredients[0]={...d.ingredients[0],name:'Eier',quantity:2,unit:'Stück'};d.ingredients[1]={...d.ingredients[1],name:'Eier',quantity:5,unit:'Stück'};return d;};
+  test('Packungsgrößen: sieben Eier aus zwei Rezepten, persönliche Größe ändern und exakten Bedarf erhalten',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,eggRecipes());await open(page);await transferMilk(page,'Eiergericht A');await transferMilk(page,'Eiergericht B');await goTab(page,'shopping');
+    let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Eier');assert.equal(row.quantity,7);assert.match(await page.textContent('#items'),/7 Stück/);
+    await page.locator('#items .item-copy').click();await page.click('#edit-item-form .pack-size-link');await page.getByRole('button',{name:'Packung · 6 Eier',exact:true}).click();
+    assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'2');assert.match(await page.textContent('#edit-item-form .purchase-hint'),/Bedarf: 7 Eier.*Einkauf: 12 Eier/);await page.click('#edit-item-form button[type=submit]');assert.match(await page.textContent('#items'),/2 Packungen à 6 Eier/);
+    await page.locator('#items .item-copy').click();await page.click('#edit-item-form [name=unit]');await page.getByRole('button',{name:'Packung · 12 Eier',exact:true}).click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'1');await page.click('#edit-item-form button[type=submit]');
+    row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,7);assert.match(await page.textContent('#items'),/1 Packung à 12 Eier/);
+    await page.fill('#item-form [name=name]','Eier');assert.equal(await page.inputValue('#item-form [name=unit]'),'Packung');assert.equal(await page.inputValue('#item-form [name=quantity]'),'1');assert.match(await page.textContent('#item-form .purchase-hint'),/12 Eier/);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('Packungsgrößen: alte Packung ohne Inhalt fragt einmal, eigene Größe bleibt nach Neustart erhalten',async()=>{
+    const data=milkRecipes();data.sync.minRev=8;data.items=[{...demo.items[0],id:'old-eggs',name:'Eier',quantity:1,unit:'Packung',storeId:'',price:null,salePrice:null,onSale:false,purchaseUnit:null,purchaseMeasure:'Packung',purchaseAt:'2026-10-29T12:00:00.000Z'}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await page.locator('#items .item-copy').click();await page.click('#edit-item-form button[type=submit]');await page.waitForSelector('#purchase-unit-dialog[open]');assert.equal((await storedDemo(page)).items[0].unit,'Packung');
+    await page.getByRole('button',{name:'Andere Packungsgröße',exact:true}).click();await page.fill('#purchase-unit-dialog [name=size]','8,5');await page.click('#purchase-unit-dialog button[type=submit]');assert.match(await page.textContent('#purchase-unit-dialog .dialog-error'),/ganze Zahl/);
+    await page.fill('#purchase-unit-dialog [name=size]','8');await page.click('#purchase-unit-dialog button[type=submit]');await page.click('#edit-item-form button[type=submit]');
+    const row=(await storedDemo(page)).items[0];assert.equal(row.quantity,8);assert.equal(row.unit,'Stück');assert.equal(row.purchaseUnit.quantity,8);
+    await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Eier');assert.equal(await page.inputValue('#item-form [name=unit]'),'Packung');assert.match(await page.textContent('#item-form .purchase-hint'),/8 Eier/);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('Packungsgrößen: Bildauswahl fragt bei Wraps vor dem Hinzufügen und öffnet die Mengen automatisch',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,milkRecipes());await open(page);await page.click('#open-products');await page.fill('#product-picker-search','Wraps');await page.locator('.product-card[data-product=wraps] .product-pick').click();
+    await page.click('#product-picker-add');await page.waitForSelector('#purchase-unit-dialog[open]');assert.equal(await page.locator('#product-picker-cart').evaluate(n=>n.open),true);await page.getByRole('button',{name:'Packung · 6 Stück',exact:true}).click();await page.click('#product-picker-add');
+    const row=(await storedDemo(page)).items.find(r=>r.name==='Wraps'&&!r.deletedAt);assert.equal(row.quantity,6);assert.equal(row.unit,'Stück');assert.equal(row.purchaseUnit.quantity,6);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('Mengen merken: 450 g bleiben Vorgabe trotz Summe, Rezept, Neustart und späterer Mengen-/Einheitenänderung',async()=>{
+    const data=milkRecipes();data.ingredients[0]={...data.ingredients[0],name:'Hackfleisch gemischt',quantity:200,unit:'g'};
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await pickStore(page,'Edeka');await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'100');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');
+    await page.click('#item-form .quantity-up');assert.equal(await page.inputValue('#item-form [name=quantity]'),'150');await page.click('#item-form .quantity-down');assert.equal(await page.inputValue('#item-form [name=quantity]'),'100');await page.click('#item-form .quantity-down');assert.equal(await page.inputValue('#item-form [name=quantity]'),'90');
+    await page.fill('#item-form [name=quantity]','450');await page.click('#item-form button[type=submit]');await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'450');await page.click('#item-form button[type=submit]');
+    await transferMilk(page,'Milchgericht A');await goTab(page,'shopping');let row=(await storedDemo(page)).items.find(r=>r.name==='Hackfleisch gemischt'&&!r.deletedAt);assert.equal(row.quantity,1.1);assert.equal(row.unit,'kg');assert.equal(row.purchaseAmount.quantity,450);
+    await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'450');await page.fill('#item-form [name=name]','');
+    await page.locator('#items .item-copy').click();await page.fill('#edit-item-form [name=quantity]','700');await page.click('#edit-item-form button[type=submit]');await page.locator('#items .item-copy').click();await chooseUnit(page,'#edit-item-form [name=unit]','kg');await page.click('#edit-item-form button[type=submit]');
+    await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'0,7');assert.equal(await page.inputValue('#item-form [name=unit]'),'kg');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('Mengen merken: zweites Gerät und Offline-Einkauf erhalten die jüngere Einzelmenge',async()=>{
+    const api=github(milkRecipes());let offline=false;const a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    await a.ctx.route('https://api.github.com/**',api.handler);await b.ctx.route('https://api.github.com/**',route=>offline?route.abort('internetdisconnected'):api.handler(route));for(const d of [a,b]){await open(d.page);await synced(d.page);}
+    await a.page.fill('#item-form [name=name]','Hackfleisch gemischt');await a.page.fill('#item-form [name=quantity]','450');await a.page.click('#item-form button[type=submit]');await synced(a.page);await pollNow(b.page);await synced(b.page);
+    offline=true;await b.ctx.setOffline(true);await b.page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await b.page.inputValue('#item-form [name=quantity]'),'450');await b.page.click('#item-form button[type=submit]');
+    await a.page.fill('#item-form [name=name]','Hackfleisch gemischt');await a.page.fill('#item-form [name=quantity]','700');await a.page.click('#item-form button[type=submit]');await synced(a.page);offline=false;await b.ctx.setOffline(false);await pollNow(b.page);await synced(b.page);
+    const row=api.content.items.find(r=>r.name==='Hackfleisch gemischt'&&!r.deletedAt);assert.equal(row.quantity,1.6);assert.equal(row.purchaseAmount.quantity,700);await b.page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await b.page.inputValue('#item-form [name=quantity]'),'700');assert.deepEqual(a.problems,[]);assert.deepEqual(b.problems.filter(s=>!/Failed to load resource|Failed to fetch/.test(s)),[]);await a.ctx.close();await b.ctx.close();
+  });
+  for(const width of [280,314,360,390,430])for(const theme of ['light','dark'])test(`Mengenfelder Layout (${width} px ${theme}): Hinzufügen und Bearbeiten haben gleich breite Spalten`,async()=>{
+    const {ctx,page,problems}=await context({config:{theme},context:{viewport:{width,height:844},colorScheme:theme}});await seedLocal(ctx,milkRecipes());await open(page);await page.fill('#item-form [name=name]','Hackfleisch gemischt');await page.keyboard.press('Enter');
+    const equal=async form=>{const q=await page.locator(form+' .quantity-stepper').boundingBox(),u=await page.locator(form+' [name=unit]').boundingBox();assert.ok(Math.abs(q.width-u.width)<=1,JSON.stringify({width,q,u}));assert.ok(await horizontalOverflow(page)<=1);};
+    await equal('#item-form');await page.click('#item-form button[type=submit]');await page.locator('#items .item-copy').click();await equal('#edit-item-form');assert.deepEqual(problems,[]);await ctx.close();
   });
   test('Neuer Name und Backup', async () => {
     const { ctx, page } = await context({ seed: false });

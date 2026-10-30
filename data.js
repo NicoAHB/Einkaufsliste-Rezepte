@@ -1,5 +1,5 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
-import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice } from './buying.js';
+import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
@@ -68,6 +68,7 @@ export function validateRow(key, row) {
   if (key === 'items' && row.purchaseUnit !== undefined && row.purchaseUnit !== null && !validPurchaseUnit(row.purchaseUnit)) throw new Error('Ungültige Einkaufseinheit.');
   if (key === 'items' && row.purchaseMeasure !== undefined && (typeof row.purchaseMeasure !== 'string' || !row.purchaseMeasure.trim() || row.purchaseMeasure.length>30)) throw new Error('Ungültige gemerkte Maßeinheit.');
   if (key === 'items' && row.purchaseAt !== undefined && (typeof row.purchaseAt !== 'string' || !Number.isFinite(Date.parse(row.purchaseAt)))) throw new Error('Ungültige Einkaufseinheit-Zeit.');
+  if (key === 'items' && (row.purchaseAmount!==undefined||row.purchaseAmountAt!==undefined) && !hasAmountChoice(row)) throw new Error('Ungültige gemerkte Einkaufsmenge oder Zeit.');
   if (key === 'items' && row.price !== undefined && row.price !== null && !validQuote(row.price)) throw new Error('Ungültiger Artikelpreis.');
   if (key === 'items' && row.salePrice !== undefined && row.salePrice !== null && !validQuote(row.salePrice)) throw new Error('Ungültiger Angebotspreis.');
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
@@ -147,7 +148,8 @@ export function validateRow(key, row) {
 // Ältere Apps würden Rückerstattungen addieren und Ausgaben nach drei Jahren entfernen.
 // Revision 7 (2.72): Einkaufseinheiten mit Packungsinhalt und deren gemerkte Auswahl.
 // Revision 8 (2.73): manuell gewählte Maße bleiben getrennt von Rechen-/Rezeptmengen.
-export const SCHEMA_REV = 8;
+// Revision 9 (2.74): manuelle Einzelmengen getrennt von Summen/Rezepten merken.
+export const SCHEMA_REV = 9;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -156,7 +158,7 @@ export function validate(data) {
     throw new Error('Die Synchronisierungsdaten fehlen oder sind beschädigt. Bitte ein Backup prüfen.');
   }
   // Optional: aus dem Aufräumen gemerkte Namen (siehe compact.js).
-  if (data.names !== undefined && (!Array.isArray(data.names) || data.names.some(entry => !entry || typeof entry.name !== 'string' || !Number.isFinite(entry.count) || typeof entry.at !== 'string' || (entry.purchaseMeasure!==undefined&&(typeof entry.purchaseMeasure!=='string'||!entry.purchaseMeasure.trim()||entry.purchaseMeasure.length>30)) || (entry.purchaseUnit !== undefined && entry.purchaseUnit !== null && !validPurchaseUnit(entry.purchaseUnit))))) {
+  if (data.names !== undefined && (!Array.isArray(data.names) || data.names.some(entry => !entry || typeof entry.name !== 'string' || !Number.isFinite(entry.count) || typeof entry.at !== 'string' || ((entry.purchaseAmount!==undefined||entry.purchaseAmountAt!==undefined)&&!hasAmountChoice(entry)) || (entry.purchaseMeasure!==undefined&&(typeof entry.purchaseMeasure!=='string'||!entry.purchaseMeasure.trim()||entry.purchaseMeasure.length>30)) || (entry.purchaseUnit !== undefined && entry.purchaseUnit !== null && !validPurchaseUnit(entry.purchaseUnit))))) {
     throw new Error('Ungültige Namensliste. Die Datei wird nicht verändert.');
   }
   for (const key of collections) {
@@ -237,9 +239,14 @@ export function merge(data, operations) {
         row[field]=clone(value); row._clock[field]={at:op.at,id:op.id};
       }
     }
+    const protectedAmount=op.collection==='items'&&(hasAmountChoice(op.patch)||hasAmountChoice(row));
+    if(protectedAmount&&hasAmountChoice(op.patch)&&compareAmountChoice(op.patch,row)>=0){
+      for(const [field,value] of Object.entries(amountChoice(op.patch))){row[field]=clone(value);row._clock[field]={at:op.at,id:op.id};}
+    }
     for (const [field, value] of Object.entries(op.patch)) {
       if (['id', 'createdAt', 'updatedAt', '_clock', '_base', '_adds', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
       if (protectedChoice && ['purchaseUnit','purchaseMeasure','purchaseAt'].includes(field)) continue;
+      if(protectedAmount&&['purchaseAmount','purchaseAmountAt'].includes(field))continue;
       if (field === 'add') {
         if (op.collection === 'items' && value && Number.isFinite(value.quantity) && value.quantity > 0 && typeof value.unit === 'string') {
           row._base ||= { quantity: row.quantity, unit: row.unit };
@@ -280,6 +287,7 @@ export function merge(data, operations) {
   if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
   if (next.items.some(row => row.purchaseUnit !== undefined) || next.names?.some(row => row.purchaseUnit !== undefined)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 7);
   if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
+  if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
   return validate(next);
 }
 
@@ -396,11 +404,12 @@ export function frequentItems(history, items, limit = 6, minCount = 2) {
 // sonst geschätzt) wird vorgeschlagen, aber nie erfunden. Einen Preis bekommt ein neuer Artikel nie von selbst (auch nicht aus früheren Käufen).
 export function newItems(rows, storeId, actor, at, items = [], stableId = () => '') {
   const learned = learnCategories(items);
-  return rows.map(row => {
+  return rows.map(source => {
+    const row=withKnownPack(source,items);
     const category = rememberedCategory(learned, row.name) || (isCategory(row.category) ? row.category : null) || suggestCategory(row.name), id = stableId(row);
     const choice=preferredPurchase(row.name,items), preferred = row.purchaseUnit === undefined ? choice.purchaseUnit : row.purchaseUnit;
     const buying = row.purchaseUnit === null || (row.purchaseUnit===undefined && choice.remembered && choice.purchaseUnit===null) ? { purchaseUnit:null } : validPurchaseUnit(preferred) && unitSpec(preferred.unit).group === unitSpec(row.unit).group ? { purchaseUnit:clone(preferred) } : {};
-    const op = operation('items', id || uid(), { ...buying, ...unitChoice(row.purchaseMeasure!==undefined?row:choice), storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
+    const op = operation('items', id || uid(), { ...buying, ...unitChoice(row.purchaseMeasure!==undefined?row:choice), ...amountChoice(row), storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
       price: null, onSale: false, ...(category ? { category } : {}), ...(row.imageKey ? { imageKey: row.imageKey } : {}) }, actor, at);
     if (id) op.id = id;   // dieselbe Kennung für Anlage und Artikel: Legt ein zweites Gerät dieselbe Übernahme an, ist es dieselbe Änderung (siehe addToList)
     return op;
@@ -460,19 +469,19 @@ export function combineQuantity(left, right) {
 // `add`: was dazukommt, `after`: neue Gesamtmenge) und die Zahl der übersprungenen „nach Bedarf“-Zutaten (`skipped`).
 export function foldIntoList(rows, storeId, items = []) {
   const pool = active(items).filter(item => item.id && !item.checked && !hasWishDetails(item) && (item.storeId || '') === (storeId || ''))   // nur echte Artikel; konkrete Wünsche bleiben einzeln
-    .map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit: item.purchaseUnit, purchaseMeasure:item.purchaseMeasure, purchaseAt:item.purchaseAt, added: null }));
+    .map(item => ({ id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit: item.purchaseUnit, purchaseMeasure:item.purchaseMeasure, purchaseAt:item.purchaseAt, ...amountChoice(item), added: null }));
   const fresh = [], counted = new Map();
   let skipped = 0;
   for (const row of rows) {
     const match = [...pool, ...fresh.map(entry => entry.pool)].find(entry => sameProduct(entry.name, row.name) && purchaseCompatible(entry,row) && (row.noAmount || entry.placeholder || combineQuantity(entry, row)));
     if (!match) {
-      const entry = { ...row }; entry.pool = { name: row.name, quantity: row.quantity, unit: row.unit, purchaseUnit: row.purchaseUnit, purchaseMeasure:row.purchaseMeasure,purchaseAt:row.purchaseAt, placeholder: Boolean(row.noAmount), row: entry };
+      const entry = { ...row }; entry.pool = { name: row.name, quantity: row.quantity, unit: row.unit, purchaseUnit: row.purchaseUnit, purchaseMeasure:row.purchaseMeasure,purchaseAt:row.purchaseAt, ...amountChoice(row), placeholder: Boolean(row.noAmount), row: entry };
       fresh.push(entry); continue;
     }
     if (row.noAmount) { if (match.id) skipped++; continue; }
     if (match.placeholder) { match.quantity = row.quantity; match.unit = row.unit; match.placeholder = false; if (match.row) { match.row.quantity = row.quantity; match.row.unit = row.unit; delete match.row.noAmount; } continue; }
-    const preference=newerUnitChoice(row,match);
-    if(Object.keys(preference).length){Object.assign(match,preference);if(match.row)Object.assign(match.row,preference);else match.preference=preference;}
+    const preference={...newerUnitChoice(row,match),...newerAmountChoice(row,match)};
+    if(Object.keys(preference).length){Object.assign(match,preference);if(match.row)Object.assign(match.row,preference);else match.preference={...match.preference,...preference};}
     const sum = combineQuantity(match, row);
     match.quantity = sum.quantity; match.unit = sum.unit;
     if (match.row) { match.row.quantity = sum.quantity; match.row.unit = sum.unit; }
@@ -515,7 +524,7 @@ export function duplicateFolds(items, now = new Date().toISOString()) {
    Speichern wegen einer Schreibkollision (409). Das gilt gleich, ob die Zeile auf einem Gerät neu angelegt und auf dem anderen zu einem vorhandenen Artikel gezählt wird.
    Ohne `take` (von Hand eingetragen, Rezept auf die Liste) bleibt jede Änderung eigen und addiert sich, wie gewollt. */
 export function addToList(rows, storeId, actor, at, items = [], history = items, take = '') {
-  const { fresh, counted, skipped } = foldIntoList(rows, storeId, items);
+  const { fresh, counted, skipped } = foldIntoList(rows.map(row=>withKnownPack(row,history)), storeId, items);
   const stableId = row => take && row.key ? `take-${take}-${row.key}` : '';
   const created = newItems(fresh, storeId, actor, at, history, stableId);
   // Der Zuwachs wird als „add“ gespeichert, nicht als neue Gesamtmenge: So gehen gleichzeitige Zuwächse zweier Geräte nicht verloren (siehe merge).

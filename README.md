@@ -1,4 +1,4 @@
-# Sattplan – Version 2.73
+# Sattplan – Version 2.74
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
@@ -15,6 +15,26 @@ Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bediene
 - GitHub-Abgleich per Button und alle acht Sekunden bei sichtbarer App; lokale Offline-Warteschlange; Backup-Export; heller und dunkler Modus; Homescreen und Offline-Start nach dem ersten erfolgreichen Online-Aufruf.
 
 **Bewusst so gelassen:** Es gibt keinen Papierkorb und keinen Rückgängig-Knopf (Gelöschtes legt man neu an; alte Stände liegen im Verlauf des privaten Daten-Repositorys), und die Wiederherstellung aus einem Backup ist Handarbeit (Abschnitt 10). Beides wurde bei der Abschlussprüfung bedacht und von dir abgelehnt. Namen wie „Plan“ (Wochenplan, Reiter unten) und „Planen“ (Einkaufsliste) bleiben, wie sie sind.
+
+## Neu in Version 2.74: persönliche Mengen, Stückpackungen und gleich breite Felder
+
+**Zuletzt eingetragene Menge merken:** Ab dem nächsten manuellen Speichern merkt sich die App die Einzelmenge pro Produkt – z. B. **450 g Hackfleisch**. Zweimal 450 g ergibt 900 g auf der Liste; der nächste Vorschlag bleibt 450 g. Rezeptübernahmen, Summen, Abhaken und reines Ändern der Einheit verdrängen die Menge nicht. Eine bewusst geänderte und gespeicherte Menge ersetzt sie. Auch nach Neustart, Löschen, Aufräumen und dem GitHub-Abgleich auf dem zweiten Gerät. Das Namensgedächtnis hat jetzt Platz für bis zu 1500 Produkte; bewusste Vorgaben werden bevorzugt behalten. Alte Daten enthalten noch keine verlässliche Einzelmenge; daraus wird keine möglicherweise aufsummierte Rezeptmenge geraten.
+
+**Passender Start und Pfeile:** Hackfleisch, auch „Hackfleisch gemischt“, startet ohne eigenen Verlauf mit **100 g**. Bei üblichen freien g-/ml-Eingaben ebenfalls 100, bei Gewürzen in g mit 10. Bekannte Packungen bleiben bei einer Packung. Beispiel: **100 g hoch → 150 g**, **100 g runter → 90 g**, **450 g hoch → 500 g**. Unter 100 sind die Schritte 10, von 100 bis einschließlich 1000 beim Erhöhen 50 und oberhalb von 1000 dann 100. Beim Verringern bis 100 in 10er-Schritten; Übergänge landen zuerst auf 100 bzw. 1000. Für ml gilt das Gleiche, kg/l werden entsprechend umgerechnet. Mindestmenge ist 1 g/ml bzw. 0,001 kg/l; Stück und Packungen bleiben bei ganzen Einerschritten ab 1. Freie bewusste Zahleneingaben bleiben möglich.
+
+**Stückpackungen:** Bei Eiern **Packungsgröße wählen**: 4, 6, 10, 12, 15, 20 oder 30 Eier, oder eine eigene ganze Stückzahl. Die Auswahl wird pro Produkt gemerkt. **7 Eier Bedarf → 2 Packungen à 6 Eier** oder **1 Packung à 12 Eier**. Beim Wechseln bleibt der tatsächliche Bedarf 7; die Anzeige rundet erst dessen Summe auf. Im Bearbeiten-Fenster stehen Bedarf und Einkaufsinhalt zur Kontrolle. Solange keine Größe bekannt ist, bleiben Rezeptmengen in Stück. Eine alte einfache „Packung“ fragt beim Bearbeiten/erneuten manuellen Eintragen nach ihrem Inhalt, statt ihn zu erfinden.
+
+Auch für Wraps/Tortillas, Brötchen, Croissants, Würstchen, Fischstäbchen, Spülmaschinentabs, Kaffeekapseln, Schwämme, Spültücher und Teelichter gibt es auswählbare Beispielgrößen. Es sind **änderbare Vorschläge**, keine Herstellerdatenbank. Bei bekannter Größe lassen sich Rezeptangaben wie eine halbe Packung Wraps mit weiteren Stückangaben zusammenzählen. Ohne bekannte Zuordnung bleiben g/Stück und fremde Verpackungen getrennt.
+
+**Layout korrigiert:** Das Hinzufügen-Formular hatte noch ein altes Raster aus 5,5 rem, einer flexiblen Spalte und 52 px; „Einheit“ belegte dabei die beiden letzten Spalten. Jetzt erhalten **Menge und Einheit jeweils eine gleich große Spalte** mit `repeat(2, minmax(0, 1fr))`, wie beim Bearbeiten. Die Menge behält große Pfeiltasten; kein automatischer Mengenfokus und keine automatische Tastatur beim Einheitenmenü.
+
+JSON bleibt **version 1**. Neu sind die optionalen Felder **purchaseAmount: {quantity, unit}** und **purchaseAmountAt** am Artikel sowie im Namensgedächtnis. Sie halten den letzten manuellen Einzelbedarf getrennt von `quantity/unit` der Einkaufsliste. Die beiden Angaben werden zusammen nach dem tatsächlichen Auswahlzeitpunkt abgeglichen, unabhängig von älteren Offline-Vorgaben. Gemerkte kg/g bzw. l/ml werden passend zur gewählten Einheit umgerechnet; bei Packungen entsprechend zum bekannten Inhalt. Keine neue Datei oder Sammlung. Sobald diese Angaben verwendet werden, gilt **minRev 9**. **Beide Geräte brauchen Version 2.74**, Offline-Paket **einkauf-shell-v86**; bitte schließen und neu öffnen, keine Browserdaten löschen. Ältere Dateien bleiben gültig, die private Daten-ZIP muss nicht vorab geändert werden.
+
+- [ ] Hackfleisch gemischt eintippen: zuerst 100 g, Menge/Einheit gleich breit. Hoch → 150, Runter → 100 → 90.
+- [ ] 450 g speichern, erneut eintippen: wieder 450 g. Noch einmal speichern: Liste 900 g, nächster Vorschlag weiterhin 450 g. Neustart und zweites Gerät prüfen.
+- [ ] Vorhandenen Artikel auf 700 g ändern und speichern: nächster Vorschlag 700 g. Nur Einheit zu kg ändern: 0,7 kg. Abbrechen übernimmt keine Änderung.
+- [ ] Zwei Rezepte mit 2 + 5 Eiern übernehmen. 6er-Packung wählen: 2 Packungen, Bedarf 7 Eier. Auf 12er wechseln: 1 Packung, weiterhin Bedarf 7 Eier.
+- [ ] Eigene Eiergröße (z. B. 8) speichern; beim nächsten Eintragen angeboten. Wraps in der Bildauswahl ohne bekannte Größe hinzufügen: einmalige Auswahl, danach gemerkt.
 
 ## Neu in Version 2.73: zuletzt gewählte Maßeinheit zuverlässig merken
 
@@ -1237,7 +1257,7 @@ Bisher löschte die App nie wirklich, sondern markierte nur („Löschmarkierung
 - **Automatisch:** Sobald die gemeinsame Datei 250 KB überschreitet, räumt die App beim nächsten Abgleich selbst auf. Bei normaler Nutzung (rund 20 Artikel pro Woche) pendelt sich die Datei bei etwa 150 KB ein, dauerhaft und ohne dass jemand daran denken muss.
 - **Von Hand:** Einstellungen → **Datenumfang** zeigt den Füllstand („9 KB von 879 KB belegt“), was aufräumbar wäre, und den Knopf **Jetzt aufräumen**.
 - **Was entfernt wird:** gelöschte Einträge nach **14 Tagen**; erledigte, aber nie entfernte Artikel nach **21 Tagen**; vergangene Gerichte im Wochenplan nach 120 Tagen; alte Preisnotizen (je Geschäft, Produkt und Einheit bleiben die zwei neuesten); die Zeitstempel je Feld bei Einträgen, die seit 14 Tagen unverändert sind; ältere Einträge der Liste bereits übertragener Änderungen (es bleiben die letzten 600). Alles, was nicht gelöscht ist, bleibt: offene Artikel, Rezepte, Zutaten, Geschäfte und der Vorrat.
-- **Vorschläge und gelernte Kategorien bleiben:** Aus entfernten Artikeln merkt sich die App Name, Kategorie und Häufigkeit (höchstens 300 Namen, Feld `names`). Wer „Kochschinken“ einmal in „Fleisch & Fisch“ eingeordnet hat, behält das auch nach dem Aufräumen.
+- **Vorschläge und gelernte Kategorien bleiben:** Aus entfernten Artikeln merkt sich die App Name, Kategorie und Häufigkeit (ab Version 2.74 höchstens 1500 Namen, Feld `names`). Wer „Kochschinken“ einmal in „Fleisch & Fisch“ eingeordnet hat, behält das auch nach dem Aufräumen.
 - **Sicher für zwei Geräte:** Aufgeräumt wird auf dem gerade gelesenen gemeinsamen Stand und mit derselben Prüfung geschrieben wie jede andere Änderung. Ändert das andere Gerät gleichzeitig, wird neu gelesen und neu aufgeräumt. Nichts wird einseitig auf einem Gerät gelöscht.
 - **Grenze für Offline-Geräte:** Ein Gerät, das **länger als 14 Tage** offline war, kann Änderungen an Einträgen enthalten, die inzwischen aufgeräumt wurden. Diese Änderungen werden beim Abgleich verworfen (statt halbe Einträge anzulegen). Neu angelegte Einträge sind nicht betroffen.
 - **Das Backup liegt in Git:** Alles, was aufgeräumt wird, steht weiter im Verlauf (Commits) des privaten Daten-Repositorys auf GitHub und lässt sich dort wiederherstellen. Die Datei selbst wird ohne Einrückung geschrieben (etwa halb so groß wie vorher).

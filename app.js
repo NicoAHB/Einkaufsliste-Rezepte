@@ -20,7 +20,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
-import { shoppingAmount, purchaseView, newerUnitChoice } from './buying.js';
+import { shoppingAmount, purchaseView, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
@@ -81,7 +81,7 @@ function itemHistory() {
   if (historyMemo.for !== state) {
     const rename = new Map(appliedAliases().map(alias => [alias.from, alias.name]));
     const named = row => { const to = rename.get(aliasKey(row.name)); return to ? { ...row, name: to } : row; };
-    historyMemo = { for: state, rows: [...listItems(), ...(state.names || []).map(entry => named({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count, purchaseUnit: entry.purchaseUnit, purchaseAt: entry.purchaseAt, purchaseMeasure:entry.purchaseMeasure }))] };
+    historyMemo = { for: state, rows: [...listItems(), ...(state.names || []).map(entry => named({ name: entry.name, category: entry.category, unit: entry.unit, updatedAt: entry.at, createdAt: entry.at, weight: entry.count, purchaseUnit: entry.purchaseUnit, purchaseAt: entry.purchaseAt, purchaseMeasure:entry.purchaseMeasure,...amountChoice(entry) }))] };
   }
   return historyMemo.rows;
 }
@@ -529,7 +529,7 @@ function renderItemSuggestions(event) {
     box.append(choices);
   }
 }
-// Schnellwahl: häufig gekaufte Artikel, die gerade nicht auf der Liste stehen. Ein Tipp legt einen Artikel (Menge 1) im gewählten Geschäft an.
+// Schnellwahl: häufig gekaufte Artikel, die gerade nicht auf der Liste stehen. Ein Tipp legt einen Artikel mit der gemerkten Einzelmenge im gewählten Geschäft an.
 function renderQuickPick() {
   const box = $('#quick-pick'), form = $('#item-form');
   const picks = form.elements.name.value.trim() ? [] : frequentItems(itemHistory(), state.items, 6);
@@ -2835,10 +2835,10 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const item = { storeId: currentStore(form.elements.storeId.value), name, ...itemQuantity.read(), checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
   if (!item.saleUntil) delete item.saleUntil;
   // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
-  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit:item.unit, purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt }], item.storeId, state.items).counted[0];
+  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit:item.unit, purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt,...amountChoice(item) }], item.storeId, state.items).counted[0];
   const renamed = name !== typed ? `„${typed}“ → „${name}“` : '';
   if (same) {
-    const current=state.items.find(row=>row.id===same.id),preference=newerUnitChoice(item,current);
+    const current=state.items.find(row=>row.id===same.id),preference={...newerUnitChoice(item,current),...newerAmountChoice(item,current)};
     commit([nextOp('items', same.id, { add: same.add, ...preference })], `${renamed ? `${renamed}: ` : ''}„${same.name}“: jetzt ${shoppingAmount({ ...current, ...same.after, ...preference, name:same.name })}`);
   } else {
     const id = uid(), ops = [nextOp('items', id, item)];
@@ -2987,6 +2987,8 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
     category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value), ...readPricing(form) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
+  if(editQuantity.preferenceChanged())Object.assign(delta,unitChoice(patch));
+  if(patch.purchaseAmount!==undefined)Object.assign(delta,amountChoice(patch));
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
   commit(ops); $('#item-dialog').close();
 }); });

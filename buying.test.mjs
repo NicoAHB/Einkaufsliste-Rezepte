@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {emptyData,merge,addToList,operation,duplicateFolds,validate,SCHEMA_REV} from '../data.js';
-import {defaultPurchaseUnit,preferredPurchase,purchaseView,shoppingAmount,purchaseCompatible} from '../buying.js';
+import {defaultPurchaseUnit,preferredPurchase,purchaseView,shoppingAmount,purchaseCompatible,packOptions,needsPackSize,withKnownPack,startQuantity,preferredQuantity,minimumQuantity,stepQuantity} from '../buying.js';
 import {compact} from '../compact.js';
 const time=n=>`2026-10-30T12:00:${String(n).padStart(2,'0')}.000Z`;
 const add=(data,q,unit='ml',at=1,store='s')=>merge(data,addToList([{name:'Milch',quantity:q,unit}],store,'Nico',time(at),data.items).ops);
@@ -66,4 +66,88 @@ test('Einheiten merken: exakt gleichzeitige Wahlen bleiben konsistent und die An
   const x=milk(merge(merge(shared,[a]),[b])),y=milk(merge(merge(shared,[b]),[a]));
   assert.deepEqual([x.purchaseMeasure,x.purchaseUnit,x.purchaseAt],[y.purchaseMeasure,y.purchaseUnit,y.purchaseAt]);
   assert.ok((x.purchaseMeasure==='ml'&&x.purchaseUnit?.quantity===750)||(x.purchaseMeasure==='l'&&x.purchaseUnit===null));
+});
+test('Stückpackungen: Eiergrößen sind ausdrückliche Auswahl, ohne Vorgabe wird nichts geraten',()=>{
+  assert.deepEqual(packOptions('Eier').map(p=>p.quantity),[4,6,10,12,15,20,30]);assert.deepEqual(packOptions('Ei'),packOptions('Eier'));assert.equal(defaultPurchaseUnit('Eier'),null);
+  assert.equal(shoppingAmount({name:'Eier',quantity:7,unit:'Stück'}),'7 Stück');assert.equal(needsPackSize('Eier','Packung'),true);assert.equal(needsPackSize('Eier','Stück'),false);
+  for(const name of ['Eierlikör','Eiernudeln','Tortilla-Chips','Spülmittel','Apfeltasche'])assert.equal(packOptions(name).length,0,name);
+});
+test('Stückpackungen: sieben Eier ergeben passend zur persönlichen Größe ganze Packungen',()=>{
+  for(const [quantity,count] of [[4,2],[6,2],[10,1],[12,1],[20,1]]){
+    const row={name:'Eier',quantity:7,unit:'Stück',purchaseUnit:{label:'Packung',quantity,unit:'Stück'}};
+    assert.equal(purchaseView(row).quantity,count);assert.equal(row.quantity,7);assert.equal(shoppingAmount(row),`${count} ${count===1?'Packung':'Packungen'} à ${quantity} Eier`);
+  }
+});
+test('Stückpackungen: mehrere Rezepte summieren erst den Bedarf und nutzen die gemerkte Größe',()=>{
+  const pref={name:'Eier',unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'},purchaseMeasure:'Stück',purchaseAt:time(1)};
+  let d=merge(emptyData(),addToList([{name:'Ei',quantity:2,unit:'Stück'}],'s','Nico',time(2),[],[pref]).ops);
+  d=merge(d,addToList([{name:'Eier',quantity:5,unit:'Stück'}],'s','Anna',time(3),d.items,[...d.items,pref]).ops);
+  assert.equal(d.items.length,1);assert.equal(d.items[0].quantity,7);assert.equal(purchaseView(d.items[0]).quantity,2);assert.equal(d.items[0].purchaseAt,time(1));
+});
+test('Stückpackungen: halbe Rezeptpackung und Stückangabe werden bei bekannter Größe zusammengezählt',()=>{
+  const pref={name:'Wraps',unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'},purchaseMeasure:'Stück',purchaseAt:time(1)};
+  let d=merge(emptyData(),addToList([{name:'Wraps',quantity:.5,unit:'Packung'}],'s','Nico',time(2),[],[pref]).ops);
+  d=merge(d,addToList([{name:'Wraps',quantity:4,unit:'Stück'}],'s','Anna',time(3),d.items,[pref]).ops);
+  assert.equal(d.items.length,1);assert.equal(d.items[0].quantity,7);assert.equal(shoppingAmount(d.items[0]),'2 Packungen à 6 Stück');
+});
+test('Stückpackungen: unbekannte Packung und Gewicht werden nicht in Eier oder Stück umgedeutet',()=>{
+  const pref={name:'Würstchen',unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'},purchaseMeasure:'Stück',purchaseAt:time(1)};
+  for(const row of [{name:'Würstchen',quantity:300,unit:'g'},{name:'Eier',quantity:1,unit:'Packung'},{name:'Würstchen',quantity:1,unit:'Glas'}])assert.deepEqual(withKnownPack(row,[pref]),row);
+  const rows=[{name:'Würstchen',quantity:300,unit:'g'},{name:'Würstchen',quantity:2,unit:'Stück'}],out=merge(emptyData(),addToList(rows,'s','Nico',time(2),[],[pref]).ops);
+  assert.equal(out.items.length,2);assert.ok(out.items.some(r=>r.unit==='g'&&r.quantity===300));assert.ok(out.items.some(r=>r.unit==='Stück'&&r.quantity===2));
+});
+test('Stückpackungen: weitere Koch- und Haushaltsprodukte haben geeignete Größen, eigene Größen bleiben möglich',()=>{
+  for(const name of ['Wraps','Burgerbrötchen','Aufbackbrötchen','Würstchen','Fischstäbchen','Spülmaschinentabs','Kaffeekapseln','Teelichter'])assert.ok(packOptions(name).length>=4,name);
+  assert.equal(shoppingAmount({name:'Eier',quantity:7,unit:'Stück',purchaseUnit:{label:'Karton',quantity:8,unit:'Stück'}}),'1 Karton à 8 Eier');
+  assert.equal(shoppingAmount({name:'Spülmaschinentabs',quantity:61,unit:'Stück',purchaseUnit:{label:'Packung',quantity:30,unit:'Stück'}}),'3 Packungen à 30 Tabs');
+});
+test('Stückpackungen: gleichzeitige Rezeptübernahmen addieren exakt und runden gemeinsam',()=>{
+  const pref={name:'Eier',unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'},purchaseMeasure:'Stück',purchaseAt:time(1)};
+  const shared=merge(emptyData(),addToList([{name:'Eier',quantity:1,unit:'Stück'}],'s','Nico',time(2),[],[pref]).ops);
+  const a=addToList([{name:'Eier',quantity:3,unit:'Stück'}],'s','Nico',time(3),shared.items).ops,b=addToList([{name:'Eier',quantity:3,unit:'Stück'}],'s','Anna',time(4),shared.items).ops;
+  for(const ops of [[...a,...b],[...b,...a],[...a,...b,...a]]){const out=merge(shared,ops);assert.equal(out.items[0].quantity,7);assert.equal(purchaseView(out.items[0]).quantity,2);}
+});
+test('Mengenpfeile: Gramm und Milliliter haben präzise kleine und größere große Schritte',()=>{
+  for(const unit of ['g','ml'])for(const [quantity,direction,expected] of [[100,1,150],[100,-1,90],[90,1,100],[150,-1,100],[450,1,500],[450,-1,400],[1000,1,1050],[1050,1,1150],[1050,-1,1000],[1,-1,1]])assert.equal(stepQuantity(quantity,unit,direction),expected,`${quantity} ${unit}, ${direction}`);
+});
+test('Mengenpfeile: passende Startwerte, Kilogramm/Liter umgerechnet und Packungen bleiben ganz',()=>{
+  assert.equal(preferredPurchase('Hackfleisch gemischt').unit,'g');assert.equal(startQuantity('Hackfleisch gemischt','g'),100);assert.equal(startQuantity('Pfeffer','g'),10);assert.equal(startQuantity('Wasser','ml'),100);
+  assert.equal(startQuantity('Hackfleisch gemischt','kg'),.1);assert.equal(stepQuantity(.45,'kg',1),.5);assert.equal(stepQuantity(1,'l',-1),.95);assert.equal(minimumQuantity('kg'),.001);
+  const p={label:'Packung',quantity:6,unit:'Stück'};assert.equal(startQuantity('Eier','Packung',p),1);assert.equal(stepQuantity(2,'Packung',1,p),3);assert.equal(stepQuantity(1,'Packung',-1,p),1);assert.equal(stepQuantity(3,'Stück',-1),2);
+});
+const amountRow=(quantity=450,at=1)=>({name:'Hackfleisch gemischt',quantity,unit:'g',purchaseUnit:null,purchaseMeasure:'g',purchaseAt:time(1),purchaseAmount:{quantity,unit:'g'},purchaseAmountAt:time(at)});
+test('Menge merken: zweimal 450 g ergibt 900 g auf der Liste, Vorgabe bleibt 450 g',()=>{
+  let d=merge(emptyData(),addToList([amountRow()],'s','Nico',time(1)).ops);
+  d=merge(d,addToList([amountRow(450,2)],'s','Nico',time(2),d.items).ops);assert.equal(d.items[0].quantity,900);assert.equal(preferredQuantity('Hackfleisch gemischt',d.items,'g',null,100),450);assert.equal(d.sync.minRev,9);
+  d=merge(d,addToList([{name:'Hackfleisch gemischt',quantity:100,unit:'g'}],'s','Anna',time(3),d.items).ops);assert.equal(d.items[0].quantity,1);assert.equal(d.items[0].unit,'kg');assert.equal(preferredQuantity('Hackfleisch gemischt',d.items,'g',null,100),450);
+});
+test('Menge merken: bewusste Mengenänderung ersetzt die Vorgabe, reine Einheitenwahl ändert sie nicht',()=>{
+  let d=merge(emptyData(),addToList([amountRow()],'s','Nico',time(1)).ops),id=d.items[0].id;
+  d=merge(d,[operation('items',id,{purchaseUnit:null,purchaseMeasure:'kg',purchaseAt:time(2)},'Nico',time(2))]);assert.equal(preferredQuantity('Hackfleisch gemischt',d.items,'kg',null,1),.45);
+  d=merge(d,[operation('items',id,{quantity:700,unit:'g',purchaseAmount:{quantity:700,unit:'g'},purchaseAmountAt:time(3)},'Nico',time(3))]);assert.equal(preferredQuantity('Hackfleisch gemischt',d.items,'g',null,100),700);
+});
+test('Menge merken: Neustart/Backup und Aufräumen erhalten die Einzelmenge unabhängig von der Summe',()=>{
+  let d=merge(emptyData(),addToList([amountRow()],'s','Nico',time(1)).ops);d=merge(d,addToList([amountRow(450,2)],'s','Nico',time(2),d.items).ops);
+  d=merge(d,[operation('items',d.items[0].id,{checked:true,deletedAt:time(3)},'Nico',time(3))]);const out=compact(d,new Date('2026-12-30T12:00:00Z')).data;
+  assert.equal(out.items.length,0);assert.equal(preferredQuantity('Hackfleisch gemischt',JSON.parse(JSON.stringify(out)).names,'g',null,100),450);assert.equal(out.sync.minRev,9);assert.doesNotThrow(()=>validate(out));
+});
+test('Menge merken: ältere Offline-Vorgabe überschreibt jüngere Menge in keiner Empfangsfolge',()=>{
+  const shared=merge(emptyData(),addToList([amountRow()],'s','Nico',time(1)).ops),id=shared.items[0].id;
+  const newer=operation('items',id,{purchaseAmount:{quantity:700,unit:'g'},purchaseAmountAt:time(2)},'Nico',time(2));
+  const late=addToList([amountRow(450,1)],'s','Anna',time(3),shared.items).ops;
+  for(const out of [merge(merge(shared,[newer]),late),merge(merge(shared,late),[newer]),merge(shared,[...late,newer])]){assert.equal(out.items[0].quantity,900);assert.equal(preferredQuantity('Hackfleisch gemischt',out.items,'g',null,100),700);}
+});
+test('Menge merken: Packungsanzahl nutzt den gemerkten Inhalt und fremde Maße bleiben unvermischt',()=>{
+  const history=[{name:'Eier',purchaseAmount:{quantity:12,unit:'Stück'},purchaseAmountAt:time(1)}];
+  assert.equal(preferredQuantity('Eier',history,'Packung',{label:'Packung',quantity:6,unit:'Stück'},1),2);assert.equal(preferredQuantity('Eier',history,'Packung',{label:'Packung',quantity:12,unit:'Stück'},1),1);
+  assert.equal(preferredQuantity('Eier',history,'g',null,100),100);assert.equal(preferredQuantity('Eierlikör',history,'Stück',null,1),1);
+});
+test('Menge merken: ungültige gespeicherte Mengen werden beim Import abgelehnt, alte Dateien bleiben gültig',()=>{
+  assert.doesNotThrow(()=>validate(emptyData()));const base=merge(emptyData(),addToList([amountRow()],'s','Nico',time(1)).ops);
+  for(const purchaseAmount of [{quantity:0,unit:'g'},{quantity:-2,unit:'g'},{quantity:450,unit:''},{quantity:Infinity,unit:'g'},'450 g']){const d=structuredClone(base);d.items[0].purchaseAmount=purchaseAmount;assert.throws(()=>validate(d),/Einkaufsmenge/);}
+});
+test('Menge merken: auch mehr als 300 verschiedene eigene Produkte behalten ihre Vorgaben nach dem Aufräumen',()=>{
+  const rows=Array.from({length:400},(_,i)=>({...amountRow(i+1),name:`Eigener Artikel ${i}`}));let d=merge(emptyData(),addToList(rows,'s','Nico',time(1)).ops);
+  d=merge(d,d.items.map(row=>operation('items',row.id,{checked:true,deletedAt:time(2)},'Nico',time(2))));const out=compact(d,new Date('2026-12-30T12:00:00Z')).data;
+  assert.equal(out.names.length,400);assert.equal(preferredQuantity('Eigener Artikel 399',out.names,'g',null,100),400);assert.equal(out.sync.minRev,9);
 });

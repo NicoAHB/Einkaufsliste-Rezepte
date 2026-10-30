@@ -1,7 +1,7 @@
 /* Produktauswahl als eigenes Fenster. Keine Händler-/Bilddienste: Fotos und Katalog liegen in der App.
    Änderungen gehen ausschließlich über die vorhandenen Speicher-Callbacks der App. */
 import { mountQuantityControls } from './quantity-controls.js';
-import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice } from './buying.js';
+import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice, preferredQuantity } from './buying.js';
 import { CATEGORIES } from './categories.js';
 import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic } from './product-catalog.js';
 import { PRODUCT_GROUP_IMAGES, groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
@@ -63,7 +63,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       if (target === 'list') row.append(label, qtyLabel, unitLabel, remove);
       else { row.classList.add('product-cart-simple'); row.append(label, remove); }
       box.append(row);
-      if(target==='list'){const controls=mountQuantityControls({elements:{quantity:qty,unit}},{getHistory:()=>getData().history||[],getName:()=>product.name});controls.load(product);cartControls.set(product.id,controls);
+      if(target==='list'){const controls=mountQuantityControls({elements:{quantity:qty,unit}},{getHistory:()=>getData().history||[],getName:()=>product.name,rememberOnSave:true});controls.load(product);cartControls.set(product.id,controls);
         const update=()=>{try{Object.assign(product,controls.read());}catch{product.quantity=qty.value;}clearError();updateAmount(product);};
         qty.addEventListener('input',update);qty.addEventListener('change',update);unit.addEventListener('change',update);
       }
@@ -74,7 +74,12 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const label = grid.querySelector(`.product-card[data-product="${CSS.escape(product.id)}"] .product-amount`);
     if (label) label.textContent = shoppingAmount(product);
   }
-  const purchaseStart = product => { const p=preferredPurchase(product.name,getData().history||[]); if(p.purchaseUnit)return {...product,...rawPurchase(1,p.purchaseUnit,p.unit),...unitChoice(p)};if(p.remembered){const a=unitSpec(product.unit),b=unitSpec(p.unit);return {...product,purchaseUnit:null,...unitChoice(p),unit:p.unit,quantity:a.group===b.group?product.quantity*a.factor/b.factor:product.quantity};}return product; };
+  const purchaseStart = product => {
+    const history=getData().history||[],p=preferredPurchase(product.name,history);
+    if(p.purchaseUnit)return {...product,...rawPurchase(preferredQuantity(product.name,history,p.unit,p.purchaseUnit,1),p.purchaseUnit,p.unit),...unitChoice(p)};
+    const a=unitSpec(product.unit),b=unitSpec(p.unit),unit=p.remembered?p.unit:product.unit,fallback=p.remembered&&a.group===b.group?product.quantity*a.factor/b.factor:product.quantity;
+    return {...product,...(p.remembered?{purchaseUnit:null,...unitChoice(p)}:{}),unit,quantity:preferredQuantity(product.name,history,unit,null,fallback)};
+  };
   function renderProducts() {
     $('product-picker-title').textContent = target === 'pantry' ? mode === 'basics' ? 'Grundvorrat auswählen' : 'Vorrat auswählen' : target === 'image' ? 'Produktbild auswählen' : 'Produkte auswählen';
     const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
