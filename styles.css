@@ -514,7 +514,18 @@ main {
 .app-identity .app-name { margin:0; color:var(--text); font-size:1.3rem; line-height:1.3; font-weight:800 }
 .app-identity #settings-title { margin:2px 0 0; color:var(--muted); font-size:.85rem; font-weight:500 }
 .product-picker-hint { margin:0 0 12px }
-.list-shortcuts { display:flex; flex-wrap:wrap; align-items:center; gap:8px }
+.list-shortcuts { display:flex; flex-wrap:wrap; align-items:center; gap:6px }
+.list-shortcuts #open-products { flex:1; min-width:0 }
+.list-shortcuts .chip-button { padding-inline:10px }
+.list-shortcuts .shop-tools { margin-left:auto }
+.list-shortcuts .shop-tools a.button { min-height:44px }
+.add-form.compact :is(#product-favorite-count,#pantry-shortcut-count) { display:none }
+.add-form:not(.compact) .list-shortcuts #open-products { flex:1 0 auto; min-width:max-content }
+@media(max-width:340px) {
+  .list-shortcuts #open-products>.icon { display:none }
+  .list-shortcuts #open-products { min-width:78px; padding-inline:8px; font-size:.85rem }
+  .list-shortcuts .chip-button { padding-inline:7px; gap:4px; font-size:.85rem }
+}
 .list-shortcuts button { display:inline-flex; align-items:center; gap:6px; min-height:44px }
 .add-form.compact .template-open { display:none }
 #pantry-shortcut-count:not(:empty) { min-width:20px; padding:2px 5px; border-radius:99px; background:var(--accent-soft); color:var(--accent) }
@@ -522,7 +533,7 @@ main {
 .product-cart-row.product-cart-simple { grid-template-columns:minmax(0,1fr) 44px }
 #product-picker-dialog[data-target=image] .product-pick { padding-top:8px }
 #product-picker-dialog[data-target=image] .product-photo { margin-top:0 }
-#product-picker-dialog[data-target=pantry] .product-pick:disabled { opacity:.6; cursor:default }
+#product-picker-dialog[data-target=pantry] .product-pick:is(:disabled,[aria-disabled=true]) { opacity:.6; cursor:default }
 .product-modes {
   display:flex;
   gap:6px;
@@ -754,16 +765,6 @@ details[open]>summary::after {
   -webkit-appearance:auto;
   appearance:auto
 }
-.summary {
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  align-items:center;
-  gap:8px;
-  margin:0 0 10px;
-  padding:6px 6px 6px 14px;
-  border-radius:16px;
-  background:var(--accent-soft)
-}
 .shop-tools {
   display:flex;
   gap:6px;
@@ -773,22 +774,7 @@ details[open]>summary::after {
   min-height:44px;
   padding:0 12px
 }
-.total-card {
-  display:grid;
-  gap:0;
-  min-width:0
-}
-.total-card strong {
-  font-size:1.05rem;
-  line-height:1.3;
-  font-variant-numeric:tabular-nums
-}
-.total-card small {
-  font-size:.78rem;
-  line-height:1.3;
-  color:var(--muted)
-}
-/* Auf dem Handy nur Symbole: Mit Beschriftung bliebe neben „Geschätzt 6,76 €“ kein Platz. */
+/* Angebotsseite als platzsparendes Symbol neben Produkte und Vorrat. */
 @media(max-width:479px) {
   .shop-tools .label {
     display:none
@@ -1849,11 +1835,12 @@ body.in-store main {
   padding-top:10px
 }
 /* Im Laden gibt es unten keine Leiste (Einkauf, Rezepte, Plan, Ausgaben, Einstellungen): zurück geht es mit „Planen“ oben. Alles, was sich an der Leiste ausrichtet
-   (Sperre, Meldungen, Platz unter der Liste), richtet sich an `--tabs-h` aus und rutscht dadurch an den unteren Rand. */
-body.in-store {
+   (Sperre, Meldungen, Platz unter der Liste), richtet sich an `--tabs-h` aus und rutscht dadurch an den unteren Rand.
+   Auch der Vorrat hat keine untere Leiste; sein Rückweg ist „Zur Liste“ oben. */
+body.in-store,body.in-pantry {
   --tabs-h:0px
 }
-body.in-store .tabs {
+body.in-store .tabs,body.in-pantry .tabs {
   display:none
 }
 .shop-list {
@@ -2005,9 +1992,7 @@ body.in-store .tabs {
   display:flex;
   flex-direction:column
 }
-#settings[data-connected=yes]>#pantry-card {
-  order:1
-}
+
 #settings[data-connected=yes]>.display-card {
   order:2
 }
@@ -3317,21 +3302,6 @@ details,summary,.card {
 .spend-share .budget-fill.over {
   background:var(--danger)
 }
-.spend-dot {
-  display:inline-block;
-  width:8px;
-  height:8px;
-  margin-right:6px;
-  border-radius:50%;
-  vertical-align:middle
-}
-.spend-dot.ok {
-  background:var(--ok)
-}
-.spend-dot.over {
-  background:var(--danger)
-}
-
 /* Regler (Transparenz in den Einstellungen): die globale Eingabe-Gestaltung gilt für Textfelder, hier eigener Aufbau */
 input[type=range] {
   min-height:40px;
@@ -4383,3 +4353,47 @@ body.selecting .item .item-copy {
 .day.past .meal .check:disabled {
   cursor:default
 }
+
+/* Lange Produktberührung scrollt weiter, wählt aber keinen Text und kein Bild aus. */
+#product-picker-dialog[data-target=pantry] .product-card,
+#product-picker-dialog[data-target=pantry] .product-card * {
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+#product-picker-dialog[data-target=pantry] .product-pick { touch-action:pan-y }
+#pantry-basics { min-height:44px }
+
+.daily-review-choices { margin-top:14px }
+.daily-review-choices button { white-space:normal; min-height:48px; width:100% }
+.daily-review-arrows { display:flex; gap:10px; margin:14px 0 6px }
+.daily-review-arrows button { flex:1; min-height:44px }
+#daily-review-nav>.text-button { width:100% }
+
+#daily-review-nav { position:sticky; top:0; z-index:2; padding:4px 10px; margin-bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:14px }
+
+/* Gleiche Bild-/Textpositionen in allen Vorratszeilen, unabhängig vom Namen. */
+.pantry-entry-main { display:grid; grid-template-columns:minmax(0,1fr); justify-content:start; min-height:56px }
+.pantry-entry-main.has-photo { grid-template-columns:44px minmax(0,1fr); column-gap:8px }
+.pantry-entry-main>.pantry-photo { width:44px; height:44px }
+.pantry-entry-text { width:100%; overflow:hidden }
+.pantry-name { display:block; white-space:nowrap; overflow:visible; overflow-wrap:normal }
+.pantry-name.pantry-name-wrap { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow-wrap:anywhere; overflow:hidden }
+.pantry-state { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+@media(max-width:340px) {
+  .pantry-entry-main.has-photo { grid-template-columns:36px minmax(0,1fr); column-gap:6px }
+  .pantry-entry-main>.pantry-photo { width:36px; height:36px }
+}
+.move-delete-section { margin-top:8px }
+.move-delete-rule { border:0; height:1px; margin:18px 0; background:linear-gradient(90deg,transparent,var(--line-strong) 12%,var(--line-strong) 88%,transparent) }
+.move-delete { width:100%; min-height:52px; justify-content:flex-start; gap:12px; padding:10px 18px }
+
+/* Vorrat als eigene, flache Einkaufsansicht. */
+.pantry-head { align-items:center; margin:4px 0 14px }
+.pantry-head h2 { margin:0 0 2px }
+.pantry-head .hint { display:block; margin:0 }
+.pantry-head button { flex:none; min-height:44px }
+#pantry-card>.hint { margin:0; font-size:.88rem }
+#pantry-card { scroll-margin-top:12px }
+
+.name-correction { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; color:var(--muted) }
+.name-correction .hint { margin:0; overflow-wrap:anywhere; flex:1; min-width:100px }
+.name-correction button { min-height:44px; white-space:normal }

@@ -2,6 +2,7 @@
    Jede Bildtafel enthält 8 × 4 Motive, zeilenweise von links nach rechts.
    Favoriten sind gemeinsame Daten; Auswahl und Suchfilter bleiben ein lokaler Entwurf. */
 import { CATEGORIES, isCategory, suggestCategory } from './categories.js';
+import { matchProductName } from './product-names.js';
 import { productKey } from './prices.js';
 
 import { PRODUCT_ROWS, PRODUCT_SHEETS } from './product-catalog-data.js';
@@ -56,11 +57,16 @@ export function productLibrary(history = [], favorites = [], pantry = []) {
 }
 export function filterProducts(products, { mode = 'all', query = '', category = '' } = {}) {
   const words = searchProductText(query).split(/\s+/).filter(Boolean);
-  return products.filter(product => (!category || product.category === category) &&
-    (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : words.length || !product.own) &&
-    words.every(word => searchProductText(product.name).includes(word)))
-    .sort((a, b) => (mode === 'frequent' ? b.count - a.count : 0) ||
-      CATEGORIES.findIndex(group => group.id === a.category) - CATEGORIES.findIndex(group => group.id === b.category) || a.name.localeCompare(b.name, 'de'));
+  const eligible = products.filter(product => (!category || product.category === category) &&
+    (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : words.length || !product.own));
+  let found = eligible.filter(product => words.every(word => searchProductText(product.name).includes(word)));
+  // Erst die normale Suche; bei Tippfehlern passende ganze Namen anbieten.
+  if (!found.length && words.length) {
+    const near = new Set(matchProductName(query, eligible).suggestions);
+    found = eligible.filter(product => near.has(product.name));
+  }
+  return found.sort((a, b) => (mode === 'frequent' ? b.count - a.count : 0) ||
+    CATEGORIES.findIndex(group => group.id === a.category) - CATEGORIES.findIndex(group => group.id === b.category) || a.name.localeCompare(b.name, 'de'));
 }
 export function selectedProducts(selection) {
   return [...selection.values()].map(product => {
@@ -70,3 +76,21 @@ export function selectedProducts(selection) {
     return { name: product.name, quantity, unit, category: product.category, ...(product.imageKey ? { imageKey: product.imageKey } : {}) };
   });
 }
+
+// Vorratsauswahl ist kein Wunschzettel: nur Lebensmittel und Drogerie-/Haushaltsbedarf.
+export const PANTRY_BASIC_IDS = Object.freeze(['salz','pfeffer','paprikapulver','curry','oregano-getrocknet','zimt','mehl','zucker','backpulver','nudeln','reis','haferflocken','linsen','kichererbsen','kidneybohnen','tomatenstuecke','passierte-tomaten','tomatenmark','olivenoel','rapsoel','essig','bruehe','zwiebeln','knoblauch','kartoffeln','eier','milch','butter']);
+const basicIds = new Set(PANTRY_BASIC_IDS);
+const noPantryIds = new Set(['katzenfutter','hundefutter','waescheklammern','waeschenetz','frischhaltedosen','trinkflasche','schnuller','babyflasche', ...GROCERY_PRODUCTS.filter(p => p.sheet === 30 && p.cell >= 20).map(p => p.id), ...GROCERY_PRODUCTS.filter(p => p.sheet === 31 && !['schuhcreme','impraegnierspray','insektenschutz'].includes(p.id)).map(p => p.id)]);
+const catalogNames = new Map(GROCERY_PRODUCTS.map(p => [productKey(p.name), p]));
+export function pantryProductAllowed(product) {
+  const known = byId.get(product.id) || catalogNames.get(productKey(product.name));
+  if (known) return known.category !== 'sonstiges' && !noPantryIds.has(known.id);
+  // Eindeutige Nicht-Vorräte auch bei selbst eingegebenen Namen ausschließen.
+  return !/(?:^| )(?:tv|fernseher|smart ?tv|television|laptop|notebook|computer|monitor|smartphone|handy|tablet|konsole|playstation|xbox|kopfhorer|ladekabel|drucker|blumenerde|rasenmaher|gartenmobel|sofa|sessel|regal|springseil)(?: |$)/.test(searchProductText(product.name));
+}
+export function pantryProductLibrary(history = [], favorites = [], pantry = []) {
+  const ownPantry = new Set(pantry.filter(p => !p.deletedAt).map(p => productKey(p.name)));
+  const allowed = p => pantryProductAllowed(p) && (catalogNames.has(productKey(p.name)) || (p.category && p.category !== 'sonstiges') || ownPantry.has(productKey(p.name)));
+  return productLibrary(history.filter(allowed), favorites.filter(allowed), pantry.filter(allowed)).filter(allowed);
+}
+export const isPantryBasic = product => basicIds.has(product.id);

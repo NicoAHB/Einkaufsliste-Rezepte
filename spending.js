@@ -3,7 +3,6 @@
    fest zu. Tage: JJJJ-MM-TT, Monate: JJJJ-MM; alte Zeilen bleiben lesbar. */
 import { validDay } from './data.js';
 import { chainOf } from './brand.js';
-import { itemCost } from './prices.js';
 import { buyerKey, buyerNameOf, validMemberId } from './family.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
@@ -31,7 +30,7 @@ export function parseAmount(input) {
 export const formatAmount = cents => (cents / 100).toFixed(2).replace('.', ',');
 
 // Prüft die Eingaben für einen Eintrag und gibt die Felder zum Speichern zurück (`today` = JJJJ-MM-TT, Heute und morgen sind erlaubt).
-export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand', estimate = 0, buyerId, buyerName = '', kind }, today) {
+export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand', buyerId, buyerName = '', kind }, today) {
   const cents = parseAmount(amount);
   if (!validDay(date)) throw new Error('Bitte ein gültiges Datum angeben.');
   const limit = new Date(`${today}T12:00:00Z`); limit.setUTCDate(limit.getUTCDate() + 1);
@@ -49,7 +48,6 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
     if (typeof buyerName !== 'string' || buyerName.length > 30) throw new Error('Bitte den Namen der Person prüfen.');
     fields.buyerId = buyerId || null; fields.buyerName = buyerId ? buyerName.trim() : '';
   }
-  if (Number.isSafeInteger(estimate) && estimate > 0 && estimate <= MAX_CENTS) fields.estimate = estimate;   // geschätzte Summe der abgehakten Artikel zum Vergleich
   return fields;
 }
 
@@ -175,20 +173,6 @@ export function noteSuggestions(rows, storeName = '', limit = 12) {
     if (!seen.has(key)) { seen.add(key); result.push(text); }
   }
   return result.slice(0, limit);
-}
-
-/* ---------- Geschätzt gegen bezahlt ---------- */
-// Geschätzte Summe der Artikel (ihr gemerkter Preis), aber nur, wenn für mindestens 70 % ein Preis bekannt ist; sonst 0 (keine brauchbare Schätzung).
-export function estimateOf(items) {
-  let cents = 0, priced = 0;
-  for (const item of items) { const cost = itemCost(item); if (cost !== null) { cents += cost; priced += 1; } }
-  return items.length && priced / items.length >= 0.7 ? cents : 0;
-}
-// Bezahlt gegen geschätzt: null ohne Schätzung; 'over' (rot), wenn mehr als 5 % (mindestens 0,50 €) darüber, sonst 'ok' (grün). `diff` = bezahlt − geschätzt in Cent.
-export function estimateVerdict(cents, estimate) {
-  if (!Number.isSafeInteger(estimate) || estimate <= 0) return null;
-  const diff = cents - estimate;
-  return { diff, level: diff > Math.max(50, Math.round(estimate * 0.05)) ? 'over' : 'ok' };
 }
 
 /* ---------- Monatsbudget ---------- */

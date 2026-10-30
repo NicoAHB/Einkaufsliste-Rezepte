@@ -37,12 +37,12 @@ export function unitRate(quote, targetUnit) {
 }
 
 /* Der Preis eines Artikels ist nur der, den die Person selbst am Artikel eingetragen hat (Version 2.40). Ein früher notierter oder bezahlter Preis
-   (Sammlung `prices`, siehe history.js) wird nie von selbst übernommen und fließt nicht in die geschätzte Summe ein. Ein fehlendes Feld (Altbestand)
+   (Sammlung `prices`, siehe history.js) wird nie von selbst übernommen und wird nicht automatisch übernommen. Ein fehlendes Feld (Altbestand)
    und ausdrücklich null bedeuten beide „kein Preis“. */
 export const itemQuote = item => validQuote(item.price) ? item.price : null;
 
 /* Gültigkeit von Angeboten (Version 1.8): `saleUntil` ist ein optionaler letzter Gültigkeitstag (JJJJ-MM-TT). Ein abgelaufenes Angebot
-   zählt nicht mehr als aktueller Angebotspreis; die Summe rechnet mit dem normalen Preis. Ohne Datum gilt ein Angebot, bis es
+   zählt nicht mehr als aktueller Angebotspreis; als aktuelle Preisnotiz gilt wieder der normale Preis. Ohne Datum gilt ein Angebot, bis es
    ausgeschaltet wird (wie bisher). */
 export const localDay = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export const saleExpired = (row, today = localDay()) => Boolean(row.onSale && typeof row.saleUntil === 'string' && row.saleUntil && row.saleUntil < today);
@@ -55,17 +55,6 @@ export function itemCost(item, today = localDay()) {
   if (rate === null) return null;
   const cents = Math.round(item.quantity * rate);
   return Number.isSafeInteger(cents) && cents >= 0 ? cents : null;
-}
-
-export function shoppingTotal(items) {
-  const open = items.filter(row => !row.deletedAt && !row.checked);
-  let cents = 0, missing = 0;
-  for (const item of open) {
-    const cost = itemCost(item);
-    if (cost === null) missing++;
-    else cents += cost;
-  }
-  return { cents, missing, count: open.length, priced: open.length - missing };
 }
 
 export function offerUrl(value) {

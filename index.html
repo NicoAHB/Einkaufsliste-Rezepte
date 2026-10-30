@@ -77,26 +77,22 @@
       </div>
       <div id="plan-view">
       <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
-      <div class="summary">
-        <aside id="shopping-total" class="total-card" aria-live="polite"></aside>
-        <div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer" title="Angebote ansehen"><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote</span></a><button id="set-offers" class="secondary small" type="button" aria-label="Angebote einrichten" title="Angebote einrichten" hidden><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote einrichten</span></button></div>
-      </div>
       <form id="item-form" class="card add-form">
         <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
-        <button id="open-products" class="product-open wide" type="button"><svg class="icon"><use href="#i-grid"/></svg><span>Produkte auswählen</span><small id="product-favorite-count" hidden></small></button>
+
         <input name="storeId" type="hidden" value="">
         <div id="store-pick" class="chips store-pick wide" role="group" aria-label="Geschäft für den neuen Artikel"></div>
         <div id="quick-pick" class="chips quick-pick wide" role="group" aria-label="Häufig gekauft: antippen zum Hinzufügen" hidden></div>
-        <div class="list-shortcuts wide"><button id="open-templates" class="chip-button template-open" type="button"><svg class="icon"><use href="#i-bookmark"/></svg>Vorlagen</button><button id="open-pantry" class="chip-button" type="button"><svg class="icon"><use href="#i-box"/></svg>Vorrat <small id="pantry-shortcut-count"></small></button></div>
+        <div class="list-shortcuts wide"><button id="open-products" class="product-open" type="button" aria-label="Produkte auswählen" title="Produkte auswählen"><svg class="icon"><use href="#i-grid"/></svg><span>Produkte</span><small id="product-favorite-count" hidden></small></button><button id="open-templates" class="chip-button template-open" type="button"><svg class="icon"><use href="#i-bookmark"/></svg>Vorlagen</button><button id="open-pantry" class="chip-button" type="button"><svg class="icon"><use href="#i-box"/></svg>Vorrat <small id="pantry-shortcut-count"></small></button><div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer" title="Angebote ansehen"><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote</span></a><button id="set-offers" class="secondary small" type="button" aria-label="Angebote einrichten" title="Angebote einrichten" hidden><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote einrichten</span></button></div></div>
         <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
         <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>
           <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
           <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
-          <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" value="Stück" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Der Angebotspreis zählt für die Summe, solange „Im Angebot“ angehakt und das Angebot nicht abgelaufen ist. Ohne Datum gilt es, bis du es ausschaltest. Der normale Preis bleibt erhalten.</p></div>
-          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Nur eine eigene Schätzung für die Summe.</p>
+          <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" value="Stück" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Der Angebotspreis bleibt als Notiz gespeichert, solange „Im Angebot“ angehakt und das Angebot nicht abgelaufen ist. Ohne Datum gilt es, bis du es ausschaltest. Der normale Preis bleibt erhalten.</p></div>
+          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.</p>
         </details>
       </form>
       <div class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
@@ -163,6 +159,22 @@
       <p class="hint spend-hint">Eure Einträge sind gemeinsam. Ältere Ausgaben bleiben erhalten. Einträge ohne gespeicherte Person stehen unter „Nicht zugeordnet“; antippen zum Zuordnen.</p>
     </section>
 
+    <section id="pantry" hidden aria-labelledby="pantry-title">
+      <div class="section-head pantry-head"><div><h2 id="pantry-title" tabindex="-1">Vorrat</h2><small id="pantry-summary-count" class="hint"></small></div><button id="pantry-to-list" type="button" class="secondary small"><svg class="icon"><use href="#i-left"/></svg>Zur Liste</button></div>
+      <div id="pantry-card" class="card stack">
+        <p class="hint">Markiere, was zu Hause ist. Aufgebrauchtes kannst du direkt nachkaufen. Mengen musst du nicht pflegen.</p>
+        <div class="pantry-shortcuts"><button id="pantry-products" class="product-open secondary" type="button"><svg class="icon"><use href="#i-grid"/></svg>Mit Bildern auswählen</button><button id="pantry-favorites" class="secondary" type="button" aria-label="Favoriten für den Vorrat auswählen"><svg class="icon"><use href="#i-star"/></svg><span>Favoriten</span><small id="pantry-favorite-count" hidden></small></button></div>
+        <button id="pantry-basics" type="button" class="secondary"><svg class="icon"><use href="#i-box"/></svg>Grundvorrat · wichtige Kochzutaten</button>
+        <form id="pantry-form" class="inline-form pantry-manual"><span id="pantry-manual-photo" class="pantry-photo" aria-hidden="true"></span><label><span class="visually-hidden">Produkt für den Vorrat</span><input name="name" placeholder="Oder selbst eingeben, z. B. Salz" maxlength="120" required autocomplete="off" enterkeyhint="done"></label><button type="submit" class="icon-button" aria-label="Zum Vorrat hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></form>
+        <div id="pantry-name-hint" class="name-correction hint" role="status" hidden><span></span><button id="pantry-keep-name" type="button" class="text-button small">Original behalten</button></div>
+        <p id="pantry-error" class="dialog-error" role="alert" hidden></p>
+        <div class="pantry-tools"><label><span class="sr-only">Im Vorrat suchen</span><input id="pantry-search" type="search" placeholder="Vorrat suchen" maxlength="120" autocomplete="off"></label><label><span class="sr-only">Vorratskategorie</span><select id="pantry-category"><option value="">Alle Kategorien</option></select></label></div>
+        <div class="chips pantry-filters" role="group" aria-label="Vorratsstatus"><button type="button" class="chip" data-pantry-filter="all" aria-pressed="true">Alle</button><button type="button" class="chip" data-pantry-filter="available" aria-pressed="false">Vorhanden</button><button type="button" class="chip" data-pantry-filter="out" aria-pressed="false">Aufgebraucht</button></div>
+        <p id="pantry-status" class="hint" role="status"></p><ul id="pantry-list" class="pantry-inventory"></ul>
+        <details class="pantry-suggest-fold"><summary>Weitere Vorschläge ohne Bilder</summary><div id="pantry-suggestions" class="pantry-suggest"></div></details>
+      </div>
+    </section>
+
     <section id="settings" hidden aria-labelledby="settings-title" data-connected="no">
       <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan</p><h2 id="settings-title">Einstellungen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <form id="settings-form" class="card">
@@ -194,23 +206,12 @@
         <button id="test-proxy" type="button" class="secondary">Eigenen Hilfsdienst testen</button>
       </div></details>
       </form>
-      <div id="pantry-card" class="card stack"><details id="pantry-details" class="fold"><summary><h3>Vorrat <small id="pantry-summary-count"></small></h3></summary><div class="stack">
-        <p class="hint">Was ist zu Hause? „Vorhanden“ wird bei Rezepten und im Wocheneinkauf vorab abgewählt. Ist etwas leer, tippe auf den Kreis: „Aufgebraucht“ zählt nicht mehr als Vorrat. Mengen musst du nicht pflegen.</p>
-        <div class="pantry-shortcuts"><button id="pantry-products" class="product-open secondary" type="button"><svg class="icon"><use href="#i-grid"/></svg>Mit Bildern auswählen</button><button id="pantry-favorites" class="secondary" type="button" aria-label="Favoriten für den Vorrat auswählen"><svg class="icon"><use href="#i-star"/></svg><span>Favoriten</span><small id="pantry-favorite-count" hidden></small></button></div>
-        <form id="pantry-form" class="inline-form pantry-manual"><span id="pantry-manual-photo" class="pantry-photo" aria-hidden="true"></span><label><span class="visually-hidden">Produkt für den Vorrat</span><input name="name" placeholder="Oder selbst eingeben, z. B. Salz" maxlength="120" required autocomplete="off" enterkeyhint="done"></label><button type="submit" class="icon-button" aria-label="Zum Vorrat hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></form>
-        <p id="pantry-error" class="dialog-error" role="alert" hidden></p>
-        <div class="pantry-tools"><label><span class="sr-only">Im Vorrat suchen</span><input id="pantry-search" type="search" placeholder="Vorrat suchen" maxlength="120" autocomplete="off"></label><label><span class="sr-only">Vorratskategorie</span><select id="pantry-category"><option value="">Alle Kategorien</option></select></label></div>
-        <div class="chips pantry-filters" role="group" aria-label="Vorratsstatus"><button type="button" class="chip" data-pantry-filter="all" aria-pressed="true">Alle</button><button type="button" class="chip" data-pantry-filter="available" aria-pressed="false">Vorhanden</button><button type="button" class="chip" data-pantry-filter="out" aria-pressed="false">Aufgebraucht</button></div>
-        <p id="pantry-status" class="hint" role="status"></p><ul id="pantry-list" class="pantry-inventory"></ul>
-        <details class="pantry-suggest-fold"><summary>Grundvorrat: Vorschläge</summary><div id="pantry-suggestions" class="pantry-suggest"></div></details><button id="pantry-to-list" class="text-button" type="button">Zur Einkaufsliste</button></div></details>
-      
-      </div>
       <div id="shop-card" class="card stack"><details id="shop-details" class="fold"><summary><h3>Im Laden</h3></summary><div class="stack">
         <label id="shop-autolock-label" class="inline-field"><span>Automatisch sperren</span><select id="shop-autolock"><option value="0">Nie</option><option value="10">10 Sekunden (Standard)</option><option value="20">20 Sekunden</option><option value="30">30 Sekunden</option><option value="60">1 Minute</option><option value="120">2 Minuten</option></select></label>
         <p class="hint">Nach dieser Zeit ohne Berührung sperrt sich die Ansicht „Im Laden“ von selbst, damit in der Hosentasche nichts versehentlich abgehakt wird. Gilt nur auf diesem Gerät. „Bildschirm anlassen“ steht in der Ansicht „Im Laden“ selbst.</p></div></details>
       </div>
-      <div id="alias-card" class="card stack"><details id="alias-details" class="fold"><summary><h3>Gemerkte Namen<span id="alias-count"></span></h3></summary><div class="stack">
-        <p class="hint">Schreibweisen, die du bestätigt hast („Zwiebel“ → „Zwiebeln“): Die App führt sie in Vorschlägen und beim Zusammenzählen zusammen. Eine falsche Zuordnung entfernst du hier.</p>
+      <div id="alias-card" class="card stack"><details id="alias-details" class="fold"><summary><h3>Gemerkte Schreibweisen<span id="alias-count"></span></h3></summary><div class="stack">
+        <p class="hint">Für die tägliche Eingabe ist hier nichts zu pflegen. Kleine eindeutige Tippfehler erkennt die App direkt. Hier kannst du früher bestätigte Zuordnungen prüfen und bei Bedarf entfernen.</p>
         <ul id="alias-list" class="pantry-list"></ul>
         <div id="alias-doubt" class="stack" hidden><h4>Alte Zuordnungen prüfen</h4>
           <p class="hint">Frühere Versionen haben Text vom Kassenbon einem Artikel zugeordnet („apfeltasche“ → „Apfel“). Ob zwei so verschiedene Namen dasselbe meinen, lässt sich nicht sicher sagen: Diese Zuordnungen <strong>wirken nicht</strong>. Behalte eine, wenn sie stimmt, oder entferne sie.</p>
@@ -255,7 +256,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.67 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.71 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -280,7 +281,7 @@
   </div>
   <div id="drag-hint" class="drag-hint" aria-hidden="true">Auf ein Geschäft ziehen: verschieben · ganz nach rechts: löschen</div>
   <dialog id="move-dialog"><div class="stack"><div class="sheet-head"><h2>Verschieben nach</h2><button type="button" data-close="move-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div></div></dialog>
+    <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div><div class="move-delete-section"><hr class="move-delete-rule"><button id="move-delete" type="button" class="danger move-delete"><svg class="icon"><use href="#i-trash"/></svg><span id="move-delete-label">Artikel löschen</span></button></div></div></dialog>
   <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><button>Los geht’s</button></form></dialog>
@@ -288,9 +289,9 @@
     <div class="sheet-head"><h2 id="product-picker-title">Produkte auswählen</h2><button type="button" data-close="product-picker-dialog" class="icon-button round" aria-label="Produktauswahl schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="product-picker-hint" class="hint product-picker-hint">Antippen zum Auswählen · Mit dem Stern als Favorit merken.</p>
     <label class="sr-only" for="product-picker-search">Produkte suchen oder eigenen Namen eingeben</label><input id="product-picker-search" type="search" placeholder="Suchen, z. B. Milch oder Äpfel" maxlength="120" autocomplete="off" autocapitalize="off">
-    <div class="product-modes" role="group" aria-label="Produktsammlung"><button type="button" data-product-mode="all" aria-pressed="true">Alle</button><button type="button" data-product-mode="favorites" aria-pressed="false">★ Favoriten</button><button type="button" data-product-mode="frequent" aria-pressed="false">Häufig gekauft</button><button type="button" data-product-mode="own" aria-pressed="false">Eigene</button><button type="button" data-product-mode="groups" aria-pressed="false" hidden>Gruppenbilder</button></div>
+    <div class="product-modes" role="group" aria-label="Produktsammlung"><button type="button" data-product-mode="all" aria-pressed="true">Alle</button><button type="button" data-product-mode="favorites" aria-pressed="false">★ Favoriten</button><button type="button" data-product-mode="frequent" aria-pressed="false">Häufig gekauft</button><button type="button" data-product-mode="own" aria-pressed="false">Eigene</button><button type="button" data-product-mode="basics" aria-pressed="false" hidden>Grundvorrat</button><button type="button" data-product-mode="groups" aria-pressed="false" hidden>Gruppenbilder</button></div>
     <label class="sr-only" for="product-picker-category">Produktkategorie</label><select id="product-picker-category"><option value="">Alle Kategorien</option></select>
-    <p id="product-picker-status" class="hint" role="status"></p><p id="product-picker-error" class="dialog-error" role="alert" hidden></p>
+    <p id="product-picker-feedback" class="hint" role="status" hidden></p><p id="product-picker-status" class="hint" role="status"></p><p id="product-picker-error" class="dialog-error" role="alert" hidden></p>
     <details id="product-picker-cart" class="product-cart" hidden><summary id="product-picker-selected">Auswahl (0) · Mengen ändern</summary><div id="product-picker-cart-rows"></div><button id="product-picker-clear" class="text-button" type="button" hidden>Auswahl leeren</button></details>
     <div id="product-picker-list"></div>
     <button id="product-picker-more" class="secondary product-more" type="button" hidden>Weitere Produkte anzeigen</button>
@@ -306,7 +307,7 @@
   <dialog id="pantry-buy-dialog" aria-labelledby="pantry-buy-title"><form id="pantry-buy-form" class="stack">
     <div class="sheet-head"><h2 id="pantry-buy-title">Nachkaufen</h2><button type="button" data-close="pantry-buy-dialog" class="icon-button round" aria-label="Nachkaufen schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="pantry-buy-name" class="pantry-buy-name"></p><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" maxlength="16" required></label><label>Einheit<input name="unit" list="units" maxlength="30" required autocomplete="off"></label></div><label>Geschäft<select name="storeId"></select></label>
-    <p class="hint">Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.</p><p id="pantry-buy-error" class="dialog-error" role="alert" hidden></p><button id="pantry-buy-add" type="submit">Auf die Einkaufsliste</button>
+    <p id="pantry-buy-hint" class="hint">Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.</p><p id="pantry-buy-error" class="dialog-error" role="alert" hidden></p><button id="pantry-buy-add" type="submit">Auf die Einkaufsliste</button>
   </form></dialog>
   <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><div id="store-editor"></div>
     <form id="store-form" class="stack store-new"><h3>Neues Geschäft</h3>
@@ -333,7 +334,7 @@
         <p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
         <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
         <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
-        <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Ohne Angebotspreis wird mit dem normalen Preis geschätzt.</p></div>
+        <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Der normale Preis bleibt als Notiz erhalten.</p></div>
         <p class="hint" data-price-hint></p>
       </div></details>
     <button id="delete-item" type="button" class="danger">Artikel löschen</button>
@@ -362,6 +363,7 @@
     </div>
     <h3>Zutaten</h3><div id="ingredient-editor" class="stack"></div><button id="add-ingredient" type="button" class="secondary"><svg class="icon"><use href="#i-plus"/></svg>Zutat</button>
     <label>Zubereitung<textarea name="instructions" rows="7" maxlength="20000" placeholder="Schritte oder Notizen"></textarea></label>
+    <label>Meine Notizen<textarea name="notes" rows="4" maxlength="10000" placeholder="Eigene Tipps, Änderungen oder Ideen für das nächste Mal"></textarea></label>
     <label>Quelle (Link, optional)<input name="sourceUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off" autocomplete="off"></label>
     <details id="recipe-raw" hidden><summary>Erkannten Rohtext anzeigen</summary><pre id="recipe-raw-text"></pre></details>
     <div class="sheet-actions"><button type="submit">Rezept speichern</button></div></form></dialog>
@@ -372,7 +374,10 @@
       <p id="template-hint" class="hint"></p><button type="submit">Als Vorlage speichern</button></form></div></dialog>
   <dialog id="daily-dialog"><div class="stack"><div class="sheet-head"><h2>Rezepte des Tages</h2><button type="button" data-close="daily-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="daily-progress" class="hint" role="status"></p>
+    <div id="daily-review-nav" hidden><div class="daily-review-arrows"><button id="daily-review-prev" type="button" class="secondary">Zurück</button><button id="daily-review-next" type="button" class="secondary">Weiter</button></div><button id="daily-review-finish" type="button" class="text-button">Zur Übersicht</button></div>
     <div id="daily-card" class="daily-card" aria-live="polite"></div>
+    <div id="daily-review-choices" class="stack daily-review-choices" hidden><button id="daily-review-yesterday" type="button" class="secondary">Rezepte von gestern erneut anschauen</button><button id="daily-review-today" type="button" class="secondary">Rezepte von heute erneut anschauen</button><p id="daily-review-unavailable" class="hint" hidden>Von gestern ist auf diesem Gerät noch keine Auswahl gespeichert.</p></div>
+
     <p id="daily-note" class="hint" role="status"></p>
     <div class="daily-actions"><button id="daily-skip" class="secondary" type="button">Überspringen</button><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button></div></div></dialog>
   <dialog id="help-dialog"><div class="stack"><div class="sheet-head"><h2>Anleitung</h2><button type="button" data-close="help-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
@@ -432,7 +437,7 @@
     <div id="purchase-note-picks" class="note-menu" role="group" aria-label="Vorschläge für die Notiz: antippen zum Übernehmen" hidden></div>
     <label class="file-drop compact"><input name="images" type="file" accept="image/*" multiple class="visually-hidden"><svg class="icon"><use href="#i-camera"/></svg><span>Kassenbon lesen (optional)</span></label>
     <progress id="purchase-progress" max="100" value="0" hidden></progress><p id="purchase-status" class="hint" role="status"></p>
-    <details id="purchase-more" class="purchase-more"><summary>Weitere Angaben</summary><label>Art<select name="kind"><option value="purchase">Einkauf</option><option value="refund">Rückerstattung / Retoure</option></select></label><p class="hint">Rückerstattungen verringern die Ausgaben. Den Betrag immer ohne Minus eingeben.</p><p id="purchase-estimate" class="hint" hidden></p></details>
+    <details id="purchase-more" class="purchase-more"><summary>Weitere Angaben</summary><label>Art<select name="kind"><option value="purchase">Einkauf</option><option value="refund">Rückerstattung / Retoure</option></select></label><p class="hint">Rückerstattungen verringern die Ausgaben. Den Betrag immer ohne Minus eingeben.</p></details>
     <button type="submit" id="purchase-save">Speichern</button>
     <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>
     <p class="hint">Die Texterkennung läuft auf deinem Gerät, das Bild wird nirgends hochgeladen. Fotos von Kassenzetteln werden oft ungenau gelesen, deshalb steht der erkannte Betrag nur als Vorschlag im Feld: Bitte vor dem Speichern prüfen. Digitale Bons und Screenshots klappen besser.</p>
