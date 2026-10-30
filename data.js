@@ -1,18 +1,20 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
-import { learnCategories, suggestCategory, validAisles } from './categories.js';
+import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
-// `prices`, `meals`, `pantry`, `aliases`, `templates` (Einkaufsvorlagen) und `purchases` (Ausgaben) und `budgets` (Monatsbudget) sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets'];
+import { validMemberId } from './family.js';
+// Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
+// sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -32,12 +34,22 @@ export function validateRow(key, row) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
+  if (key === 'members' && (!validMemberId(row.id) || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 30 ||
+      (row.archived !== undefined && typeof row.archived !== 'boolean'))) throw new Error('Ungültige Person.');
+  // Produktfavoriten (2.62): jeder Stern ist ein eigener Datensatz, keine gemeinsam überschriebene Liste.
+  if (key === 'productFavorites' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 120 ||
+      !Number.isFinite(row.quantity) || row.quantity <= 0 || row.quantity > 1000000 || typeof row.unit !== 'string' || !row.unit.trim() || row.unit.length > 30 ||
+      (row.productId !== undefined && row.productId !== null && (typeof row.productId !== 'string' || !/^[a-z0-9-]{1,80}$/.test(row.productId))) ||
+      (row.category !== undefined && row.category !== null && typeof row.category !== 'string'))) throw new Error('Ungültiger Produktfavorit.');
   // `anywhere` (Version 2.6): ob „Im Laden“ Artikel ohne Geschäft angezeigt werden; fehlt oder null = Voreinstellung nach dem Namen (siehe shop.js).
   if (key === 'stores' && row.anywhere !== undefined && row.anywhere !== null && typeof row.anywhere !== 'boolean') throw new Error('Ungültige Einstellung für Artikel ohne Geschäft.');
   // `separate` (Version 2.30): eigene Liste, nur sichtbar, wenn das Geschäft gewählt ist; fehlt oder null = normales Geschäft.
   if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
   // `symbol` (Version 2.31): Geschäft als Bild statt Name anzeigen ('gift') oder ausdrücklich nicht ('none'); fehlt oder null = Voreinstellung nach dem Namen (siehe brand.js).
   if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && !['gift', 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
+  // `chainKey` (2.61): freiwilliger Katalog-Verweis; auch künftige Kennungen bleiben erhalten. Fehlt/null = Erkennung am Namen.
+  if (key === 'stores' && row.chainKey !== undefined && row.chainKey !== null &&
+      (typeof row.chainKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(row.chainKey))) throw new Error('Ungültige Händlerzuordnung.');
   // `aisles` (Version 2.37): eigene Reihenfolge der Gänge in diesem Geschäft (Kategorie-Kennungen); fehlt oder null = Standardweg.
   if (key === 'stores' && !validAisles(row.aisles)) throw new Error('Ungültige Reihenfolge der Gänge.');
   if (key === 'stores' && row.offersUrl !== undefined) {
@@ -57,6 +69,9 @@ export function validateRow(key, row) {
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');
   if ((key === 'items' || key === 'prices') && row.saleUntil !== undefined && row.saleUntil !== null && row.saleUntil !== '' && !validDay(row.saleUntil)) throw new Error('Ungültiges Ende des Angebots.');
   if (key === 'items' && row.category !== undefined && row.category !== null && typeof row.category !== 'string') throw new Error('Ungültige Kategorie.');
+  // Lokale Bildkennungen (2.65), keine URLs oder frei eingebbaren CSS-Angaben.
+  if (['items', 'pantry', 'productFavorites'].includes(key) && row.imageKey !== undefined && row.imageKey !== null &&
+      (typeof row.imageKey !== 'string' || !/^[a-z0-9-]{1,100}$/.test(row.imageKey))) throw new Error('Ungültige Produktbild-Kennung.');
   // Optionale Wunschdetails (2.57): getrennte Felder mit eigenen Änderungsuhren.
   if (key === 'items' && row.wishUrl !== undefined && row.wishUrl !== null) {
     if (typeof row.wishUrl !== 'string' || row.wishUrl.length > WISH_URL_LIMIT) throw new Error('Ungültiger Produktlink.');
@@ -93,6 +108,8 @@ export function validateRow(key, row) {
   // `listedRows` (Version 2.50): die Zutaten des Rezepts („Name|Menge|Einheit“) zum Zeitpunkt der Übernahme, um spätere Änderungen am Rezept zu erkennen.
   if (key === 'meals' && row.listedRows !== undefined && row.listedRows !== null && (!Array.isArray(row.listedRows) || row.listedRows.length > 80 || row.listedRows.some(entry => typeof entry !== 'string' || entry.length > 200))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
+  if (key === 'pantry' && row.available !== undefined && typeof row.available !== 'boolean') throw new Error('Ungültiger Vorratsstatus.');
+  if (key === 'pantry' && row.category !== undefined && row.category !== null && !isCategory(row.category)) throw new Error('Ungültige Vorratskategorie.');
   // Einkaufsvorlage (Version 2.5): Name und bis zu 80 Artikel { name, quantity, unit, storeId? }.
   if (key === 'templates' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 60 || !Array.isArray(row.items) || row.items.length > 80 ||
       row.items.some(entry => !entry || typeof entry.name !== 'string' || !entry.name.trim() || !Number.isFinite(entry.quantity) || entry.quantity <= 0 ||
@@ -102,6 +119,9 @@ export function validateRow(key, row) {
       (row.storeId !== undefined && typeof row.storeId !== 'string') || (row.storeName !== undefined && (typeof row.storeName !== 'string' || row.storeName.length > 80)) ||
       (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 200)) || (row.source !== undefined && !['bon', 'hand'].includes(row.source)) ||
       (row.estimate !== undefined && (!Number.isSafeInteger(row.estimate) || row.estimate < 1 || row.estimate > 99999999)))) throw new Error('Ungültiger Einkaufsbetrag.');
+  if (key === 'purchases' && ((row.buyerId !== undefined && row.buyerId !== null && row.buyerId !== '' && !validMemberId(row.buyerId)) ||
+      (row.buyerName !== undefined && (typeof row.buyerName !== 'string' || row.buyerName.length > 30)) ||
+      (row.kind !== undefined && !['purchase', 'refund'].includes(row.kind)))) throw new Error('Ungültige Person oder Art der Ausgabe.');
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
@@ -117,7 +137,10 @@ export function validateRow(key, row) {
 // Revision 3 (Version 2.40): bezahlte Preise mit Sorte (`prices.variant`, `prices.src`); eine ältere App würde sie beim Aufräumen zusammenwerfen.
 // Revision 4 (2.57): Wünsche mit Produktlink/Notiz dürfen nicht mit anderen
 // Artikeln zusammengelegt werden. Ältere Apps erkennen diesen Schutz nicht.
-export const SCHEMA_REV = 4;
+// Revision 5 (2.65): Aufgebrauchter Vorrat zählt nicht als vorhanden. Ältere Apps würden ihn fälschlich vorauswählen.
+// Revision 6 (2.67): Personen, Rückerstattungen und dauerhaft erhaltene Ausgaben.
+// Ältere Apps würden Rückerstattungen addieren und Ausgaben nach drei Jahren entfernen.
+export const SCHEMA_REV = 6;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -188,7 +211,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   const next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= [];
   const applied = new Set(next.sync.applied), created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
@@ -237,6 +260,8 @@ export function merge(data, operations) {
   }
   next.sync.applied = [...applied];
   if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
+  if (next.pantry.some(row => row.available === false)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 5);
+  if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
   return validate(next);
 }
 
@@ -354,9 +379,9 @@ export function frequentItems(history, items, limit = 6, minCount = 2) {
 export function newItems(rows, storeId, actor, at, items = [], stableId = () => '') {
   const learned = learnCategories(items);
   return rows.map(row => {
-    const category = suggestCategory(row.name, learned), id = stableId(row);
+    const category = rememberedCategory(learned, row.name) || (isCategory(row.category) ? row.category : null) || suggestCategory(row.name), id = stableId(row);
     const op = operation('items', id || uid(), { storeId, name: row.name, quantity: row.quantity, unit: row.unit, checked: false, createdBy: actor,
-      price: null, onSale: false, ...(category ? { category } : {}) }, actor, at);
+      price: null, onSale: false, ...(category ? { category } : {}), ...(row.imageKey ? { imageKey: row.imageKey } : {}) }, actor, at);
     if (id) op.id = id;   // dieselbe Kennung für Anlage und Artikel: Legt ein zweites Gerät dieselbe Übernahme an, ist es dieselbe Änderung (siehe addToList)
     return op;
   });
@@ -378,8 +403,18 @@ export function ingredientItems(ingredients, recipeId, storeId, factor, actor, a
 const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
 // Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
 export const pantryKey = name => spellingStem(name) || productKey(name);
-export const pantryKeys = rows => new Set(active(rows || []).map(row => pantryKey(row.name)));
-export const inPantry = (keys, name) => { const parts = nameParts(name); return parts.length > 0 && parts.every(part => keys.has(pantryKey(part))); };
+// Alte Dateien können denselben Namen mit mehreren zufälligen IDs besitzen. Ein Eintrag pro Name,
+// die jüngste Fassung entscheidet. IDs bleiben zum gemeinsamen Ändern/Entfernen erhalten.
+export function pantryRows(rows = []) {
+  const byName = new Map();
+  for (const row of active(rows).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')))) {
+    const key = pantryKey(row.name), previous = byName.get(key);
+    byName.set(key, { ...row, ids: [...(previous?.ids || []), row.id] });
+  }
+  return [...byName.values()];
+}
+export const pantryKeys = rows => new Set(pantryRows(rows || []).filter(row => row.available !== false).map(row => pantryKey(row.name)));
+export const inPantry = (keys, name) => { const parts = nameParts(name); return keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => keys.has(pantryKey(part)))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
 export function pantryAdditions(names, keys) {
   const found = new Map();

@@ -1,6 +1,6 @@
 /* Reine Preislogik: Euro werden als ganze Cent gespeichert. Es werden keine
    Händlerdaten abgerufen; alle Preise stammen aus euren eigenen Eingaben. Der Verlauf bezahlter Preise steht in history.js. */
-import { chainOf } from './brand.js';
+import { chainForStore } from './brand.js';
 export const productKey = name => String(name).normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' ');
 
 export function unitSpec(unit) {
@@ -78,7 +78,7 @@ export function offerUrl(value) {
 }
 
 // Standardlink einer bekannten Kette oder ''.
-export const defaultOfferUrl = store => chainOf(store?.name)?.offers || '';
+export const defaultOfferUrl = store => chainForStore(store)?.offers || '';
 export function storeOfferUrl(store) {
   if (!store) return '';
   // Ein leeres Feld heißt „Standardlink der Kette“ (falls bekannt), sonst keiner. So bekommt auch ein früher ohne Link angelegtes Geschäft den Standard.

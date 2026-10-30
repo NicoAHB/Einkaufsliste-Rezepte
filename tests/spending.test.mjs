@@ -167,18 +167,20 @@ describe('Ausgaben in der gemeinsamen Datei', () => {
 
 describe('Aufräumen', () => {
   const now = new Date('2026-06-01T00:00:00.000Z');
-  test('Einträge älter als 36 Monate und lange gelöschte werden entfernt, neuere bleiben', () => {
-    assert.equal(POLICY.purchaseMonths, 36);
+  test('auch alte Ausgaben und ihre Löschmarken bleiben dauerhaft erhalten', () => {
+    assert.equal(POLICY.purchaseMonths, undefined);
     let data = merge(emptyData(), [make('alt', { date: '2022-01-15', cents: 100 }), make('neu', { date: '2026-05-15', cents: 200 }), make('grenze', { date: '2023-07-01', cents: 300 }),
       make('weg', { date: '2026-04-01', cents: 400 }), make('weg', { deletedAt: '2026-01-01T00:00:00.000Z' }, '2026-01-01T00:00:00.000Z')]);
     const result = compact(data, now);
-    assert.equal(result.removed.purchases, 2);
-    assert.deepEqual(result.data.purchases.map(r => r.id).sort(), ['grenze', 'neu']);
+    assert.equal(result.removed.purchases, 0);
+    assert.deepEqual(result.data.purchases.map(r => r.id).sort(), ['alt', 'grenze', 'neu', 'weg']);
+    assert.ok(result.data.purchases.find(row => row.id === 'weg').deletedAt);
+    assert.equal(result.data.sync.minRev, 6);
   });
-  test('eine Aufräum-Regel ohne Angabe zu Ausgaben (ältere Aufrufe) fällt auf die 36 Monate zurück', () => {
-    const { purchaseMonths, ...partial } = POLICY;
+  test('eine alte individuelle Aufräum-Regel darf keine Ausgaben entfernen', () => {
+    const partial = { ...POLICY, purchaseMonths: 1 };
     const data = merge(emptyData(), [make('alt', { date: '2022-01-15', cents: 100 }), make('neu', { date: '2026-05-15', cents: 200 })]);
-    assert.deepEqual(compact(data, now, partial).data.purchases.map(r => r.id), ['neu']);
+    assert.deepEqual(compact(data, now, partial).data.purchases.map(r => r.id).sort(), ['alt', 'neu']);
   });
   test('ohne Ausgaben entsteht keine leere Sammlung, und die Zahl in removed ist immer da', () => {
     const bare = emptyData(); delete bare.purchases; bare.sync.applied = Array.from({ length: 700 }, (_, index) => `op-${index}`);

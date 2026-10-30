@@ -14,7 +14,7 @@ let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
-  '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.gz': 'application/gzip', '.md': 'text/markdown' };
+  '.png': 'image/png', '.webp': 'image/webp', '.webmanifest': 'application/manifest+json', '.gz': 'application/gzip', '.md': 'text/markdown' };
 const demo = JSON.parse(await readFile(path.join(root, 'beispieldaten.json'), 'utf8'));
 
 let server, base, browser;
@@ -86,7 +86,7 @@ const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
 // Im Laden ist die Leiste unten ausgeblendet; der Reiterwechsel läuft hier deshalb per Skript (wie ein Tipp auf den Reiter).
 const goTab = (page, name) => page.evaluate(name => document.querySelector(`[data-tab=${name}]`).click(), name);
-const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
+const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold, #settings .pantry-suggest-fold').forEach(node => { node.open = true; })); };
 // Ein Geschäft als Bild („Wünsche“ ist ein Geschenk) trägt seinen Namen als Beschriftung des Bildes, nicht als Text.
 const storeButton = (page, box, name) => { const byText = page.locator(`${box} .chip, ${box} button`, { hasText: name }); return byText.or(page.locator(`${box} .chip, ${box} button`, { has: page.getByRole('img', { name, exact: true }) })).first(); };
 const pickStore = async (page, name) => { await expandForm(page); await storeButton(page, '#store-pick', name).click(); };
@@ -380,7 +380,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await heads('#items'), ['Obst & Gemüse', 'Vorrat & Konserven'], 'Standard: wie im Laden');
     // Im Geschäfte-Fenster: Vorrat & Konserven ganz nach oben
     await openStores(page);
-    const edeka = page.locator('#store-editor .store-row', { hasText: 'Edeka' });
+    const edeka = page.locator('#store-editor .store-row[data-id="store-edeka"]');
     await edeka.locator('.aisle-fold > summary').click();
     assert.equal(await edeka.locator('.aisle-list li').count(), 11, 'alle Gänge stehen in der Liste');
     // Gestalt: Name lesbar in einer Zeile, Pfeile 44 px und rechts daneben (nicht Buchstabe für Buchstabe, nicht über die ganze Breite)
@@ -415,7 +415,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#shop-back');
     // Zurück auf den Standard
     await openStores(page);
-    const again = page.locator('#store-editor .store-row', { hasText: 'Edeka' });
+    const again = page.locator('#store-editor .store-row[data-id="store-edeka"]');
     await again.locator('.aisle-fold > summary').click();
     assert.equal(await again.locator('.aisle-list li').first().innerText().then(value => value.trim()), 'Vorrat & Konserven', 'die gespeicherte Reihenfolge steht beim nächsten Öffnen');
     await again.getByRole('button', { name: 'Standardreihenfolge' }).click();
@@ -1066,7 +1066,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 700 } } });
       await open(page); await openSettings(page);
       const box = page.locator('#pantry-suggestions'), chips = box.locator('.suggest-chips .chip');
-      const pantry = () => page.locator('#pantry-list li:not(.empty) > span').allTextContents();
+      const pantry = () => page.locator('#pantry-list .pantry-name').allTextContents();
       const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.pantry.filter(row => !row.deletedAt).map(row => row.name));
       assert.match(await box.locator('h4').textContent(), /Vorschläge zum Übernehmen/);
       assert.deepEqual(await box.locator('.suggest-title').allTextContents(), ['Würzen', 'Backen', 'Öl, Essig & Soßen', 'Haltbares', 'Gemüse, meist da']);
@@ -1117,7 +1117,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     for (const name of ['Nudeln', 'olivenöl']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
     await page.fill('#pantry-form input[name=name]', 'NUDELN'); await page.click('#pantry-form button');   // Doppelte werden nicht angelegt
-    assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['Nudeln', 'olivenöl']);
+    assert.deepEqual((await page.locator('#pantry-list .pantry-name').allTextContents()).sort(), ['Nudeln', 'olivenöl']);
     const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
     await page.click('[data-tab=recipes]');
     await card.locator('summary').click();
@@ -1135,11 +1135,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /in den Vorrat/);
     await openSettings(page);
-    assert.ok((await page.locator('#pantry-list li span').allTextContents()).includes('Tomaten'));
+    assert.ok((await page.locator('#pantry-list .pantry-name').allTextContents()).includes('Tomaten'));
     // Entfernen
     await page.getByRole('button', { name: 'Tomaten aus dem Vorrat entfernen' }).click();
     await page.getByRole('button', { name: 'Nudeln aus dem Vorrat entfernen' }).click();
-    assert.deepEqual(await page.locator('#pantry-list li span').allTextContents(), ['olivenöl']);
+    assert.deepEqual(await page.locator('#pantry-list .pantry-name').allTextContents(), ['olivenöl']);
     // Wochenliste: Vorrat ebenfalls gekennzeichnet
     await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
     await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
@@ -1192,8 +1192,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const today = isoDay(new Date()), before = monthsAgo(1);
     await page.click('[data-tab=spending]');
-    assert.match(await page.textContent('#spending-summary'), /0,00\s€[\s\S]*noch nichts eingetragen/);
-    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.equal(await page.locator('#spending-empty').isVisible(), true);
+    assert.equal(await page.locator('#purchase-list').isHidden(), true);
     assert.ok(await page.locator('#month-prev').isDisabled() && await page.locator('#month-next').isDisabled(), 'ohne Einträge gibt es keinen anderen Monat');
     assert.ok(await page.locator('#month-today').isHidden());
     assert.equal(await page.locator('#spending-chart button').count(), 6);
@@ -1205,8 +1205,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#purchase-form input[name=amount]', '23,45');
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /23,45\s€ unter Ausgaben gespeichert/);
-    assert.match(await page.textContent('#spending-summary'), /Bisher ausgegeben[\s\S]*23,45\s€[\s\S]*1 Einkauf · Ø 23,45\s€/);
-    assert.match(await page.textContent('#purchase-list'), /Ohne Geschäft · Wocheneinkauf[\s\S]*23,45\s€/);
+    assert.match(await page.textContent('#spending-summary'), /Familie insgesamt[\s\S]*23,45\s€[\s\S]*1 Einkauf/);
+    assert.match(await page.textContent('#purchase-list'), /Einkauf[\s\S]*Heute · Nico[\s\S]*23,45\s€/);
     // 2. Letzter Monat: Die Ansicht wechselt dorthin, „Dieser Monat“ führt zurück, Vergleich mit dem Vormonat
     await addPurchase(page, { amount: '1.000,00', date: isoDay(before), store: 'Lidl' });
     assert.match(await page.textContent('#month-label'), new RegExp(monthWord(before)));
@@ -1214,8 +1214,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#month-today').isVisible());
     await page.click('#month-today');
     assert.match(await page.textContent('#spending-summary'), /23,45\s€/);
-    assert.match(await page.textContent('#spending-summary'), new RegExp(`▼ 976,55\\s€ weniger als im ${monthWord(before)} \\(−98\\s%\\)`));
-    assert.ok(await page.locator('#spending-summary .trend.down').count() === 1);
+    assert.match(await page.textContent('#spending-summary'), /Vormonat insgesamt: 1\.000,00\s€/);
+    assert.equal(await page.locator('#spending-details').evaluate(node => node.open), false);
+    await page.locator('#spending-details summary').click();
     // 3. Säulendiagramm: sechs Monate, der gewählte ist markiert, ein Tipp wechselt den Monat
     const bars = page.locator('#spending-chart button');
     assert.equal(await bars.count(), 6);
@@ -1225,7 +1226,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await bars.nth(4).getAttribute('aria-label'), /1\.000,00\s€/);
     await bars.nth(4).click();
     assert.match(await page.textContent('#month-label'), new RegExp(monthWord(before)));
-    assert.match(await page.textContent('#spending-summary'), /Ausgegeben[\s\S]*1\.000,00/);
+    assert.match(await page.textContent('#spending-summary'), /Familie insgesamt[\s\S]*1\.000,00/);
     assert.ok(await page.locator('#month-next').isEnabled() && await page.locator('#month-prev').isDisabled(), 'vor dem ersten Eintrag geht es nicht weiter zurück');
     await page.click('#month-next');
     // 4. Aufteilung nach Geschäft erst ab zwei Gruppen
@@ -1241,12 +1242,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
     await page.fill('#purchase-form input[name=amount]', '30'); await page.selectOption('#purchase-form select[name=storeId]', { label: 'Edeka' }); await page.fill('#purchase-form input[name=note]', '');
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe · Ø 20,00\s€/);
+    assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe/);
     assert.match(await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).textContent(), /Edeka[\s\S]*30,00\s€/);
     assert.ok(!/Wocheneinkauf/.test(await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).textContent()), 'die geleerte Notiz bleibt leer (kein Standard beim Ändern)');
     await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).click(); await sheetOpen(page);
     await page.selectOption('#purchase-form select[name=storeId]', ''); await page.click('#purchase-save');
-    assert.match(await page.textContent('#purchase-list'), /Ohne Geschäft[\s\S]*30,00\s€/);
+    assert.match(await page.textContent('#purchase-list'), /Einkauf[\s\S]*30,00\s€/);
     await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).click(); await sheetOpen(page);
     await page.click('#purchase-delete'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#spending-summary'), /10,00\s€[\s\S]*1 Einkauf/);
@@ -1275,7 +1276,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       if (date !== null) await page.fill('#purchase-form input[name=date]', isoDay(new Date()));
     }
     await page.keyboard.press('Escape');
-    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.equal(await page.locator('#spending-empty').isVisible(), true);
     assert.match(await page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases || [])), /^\[\]$/);
     // Morgen ist erlaubt (Zeitunterschiede), auch 1.234,56 und „€ 12“
     await addPurchase(page, { amount: '€ 12', date: isoDay(new Date(Date.now() + 86400000)) });
@@ -1567,7 +1568,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; Betrag mit dem „+“ speichert die geschätzte Summe, der kleine Punkt zeigt grün oder rot', async () => {
+  test('Einkauf beenden: auf jedem Weg zurück zu „Planen“; alte Schätzung bleibt nur unter weiteren Angaben lesbar', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
@@ -1594,16 +1595,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#purchase-form input[name=amount]', '7'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     const rows = page.locator('#purchase-list .spend-row');
     assert.equal(await rows.count(), 3);
-    assert.equal(await page.locator('#purchase-list .spend-dot.over').count(), 1, 'ein roter Punkt (99 € gegen die Schätzung)');
-    assert.equal(await page.locator('#purchase-list .spend-dot.ok').count(), 1, 'ein grüner Punkt (Äpfel: 1 € ist günstiger)');
-    assert.equal(await rows.filter({ hasText: '7,00' }).locator('.spend-dot').count(), 0, 'ohne Schätzung kein Punkt');
+    assert.equal(await page.locator('#purchase-list .spend-dot').count(), 0, 'die Liste zeigt nur die tatsächlichen Beträge');
     const red = rows.filter({ hasText: '99,00' });
-    assert.match(await red.getAttribute('aria-label'), /geschätzt [\d,.]+\s€, [\d,.]+\s€ mehr bezahlt/);
-    const dot = await red.locator('.spend-dot').evaluate(node => { const r = node.getBoundingClientRect(); return { w: r.width, h: r.height, color: getComputedStyle(node).backgroundColor }; });
-    assert.ok(dot.w <= 10 && dot.h <= 10, 'ganz unauffällig: ein kleiner Punkt');
-    assert.notEqual(dot.color, 'rgba(0, 0, 0, 0)');
     // Beim Ändern steht der Vergleich in Worten
-    await red.click(); await sheetOpen(page);
+    await red.click(); await sheetOpen(page); await page.locator('#purchase-more summary').click();
     assert.match(await page.textContent('#purchase-estimate'), /Zum Vergleich: geschätzt [\d,.]+\s€, [\d,.]+\s€ mehr bezahlt/);
     await page.keyboard.press('Escape');
     await rows.filter({ hasText: '7,00' }).click(); await sheetOpen(page);
@@ -1729,6 +1724,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok(tabs.every(tab => tab.fits), `Beschriftung ragt über den Reiter hinaus: ${JSON.stringify(tabs)}`);
       assert.ok(tabs.every(tab => tab.left >= 0 && tab.right <= viewport.width), 'Reiter ragen aus dem Bild');
       assert.ok(tabs.every((tab, index) => index === 0 || (tab.left >= tabs[index - 1].right - 0.5 && tab.textLeft >= tabs[index - 1].textRight)), 'Reiter oder Beschriftungen überlappen sich');
+      await page.locator('#spending-details summary').click();
       const chart = await page.evaluate(() => [...document.querySelectorAll('#spending-chart .value')].map(node => node.scrollWidth <= node.clientWidth + 0.5));
       assert.ok(chart.every(Boolean), 'Zahlen über den Säulen werden abgeschnitten');
       const box = await page.locator('#spending-summary .spend-total').boundingBox();
@@ -1749,9 +1745,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       return canvas.toDataURL('image/png').split(',')[1];
     }, ['REWE Markt GmbH', 'HAFERDRINK BIO 1L  1,29 B', 'KIRSCHTOMATEN 250G  1,99 B', 'SUMME EUR  3,28', `Datum: ${stamp}`]);
     await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
+    await page.click('#purchase-person-add'); await sheetOpen(page); await page.fill('#member-form input[name=name]', 'Anna'); await page.click('#member-form button[type=submit]');
     await page.setInputFiles('#purchase-form input[type=file]', { name: 'bon.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
     await page.waitForFunction(() => /Erkannt/.test(document.querySelector('#purchase-status').textContent), null, { timeout: 90000 });
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '3,28');
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-anna');
     assert.equal(await page.inputValue('#purchase-form input[name=date]'), isoDay(day));
     assert.equal(await page.inputValue('#purchase-form select[name=storeId]'), 'store-rewe');
     assert.match(await page.textContent('#purchase-status'), /Summe 3,28\s€[\s\S]*vergleichen/);
@@ -1764,7 +1762,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
     const purchases = stored.purchases.filter(row => !row.deletedAt);
-    assert.equal(purchases.length, 1);
+    assert.equal(purchases.length, 1); assert.equal(purchases[0].buyerId, 'member-anna'); assert.equal(purchases[0].buyerName, 'Anna');
     assert.deepEqual([purchases[0].cents, purchases[0].storeId, purchases[0].storeName, purchases[0].source, purchases[0].date], [329, 'store-rewe', 'Rewe', 'hand', isoDay(day)], 'von Hand geändert: Herkunft „hand“');
     assert.equal(await notes(), notesBefore, 'aus dem Bon werden keine Artikelpreise abgeleitet');
     assert.deepEqual(problems, []);
@@ -1808,7 +1806,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#purchase-dialog [data-close]');
     await page.waitForTimeout(2500);
     assert.equal(await page.locator('#purchase-dialog[open]').count(), 0);
-    assert.match(await page.textContent('#purchase-list'), /Noch nichts eingetragen/);
+    assert.equal(await page.locator('#spending-empty').isVisible(), true);
     assert.deepEqual(problems, []);
     // Danach geht ein neuer Eintrag
     await addPurchase(page, { amount: '7,50' });
@@ -1829,7 +1827,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual([remote.content.purchases[0].cents, remote.content.purchases[0].storeId, remote.content.purchases[0].date], [4000, 'store-edeka', isoDay(new Date())]);
     await pollNow(b.page);
     await b.page.waitForFunction(() => /40,00/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
-    assert.match(await b.page.textContent('#purchase-list'), /Edeka · von Nico/);
+    assert.match(await b.page.textContent('#purchase-list'), /Edeka[\s\S]*Nico · von Nico/);
     // B ist offline und erfasst, A erfasst gleichzeitig: nichts geht verloren
     offline = true;
     await addPurchase(b.page, { amount: '15,50', store: 'Lidl' });
@@ -1859,7 +1857,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await count(), 1);
     // derselbe Einkauf noch einmal: Warnung, nichts gespeichert, Fenster bleibt offen
     await addPurchase(page, { amount: '40,00', store: 'Edeka' });
-    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /Möglicherweise doppelt: Am .+ steht schon ein Einkauf über 40,00\s€ bei Edeka\. War es ein zweiter Einkauf, tippe auf „Speichern“ noch einmal\./);
+    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /Möglicherweise doppelt: Am .+ steht schon ein Einkauf über 40,00\s€ bei Edeka \(von Nico\)\. War es ein zweiter Einkauf, tippe auf „Speichern“ noch einmal\./);
     assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
     assert.equal(await count(), 1);
     // ein zweites Mal Speichern: gespeichert (es kann wirklich ein zweiter Einkauf sein)
@@ -1893,14 +1891,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Ausgaben: Dialogfenster und Einstellungen laufen bei 320 px nicht über; „Jetzt aufräumen“ zählt alte Ausgaben mit', async () => {
+  test('Ausgaben: Dialogfenster bei 320 px; Aufräumen bewahrt auch alte Ausgaben', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 320, height: 568 } } });
     await open(page);
     await page.click('[data-tab=spending]'); await page.click('#add-purchase'); await sheetOpen(page);
     const fits = await page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return document.documentElement.scrollWidth <= document.documentElement.clientWidth && dialog.scrollWidth <= dialog.clientWidth; });
     assert.ok(fits, 'Überlauf im Dialog Einkauf eintragen');
     await page.keyboard.press('Escape');
-    // Ein Eintrag von vor vier Jahren wird beim Aufräumen entfernt
+    // Ein Eintrag von vor vier Jahren bleibt beim Aufräumen erhalten
     const old = isoDay(new Date(new Date().getFullYear() - 4, 0, 10, 12));
     await page.evaluate(async old2 => {
       const key = 'einkauf-demo-v1', stored = JSON.parse(localStorage.getItem(key));
@@ -1909,10 +1907,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }, old);
     await open(page);
     await openSettings(page);
-    assert.match(await page.textContent('#storage-hint'), /Aufräumbar: 1 Einträge/);
+    assert.ok(!/Aufräumbar: 1 Einträge/.test(await page.textContent('#storage-hint')));
     await page.click('#compact-now');
-    assert.match(await page.textContent('#storage-note'), /Aufgeräumt: 1 Einträge entfernt/);
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases?.length ?? 0), 0);
+    assert.match(await page.textContent('#storage-note'), /Aufgeräumt: 0 Einträge entfernt|nichts aufzuräumen/);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases?.length ?? 0), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -2877,6 +2875,263 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('Produktauswahl: kompakter Einstieg, Sammelauswahl, Menge mit Komma und einmalige Übernahme', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    assert.equal(await page.locator('#item-form').evaluate(node => node.classList.contains('compact')), true);
+    assert.equal(await page.locator('#open-products').isVisible(), true);
+    await storeButton(page, '#store-chips', 'Edeka').click();
+    const before = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    const oldMilk = before.items.filter(row => !row.deletedAt && !row.checked && row.name === 'Milch' && row.storeId === 'store-edeka').reduce((sum, row) => sum + (row.unit === 'ml' ? row.quantity / 1000 : row.quantity), 0);
+    await page.click('#open-products'); await sheetOpen(page);
+    assert.equal(await page.inputValue('#product-picker-store'), 'store-edeka');
+    assert.equal(await page.locator('.product-card').count(), 96);
+    assert.match(await page.textContent('#product-picker-status'), /1024 Produkte.*96 angezeigt/);
+    assert.equal(await page.locator('#product-picker-add').isDisabled(), true);
+    await page.fill('#product-picker-search', 'Milch');
+    await page.locator('.product-card[data-product=milch] .product-star').click();
+    let saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    assert.equal(saved.items.length, before.items.length, 'ein Stern legt keinen Einkaufsartikel an');
+    await page.locator('.product-card[data-product=milch] .product-pick').click();
+    await page.fill('#product-picker-search', 'Butter'); await page.locator('.product-card[data-product=butter] .product-pick').click();
+    assert.equal(await page.textContent('#product-picker-count'), '2 ausgewählt');
+    await page.click('#product-picker-selected');
+    const quantity = page.getByRole('textbox', { name: 'Milch: Menge', exact: true });
+    await quantity.fill('0'); await page.click('#product-picker-add');
+    assert.equal(await page.locator('#product-picker-dialog').isVisible(), true);
+    assert.match(await page.textContent('#product-picker-error'), /Milch.*Menge/);
+    await quantity.fill('0,5');
+    await page.evaluate(() => { const add = document.getElementById('product-picker-add'); add.click(); add.click(); });
+    assert.equal(await page.locator('#product-picker-dialog').isVisible(), false);
+    saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    const milk = saved.items.filter(row => !row.deletedAt && !row.checked && row.name === 'Milch' && row.storeId === 'store-edeka').reduce((sum, row) => sum + (row.unit === 'ml' ? row.quantity / 1000 : row.quantity), 0);
+    assert.equal(milk, oldMilk + 0.5, 'Menge wird trotz Doppelklick genau einmal übernommen');
+    const butter = saved.items.find(row => !row.deletedAt && !row.checked && row.name === 'Butter' && row.storeId === 'store-edeka');
+    assert.ok(butter.quantity >= 250 && butter.unit === 'g');
+    // Favoriten werden automatisch zuerst geöffnet; Abbrechen fügt nichts hinzu, Stern entfernen löscht keinen Artikel.
+    const count = saved.items.length;
+    await page.click('#open-products'); assert.equal(await page.locator('[data-product-mode=favorites]').getAttribute('aria-pressed'), 'true');
+    await page.locator('.product-card[data-product=milch] .product-star').click();
+    assert.match(await page.textContent('#product-picker-status'), /Favoriten.*leer/);
+    await page.click('#product-picker-dialog [data-close]');
+    saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    assert.equal(saved.items.length, count);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Produktauswahl: eigene Artikel, sichere Bilder, Favoriten über Neustart und häufig gekauft', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await page.click('#open-products'); await sheetOpen(page);
+    await page.click('[data-product-mode=favorites]'); assert.match(await page.textContent('#product-picker-status'), /Stern/);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'aepfel');
+    assert.equal(await page.locator('.product-card[data-product=aepfel]').count(), 1);
+    await page.fill('#product-picker-search', 'Apfeltasche Spezial');
+    const own = page.locator('.product-card');
+    assert.equal(await own.count(), 1);
+    assert.equal(await own.locator('[data-photo-kind=group][data-photo-key=group-desserts]').count(), 1, 'Gebäck-Gruppenbild statt Apfelfoto für Apfeltasche');
+    await own.locator('.product-star').click();
+    await page.click('#product-picker-dialog [data-close]');
+    await page.reload(); await page.click('#open-products');
+    assert.equal(await page.locator('[data-product-mode=favorites]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.textContent('#product-picker-list'), /Apfeltasche/);
+    await page.locator('.product-pick').click();
+    await page.click('#product-picker-dialog [data-close]');
+    await page.click('#open-products'); assert.equal(await page.textContent('#product-picker-count'), '0 ausgewählt', 'Schließen verwirft den Entwurf');
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', '<img src=x onerror=alert(1)>');
+    assert.equal(await page.locator('#product-picker-list img').count(), 0, 'Name ist Text, kein HTML');
+    await page.fill('#product-picker-search', ''); await page.click('[data-product-mode=frequent]');
+    assert.match(await page.textContent('#product-picker-status'), /häufig gekauft|mindestens zweimal/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Produktauswahl: lokale Fotos, hell/dunkel, große Touchflächen und sichtbare Übernahmeleiste', async () => {
+    const { ctx, page, problems } = await context();
+    const external = []; await ctx.route('https://**', route => { external.push(route.request().url()); return route.abort(); });
+    await open(page); await page.click('#open-products'); await sheetOpen(page);
+    const photos = await page.evaluate(async () => {
+      const urls = [...new Set([...document.querySelectorAll('.product-photo')].map(node => getComputedStyle(node).backgroundImage.match(/url\("?([^"\)]+)/)?.[1]).filter(Boolean))];
+      return Promise.all(urls.map(async src => { const image = new Image(); image.src = src; await image.decode(); return [src, image.naturalWidth, image.naturalHeight]; }));
+    });
+    assert.equal(photos.length, 6); assert.ok(photos.every(([src, width]) => src.includes('/assets/products/') && width > 500));
+    for (const width of [280, 320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        assert.equal(await horizontalOverflow(page), 0);
+        const sizes = await page.locator('#product-picker-dialog').evaluate(node => [node.scrollWidth, node.clientWidth]);
+        assert.ok(sizes[0] <= sizes[1], `${width}/${theme}: Dialog läuft über`);
+        const footer = await page.locator('.product-picker-footer').boundingBox();
+        assert.ok(footer.y >= 0 && footer.y + footer.height <= 845, `${width}/${theme}: Fußleiste außerhalb des Bildschirms ${JSON.stringify(footer)}`);
+      }
+    }
+    assert.ok(await page.locator('.product-star,.product-pick').evaluateAll(nodes => nodes.every(node => { const box = node.getBoundingClientRect(); return box.height >= 44 && box.width >= 44; })));
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.fill('#product-picker-search', 'Milch'); await page.locator('.product-card[data-product=milch] .product-pick').tap();
+    await page.click('#product-picker-selected');
+    const input = page.getByRole('textbox', { name: 'Milch: Menge', exact: true });
+    assert.equal(await input.evaluate(node => getComputedStyle(node).fontSize), '16px');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(external, []); assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Produktauswahl: Favoriten und Einkaufsartikel offline gespeichert, danach zwei Geräte zusammengeführt', async () => {
+    const api = github(demo); let offline = false;
+    const nico = await context({ config: connectedConfig, context: { serviceWorkers: 'allow' } });
+    const anna = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    await nico.ctx.route('https://api.github.com/**', route => offline ? route.abort('internetdisconnected') : api.handler(route));
+    await anna.ctx.route('https://api.github.com/**', api.handler);
+    for (const device of [nico, anna]) { await open(device.page); await device.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); }
+    await nico.page.evaluate(() => navigator.serviceWorker.ready); await nico.page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    offline = true; await nico.ctx.setOffline(true);
+    await nico.page.click('#open-products'); await nico.page.fill('#product-picker-search', 'Milch');
+    await nico.page.locator('.product-card[data-product=milch] .product-star').click();
+    await nico.page.locator('.product-card[data-product=milch] .product-pick').click();
+    await nico.page.selectOption('#product-picker-store', 'store-rewe'); await nico.page.click('#product-picker-add');
+    assert.ok(!api.content.productFavorites?.some(row => row.productId === 'milch'), 'Stern noch offline');
+    await nico.page.reload(); await nico.page.click('#open-products'); await sheetOpen(nico.page);
+    assert.equal(await nico.page.locator('.product-card[data-product=milch] .product-star').getAttribute('aria-pressed'), 'true');
+    const imageLoaded = await nico.page.locator('.product-photo').evaluate(async node => { const image = new Image(); image.src = getComputedStyle(node).backgroundImage.slice(5, -2); await image.decode(); return image.naturalWidth > 0; });
+    assert.equal(imageLoaded, true, 'Foto nach Offline-Neustart vorhanden');
+    await nico.page.click('#product-picker-dialog [data-close]');
+    await anna.page.click('#open-products'); await anna.page.fill('#product-picker-search', 'Butter');
+    await anna.page.locator('.product-card[data-product=butter] .product-star').click();
+    await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    offline = false; await nico.ctx.setOffline(false); await pollNow(nico.page);
+    await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    const favorites = api.content.productFavorites.filter(row => !row.deletedAt).map(row => row.productId).sort();
+    assert.deepEqual(favorites, ['butter', 'milch']);
+    assert.ok(api.content.items.some(row => row.name === 'Milch' && row.storeId === 'store-rewe' && row.createdBy === 'Nico'));
+    await anna.page.fill('#product-picker-search', ''); await anna.page.click('[data-product-mode=favorites]');
+    await pollNow(anna.page); await anna.page.waitForFunction(() => document.querySelector('.product-card[data-product=milch] .product-star')?.getAttribute('aria-pressed') === 'true');
+    assert.deepEqual(nico.problems.filter(text => !/Failed to load resource|Failed to fetch/.test(text)), []);
+    assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
+  });
+
+  test('Produktauswahl: Hintergrundabgleich erhält Eingaben; gelöschtes Geschäft wird nicht still ersetzt', async () => {
+    const api = github(demo);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', api.handler); await open(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await storeButton(page, '#store-chips', 'Edeka').click(); await page.click('#open-products');
+    await page.fill('#product-picker-search', 'Milch'); await page.locator('.product-card[data-product=milch] .product-pick').click();
+    await page.click('#product-picker-selected'); await page.getByRole('textbox', { name: 'Milch: Menge', exact: true }).fill('0,75');
+    api.remoteChange(data => { data.stores.find(row => row.id === 'store-edeka').deletedAt = new Date().toISOString(); });
+    await pollNow(page); await page.waitForFunction(() => document.querySelector('#product-picker-store option:checked')?.textContent.includes('gelöscht'));
+    assert.equal(await page.getByRole('textbox', { name: 'Milch: Menge', exact: true }).inputValue(), '0,75');
+    assert.equal(await page.locator('#product-picker-add').isDisabled(), true);
+    await page.selectOption('#product-picker-store', 'store-lidl'); await page.click('#product-picker-add');
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.ok(api.content.items.some(row => row.name === 'Milch' && row.storeId === 'store-lidl' && row.quantity >= 0.75));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Händlerkatalog: suchen, filtern, abbrechen, Vorlage mit Filialname speichern und eigene Geschäfte anlegen', async () => {
+    const { ctx, page, problems } = await context({ config: { storeStyle: 'logo' } });
+    await open(page); await page.click('#manage-stores'); await sheetOpen(page);
+    await page.click('#choose-store'); await sheetOpen(page);
+    assert.equal(await page.locator('.catalog-choice').count(), 30);
+    assert.equal(await page.locator('[data-chain=edeka]').isDisabled(), true);
+    assert.equal(await page.locator('[data-chain=dm]').isEnabled(), true);
+    await page.fill('#store-catalog-search', 'aldi');
+    assert.equal(await page.locator('.catalog-choice').count(), 2);
+    const before = await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'));
+    await page.click('#store-catalog-dialog [data-close].icon-button');
+    assert.equal(await page.locator('#stores-dialog').isVisible(), true);
+    assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1')), before, 'Abbrechen speichert nichts');
+    await page.click('#choose-store'); await page.selectOption('#store-catalog-type', 'drugstore');
+    assert.equal(await page.locator('.catalog-choice').count(), 4);
+    await page.fill('#store-catalog-search', 'mueller');
+    assert.equal(await page.locator('.catalog-choice').count(), 1);
+    await page.fill('#store-catalog-search', ''); await page.click('[data-chain=dm]');
+    assert.equal(await page.inputValue('#store-form [name=name]'), 'dm');
+    assert.equal(await page.inputValue('#store-form [name=offersUrl]'), 'https://www.dm.de/neu');
+    assert.equal(await page.locator('#store-template').isVisible(), true);
+    await page.fill('#store-form [name=name]', 'dm Innenstadt');
+    await page.click('#store-form [type=submit]');
+    const dm = page.locator('#store-editor .store-row', { hasText: 'dm Innenstadt' });
+    await dm.locator('summary').first().click();
+    assert.equal(await dm.locator('select[name=chainKey]').inputValue(), 'dm');
+    assert.equal(await dm.locator('input[name=anywhere]').isChecked(), false);
+    assert.equal(await dm.locator('.brand-dm img').count(), 1);
+    await dm.locator('input[name=offersUrl]').fill('https://example.org/filiale');
+    await dm.getByRole('button', { name: 'dm Innenstadt speichern' }).click();
+    let saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    let row = saved.stores.find(row => row.name === 'dm Innenstadt');
+    assert.deepEqual([row.chainKey, row.offersUrl], ['dm', 'https://example.org/filiale']);
+    // Ein bewusst eigener Link bleibt auch beim Wechsel des Katalog-Händlers bestehen.
+    await dm.locator('select[name=chainKey]').selectOption('mueller');
+    assert.equal(await dm.locator('input[name=offersUrl]').inputValue(), 'https://example.org/filiale');
+    await dm.locator('select[name=chainKey]').selectOption('dm');
+    await dm.getByRole('button', { name: 'dm Innenstadt speichern' }).click();
+    await page.click('#choose-store'); assert.equal(await page.locator('[data-chain=dm]').isDisabled(), true);
+    await page.fill('#store-catalog-search', 'Nicht vorhandener Händler');
+    assert.equal(await page.locator('.catalog-choice').count(), 0);
+    assert.match(await page.textContent('#store-catalog-count'), /Kein Treffer/);
+    await page.getByRole('button', { name: 'Eigenen Namen eingeben', exact: true }).click();
+    await page.fill('#store-form [name=name]', 'Mein Baumarkt');
+    await page.fill('#store-form [name=offersUrl]', 'https://example.org/baumarkt');
+    await page.click('#store-form [type=submit]');
+    saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
+    row = saved.stores.find(row => row.name === 'Mein Baumarkt');
+    assert.deepEqual([row.chainKey, row.offersUrl], [null, 'https://example.org/baumarkt']);
+    await page.click('#stores-dialog [data-close]');
+    await storeButton(page, '#store-chips', 'dm Innenstadt').click();
+    assert.equal(await page.getAttribute('#offers-link', 'href'), 'https://example.org/filiale');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Händlerkatalog: Logos vollständig lokal, hell/dunkel und auf kleinen iPhones lesbar', async () => {
+    const { ctx, page, problems } = await context();
+    const external = []; await ctx.route('https://**', route => { external.push(route.request().url()); return route.abort(); });
+    await open(page); await page.click('#manage-stores'); await page.click('#choose-store'); await sheetOpen(page);
+    await page.waitForFunction(() => [...document.querySelectorAll('#store-catalog-list img')].every(img => img.complete && img.naturalWidth > 0));
+    for (const width of [280, 320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        const sizes = await page.locator('#store-catalog-dialog').evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+        assert.ok(sizes.scroll <= sizes.client, `${width}/${theme}: Dialog läuft seitlich über`);
+        assert.equal(await horizontalOverflow(page), 0);
+        assert.ok((await page.locator('.catalog-choice').evaluateAll(nodes => nodes.every(node => node.getBoundingClientRect().height >= 44))));
+      }
+    }
+    assert.deepEqual(external, [], 'keine Händler-/Logodienst-Abfrage');
+    // Abbrechen mit der Tastatur kehrt in den offenen Geschäfte-Dialog zurück.
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#stores-dialog').isVisible(), true);
+    assert.equal(await page.locator('#store-catalog-dialog').isVisible(), false);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Händlerkatalog: Offline-Neustart mit Logos, neues Geschäft später auf zweitem Gerät und im Backup', async () => {
+    const api = github(demo); let offline = false;
+    const nico = await context({ config: { ...connectedConfig, storeStyle: 'logo' }, context: { serviceWorkers: 'allow' } });
+    const anna = await context({ config: { ...connectedConfig, actor: 'Anna', storeStyle: 'logo' } });
+    await nico.ctx.route('https://api.github.com/**', route => offline ? route.abort('internetdisconnected') : api.handler(route));
+    await anna.ctx.route('https://api.github.com/**', api.handler);
+    for (const device of [nico, anna]) { await open(device.page); await device.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); }
+    await nico.page.evaluate(() => navigator.serviceWorker.ready);
+    await nico.page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    offline = true; await nico.ctx.setOffline(true); await nico.page.reload();
+    await nico.page.click('#manage-stores'); await nico.page.click('#choose-store'); await sheetOpen(nico.page);
+    await nico.page.waitForFunction(() => [...document.querySelectorAll('#store-catalog-list img')].every(img => img.complete && img.naturalWidth > 0));
+    await nico.page.fill('#store-catalog-search', 'aldi sued'); await nico.page.click('[data-chain=aldi-sued]');
+    await nico.page.click('#store-form [type=submit]');
+    assert.ok(!api.content.stores.some(row => row.chainKey === 'aldi-sued'), 'offline noch nicht gesendet');
+    await nico.page.reload(); await nico.page.click('#manage-stores');
+    assert.match(await nico.page.textContent('#store-editor'), /ALDI SÜD/);
+    offline = false; await nico.ctx.setOffline(false); await pollNow(nico.page);
+    await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(api.content.stores.filter(row => row.chainKey === 'aldi-sued').length, 1);
+    await pollNow(anna.page); await anna.page.waitForFunction(() => document.querySelector('#store-chips .brand-aldi-sued'));
+    const copied = JSON.parse(JSON.stringify(api.content));
+    assert.equal(copied.stores.find(row => row.chainKey === 'aldi-sued').offersUrl, '', 'der aktuelle Standard kommt aus dem Katalog');
+    await storeButton(anna.page, '#store-chips', 'ALDI SÜD').click();
+    assert.equal(await anna.page.getAttribute('#offers-link', 'href'), 'https://www.aldi-sued.de/angebote');
+    assert.deepEqual(nico.problems.filter(text => !/Failed to load resource|Failed to fetch/.test(text)), []);
+    assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
+  });
+
   test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt mit Pfeil, aufklappbar; „Neues Geschäft“ unten fest; ein neues Geschäft erscheint zugeklappt', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
     await open(page);
@@ -2906,7 +3161,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Ein neues Geschäft: erscheint zugeklappt (und leuchtet kurz auf); was offen war, bleibt offen
     await rows.nth(0).locator('> summary').click();
     await page.fill('#store-form input[name=name]', 'Aldi');
-    await page.click('#store-form button');
+    await page.click('#store-form button[type=submit]');
     await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row').length === 4);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [true, false, false, false], 'Edeka bleibt offen, das neue Aldi ist zu');
     assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
@@ -3330,7 +3585,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual([purchases[0].cents, purchases[0].storeId, purchases[0].storeName, purchases[0].note, purchases[0].source, purchases[0].date], [1250, 'store-lidl', 'Lidl', 'Wocheneinkauf', 'hand', isoDay(new Date())]);
     await page.click('[data-tab=spending]');
     assert.match(await page.textContent('#spending-summary'), /12,50\s€/);
-    assert.match(await page.textContent('#purchase-list'), /Lidl · Wocheneinkauf[\s\S]*12,50\s€/);
+    assert.match(await page.textContent('#purchase-list'), /Lidl[\s\S]*Heute · Nico[\s\S]*12,50\s€/);
     // „Nur beenden“ ignoriert das Feld und speichert nichts
     await page.click('[data-tab=shopping]');
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click(); await shopTap(page, 'Tomaten').click();
@@ -3645,7 +3900,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await checked(), before, 'ein Tipp auf den Namen hakt nichts ab');
     assert.equal(await horizontalOverflow(page), 0);
     // Das Produktsymbol steht im Laden wie in der Einkaufsliste, auch auf schmalen Bildschirmen (z. B. „Vergrößerte Darstellung“ mit 320 px)
-    const thumb = selector => page.evaluate(sel => { const node = document.querySelector(sel), box = node.getBoundingClientRect(), row = node.closest('li').getBoundingClientRect(); return { width: Math.round(box.width), height: Math.round(box.height), emoji: node.textContent.trim(), inside: box.right <= row.right + 0.5 && box.left >= row.left - 0.5 }; }, selector);
+    const thumb = selector => page.evaluate(sel => { const node = document.querySelector(sel), box = node.getBoundingClientRect(), row = node.closest('li').getBoundingClientRect(); return { width: Math.round(box.width), height: Math.round(box.height), photo: node.querySelector('.product-picture')?.dataset.photoKey || '', inside: box.right <= row.right + 0.5 && box.left >= row.left - 0.5 }; }, selector);
     for (const width of [390, 320, 280]) {
       await page.setViewportSize({ width, height: 844 });
       await page.click('#shop-back'); await page.waitForSelector('#items .item .item-thumb');
@@ -3653,7 +3908,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await page.click('#mode-shop'); await page.waitForSelector('#shop-list .shop-item .item-thumb');
       const shop = await thumb('#shop-list .shop-item .item-thumb');
       assert.deepEqual(shop, { ...plan, inside: true }, `Symbol im Laden wie in der Einkaufsliste bei ${width} px`);
-      assert.ok(shop.emoji.length > 0, 'ein Symbol steht da');
+      assert.ok(shop.photo.length > 0, 'ein eigenes Produkt- oder Gruppenbild steht da');
       assert.equal(await horizontalOverflow(page), 0, `kein Überlauf bei ${width} px`);
       const nameBox = await page.locator('#shop-list .shop-name').first().evaluate(node => { const row = node.closest('li').getBoundingClientRect(), box = node.getBoundingClientRect(); return box.left >= row.left && box.right <= row.right; });
       assert.ok(nameBox, `der Name bleibt in der Zeile bei ${width} px`);
@@ -3835,15 +4090,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     await page.click('[data-tab=spending]');
     assert.equal(await page.locator('#spending-empty').isVisible(), true);
-    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*erste/);
-    for (const hidden of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} ist ohne Einträge nicht zu sehen`);
+    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*Ersten Einkauf eintragen/);
+    for (const hidden of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending-details']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} ist ohne Einträge nicht zu sehen`);
     // Der Knopf öffnet das Fenster zum Eintragen
     await page.click('#spending-first'); await sheetOpen(page);
     assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
     await page.fill('#purchase-form input[name=amount]', '12,34');
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.equal(await page.locator('#spending-empty').isHidden(), true, 'nach dem ersten Eintrag ist die Erklärung weg');
-    for (const shown of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending .week-nav']) assert.equal(await page.locator(shown).isVisible(), true, `${shown} erscheint`);
+    assert.equal(await page.locator('#spending-chart-card').isHidden(), true, 'Auswertungen starten zugeklappt');
+    await page.locator('#spending-details summary').click();
+    for (const shown of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending-details']) assert.equal(await page.locator(shown).isVisible(), true, `${shown} erscheint`);
     assert.match(await page.textContent('#spending-summary'), /12,34\s€/);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
@@ -4775,24 +5032,77 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
-  /* ---------- Produktbilder: farbige Symbole (Emoji) rechts in jeder Artikelzeile, ohne Internet ---------- */
+  /* ---------- Eigene Produkt-/Gruppenbilder in beiden Listen, keine externe Bildquelle ---------- */
   const tiles = page => page.evaluate(() => [...document.querySelectorAll('#items .item')].map(row => {
     const tile = row.querySelector('.item-thumb');
-    return { name: row.querySelector('strong').textContent, tile: Boolean(tile), emoji: tile?.querySelector('.emoji')?.textContent || '' };
+    return { name: row.querySelector('strong').textContent, tile: Boolean(tile), photo: tile?.querySelector('.product-picture')?.dataset.photoKey || '' };
   }));
   const external = page => { const urls = []; page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1')) urls.push(request.url()); }); return urls; };
 
-  test('Produktbilder: farbige Symbole passend zum Artikel, sofort da, ohne Internet; rechts in jeder Zeile, nicht antippbar', async () => {
+  test('Produktbilder: dieselben Motive für die Screenshot-Beispiele in Planen, Im Laden und Produktauswahl', async () => {
+    const data = structuredClone(demo), template = data.items[0];
+    const examples = [['Butter', 'butter'], ['Eier', 'eier'], ['Milch', 'milch'], ['Blumenerde', 'blumenerde'], ['Honig', 'honig'], ['Domol Feinwaschmittel', 'feinwaschmittel'], ['Zahnpasta', 'zahnpasta'], ['Apfeltasche', 'apfeltaschen']];
+    data.items = examples.map(([name], index) => ({ ...template, id: `photo-${index}`, name, quantity: 1, unit: 'Stück', storeId: 'store-edeka', checked: false, createdBy: 'Nico', category: index === 7 ? 'obst' : undefined }));
+    const { ctx, page, problems } = await context({ config: { productImages: true } });
+    await ctx.addInitScript(data => localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })), data);
+    const outside = external(page); await open(page);
+    const snapshot = selector => page.locator(selector).evaluateAll(nodes => nodes.map(row => {
+      const picture = row.querySelector('.product-picture'), style = getComputedStyle(picture);
+      return { id: row.dataset.id, key: picture.dataset.photoKey, kind: picture.dataset.photoKind, image: style.backgroundImage, position: style.backgroundPosition };
+    }));
+    const plan = await snapshot('#items .item');
+    assert.deepEqual(plan.map(row => row.key).sort(), examples.map(([, key]) => key).sort());
+    assert.equal(plan.find(row => row.key === 'apfeltaschen').kind, 'product');
+    await inShop(page, 'Edeka'); const shop = await snapshot('#shop-list .shop-item');
+    assert.deepEqual(shop.sort((a, b) => a.id.localeCompare(b.id)), plan.sort((a, b) => a.id.localeCompare(b.id)));
+    await page.click('#shop-back'); await page.click('#open-products'); await page.fill('#product-picker-search', 'Milch');
+    const picker = await page.locator('.product-card[data-product=milch] .product-picture').evaluate(node => ({ key: node.dataset.photoKey, image: getComputedStyle(node).backgroundImage, position: getComputedStyle(node).backgroundPosition }));
+    const milk = plan.find(row => row.key === 'milch'); assert.deepEqual(picker, { key: milk.key, image: milk.image, position: milk.position });
+    assert.equal(await page.locator('.item-thumb .emoji').count(), 0);
+    assert.deepEqual(outside, []); assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Produktbilder: Einzel- und Gruppenmotive nach Offline-Neustart in beiden Listen vorhanden', async () => {
+    const data = structuredClone(demo), template = data.items[0];
+    data.items = [['Butter', 'butter'], ['Blumenerde', 'blumenerde'], ['Apfeltasche Spezial', 'group-desserts'], ['Neu für den Haushalt', 'group-cleaning']]
+      .map(([name], index) => ({ ...template, id: `offline-photo-${index}`, name, quantity: 1, unit: 'Stück', storeId: 'store-edeka', createdBy: 'Nico', checked: false, category: index === 3 ? 'haushalt' : undefined }));
+    const { ctx, page, problems } = await context({ config: { productImages: true }, context: { serviceWorkers: 'allow' } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    await ctx.setOffline(true); await page.reload(); await page.waitForSelector('#items .item-thumb');
+    const decode = selector => page.locator(selector).evaluateAll(async nodes => Promise.all(nodes.map(async node => {
+      const image = new Image(); image.src = getComputedStyle(node).backgroundImage.slice(5, -2); await image.decode(); return [node.dataset.photoKey, image.naturalWidth > 500];
+    })));
+    const plan = await decode('#items .product-picture');
+    assert.deepEqual(plan.map(([key]) => key).sort(), ['blumenerde', 'butter', 'group-cleaning', 'group-desserts']); assert.ok(plan.every(([, ready]) => ready));
+    await inShop(page, 'Edeka'); const shop = await decode('#shop-list .product-picture');
+    assert.deepEqual(shop.sort((a, b) => a[0].localeCompare(b[0])), plan.sort((a, b) => a[0].localeCompare(b[0])));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Produktbilder: fehlende Produktdatei wechselt auf Gruppenbild und erzeugt keinen externen Abruf', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } });
+    await ctx.route('**/assets/products/fresh.webp', route => route.abort());
+    const outside = external(page); await open(page);
+    await page.waitForFunction(() => [...document.querySelectorAll('#items .item')].find(row => row.querySelector('strong')?.textContent === 'Milch')?.querySelector('.product-picture')?.dataset.photoKey === 'group-dairy');
+    const fallback = page.locator('#items .item', { hasText: 'Milch' }).locator('.product-picture');
+    assert.equal(await fallback.getAttribute('data-photo-kind'), 'group');
+    assert.match(await fallback.evaluate(node => getComputedStyle(node).backgroundImage), /groups\.webp/);
+    assert.equal(await fallback.evaluate(async node => { const image = new Image(); image.src = getComputedStyle(node).backgroundImage.slice(5, -2); await image.decode(); return image.naturalWidth > 500; }), true);
+    assert.deepEqual(outside, []); assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []); await ctx.close();
+  });
+
+  test('Produktbilder: eigene Bilder passend zum Artikel, lokal und ohne externe Quelle; rechts in jeder Zeile, nicht antippbar', async () => {
     const { ctx, page, problems } = await context({ config: { productImages: undefined } });   // nichts eingestellt = Standard
     const outside = external(page);
     await open(page);
     await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 4);
-    assert.deepEqual((await tiles(page)).map(row => [row.name, row.emoji]), [['Tomaten', '🍅'], ['Nudeln', '🍝'], ['Milch', '🥛'], ['Äpfel', '🍎']]);
+    assert.deepEqual((await tiles(page)).map(row => [row.name, row.photo]), [['Tomaten', 'tomaten'], ['Nudeln', 'nudeln'], ['Milch', 'milch'], ['Äpfel', 'aepfel']]);
     // Darstellung: abgerundete Kachel rechts, Name und Menge links, nicht antippbar, rein dekorativ
     const look = await page.evaluate(() => [...document.querySelectorAll('#items .item')].map(row => {
       const tile = row.querySelector('.item-thumb'), box = tile.getBoundingClientRect(), copy = row.querySelector('.item-copy').getBoundingClientRect(), line = row.getBoundingClientRect(), style = getComputedStyle(tile);
       return { width: Math.round(box.width), height: Math.round(box.height), right: Math.round(line.right - box.right), copyEnd: Math.round(box.left - copy.right), radius: parseFloat(style.borderTopLeftRadius), border: parseFloat(style.borderTopWidth),
-        events: style.pointerEvents, hidden: tile.getAttribute('aria-hidden'), focusable: tile.querySelectorAll('button,a,[tabindex],img').length, rowHeight: Math.round(line.height), size: parseFloat(getComputedStyle(tile.querySelector('.emoji')).fontSize) };
+        events: style.pointerEvents, hidden: tile.getAttribute('aria-hidden'), focusable: tile.querySelectorAll('button,a,[tabindex],img').length, rowHeight: Math.round(line.height), size: tile.querySelector('.product-picture').getBoundingClientRect().width };
     }));
     for (const row of look) {
       assert.deepEqual([row.width, row.height], [56, 56]);
@@ -4808,7 +5118,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form input[name=name]', 'Xyzabc'); await page.click('#item-form .add-button');
     await page.waitForSelector('#items .item:has-text("Xyzabc")');
     const more = await tiles(page);
-    assert.equal(more.find(row => row.name === 'Birne').emoji, '🍐'); assert.equal(more.find(row => row.name === 'Xyzabc').emoji, '📦');
+    assert.equal(more.find(row => row.name === 'Birne').photo, 'birnen'); assert.equal(more.find(row => row.name === 'Xyzabc').photo, 'group-miscellaneous');
     await page.waitForTimeout(500);
     assert.deepEqual(outside, [], 'keine einzige Anfrage ins Internet');
     assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-images-v2') ?? localStorage.getItem('einkauf-images-v1')), null);
@@ -4846,7 +5156,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.check('#product-images'); await page.click('[data-tab=shopping]');
     await page.waitForFunction(() => document.querySelectorAll('#items .item-thumb').length === 5);
     const back = await tiles(page);
-    assert.deepEqual([back.find(row => row.name === 'Tomaten').emoji, back.find(row => row.name === 'Butter').emoji], ['🍅', '🧈']);
+    assert.deepEqual([back.find(row => row.name === 'Tomaten').photo, back.find(row => row.name === 'Butter').photo], ['tomaten', 'butter']);
     assert.deepEqual(outside, [], 'nie eine Anfrage ins Internet');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -4859,17 +5169,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await page.fill('#item-form input[name=name]', 'Domol Feinwaschmittel Extra Sensitiv Konzentrat 1,5 Liter Nachfüllpack'); await page.click('#item-form .add-button');
       await page.waitForSelector('#items .item:has-text("Domol")');
       const rows = await page.evaluate(() => [...document.querySelectorAll('#items .item')].map(row => {
-        const tile = row.querySelector('.item-thumb'), box = tile.getBoundingClientRect(), copy = row.querySelector('.item-copy').getBoundingClientRect(), name = row.querySelector('strong').getBoundingClientRect(), emoji = tile.querySelector('.emoji').getBoundingClientRect();
+        const tile = row.querySelector('.item-thumb'), box = tile.getBoundingClientRect(), copy = row.querySelector('.item-copy').getBoundingClientRect(), name = row.querySelector('strong').getBoundingClientRect(), picture = tile.querySelector('.product-picture').getBoundingClientRect();
         const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number), light = value => { const [r, g, b] = rgb(value).map(channel => { const c = channel / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
         return { name: row.querySelector('strong').textContent, tileWidth: Math.round(box.width), tileHeight: Math.round(box.height), nameHeight: Math.round(name.height), nameRight: Math.round(name.right), tileLeft: Math.round(box.left), copyRight: Math.round(copy.right),
-          light: light(getComputedStyle(tile).backgroundColor), emojiInside: emoji.left >= box.left && emoji.right <= box.right && emoji.top >= box.top && emoji.bottom <= box.bottom, symbol: tile.querySelector('.emoji').textContent };
+          light: light(getComputedStyle(tile).backgroundColor), photoInside: picture.left >= box.left && picture.right <= box.right && picture.top >= box.top && picture.bottom <= box.bottom, photo: tile.querySelector('.product-picture').dataset.photoKey };
       }));
       const long = rows.find(row => row.name.startsWith('Domol')), size = width < 341 ? 44 : 56;
       for (const row of rows) {
         assert.deepEqual([row.tileWidth, row.tileHeight], [size, size], `${row.name}: Kachel nicht gequetscht`);
-        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(scheme === 'dark' ? row.light < 0.15 : row.light > 0.8, `${row.name}: Kachel hell im hellen, dunkel im dunklen Modus (${row.light.toFixed(2)})`); assert.ok(row.emojiInside, `${row.name}: Symbol liegt in der Kachel`);
+        assert.ok(row.nameRight <= row.tileLeft, `${row.name}: Name endet vor der Kachel`); assert.ok(scheme === 'dark' ? row.light < 0.15 : row.light > 0.8, `${row.name}: Kachel hell im hellen, dunkel im dunklen Modus (${row.light.toFixed(2)})`); assert.ok(row.photoInside, `${row.name}: Bild liegt in der Kachel`);
       }
-      assert.equal(long.symbol, '🧼', 'Haushaltsartikel: Seife'); assert.ok(long.nameHeight > 40, 'der lange Name bricht auf mehrere Zeilen um');
+      assert.equal(long.photo, 'feinwaschmittel', 'Feinwaschmittel: eigenes passendes Motiv'); assert.ok(long.nameHeight > 40, 'der lange Name bricht auf mehrere Zeilen um');
       assert.equal(await horizontalOverflow(page), 0);
       assert.deepEqual(problems, []);
       await ctx.close();
@@ -5973,7 +6283,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     assert.equal(await page.locator('#export-full').isVisible(), true);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-full')]);
-    assert.match(download.suggestedFilename(), /^einkauf-vollsicherung-\d{4}-\d\d-\d\d\.zip$/);
+    assert.match(download.suggestedFilename(), /^sattplan-vollsicherung-\d{4}-\d\d-\d\d\.zip$/);
     const files = readZip(new Uint8Array(await readFile(await download.path())));
     assert.deepEqual(files.map(file => file.name), ['daten.json', `fotos/${keep}.jpg`, 'lies-mich.txt']);
     const data = JSON.parse(new TextDecoder().decode(files[0].data));
@@ -6840,6 +7150,399 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(saved.find(row => row.id === 'wish-rope-b').wishUrl, 'https://example.org/model-b');
     assert.deepEqual(problems, []); await ctx.close();
   });
+
+  test('Großer Produktkatalog: 1024 Namen durchsuchbar, Darstellung in Portionen und Auswahl bleibt beim Filtern erhalten', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await page.click('#open-products'); await sheetOpen(page);
+    assert.equal(await page.locator('.product-card').count(), 96);
+    await page.click('#product-picker-more'); assert.equal(await page.locator('.product-card').count(), 192);
+    await page.fill('#product-picker-search', 'kuehlakku');
+    assert.equal(await page.locator('.product-card[data-product=kuehlakku]').count(), 1, 'auch das letzte Produkt ist ohne vorheriges Nachladen auffindbar');
+    await page.locator('.product-card[data-product=kuehlakku] .product-pick').click();
+    await page.fill('#product-picker-search', ''); assert.equal(await page.locator('.product-card').count(), 96);
+    assert.equal(await page.textContent('#product-picker-count'), '1 ausgewählt');
+    await page.selectOption('#product-picker-category', 'getraenke');
+    assert.ok(await page.locator('.product-card').count() <= 96); assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Vorratsfavoriten: direkter Zugriff, Sterne ohne unbeabsichtigtes Hinzufügen, vorhandene Produkte bleiben markierbar', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } }); await open(page); await page.click('#open-pantry');
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const before = await stored(); await page.click('#pantry-favorites'); await sheetOpen(page);
+    assert.equal(await page.locator('[data-product-mode=favorites]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.textContent('#product-picker-status'), /Alle.*Stern/);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Salz');
+    const card = page.locator('.product-card[data-product=salz]');
+    assert.ok((await card.locator('.product-star').boundingBox()).height >= 44, 'Stern gut mit dem Finger erreichbar');
+    await card.locator('.product-star').click();
+    let saved = await stored(); assert.equal(saved.productFavorites.filter(row => !row.deletedAt).length, 1);
+    assert.deepEqual(saved.pantry || [], before.pantry || [], 'Stern ist nur Merken'); assert.deepEqual(saved.items, before.items);
+    assert.equal(await page.textContent('#product-picker-count'), '0 ausgewählt');
+    await page.click('#product-picker-dialog [data-close]'); assert.equal(await page.textContent('#pantry-favorite-count'), '1');
+    await page.click('#pantry-favorites'); assert.equal(await page.locator('.product-card').count(), 1);
+    await card.locator('.product-pick').click(); await page.click('#product-picker-add');
+    assert.equal(await page.locator('#pantry-list .pantry-name').textContent(), 'Salz');
+    await page.click('#pantry-products');
+    assert.equal(await page.locator('[data-product-mode=favorites]').getAttribute('aria-pressed'), 'true', 'beim nächsten Öffnen direkt bei den Favoriten');
+    assert.equal(await card.locator('.product-pick').isDisabled(), true, 'schon im Vorrat');
+    assert.equal(await card.locator('.product-star').isEnabled(), true, 'Stern bleibt unabhängig bedienbar');
+    await card.locator('.product-star').click(); assert.match(await page.textContent('#product-picker-status'), /Stern/);
+    saved = await stored(); assert.equal(saved.pantry.filter(row => !row.deletedAt).length, 1, 'Entfernen des Sterns entfernt keinen Vorrat');
+    await page.click('#product-picker-dialog [data-close]'); assert.equal(await page.locator('#pantry-favorite-count').isHidden(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Vorratsfavoriten: eigene Produkte mit eigenem Bild offline merken, nach Neustart und auf zweitem Gerät wiederfinden', async () => {
+    const data = structuredClone(demo), stamp = '2026-10-30T06:00:00.000Z';
+    data.pantry = [{ id: 'my-breakfast', name: 'Meine Frühstücksmischung', category: 'vorrat', imageKey: 'muesli', available: false, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    const api = github(data); let offline = false;
+    const a = await context({ config: { ...connectedConfig, productImages: true }, context: { serviceWorkers: 'allow' } });
+    const b = await context({ config: { ...connectedConfig, actor: 'Anna', productImages: true } });
+    await a.ctx.route('https://api.github.com/**', route => offline ? route.abort('internetdisconnected') : api.handler(route));
+    await b.ctx.route('https://api.github.com/**', api.handler);
+    for (const device of [a, b]) { await open(device.page); await device.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); }
+    await a.page.evaluate(() => navigator.serviceWorker.ready); await a.page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    offline = true; await a.ctx.setOffline(true); await a.page.click('#open-pantry'); await a.page.click('#pantry-products');
+    await a.page.fill('#product-picker-search', 'Meine Frühstücksmischung'); await a.page.locator('.product-card .product-star').click();
+    assert.ok(!api.content.productFavorites?.some(row => !row.deletedAt), 'noch nicht gesendet');
+    await a.page.reload(); await a.page.click('#open-pantry'); await a.page.click('#pantry-favorites');
+    assert.equal(await a.page.locator('.product-card').count(), 1); assert.match(await a.page.textContent('#product-picker-list'), /Meine Frühstücksmischung/);
+    assert.equal(await a.page.locator('.product-star').getAttribute('aria-pressed'), 'true');
+    assert.equal(await a.page.locator('.product-card .product-picture').getAttribute('data-photo-key'), 'muesli');
+    offline = false; await a.ctx.setOffline(false); await pollNow(a.page);
+    await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); await pollNow(b.page);
+    await b.page.click('#open-pantry'); await b.page.waitForFunction(() => document.querySelector('#pantry-favorite-count').textContent === '1');
+    await b.page.click('#pantry-favorites'); assert.equal(await b.page.locator('.product-card .product-picture').getAttribute('data-photo-key'), 'muesli');
+    assert.equal(api.content.pantry[0].available, false, 'Merken verändert den Vorratsstatus nicht');
+    await b.page.locator('.product-star').click(); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(a.page); await a.page.waitForFunction(() => document.querySelectorAll('#product-picker-list .product-card').length === 0);
+    assert.equal(api.content.pantry[0].deletedAt, null, 'gemeinsam entfernte Favoriten lassen den Vorrat bestehen');
+    assert.deepEqual(b.problems, []); await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('Vorrat mit Bildern: manuelle Namen erhalten Produkt-/Gruppenbilder, eigenes Bild bleibt nach Neustart erhalten', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } }); await open(page); await page.click('#open-pantry');
+    for (const name of ['Kochschinken', 'Meine Hausmischung']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
+    const ham = page.locator('.pantry-entry', { hasText: 'Kochschinken' }), mix = page.locator('.pantry-entry', { hasText: 'Meine Hausmischung' });
+    assert.equal(await ham.locator('.product-picture').getAttribute('data-photo-key'), 'kochschinken');
+    assert.equal(await mix.locator('.product-picture').getAttribute('data-photo-key'), 'group-miscellaneous');
+    await mix.locator('.pantry-entry-main').click(); await sheetOpen(page); await page.click('#pantry-change-image');
+    await page.click('[data-product-mode=groups]'); await page.fill('#product-picker-search', 'Fruehstueck');
+    await page.getByRole('button', { name: 'Frühstück: Bild auswählen', exact: true }).click();
+    assert.equal(await page.locator('#pantry-edit-dialog').isVisible(), true);
+    assert.equal(await page.locator('#pantry-edit-photo').getAttribute('data-photo-key'), 'group-breakfast');
+    await page.click('#pantry-edit-form button[type=submit]');
+    assert.equal(await mix.locator('.product-picture').getAttribute('data-photo-key'), 'group-breakfast');
+    await page.reload(); await page.click('#open-pantry');
+    assert.equal(await mix.locator('.product-picture').getAttribute('data-photo-key'), 'group-breakfast');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.pantry);
+    assert.equal(saved.find(row => row.name === 'Meine Hausmischung').imageKey, 'group-breakfast');
+    // Ein eigenes Ersatzbild darf nicht das originale Motiv in der Bildauswahl verändern.
+    await ham.locator('.pantry-entry-main').click(); await page.click('#pantry-change-image'); await page.click('[data-product-mode=all]');
+    await page.fill('#product-picker-search', 'Müsli'); await page.getByRole('button', { name: 'Müsli: Bild auswählen', exact: true }).click(); await page.click('#pantry-edit-form button[type=submit]');
+    assert.equal(await ham.locator('.product-picture').getAttribute('data-photo-key'), 'muesli');
+    await ham.locator('.pantry-entry-main').click(); await page.click('#pantry-change-image'); await page.fill('#product-picker-search', 'Kochschinken');
+    assert.equal(await page.locator('.product-card[data-product=kochschinken] .product-picture').getAttribute('data-photo-key'), 'kochschinken');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Vorrat mit Bildern: Bildauswahl übernimmt ohne Mengenpflicht, vorhandene Produkte werden nicht doppelt angelegt', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } }); await open(page); await page.click('#open-pantry'); await page.click('#pantry-products');
+    await page.fill('#product-picker-search', 'Kidneybohnen');
+    await page.locator('.product-card[data-product=kidneybohnen] .product-pick').click();
+    assert.equal(await page.locator('.product-target').isVisible(), false);
+    await page.click('#product-picker-selected'); assert.equal(await page.locator('#product-picker-cart input').count(), 0);
+    await page.click('#product-picker-add');
+    assert.equal(await page.locator('.pantry-entry .product-picture[data-photo-key=kidneybohnen]').count(), 1);
+    await page.fill('#pantry-form input[name=name]', 'kidneybohnen'); await page.click('#pantry-form button');
+    assert.equal(await page.locator('.pantry-entry').count(), 1);
+    await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Kidneybohnen');
+    assert.equal(await page.locator('.product-card[data-product=kidneybohnen] .product-pick').isDisabled(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Vorrat mit Bildern: Aufgebraucht wird bei Rezepten wieder ausgewählt, Nachkaufen behält eigenes Bild und vermeidet Doppelkäufe', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true } }); await open(page); await page.click('#open-pantry');
+    for (const name of ['Nudeln', 'Meine Testmischung']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
+    await page.getByRole('button', { name: 'Meine Testmischung: Vorrat bearbeiten', exact: true }).click(); await page.click('#pantry-change-image');
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Müsli'); await page.getByRole('button', { name: 'Müsli: Bild auswählen', exact: true }).click();
+    await page.click('#pantry-edit-form button[type=submit]');
+    for (const name of ['Nudeln', 'Meine Testmischung']) await page.getByRole('button', { name: `${name}: als aufgebraucht markieren`, exact: true }).click();
+    await page.getByRole('button', { name: 'Meine Testmischung: nachkaufen', exact: true }).click();
+    await page.selectOption('#pantry-buy-form select[name=storeId]', 'store-lidl'); await page.fill('#pantry-buy-form input[name=quantity]', '2');
+    await page.evaluate(() => { document.querySelector('#pantry-buy-add').click(); document.querySelector('#pantry-buy-add').click(); });
+    let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const purchased = saved.items.filter(row => !row.deletedAt && row.name === 'Meine Testmischung');
+    assert.equal(purchased.length, 1); assert.equal(purchased[0].quantity, 2); assert.equal(purchased[0].imageKey, 'muesli');
+    assert.equal(saved.pantry.find(row => row.name === 'Meine Testmischung').available, false);
+    await page.getByRole('button', { name: 'Meine Testmischung: nachkaufen', exact: true }).click(); await page.selectOption('#pantry-buy-form select[name=storeId]', 'store-lidl');
+    assert.equal(await page.locator('#pantry-buy-add').isDisabled(), true); await page.click('#pantry-buy-dialog [data-close]');
+    await page.click('[data-tab=recipes]'); const recipe = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }); await recipe.locator('summary').click(); await recipe.getByRole('button', { name: 'Auf die Liste' }).click();
+    const noodles = page.locator('#transfer-ingredients .transfer-row', { hasText: 'Nudeln' });
+    assert.equal(await noodles.locator('input').isChecked(), true); assert.equal(await noodles.locator('.pantry-badge').count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('Vorrat mit Bildern: Suche, Filter und Bearbeiten bleiben auf 280/390 px in hell/dunkel bedienbar', async () => {
+    for (const width of [280, 390]) for (const scheme of ['light', 'dark']) {
+      const { ctx, page, problems } = await context({ config: { productImages: true, theme: scheme }, context: { viewport: { width, height: 750 }, colorScheme: scheme } });
+      await open(page); await page.click('#open-pantry');
+      for (const selector of ['#pantry-products', '#pantry-favorites']) {
+        const box = await page.locator(selector).boundingBox(); assert.ok(box.height >= 44 && box.x >= 0 && box.x + box.width <= width, 'Vorrats-Einstiege bleiben groß und im Bild');
+      }
+      for (const name of ['Äpfel', 'Mein besonders langer selbst eingegebener Vorratsartikel ohne Markenfoto']) { await page.fill('#pantry-form input[name=name]', name); await page.click('#pantry-form button'); }
+      await page.getByRole('button', { name: 'Äpfel: als aufgebraucht markieren', exact: true }).click();
+      await page.click('[data-pantry-filter=out]'); assert.equal(await page.locator('.pantry-entry').count(), 1);
+      await page.fill('#pantry-search', 'aepfel'); assert.equal(await page.locator('.pantry-name').textContent(), 'Äpfel');
+      assert.equal(await horizontalOverflow(page), 0); await page.getByRole('button', { name: 'Äpfel: Vorrat bearbeiten', exact: true }).click(); await sheetOpen(page);
+      const size = await page.locator('#pantry-edit-dialog').evaluate(node => [node.scrollWidth, node.clientWidth]); assert.ok(size[0] <= size[1]);
+      assert.deepEqual(problems, []); await ctx.close();
+    }
+  });
+
+  test('Vorrat mit Bildern: zwei Geräte ändern Status und Bild gleichzeitig, geöffneter Entwurf bleibt erhalten', async () => {
+    const api = github(demo); const a = await context({ config: { ...connectedConfig, productImages: true } }), b = await context({ config: { ...connectedConfig, actor: 'Anna', productImages: true } });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', api.handler); await open(device.page); await device.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); }
+    await a.page.click('#open-pantry'); await a.page.fill('#pantry-form input[name=name]', 'Meine Mischung'); await a.page.click('#pantry-form button');
+    await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); await pollNow(b.page);
+    await b.page.click('#open-pantry'); await b.page.waitForSelector('.pantry-entry');
+    await a.page.getByRole('button', { name: 'Meine Mischung: Vorrat bearbeiten', exact: true }).click(); await a.page.click('#pantry-change-image');
+    await a.page.click('[data-product-mode=all]'); await a.page.fill('#product-picker-search', 'Müsli'); await a.page.getByRole('button', { name: 'Müsli: Bild auswählen', exact: true }).click();
+    await b.page.getByRole('button', { name: 'Meine Mischung: als aufgebraucht markieren', exact: true }).click(); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(a.page); await a.page.waitForFunction(() => document.querySelector('.pantry-entry.pantry-out'));
+    assert.equal(await a.page.locator('#pantry-edit-photo').getAttribute('data-photo-key'), 'muesli', 'lokaler Bildentwurf bleibt beim Abgleich erhalten');
+    await a.page.click('#pantry-edit-form button[type=submit]'); await a.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(api.content.pantry[0].available, false); assert.equal(api.content.pantry[0].imageKey, 'muesli');
+    await pollNow(b.page); await b.page.waitForFunction(() => document.querySelector('.pantry-entry .product-picture')?.dataset.photoKey === 'muesli');
+    await a.page.getByRole('button', { name: 'Meine Mischung: Vorrat bearbeiten', exact: true }).click(); await a.page.click('#pantry-change-image');
+    await b.page.getByRole('button', { name: 'Meine Mischung aus dem Vorrat entfernen', exact: true }).click(); await b.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await pollNow(a.page); await a.page.waitForFunction(() => !document.querySelector('#product-picker-dialog').open && !document.querySelector('#pantry-edit-dialog').open);
+    assert.deepEqual(a.problems, []); assert.deepEqual(b.problems, []); await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('Vorrat mit Bildern: Auswahl und manuelles Gruppenbild nach komplettem Offline-Neustart nutzbar', async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true }, context: { serviceWorkers: 'allow' } });
+    await open(page); await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    await ctx.setOffline(true); await page.reload(); await page.click('#open-pantry'); await page.click('#pantry-products'); await page.fill('#product-picker-search', 'Blumendünger');
+    await page.locator('.product-card[data-product=blumenduenger] .product-pick').click(); await page.click('#product-picker-add');
+    await page.fill('#pantry-form input[name=name]', 'Mein Spezialgewürz'); await page.click('#pantry-form button');
+    await page.reload(); await page.click('#open-pantry');
+    const photos = await page.locator('#pantry-list .product-picture').evaluateAll(async nodes => Promise.all(nodes.map(async node => { const image = new Image(); image.src = getComputedStyle(node).backgroundImage.slice(5, -2); await image.decode(); return [node.dataset.photoKey, image.naturalWidth > 500]; })));
+    assert.equal(photos.length, 2); assert.ok(photos.every(([, decoded]) => decoded)); assert.ok(photos.some(([key]) => key === 'blumenduenger'));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- Familienausgaben (Version 2.67) ----
+  function familyExpenseData() {
+    const data = structuredClone(demo), day = isoDay(new Date()), month = day.slice(0, 7), stamp = new Date(Date.now() - 86400000).toISOString();
+    data.updatedAt = stamp;
+    const record = (id, fields) => ({ id, ...fields, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+    data.members = [record('member-nico', { name: 'Nico' }), record('member-anna', { name: 'Anna' })];
+    data.purchases = [record('nico-buy', { date: `${month}-01`, cents: 2345, buyerId: 'member-nico', buyerName: 'Nico', storeId: 'store-lidl', storeName: 'Lidl', source: 'hand' }),
+      record('anna-buy', { date: `${month}-02`, cents: 4000, buyerId: 'member-anna', buyerName: 'Anna', storeId: 'store-rewe', storeName: 'Rewe', source: 'hand' }),
+      record('unknown-buy', { date: `${month}-03`, cents: 1000, storeName: 'Wochenmarkt', createdBy: 'Nico' }),
+      record('return', { date: `${month}-04`, cents: 500, buyerId: 'member-anna', buyerName: 'Anna', kind: 'refund', storeId: 'store-rewe', storeName: 'Rewe' })];
+    return data;
+  }
+  async function localExpenses(options = {}, data = familyExpenseData()) {
+    const result = await context(options);
+    await result.ctx.addInitScript(data => {
+      if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] }));
+    }, data);
+    await open(result.page); await goTab(result.page, 'spending'); return result;
+  }
+  const expenseStored = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+  const personFilter = (page, id) => page.locator(`#spending-person-filter button[data-person="${id}"]`);
+  const chooseRange = async (page, from, to) => {
+    await page.click('#spending-period'); await sheetOpen(page);
+    await page.fill('#spending-period-form input[name=from]', from); await page.fill('#spending-period-form input[name=to]', to);
+    await page.click('#spending-period-form button[type=submit]');
+  };
+  test('Familienausgaben: Summe, Personenfilter, Altbestände, Zeitraum einschließlich und Budget nur für die ganze Familie', async () => {
+    const { ctx, page, problems } = await localExpenses(); const month = isoDay(new Date()).slice(0, 7);
+    assert.match(await page.textContent('#spending-summary'), /Familie insgesamt[\s\S]*68,45\s€[\s\S]*3 Einkäufe · 1 Rückerstattung/);
+    assert.deepEqual(await page.locator('#spending-people .person-amount').allTextContents(), ['35,00 €', '23,45 €', '10,00 €']);
+    assert.equal(await page.locator('#spending-details').evaluate(node => node.open), false);
+    assert.equal(await page.locator('#spending-budget').isVisible(), true);
+    await personFilter(page, 'member-anna').click();
+    assert.match(await page.textContent('#spending-summary'), /Anna · Ausgaben[\s\S]*35,00\s€/);
+    assert.equal(await page.locator('#purchase-list .spend-row').count(), 2); assert.equal(await page.locator('#spending-budget').isHidden(), true);
+    await personFilter(page, 'unassigned').click(); assert.match(await page.textContent('#purchase-list'), /Nicht zugeordnet/);
+    assert.ok(!(await page.textContent('#purchase-list')).includes('Heute · Nico'), 'createdBy ordnet alte Einträge nicht automatisch zu');
+    await personFilter(page, 'all').click(); await chooseRange(page, `${month}-02`, `${month}-03`);
+    assert.match(await page.textContent('#spending-summary'), /50,00\s€/); assert.equal(await page.locator('#purchase-list .spend-row').count(), 2);
+    assert.equal(await page.locator('#spending-budget').isHidden(), true); assert.equal(await page.locator('#month-prev').isHidden(), true);
+    assert.equal(await page.locator('#spending-period-dialog[open]').count(), 0);
+    await chooseRange(page, `${month}-05`, `${month}-02`);
+    assert.match(await page.textContent('#spending-period-error'), /Anfangsdatum/); assert.match(await page.textContent('#spending-summary'), /50,00\s€/);
+    await page.click('[data-spend-preset=this]'); assert.equal(await page.locator('#spending-budget').isVisible(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: neue Eingabe ist auch aus einem alten Monat heute; Name ist vorbelegt und der Betrag genügt', async () => {
+    const data = familyExpenseData(), old = isoDay(monthsAgo(2)); data.purchases[0].date = old;
+    const { ctx, page, problems } = await localExpenses({}, data);
+    await page.click('#month-prev'); await page.click('#add-purchase'); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form input[name=date]'), isoDay(new Date()));
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico');
+    await page.fill('#purchase-form input[name=amount]', '12,34'); await page.click('#purchase-plus');
+    const saved = (await expenseStored(page)).purchases.find(row => row.cents === 1234);
+    assert.equal(saved.buyerId, 'member-nico'); assert.equal(saved.buyerName, 'Nico'); assert.equal(saved.date, isoDay(new Date()));
+    assert.match(await page.textContent('#purchase-list'), /Heute · Nico/); assert.equal(await page.locator('#month-today').isHidden(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: Person im offenen Einkauf hinzufügen, umbenennen und ausblenden bewahrt Beträge und feste Zuordnung', async () => {
+    const { ctx, page, problems } = await localExpenses();
+    await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', '18,90');
+    await page.click('#purchase-person-add'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Lena'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.locator('#members-dialog[open]').count(), 0);
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '18,90');
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-lena'); await page.click('#purchase-save');
+    const purchase = (await expenseStored(page)).purchases.find(row => row.cents === 1890), original = JSON.stringify(purchase);
+    assert.equal(purchase.buyerId, 'member-lena');
+    await page.click('#spending-members'); await sheetOpen(page); await page.getByRole('button', { name: 'Lena: Name ändern', exact: true }).click();
+    await page.fill('#member-form input[name=name]', 'Helena'); await page.click('#member-form button[type=submit]');
+    await page.getByRole('button', { name: 'Helena: ausblenden', exact: true }).click(); await page.click('[data-close=members-dialog]');
+    const after = await expenseStored(page); assert.equal(JSON.stringify(after.purchases.find(row => row.id === purchase.id)), original, 'keine Massenänderung historischer Ausgaben');
+    assert.equal(after.members.find(row => row.id === 'member-lena').name, 'Helena'); assert.equal(after.members.find(row => row.id === 'member-lena').archived, true);
+    assert.match(await page.locator(`#purchase-list li[data-id="${purchase.id}"]`).textContent(), /Helena/);
+    await page.locator(`#purchase-list li[data-id="${purchase.id}"] button`).click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-lena');
+    assert.match(await page.locator('#purchase-form select[name=buyerId] option:checked').textContent(), /Helena.*ausgeblendet/);
+    await page.keyboard.press('Escape'); await page.click('#add-purchase'); await sheetOpen(page);
+    assert.equal(await page.locator('#purchase-form select[name=buyerId] option[value=member-lena]').count(), 0, 'neue Käufe schlagen archivierte andere Personen nicht vor');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: eigene Person umbenennen bleibt auch nach Neustart dieselbe Person', async () => {
+    const { ctx, page, problems } = await localExpenses(); await addPurchase(page, { amount: '1,23' });
+    await page.click('#spending-members'); await sheetOpen(page); await page.getByRole('button', { name: 'Nico: Name ändern', exact: true }).click();
+    await page.fill('#member-form input[name=name]', 'Nicolas'); await page.click('#member-form button[type=submit]'); await page.click('[data-close=members-dialog]');
+    await page.reload(); await goTab(page, 'spending'); await page.click('#add-purchase'); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico');
+    assert.equal(await page.locator('#purchase-form select[name=buyerId] option:checked').textContent(), 'Nicolas');
+    assert.match(await page.textContent('#identity'), /Nicolas/); assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: alte Ausgabe ausdrücklich zuordnen, Rückerstattung eintragen und gefilterte CSV herunterladen', async () => {
+    const { ctx, page, problems } = await localExpenses();
+    await page.locator('#purchase-list li[data-id=unknown-buy] button').click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), '');
+    await page.selectOption('#purchase-form select[name=buyerId]', 'member-anna'); await page.click('#purchase-save');
+    assert.equal((await expenseStored(page)).purchases.find(row => row.id === 'unknown-buy').buyerId, 'member-anna');
+    await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', '12,34');
+    await page.selectOption('#purchase-form select[name=buyerId]', 'member-anna'); await page.locator('#purchase-more summary').click();
+    await page.selectOption('#purchase-form select[name=kind]', 'refund'); await page.click('#purchase-save');
+    assert.match(await page.textContent('#spending-summary'), /56,11\s€/); await personFilter(page, 'member-anna').click();
+    assert.match(await page.textContent('#spending-summary'), /32,66\s€/);
+    assert.equal(await page.locator('#purchase-list .refund-amount').count(), 2); await page.locator('#spending-details summary').click();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#spending-export')]);
+    const csv = await readFile(await download.path(), 'utf8'); assert.ok(download.suggestedFilename().startsWith('sattplan-ausgaben-'));
+    assert.match(csv, /"Anna"/); assert.ok(!csv.includes('"Nico"')); assert.match(csv, /"-12,34"/);
+    assert.equal(csv.split('\r\n').filter(Boolean).length, 5); assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: fehlender Gerätespeicher lässt den Betrag im offenen Formular und legt keinen Kauf an', async () => {
+    const { ctx, page } = await localExpenses(); const before = (await expenseStored(page)).purchases.length;
+    await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', '7,89');
+    await page.evaluate(() => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function(key, value) { if (key === 'einkauf-demo-v1') throw new DOMException('voll', 'QuotaExceededError'); return original.call(this, key, value); }; });
+    await page.click('#purchase-save'); assert.equal(await page.locator('#purchase-dialog[open]').count(), 1);
+    assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /lokal speichern/);
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '7,89'); assert.equal((await expenseStored(page)).purchases.length, before); await ctx.close();
+  });
+  test('Familienausgaben: anderer Editor, offene Eingabe und gleichzeitige Personenänderung überschreiben die Zuordnung nicht', async () => {
+    const remote = github(familyExpenseData()), a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', route => remote.handler(route)); await open(device.page); await synced(device.page); await goTab(device.page, 'spending'); }
+    await a.page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(a.page);
+    await b.page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(b.page);
+    assert.equal(await b.page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico', 'Editor übernimmt nicht seinen eigenen Namen');
+    await b.page.selectOption('#purchase-form select[name=buyerId]', 'member-anna'); await b.page.click('#purchase-save'); await synced(b.page);
+    await pollNow(a.page); await synced(a.page);
+    await a.page.waitForFunction(() => { const x = Object.entries(localStorage).find(([key]) => key.startsWith('einkauf-data-v1:')); return x && JSON.parse(x[1]).base.purchases.some(p => p.id === 'nico-buy' && p.buyerId === 'member-anna'); }, null, { timeout: 20000 });
+    assert.equal(await a.page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico', 'offenes Formular bleibt unverändert');
+    await a.page.fill('#purchase-form input[name=amount]', '30'); await a.page.click('#purchase-save'); await synced(a.page);
+    const stored = remote.content.purchases.find(row => row.id === 'nico-buy'); assert.equal(stored.cents, 3000); assert.equal(stored.buyerId, 'member-anna'); assert.equal(stored.buyerName, 'Anna');
+    assert.deepEqual([...a.problems, ...b.problems], []); await a.ctx.close(); await b.ctx.close();
+  });
+  test('Familienausgaben: Umbenennung erreicht das zweite Gerät, ohne ungespeicherte Verbindungseingaben zu verwerfen', async () => {
+    const remote = github(familyExpenseData()), a = await context({ config: connectedConfig }), b = await context({ config: connectedConfig });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', route => remote.handler(route)); await open(device.page); await synced(device.page); }
+    await openSettings(b.page); await b.page.fill('#settings-form input[name=token]', 'anderer-test-token-noch-nicht-gespeichert');
+    await goTab(a.page, 'spending'); await a.page.click('#spending-members'); await sheetOpen(a.page);
+    await a.page.getByRole('button', { name: 'Nico: Name ändern', exact: true }).click();
+    await a.page.fill('#member-form input[name=name]', 'Nicolas'); await a.page.click('#member-form button[type=submit]'); await synced(a.page);
+    await pollNow(b.page); await b.page.waitForFunction(() => document.querySelector('#identity').textContent === 'Nicolas', null, { timeout: 20000 });
+    assert.equal(await b.page.inputValue('#settings-form input[name=token]'), 'anderer-test-token-noch-nicht-gespeichert');
+    assert.equal(await b.page.inputValue('#settings-form input[name=actor]'), 'Nicolas');
+    await goTab(b.page, 'spending'); await b.page.click('#add-purchase'); await sheetOpen(b.page);
+    assert.equal(await b.page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico');
+    assert.equal(await b.page.locator('#purchase-form select[name=buyerId] option:checked').textContent(), 'Nicolas');
+    assert.deepEqual([...a.problems, ...b.problems], []); await a.ctx.close(); await b.ctx.close();
+  });
+  test('Familienausgaben: CSV kann auf dem iPhone über den Teilen-Dialog gespeichert werden', async () => {
+    const { ctx, page, problems } = await localExpenses(); await personFilter(page, 'member-anna').click();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: data => data.files?.length === 1 });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async data => { window.sharedExpense = { name: data.files[0].name, type: data.files[0].type, text: await data.files[0].text() }; } });
+    });
+    await page.locator('#spending-details summary').click(); await page.click('#spending-export');
+    await page.waitForFunction(() => window.sharedExpense, null, { timeout: 10000 });
+    const file = await page.evaluate(() => window.sharedExpense); assert.match(file.name, /^sattplan-ausgaben-.*\.csv$/);
+    assert.equal(file.type, 'text/csv;charset=utf-8'); assert.match(file.text, /"Anna"/); assert.ok(!file.text.includes('"Nico"')); assert.match(file.text, /"-5,00"/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: offline erfasste Einkäufe von zwei Personen werden später vollständig synchronisiert', async () => {
+    const data = structuredClone(demo); data.purchases = []; const remote = github(data);
+    const a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } }); let offline = false;
+    await a.ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await b.ctx.route('https://api.github.com/**', route => offline ? route.abort('connectionfailed') : remote.handler(route));
+    for (const device of [a, b]) { await open(device.page); await synced(device.page); await goTab(device.page, 'spending'); }
+    offline = true; await addPurchase(b.page, { amount: '11,20', store: 'Lidl' });
+    await addPurchase(a.page, { amount: '21,30', store: 'Edeka' }); await synced(a.page);
+    assert.equal(remote.content.purchases.length, 1); await b.page.reload(); await goTab(b.page, 'spending');
+    assert.match(await b.page.textContent('#spending-summary'), /11,20\s€/);
+    offline = false; await b.page.click('#refresh'); await synced(b.page); await pollNow(a.page); await synced(a.page);
+    await a.page.waitForFunction(() => /32,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
+    assert.deepEqual(remote.content.purchases.filter(row => !row.deletedAt).map(row => row.buyerId).sort(), ['member-anna', 'member-nico']);
+    assert.deepEqual(remote.content.members.map(row => row.id).sort(), ['member-anna', 'member-nico']);
+    assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource|ERR_FAILED/.test(text)), []);
+    await a.ctx.close(); await b.ctx.close();
+  });
+  test('Familienausgaben: globale Duplikatwarnung bleibt bei unterschiedlichen Personen aktiv, Retouren zählen separat', async () => {
+    const { ctx, page, problems } = await localExpenses();
+    await personFilter(page, 'member-anna').click(); await page.click('#add-purchase'); await sheetOpen(page);
+    await page.fill('#purchase-form input[name=amount]', '23,45'); await page.fill('#purchase-form input[name=date]', `${isoDay(new Date()).slice(0, 7)}-01`);
+    await page.selectOption('#purchase-form select[name=storeId]', 'store-lidl'); await page.selectOption('#purchase-form select[name=buyerId]', 'member-anna');
+    await page.click('#purchase-save'); assert.match(await page.textContent('#purchase-dialog [data-dialog-error]'), /Möglicherweise doppelt.*Nico/);
+    assert.equal((await expenseStored(page)).purchases.length, 4);
+    await page.locator('#purchase-more summary').click(); await page.selectOption('#purchase-form select[name=kind]', 'refund'); await page.click('#purchase-save');
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 0); assert.equal((await expenseStored(page)).purchases.length, 5);
+    assert.match(await page.textContent('#spending-summary'), /11,55\s€/); assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('Familienausgaben: Einkauf beenden speichert die gewählte Person; nur beenden erzeugt keine Personen oder Ausgaben', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Lidl').click(); await shopTap(page, 'Milch').click();
+    await finishShop(page); await sheetOpen(page); await page.click('#finish-only');
+    assert.equal((await expenseStored(page)).purchases.length, 0); assert.equal((await expenseStored(page)).members?.length || 0, 0);
+    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Edeka').click(); await shopTap(page, 'Tomaten').click();
+    await finishShop(page); await sheetOpen(page); assert.equal(await page.inputValue('#finish-form select[name=buyerId]'), 'member-nico');
+    await page.fill('#finish-form input[name=amount]', '8,50'); await page.click('#finish-person-add'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Oma'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.inputValue('#finish-form input[name=amount]'), '8,50'); await page.click('#finish-form .add-button');
+    const saved = (await expenseStored(page)).purchases[0]; assert.equal(saved.buyerId, 'member-oma'); assert.equal(saved.buyerName, 'Oma'); assert.equal(saved.cents, 850);
+    assert.equal(saved.date, isoDay(new Date())); assert.equal(saved.storeId, 'store-edeka'); assert.equal(await page.locator('#plan-view').isVisible(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  for (const width of [280, 320, 390]) for (const theme of ['light', 'dark']) {
+    test(`Familienausgaben: Übersicht, lange Namen, Zeitraum, Retoure und Mitglieder passen bei ${width} px ${theme}`, async () => {
+      const data = familyExpenseData(); data.members[1].name = 'Alexandra Maximiliane Familie'; data.purchases[1].cents = 9999999;
+      const { ctx, page, problems } = await localExpenses({ config: { theme, palette: 'gruen', glass: true }, context: { viewport: { width, height: 760 }, colorScheme: theme } }, data);
+      const fits = async label => { assert.equal(await horizontalOverflow(page), 0, label); assert.ok(await page.evaluate(() => [...document.querySelectorAll('dialog[open]')].every(el => el.scrollWidth <= el.clientWidth + 1)), `${label}: Dialogbreite`); };
+      await fits('Übersicht'); await page.locator('#spending-details summary').click(); await fits('Auswertungen');
+      await page.click('#spending-period'); await sheetOpen(page); await fits('Zeitraum'); await page.click('[data-spend-preset=year]'); await fits('Jahreszeitraum');
+      await page.click('#add-purchase'); await sheetOpen(page); await page.locator('#purchase-more summary').click(); await page.selectOption('#purchase-form select[name=kind]', 'refund'); await fits('Rückerstattung');
+      await page.click('#purchase-person-add'); await sheetOpen(page); await fits('Familienmitglieder');
+      const touches = await page.locator('#members-list button').evaluateAll(nodes => nodes.every(node => node.getBoundingClientRect().height >= 44)); assert.equal(touches, true);
+      assert.deepEqual(problems, []); await ctx.close();
+    });
+  }
 
   test('Neuer Name und Backup', async () => {
     const { ctx, page } = await context({ seed: false });

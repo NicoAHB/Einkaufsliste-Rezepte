@@ -1,4 +1,4 @@
-import { chainOf } from './brand.js';
+import { chainForStore } from './brand.js';
 /* „Im Laden“-Modus: Was steht für das Geschäft, in dem man gerade ist, noch auf der Liste? Reine Logik ohne DOM.
    Artikel ohne Geschäft kann man in jedem Laden kaufen. Sie stehen deshalb überall, bis sie abgehakt sind: Wer sie bei Edeka abhakt,
    findet sie bei Lidl nicht mehr. Damit man einen versehentlichen Tipp zurücknehmen kann, bleibt ein solcher Artikel nur in dem Geschäft
@@ -28,7 +28,7 @@ export function withoutSeparate(items, stores, including = '') {
 }
 
 // Nimmt ein Geschäft Artikel ohne Geschäft mit auf? Eine eigene Liste nie; sonst ausdrücklich eingestellt (`anywhere`), sonst nein bei Drogerien (Tabelle in brand.js): Dort kauft man kein Brot nebenbei.
-export const takesAnywhere = store => isSeparate(store) ? false : typeof store?.anywhere === 'boolean' ? store.anywhere : !chainOf(store?.name)?.drugstore;
+export const takesAnywhere = store => isSeparate(store) ? false : typeof store?.anywhere === 'boolean' ? store.anywhere : !chainForStore(store)?.drugstore;
 
 /* Auswahl „Alle“ im Laden: alles, was noch offen ist, egal für welches Geschäft, dazu die Artikel ohne Geschäft. Zuerst die Artikel ohne Geschäft, dann ein
    Abschnitt je Geschäft (in der Reihenfolge von `stores`, genau wie die Gesamtliste unter „Planen“); leere Abschnitte fehlen. `done`: alles Abgehakte

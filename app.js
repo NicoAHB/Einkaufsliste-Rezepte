@@ -2,17 +2,23 @@ import { active, addToList, aliasApplies, clone, duplicateFolds, emptyData, fold
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, shoppingTotal, storeOfferUrl, unitRate } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
-import { brandOf, defaultSymbol, symbolOf } from './brand.js';
+import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
+import { catalogByKey, searchCatalog } from './store-catalog.js';
+import { GROCERY_PRODUCTS, favoriteId } from './product-catalog.js';
+import { mountProductPicker } from './product-picker.js';
+import { mountPantry } from './pantry-view.js';
+import { mountSpending } from './spending-view.js';
+import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMember } from './family.js';
+import { pantryChanges } from './pantry.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
-import { pantrySuggestions } from './pantry-suggestions.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
-import { emojiFor } from './emoji.js';
+import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
@@ -23,16 +29,17 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes } from './cookable.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel as spendDay, duplicatePurchase, estimateOf, possibleDuplicates, estimateVerdict, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from './spending.js';
+import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, estimateOf, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
 let config = {}, base = emptyData(), pending = [], state = emptyData();
-// Produktbilder: farbige Symbole rechts in der Artikelzeile (Einstellung „Produktbilder anzeigen“, Standard an).
+// Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
 const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
+let productPicker = null, pantryView = null, spendingView = null;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let wishBaseline = null;
@@ -80,8 +87,9 @@ let vocabMemo = { for: null, rows: [] };
 function suggestionHistory() {
   if (vocabMemo.for !== state) {
     const recipes = new Set(active(state.recipes).map(recipe => recipe.id)), plainName = name => String(name).replace(/\([^)]*\)/g, ' ').split(',')[0].trim().replace(/\s+/g, ' ');
-    const extra = [...active(state.ingredients).filter(row => recipes.has(row.recipeId)).map(row => plainName(row.name)), ...active(state.prices).map(row => row.name), ...appliedAliases().map(row => row.name)];
-    vocabMemo = { for: state, rows: [...itemHistory(), ...extra.filter(Boolean).map(name => ({ name, weight: 0.5 })), ...GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 }))] };
+    const extra = [...active(state.ingredients).filter(row => recipes.has(row.recipeId)).map(row => plainName(row.name)), ...active(state.pantry || []).map(row => row.name), ...active(state.prices).map(row => row.name), ...appliedAliases().map(row => row.name)];
+    vocabMemo = { for: state, rows: [...itemHistory(), ...extra.filter(Boolean).map(name => ({ name, weight: 0.5 })), ...GROCERY_NAMES.map((name, index) => ({ name, weight: 0.4 - index * 0.002 })),
+      ...GROCERY_PRODUCTS.filter(product => !GROCERY_NAMES.includes(product.name)).map(product => ({ ...product, weight: 0.05 }))] };
   }
   return vocabMemo.rows;
 }
@@ -236,6 +244,8 @@ function renderStorePick() {
   };
   add('', 'Kein Geschäft');
   for (const store of active(state.stores)) add(store.id, store.name, true);
+  $('#open-products').hidden = isSeparate(viewStore()) || isSeparate(active(state.stores).find(store => store.id === current));
+  $('#open-pantry').hidden = $('#open-products').hidden;
 }
 function storeChanged() {
   const form = $('#item-form');
@@ -253,12 +263,18 @@ function render() {
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
+  productPicker?.refresh();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
-  $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready;
+  $('#open-products').disabled = !ready;
+  $('#open-pantry').disabled = !ready; $('#pantry-products').disabled = !ready; $('#pantry-favorites').disabled = !ready;
+  const favorites = active(state.productFavorites || []).length;
+  $('#product-favorite-count').textContent = favorites ? `★ ${favorites}` : '';
+  $('#product-favorite-count').hidden = !favorites;
+  $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
 }
 function renderStoreChips() {
   const box = $('#store-chips'); box.replaceChildren();
@@ -330,10 +346,23 @@ function symbolNode(symbol, name) {
   svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); use.setAttribute('href', `#i-${symbol}`); svg.append(use); node.append(svg);
   return node;
 }
-// Name eines Geschäfts: als Bild (Voreinstellung für „Wünsche“, pro Geschäft einstellbar), sonst als Text oder (Einstellung „Geschäfte anzeigen als“) als Schriftzug in den Farben der Kette; unbekannte Geschäfte bleiben Text.
+// Händlerbilder immer lokal; ein sichtbarer Ersatzname bleibt bei einem kaputten Bild erhalten.
+function chainLogo(chain, name = chain.name) {
+  const label = element('span', undefined, `brand brand-${chain.key} store-logo`), image = element('img'), text = element('span', name, 'sr-only');
+  image.src = chain.logo; image.alt = ''; image.width = 48; image.height = 32;
+  image.addEventListener('error', () => { image.hidden = true; text.className = ''; }, { once: true });
+  label.append(image, text); return label;
+}
+// Name eines Geschäfts: Symbol, Text oder lokales Händlerlogo. Eigene Filialnamen bleiben lesbar.
 function storeLabel(name) {
-  const symbol = symbolOf(active(state.stores).find(store => store.name === name) || { name });
+  const store = active(state.stores).find(store => store.name === name) || { name }, symbol = symbolOf(store);
   if (symbol) return symbolNode(symbol, name);
+  const chain = config.storeStyle === 'logo' ? chainForStore(store) : null;
+  if (typeof chain?.logo === 'string') {
+    const label = chainLogo(chain, name);
+    if (name.toLocaleLowerCase('de') !== chain.name.toLocaleLowerCase('de')) label.lastChild.className = 'store-location-name';
+    return label;
+  }
   const key = config.storeStyle === 'logo' ? brandOf(name) : '';
   return key ? element('span', name, `brand brand-${key}`) : document.createTextNode(name);
 }
@@ -343,11 +372,12 @@ function storeHead(label, count, none, id = '') {
   row.append(icon('store'), name, element('span', String(count), 'count'));
   return row;
 }
-// Kachel rechts in der Zeile: ein farbiges Symbol (Emoji) passend zum Artikel (emoji.js), sonst zur Kategorie. Rein dekorativ, nicht antippbar, ohne Internet.
+// Eigene Produktbilder wie in der Schnellauswahl; unbekannte Produkte bekommen ein passendes Gruppenmotiv.
 let thumbLearned = new Map();
 function thumbFor(item) {
   const box = element('span', undefined, 'item-thumb'); box.setAttribute('aria-hidden', 'true');
-  box.append(element('span', emojiFor(item.name, itemCategory(item, thumbLearned)), 'emoji'));
+  const category = itemCategory(item, thumbLearned), picture = element('span'); picture.setAttribute('aria-hidden', 'true');
+  box.append(paintProductImage(picture, imageForProduct({ ...item, category }), groupImageFor(item.name, category)));
   return box;
 }
 /* Mehrere Artikel gemeinsam bearbeiten (nur „Planen“): „Auswählen“ in der Listenzeile schaltet den Auswahlmodus ein. Ein Tipp auf eine Zeile wählt sie
@@ -631,6 +661,32 @@ function openStoresDialog(openId = '') {
   storesOpen.clear(); storeFresh = ''; if (openId) storesOpen.add(openId);
   renderStores(); $('#stores-dialog').showModal();
 }
+// Die Auswahl verändert erst das Formular; gespeichert wird bewusst mit „Geschäft hinzufügen“.
+function renderStoreCatalog() {
+  const list = $('#store-catalog-list'); list.replaceChildren();
+  const chains = searchCatalog($('#store-catalog-search').value, $('#store-catalog-type').value);
+  const existing = new Set(active(state.stores).filter(store => !isSeparate(store)).map(store => chainForStore(store)?.key));
+  for (const chain of chains) {
+    const used = existing.has(chain.key), choice = button('', () => {
+      const form = $('#store-form');
+      form.elements.chainKey.value = chain.key; form.elements.name.value = chain.name; form.elements.offersUrl.value = chain.offers;
+      renderStoreTemplate(); $('#store-catalog-dialog').close(); form.elements.name.focus();
+    }, 'catalog-choice');
+    choice.dataset.chain = chain.key; choice.disabled = used;
+    choice.setAttribute('aria-label', `${chain.name}${used ? ': bereits hinzugefügt' : ' auswählen'}`);
+    const name = element('span', chain.name, 'catalog-name');
+    choice.append(chainLogo(chain), name, element('small', used ? 'Bereits hinzugefügt' : chain.offerNote || (chain.drugstore ? 'Drogerie' : 'Supermarkt'), 'catalog-note'));
+    list.append(choice);
+  }
+  $('#store-catalog-count').textContent = chains.length ? `${chains.length} Händler gefunden` : 'Kein Treffer. Du kannst das Geschäft mit eigenem Namen anlegen.';
+}
+function renderStoreTemplate() {
+  const chain = catalogByKey($('#store-form').elements.chainKey.value), preview = $('#store-template'); preview.replaceChildren(); preview.hidden = !chain;
+  if (!chain) return;
+  preview.append(chainLogo(chain), element('span', `Vorlage: ${chain.name}`), button('Auswahl aufheben', () => {
+    const form = $('#store-form'); form.reset(); form.elements.chainKey.value = ''; renderStoreTemplate(); form.elements.name.focus();
+  }, 'text-button small'));
+}
 function renderStores() {
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of active(state.stores)) {
@@ -647,6 +703,19 @@ function renderStores() {
     linkLabel.append(link);
     const save = element('button', 'Speichern', 'secondary'); save.setAttribute('aria-label', `${store.name} speichern`);
     const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
+    const chainLabel = element('label', 'Händler / Logo'), chainPick = element('select'); chainPick.name = 'chainKey';
+    chainPick.append(new Option('Automatisch am Namen erkennen', ''));
+    for (const chain of searchCatalog()) chainPick.append(new Option(chain.name, chain.key));
+    if (store.chainKey && !catalogByKey(store.chainKey)) chainPick.append(new Option('Gespeicherter Händler', store.chainKey));
+    chainPick.value = store.chainKey || ''; chainLabel.append(chainPick);
+    // Ein selbst gesetzter Angebotslink bleibt beim Wechseln erhalten; nur die bisherige Voreinstellung wird ausgetauscht.
+    let previousDefault = defaultOfferUrl(store), previousAnywhere = takesAnywhere({ name: store.name, chainKey: store.chainKey });
+    chainPick.addEventListener('change', () => {
+      const identity = { name: input.value, chainKey: chainPick.value }, nextDefault = defaultOfferUrl(identity), nextAnywhere = takesAnywhere(identity);
+      if (!link.value.trim() || link.value.trim() === previousDefault) link.value = nextDefault;
+      if (anywhere.checked === previousAnywhere) anywhere.checked = nextAnywhere;
+      previousDefault = nextDefault; previousAnywhere = nextAnywhere;
+    });
     const anywhereLabel = element('label', undefined, 'checkbox-label'), anywhere = element('input');
     anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.checked = takesAnywhere(store);
     anywhereLabel.append(anywhere, ' „Im Laden“ auch Artikel ohne Geschäft anzeigen');
@@ -675,12 +744,13 @@ function renderStores() {
       aisleReset.hidden = aisles.every((id, index) => id === CATEGORIES[index].id);
     };
     aisleFold.append(element('summary', 'Reihenfolge der Gänge'), aisleList, aisleReset); drawAisles();
-    form.append(nameLabel, linkLabel, symbolLabel, separateLabel, anywhereLabel, aisleFold, save);
+    form.append(nameLabel, chainLabel, linkLabel, symbolLabel, separateLabel, anywhereLabel, aisleFold, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id); const typed = offerUrl(link.value);
       // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
-      commit([nextOp('stores', store.id, { name, offersUrl: typed === defaultOfferUrl({ name }) ? '' : typed, anywhere: anywhere.checked === takesAnywhere({ name }) ? null : anywhere.checked, separate: separate.checked || null,
+      const chainKey = chainPick.value || null, identity = { name, chainKey };
+      commit([nextOp('stores', store.id, { name, chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed, anywhere: anywhere.checked === takesAnywhere(identity) ? null : anywhere.checked, separate: separate.checked || null,
         symbol: (symbolPick.value === 'gift' ? 'gift' : '') === defaultSymbol(name) ? null : symbolPick.value === 'gift' ? 'gift' : 'none',
         aisles: aisles.every((id, index) => id === CATEGORIES[index].id) ? null : [...aisles] })]); renderStores();
     }); });
@@ -1002,7 +1072,7 @@ async function uploadPhotos(manual = false) {
     try {
       const blob = await readPhoto(id);
       if (!blob) { unqueuePhoto(key, id); continue; }
-      const body = JSON.stringify({ message: 'Einkauf & Rezepte: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
+      const body = JSON.stringify({ message: 'Sattplan: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
       const response = await timed(photoApi(id), { method: 'PUT', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body });
       if (response.ok) unqueuePhoto(key, id);
       else if (response.status === 422 && /sha/i.test(await response.text())) unqueuePhoto(key, id);
@@ -1612,7 +1682,7 @@ async function sync(manual = false) {
       let written = false;
       if (batch.some(op => !remote.sync.applied.includes(op.id)) || folds.length || tidy?.changed) {
         try {
-          await api('PUT', { message: 'Einkauf & Rezepte: Änderungen synchronisieren',
+          await api('PUT', { message: 'Sattplan: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
           written = true;
         } catch (error) { if ([409, 422].includes(error.status) && attempt < 3) continue; throw error; }
@@ -1739,7 +1809,7 @@ async function deliverFile(file) {
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 async function backup() {
-  const name = `einkauf-backup-${new Date().toISOString().slice(0, 10)}.json`, json = JSON.stringify(state, null, 2);
+  const name = `sattplan-backup-${new Date().toISOString().slice(0, 10)}.json`, json = JSON.stringify(state, null, 2);
   await deliverFile(new File([json], name, { type: 'application/json' }));
 }
 // Vollsicherung: eine ZIP-Datei mit den Daten (daten.json, wie die JSON-Sicherung) und allen Rezeptfotos (fotos/<Kennung>.jpg). Fotos kommen aus dem Gerätespeicher,
@@ -1756,12 +1826,12 @@ async function backupFull() {
       const blob = (await readPhoto(id)) ?? (connected() ? await downloadPhoto(id) : null);
       if (blob) files.push({ name: `fotos/${id}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) }); else missing.push(id);
     }
-    const lines = [`Vollsicherung von Einkauf & Rezepte vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
+    const lines = [`Vollsicherung von Sattplan vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
     if (missing.length) lines.push('', `Nicht gesichert (nicht auf diesem Gerät und nicht im Daten-Repository gefunden): ${missing.join(', ')}`);
     lines.push('', 'Wiederherstellen ist Handarbeit: Die Dateien liegen im Daten-Repository (daten.json und der Ordner photos). Bitte vertraulich aufbewahren.');
     files.push({ name: 'lies-mich.txt', data: encode(lines.join('\n')) });
     const zip = makeZip(files);
-    await deliverFile(new File([zip], `einkauf-vollsicherung-${stamp}.zip`, { type: 'application/zip' }));
+    await deliverFile(new File([zip], `sattplan-vollsicherung-${stamp}.zip`, { type: 'application/zip' }));
     const photos = files.length - 2, plural = count => `${count} ${count === 1 ? 'Foto' : 'Fotos'}`;
     note.textContent = `Gesichert: Daten und ${plural(photos)}${missing.length ? `, ${plural(missing.length)} nicht gefunden` : ''}.`;
   } catch (error) { note.textContent = ''; throw error; }
@@ -2012,25 +2082,29 @@ function openFinish() {
   const checked = finishItems().length, others = shopStore && shopStore !== ALL_STORES ? visibleItems(shopStore).filter(item => item.checked).length - checked : 0;
   $('#finish-text').textContent = (checked ? `${checked === 1 ? '1 abgehakter Artikel wird' : `${checked} abgehakte Artikel werden`} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.')
     + (others > 0 ? ` ${others === 1 ? 'Ein abgehakter Artikel eines anderen Geschäfts bleibt' : `${others} abgehakte Artikel anderer Geschäfte bleiben`} bis zum jeweiligen Abschluss stehen.` : '');
-  $('#finish-form').reset(); message();
+  $('#finish-form').reset(); message(); finishScope = namespace();
+  spendingView.fillBuyer($('#finish-form').elements.buyerId, spendingView.defaultBuyer());
   $('#finish-dialog').showModal();
 }
 // Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
 // und die App springt zurück zu „Planen“.
+let finishScope = '';
 function finishShopping(amount = '') {
+  if (finishScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Einkauf erneut öffnen.');
   const checked = finishItems(), ids = checked.map(item => item.id), typed = amount.trim();
-  const storeId = shopStore === ALL_STORES ? '' : shopStore;   // „Alle“ ist kein Geschäft: der Betrag wird dann ohne Geschäft gespeichert
-  // Betrag zuerst prüfen: bei einem Fehler bleibt alles, wie es ist. `estimate`: geschätzte Summe der abgehakten Artikel (0, wenn zu wenige Preise bekannt sind).
+  const storeId = shopStore === ALL_STORES ? '' : shopStore;
+  const buyer = typed ? purchaseBuyer($('#finish-form').elements.buyerId.value) : null;
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
-    estimate: estimateOf(checked) }, isoDate()) : null;
+    kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name, estimate: estimateOf(checked) }, isoDate()) : null;
   if (fields) duplicateWarning(fields, '', 'tippe auf „+“');
-  const ops = [...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
-  for (const id of ids) shopChecked.delete(id);   // nur was beendet wird: Artikel ohne Geschäft, die in einem anderen Geschäft abgehakt wurden, behalten ihren Ort
-  $('#finish-dialog').close();
+  const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   const notice = fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '';
-  if (fields) spendMonth = monthOf(fields.date);
+  if (fields) rememberOwnBuyer(buyer.id);
+  // Erst lokal sichern, dann die Ansicht schließen. Bei vollem Gerätespeicher bleibt der Einkauf offen.
   if (ops.length) commit(ops, notice); else render();
-  setShopMode(false);   // auf jedem Weg, den Einkauf zu beenden: zurück zur Liste („Planen“)
+  for (const id of ids) shopChecked.delete(id);
+  if (fields) spendingView.reveal(fields);
+  $('#finish-dialog').close(); setShopMode(false);
 }
 
 /* ---------- Rezeptblatt (PDF) ---------- */
@@ -2241,11 +2315,26 @@ function openCook(id, servings) {
 /* ---------- Ausgaben ---------- */
 // Wie viel ihr eingekauft habt: Beträge von Hand oder aus einem Kassenbon-Foto/-Screenshot (Texterkennung auf dem Gerät, immer zur Kontrolle im Feld).
 // Die Einträge liegen in der gemeinsamen Datei (Sammlung `purchases`) und sind für beide Personen sichtbar.
-let spendMonth = monthOf(isoDate()), purchaseAbort = null, purchaseSource = 'hand', purchaseEditing = null;
+let spendMonth = monthOf(isoDate()), purchaseAbort = null, purchaseSource = 'hand', purchaseEditing = null, purchaseScope = '', budgetScope = '';
 const purchaseRows = () => active(state.purchases || []);
-const countLabel = (count, one, many) => `${count} ${count === 1 ? one : many}`;
-// Kurze Zahl über einer Säule: ganze Euro, ab 10.000 € in Tausendern („12k“), damit sie auch auf schmalen Telefonen in die Spalte passt.
-const compactEuros = cents => cents >= 1000000 ? `${Math.round(cents / 100000)}k` : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(cents / 100));
+// Die Person gehört zum Einkauf, nicht zum Gerät, das ihn später bearbeitet.
+// Die lokale Zuordnung gilt nur für diese Datendatei; Umbenennen bewahrt ihre feste ID.
+function ownExpenseMember() {
+  if (!config.actor?.trim()) return null;
+  return ownMember(state.members || [], config.actor, config.memberScope === namespace() ? config.memberId : '');
+}
+function rememberOwnBuyer(id) {
+  const own = ownExpenseMember();
+  if (own?.id === id && (config.memberId !== id || config.memberScope !== namespace())) saveConfig({ ...config, memberId: id, memberScope: namespace() });
+}
+function purchaseBuyer(id, original = null) {
+  if (!id) return { id: null, name: '', change: null };
+  const member = liveMembers(state.members).find(row => row.id === id);
+  if (member) return { id, name: member.name, change: null };
+  const own = ownExpenseMember(); if (own?.id === id) return own;
+  if (original?.buyerId === id) return { id, name: original.buyerName || '', change: null };
+  throw new Error('Diese Person ist nicht mehr vorhanden. Bitte erneut auswählen.');
+}
 // „Geschätzt 20,00 €, bezahlt 3,45 € mehr“ für Bildschirmleser und das Änderungsfenster.
 function estimateWords(cents, estimate) {
   const diff = cents - estimate;
@@ -2258,7 +2347,7 @@ function budgetNote(total) {
   return !status || status.level === 'ok' ? '' : status.level === 'over' ? ` · Budget um ${euros(-status.left)} überschritten` : ` · ${status.percent} % des Budgets verbraucht`;
 }
 // Summe des Monats nach dem Speichern eines Betrags (beim Ändern ohne den alten Betrag).
-const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter(row => monthOf(row.date) === month && row.id !== replacing?.id).reduce((sum, row) => sum + row.cents, 0) + cents;
+const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter(row => monthOf(row.date) === month && row.id !== replacing?.id).reduce((sum, row) => sum + purchaseValue(row), 0) + cents;
 function renderBudget(spent) {
   const box = $('#spending-budget'), budget = budgetCents(), status = budgetStatus(spent, budget);
   box.replaceChildren();
@@ -2276,78 +2365,29 @@ function renderBudget(spent) {
 function openBudget() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   const form = $('#budget-form'), budget = budgetCents();
-  form.reset(); message(); form.elements.amount.value = budget ? String(budget % 100 ? formatAmount(budget) : budget / 100) : '';
+  form.reset(); message(); budgetScope = namespace(); form.elements.amount.value = budget ? String(budget % 100 ? formatAmount(budget) : budget / 100) : '';
   $('#budget-remove').hidden = !budget;
   $('#budget-dialog').showModal(); form.elements.amount.focus();
 }
 function saveBudget() {
+  if (budgetScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte das Budget erneut öffnen.');
   const cents = parseAmount($('#budget-form').elements.amount.value);
-  $('#budget-dialog').close();
   commit([nextOp('budgets', 'monthly', { cents })], `Monatsbudget ${euros(cents)} gespeichert`);
+  $('#budget-dialog').close();
 }
 function renderSpending() {
-  if ($('#spending').hidden) return;
-  const rows = purchaseRows(), stores = active(state.stores), now = monthOf(isoDate());
-  if (!validMonth(spendMonth)) spendMonth = now;
-  const before = shiftMonth(spendMonth, -1), current = summarize(rows, spendMonth, stores), last = summarize(rows, before, stores);
-  $('#month-label').textContent = monthLabel(spendMonth);
-  $('#month-today').hidden = spendMonth === now;
-  $('#month-prev').disabled = spendMonth <= firstMonth(rows, now);
-  $('#month-next').disabled = spendMonth >= latestMonth(rows, now);
-
-  // Ganz ohne Einträge: eine kurze Erklärung mit „Ersten Einkauf eintragen“; Monatswahl, Summe, Diagramm und Liste erscheinen nach dem ersten Eintrag.
-  const none = rows.length === 0;
-  $('#spending-empty').hidden = !none;
-  for (const node of [$('#spending .week-nav'), $('#spending-summary'), $('#spending-chart-card'), $('#spending .list-head'), $('#purchase-list'), $('#spending .spend-hint')]) node.hidden = none;
-  const summary = $('#spending-summary'); summary.replaceChildren();
-  summary.append(element('span', spendMonth === now ? 'Bisher ausgegeben' : 'Ausgegeben', 'spend-label'), element('strong', euros(current.total), 'spend-total'),
-    element('small', current.count ? `${countLabel(current.count, 'Einkauf', 'Einkäufe')} · Ø ${euros(current.average)}` : 'In diesem Monat ist noch nichts eingetragen.'));
-  if (last.count) {
-    const name = monthName(before), diff = compareTotals(current.total, last.total), more = diff.diff > 0;
-    if (!current.count) summary.append(element('small', `Im ${name}: ${euros(last.total)}`));
-    else if (!diff.diff) summary.append(element('small', `Genau so viel wie im ${name}`));
-    else summary.append(element('small', `${more ? '▲' : '▼'} ${euros(Math.abs(diff.diff))} ${more ? 'mehr' : 'weniger'} als im ${name}${diff.percent === null ? '' : ` (${more ? '+' : '−'}${Math.abs(diff.percent)}\u00a0%)`}`, `trend ${more ? 'up' : 'down'}`));
-  } else if (current.count) summary.append(element('small', `Im ${monthName(before)} wurde nichts eingetragen.`));
-
-  renderBudget(current.total);
-
-  const months = recentMonths(rows, spendMonth, 6), top = Math.max(1, ...months.map(entry => entry.total)), chart = $('#spending-chart'); chart.replaceChildren();
-  for (const entry of months) {
-    const item = element('li'), column = element('button'), track = element('span', undefined, 'track'), bar = element('span', undefined, 'bar');
-    column.type = 'button'; column.title = `${monthLabel(entry.month)}: ${euros(entry.total)}`; column.setAttribute('aria-label', column.title);
-    if (entry.month === spendMonth) column.setAttribute('aria-current', 'true');
-    bar.style.height = `${entry.total ? Math.max(3, Math.round(entry.total / top * 80)) : 2}px`; track.append(bar);
-    column.append(element('span', entry.total ? compactEuros(entry.total) : '', 'value'), track, element('span', entry.label));
-    column.addEventListener('click', () => { spendMonth = entry.month; renderSpending(); });
-    item.append(column); chart.append(item);
+  const own = ownExpenseMember();
+  // Nur eine lokale Profilpräferenz merken, keine Person oder Ausgabe im Hintergrund anlegen.
+  // So folgt auch das zweite Gerät einer späteren Umbenennung derselben Person.
+  if (own && !own.change && (config.memberId !== own.id || config.memberScope !== namespace() || config.actor !== own.name)) {
+    try {
+      const previousName = config.actor, nameField = $('#settings-form').elements.actor;
+      saveConfig({ ...config, actor: own.name, memberId: own.id, memberScope: namespace() });
+      if (nameField.value === previousName && document.activeElement !== nameField) nameField.value = own.name;
+      $('#identity').textContent = own.name; updateSaveButtons();
+    } catch { /* Bei vollem Speicher bleibt die lesbare Ausgabenansicht benutzbar. */ }
   }
-
-  $('#spending-stores-card').hidden = current.byStore.length < 2;
-  const groups = $('#spending-stores'); groups.replaceChildren();
-  for (const group of current.byStore) {
-    const item = element('li', undefined, 'spend-store'), head = element('div', undefined, 'spend-store-head'), share = element('div', undefined, 'spend-share'), fill = element('span');
-    head.append(element('strong', group.name), element('span', euros(group.total)));
-    fill.style.width = `${Math.max(2, Math.round(group.share * 100))}%`; share.append(fill);
-    item.append(head, share, element('small', `${countLabel(group.count, 'Einkauf', 'Einkäufe')} · ${Math.round(group.share * 100)} %`));
-    groups.append(item);
-  }
-
-  const list = $('#purchase-list'); list.replaceChildren();
-  $('#purchase-count').textContent = current.count ? countLabel(current.count, 'Eintrag', 'Einträge') : '';
-  if (!current.count) list.append(element('li', 'Noch nichts eingetragen. Tippe oben auf „Einkauf“: Betrag eingeben oder einen Kassenbon lesen lassen.', 'empty'));
-  const twins = possibleDuplicates(current.list);   // gleicher Tag, gleiches Geschäft, gleicher Betrag: möglicherweise doppelt erfasst
-  for (const row of current.list) {
-    const item = element('li', undefined, 'spend-item'), open = element('button', undefined, 'spend-row'), copy = element('span', undefined, 'spend-copy'), store = storeNameOf(row, stores), twin = twins.has(row.id);
-    open.type = 'button'; item.dataset.id = row.id;
-    copy.append(element('strong', spendDay(row.date)), element('small', [store || 'Ohne Geschäft', row.note, row.source === 'bon' ? 'vom Kassenbon' : '', twin ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
-    const verdict = estimateVerdict(row.cents, row.estimate), amount = element('span', euros(row.cents), 'spend-amount');
-    // Kleiner Punkt: bezahlt gegen die geschätzte Summe der abgehakten Artikel (grün: im Rahmen oder günstiger, rot: teurer)
-    if (verdict) { const dot = element('span', undefined, `spend-dot ${verdict.level}`); dot.setAttribute('aria-hidden', 'true'); amount.prepend(dot); }
-    open.append(copy, amount);
-    open.setAttribute('aria-label', `${spendDay(row.date)}, ${store || 'ohne Geschäft'}, ${euros(row.cents)}${verdict ? `, ${estimateWords(row.cents, row.estimate)}` : ''}${twin ? ', möglicherweise doppelt erfasst' : ''}: ändern`);
-    open.addEventListener('click', () => guard(() => openPurchase(row.id)));
-    item.append(open); list.append(item);
-  }
+  spendingView?.render();
 }
 function purchaseStatus(text, fraction) {
   $('#purchase-status').textContent = text;
@@ -2359,15 +2399,17 @@ function openPurchase(id = '') {
   if (id && !row) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
   const form = $('#purchase-form'), select = form.elements.storeId;
   form.reset(); message(); purchaseStatus('');
-  purchaseEditing = row; purchaseSource = row?.source || 'hand';
-  // Neue Einträge: zuletzt benutztes Geschäft, sonst das der Einkaufsansicht.
-  const latest = purchaseRows().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  storeOptions(select, row ? row.storeId || '' : latest?.storeId || viewStore()?.id || '', true);
+  purchaseEditing = row ? clone(row) : null; purchaseSource = row?.source || 'hand'; purchaseScope = namespace();
+  // Der ausgewählte Laden geht vor; andernfalls den letzten eigenen Einkauf vorschlagen.
+  const ownId = spendingView.defaultBuyer(), latest = purchaseRows().filter(entry => entry.buyerId === ownId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  storeOptions(select, row ? row.storeId || '' : viewStore()?.id || latest?.storeId || '', true);
+  spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : ownId, row?.buyerName || '');
+  form.elements.kind.value = row?.kind || 'purchase'; $('#purchase-more').open = row?.kind === 'refund';
   // Geschäft inzwischen gelöscht: der gemerkte Name bleibt wählbar, damit er beim Ändern nicht verloren geht.
   if (row?.storeId && row.storeName && ![...select.options].some(option => option.value === row.storeId)) { select.add(new Option(`${row.storeName} (gelöscht)`, row.storeId)); select.value = row.storeId; }
   form.elements.id.value = row?.id || '';
   form.elements.amount.value = row ? formatAmount(row.cents) : '';
-  form.elements.date.value = row?.date || (spendMonth === monthOf(isoDate()) ? isoDate() : lastDay(spendMonth));
+  form.elements.date.value = row?.date || isoDate();
   // Neue Einträge beginnen mit „Wocheneinkauf“ (Vorschläge zum Austauschen erscheinen beim Tippen ins Feld); beim Ändern bleibt die Notiz, wie sie ist.
   form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
   $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
@@ -2419,24 +2461,38 @@ let duplicateWarned = '';
 function duplicateWarning(fields, ignoreId, how) {
   const twin = duplicatePurchase(purchaseRows(), fields, ignoreId);
   if (!twin) { duplicateWarned = ''; return; }
-  const key = `${fields.date}|${fields.cents}|${fields.storeId || ''}`;
+  const key = `${fields.date}|${fields.cents}|${fields.storeId || ''}|${fields.kind || 'purchase'}`;
   if (duplicateWarned === key) { duplicateWarned = ''; return; }
   duplicateWarned = key;
   const store = storeNameOf(twin, active(state.stores));
-  throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.createdBy ? ` (von ${twin.createdBy})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
+  throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.buyerId ? ` (von ${buyerNameOf(twin, state.members)})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
 }
 function savePurchase() {
   const form = $('#purchase-form'), id = form.elements.id.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
+  if (purchaseScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Eintrag erneut öffnen.');
   if (purchaseAbort) throw new Error('Die Texterkennung läuft noch. Bitte kurz warten.');
+  const current = id ? purchaseRows().find(row => row.id === id) : null;
+  if (id && !current) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  const buyer = purchaseBuyer(form.elements.buyerId.value, editing);
   const storeName = active(state.stores).find(store => store.id === storeId)?.name || (editing?.storeId === storeId ? editing.storeName || '' : '');
-  const fields = purchaseFields({ amount: form.elements.amount.value, date: form.elements.date.value, storeId, storeName, note: form.elements.note.value, source: purchaseSource }, isoDate());
-  if (id && !purchaseRows().some(row => row.id === id)) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
-  duplicateWarning(fields, id, 'tippe auf „Speichern“');
-  // Beim Ändern auch leer gewordene Felder überschreiben (Geschäft entfernt, Notiz gelöscht).
-  const op = id ? nextOp('purchases', id, { storeId: '', storeName: '', ...fields }) : nextOp('purchases', uid(), fields);
-  spendMonth = monthOf(fields.date);
-  $('#purchase-dialog').close();
-  commit([op], `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(spendMonth, fields.cents, editing))}`);
+  const fields = { storeId: '', storeName: '', ...purchaseFields({ amount: form.elements.amount.value, date: form.elements.date.value, storeId, storeName,
+    note: form.elements.note.value, source: purchaseSource, kind: form.elements.kind.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate()) };
+  // Nur tatsächlich bearbeitete Felder senden: Ein fremdes Gerät kann währenddessen
+  // z. B. die Person korrigieren, ohne dass unsere reine Betragsänderung sie überschreibt.
+  let patch = fields;
+  if (editing) {
+    const prior = { storeId: '', storeName: '', source: 'hand', note: '', kind: 'purchase', ...editing, buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
+    patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => key !== 'buyerName' && value !== prior[key]));
+    if (fields.storeId === prior.storeId) delete patch.storeName;
+    if (fields.buyerId !== prior.buyerId) patch.buyerName = fields.buyerName;
+    if (!Object.keys(patch).length) { $('#purchase-dialog').close(); return; }
+  }
+  const effective = { ...current, ...patch };
+  duplicateWarning(effective, id, 'tippe auf „Speichern“');
+  const ops = [...(buyer.change && effective.buyerId === buyer.id ? [nextOp('members', buyer.id, buyer.change.patch)] : []), nextOp('purchases', id || uid(), patch)];
+  const notice = `${euros(purchaseValue(effective))} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(effective.date), purchaseValue(effective), current))}`;
+  if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
+  commit(ops, notice); spendingView.reveal(effective); renderSpending(); $('#purchase-dialog').close();
 }
 
 /* ---------- Vorrat ---------- */
@@ -2460,45 +2516,12 @@ function renderAliases() {
   }
 }
 function renderPantry() {
-  const list = $('#pantry-list'); list.replaceChildren();
-  const rows = active(state.pantry || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  if (!rows.length) list.append(element('li', 'Noch nichts im Vorrat.', 'empty'));
-  for (const row of rows) {
-    const entry = element('li'); entry.append(element('span', row.name), iconButton('x', `${row.name} aus dem Vorrat entfernen`, () => removeRows('pantry', [row.id])));
-    list.append(entry);
-  }
-  renderPantrySuggestions();
+  pantryView?.refresh();
 }
-// Vorschläge häufiger Vorräte (pantry-suggestions.js) zum Übernehmen: ein Tipp auf einen Namen nimmt ihn in den Vorrat, „Alle übernehmen“ alle noch fehlenden.
-// Was schon im Vorrat steht (auch in anderer Groß- und Kleinschreibung), wird nicht mehr angeboten.
-function addToPantry(names) {
-  const fresh = pantryAdditions(names, pantryKeys(state.pantry));
-  if (fresh.length) commit(fresh.map(name => nextOp('pantry', uid(), { name })));
+function addToPantry(products) {
+  const changes = pantryChanges(products, state.pantry || []);
+  if (changes.length) commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch)));
 }
-function renderPantrySuggestions() {
-  const box = $('#pantry-suggestions'); box.replaceChildren();
-  const groups = pantrySuggestions(pantryKeys(state.pantry));
-  const head = element('div', undefined, 'suggest-head'); head.append(element('h4', 'Vorschläge zum Übernehmen'));
-  box.append(head);
-  if (!groups.length) { box.append(element('p', 'Alle Vorschläge stehen schon im Vorrat.', 'hint')); return; }
-  head.append(button('Alle übernehmen', () => addToPantry(groups.flatMap(group => group.names)), 'secondary small'));
-  for (const group of groups) {
-    const section = element('div', undefined, 'suggest-group'), chips = element('div', undefined, 'suggest-chips');
-    for (const name of group.names) {
-      const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(icon('plus'), document.createTextNode(name));
-      chip.setAttribute('aria-label', `${name} in den Vorrat übernehmen`);
-      chip.addEventListener('click', () => guard(() => addToPantry([name])));
-      chips.append(chip);
-    }
-    section.append(element('span', group.title, 'suggest-title'), chips); box.append(section);
-  }
-}
-$('#pantry-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, name = form.elements.name.value.trim().replace(/\s+/g, ' ');
-  if (!name) throw new Error('Bitte eine Zutat eingeben.');
-  if (pantryAdditions([name], pantryKeys(state.pantry)).length) commit([nextOp('pantry', uid(), { name })]);
-  form.reset(); form.elements.name.focus();
-}); });
 
 /* ---------- Vorlagen ---------- */
 const templateRows = () => active(state.templates || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
@@ -2618,7 +2641,7 @@ async function cleanPhotos() {
   let deleted = 0, freed = 0;
   for (const file of doomed) {
     const result = await timed(`${photosApi()}/${encodeURIComponent(file.name)}`, { method: 'DELETE', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ message: 'Einkauf & Rezepte: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
+      body: JSON.stringify({ message: 'Sattplan: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
     if (!result.ok) { note.textContent = `${deleted} Fotos gelöscht, dann Fehler ${result.status}.`; return; }
     deleted++; freed += file.size || 0;
   }
@@ -2709,9 +2732,9 @@ function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [],
   const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory(), take);
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length && !extraOps.length) throw new Error('Alles davon steht schon auf der Liste.');
-  const pantryOps = stocked.map(name => {
-    const id = take ? `take-${take}-pantry-${shortHash(productKey(name))}` : uid(), op = nextOp('pantry', id, { name });
-    if (take) op.id = id;
+  const pantryOps = pantryChanges(stocked, state.pantry || []).map(({ id, patch }) => {
+    const op = nextOp('pantry', id, patch);
+    if (take) op.id = `take-${take}-pantry-${shortHash(id)}`;
     return op;
   });
   const parts = [result.added && `${result.added} neu`, result.counted.length && `${result.counted.length} dazugezählt`, result.skipped && `${result.skipped} schon vorhanden`,
@@ -2904,11 +2927,73 @@ $('#select-delete').addEventListener('click', () => guard(() => {
   removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
 }));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
+productPicker = mountProductPicker({
+  getScope: namespace,
+  getStores: () => active(state.stores).filter(store => !isSeparate(store)),
+  getData: () => ({ favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
+    history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
+  onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
+  onPantry: addToPantry,
+  onFavorite: product => {
+    const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
+    const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {
+      name: product.name, productId: product.own ? null : product.id, quantity: product.quantity, unit: product.unit, category: product.category,
+      imageKey: product.imageKey || null, deletedAt: null
+    };
+    commit([nextOp('productFavorites', id, patch)]);
+  }
+});
+pantryView = mountPantry({
+  getData: () => ({ pantry: state.pantry || [], items: listItems(), favorites: state.productFavorites || [] }), getScope: namespace,
+  getStores: () => active(state.stores).filter(store => !isSeparate(store)),
+  getPreferredStore: () => $('#open-products').hidden ? '' : $('#item-form').elements.storeId.value,
+  imagesOn,
+  onChange: changes => commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch))),
+  onRemove: ids => removeRows('pantry', ids), onBuy: (rows, storeId) => addRows(rows, currentStore(storeId)),
+  onProducts: mode => productPicker.open('', { target: 'pantry', mode }),
+  onImages: (imageKey, onImage) => productPicker.open('', { target: 'image', imageKey, onImage }),
+  onCancelImages: () => productPicker.cancelImage(),
+  onShopping: () => tab('shopping')
+});
+spendingView = mountSpending({
+  getData: () => ({ purchases: state.purchases || [], members: state.members || [], stores: state.stores }), getScope: namespace,
+  getMonth: () => spendMonth, setMonth: month => { spendMonth = month; }, today: isoDate, getOwn: ownExpenseMember,
+  onEdit: id => guard(() => openPurchase(id)), onBudget: renderBudget, onMessage: showNotice,
+  onExport: (csv, name) => deliverFile(new File([csv], name, { type: 'text/csv;charset=utf-8' })),
+  onMemberSave: (id, name) => {
+    if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+    const own = ownExpenseMember(), change = id ? renameMember(id, name, state.members || []) : prepareMember(name, state.members || []).change;
+    const memberId = id || prepareMember(name, state.members || []).id;
+    if (id && own?.id === id) { saveConfig({ ...config, actor: name, memberId: id, memberScope: namespace() }); fillSettings(); }
+    if (change) commit([nextOp('members', change.id, change.patch)]);
+    else if (state.members?.some(row => row.id === memberId && row.archived)) commit([nextOp('members', memberId, { archived: false })]);
+    if (memberKey(name) === memberKey(config.actor)) rememberOwnBuyer(memberId);
+    return memberId;
+  },
+  onMemberArchive: (id, archived) => {
+    if (!liveMembers(state.members).some(row => row.id === id)) throw new Error('Diese Person ist nicht mehr vorhanden.');
+    commit([nextOp('members', id, { archived })]);
+  }
+});
+$('#open-pantry').addEventListener('click', () => { tab('settings'); pantryView.open(); });
+$('#open-products').addEventListener('click', () => guard(() => {
+  if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+  productPicker.open($('#item-form').elements.storeId.value);
+}));
+$('#choose-store').addEventListener('click', () => {
+  $('#store-catalog-search').value = ''; $('#store-catalog-type').value = ''; renderStoreCatalog(); $('#store-catalog-dialog').showModal();
+});
+$('#store-catalog-search').addEventListener('input', renderStoreCatalog);
+$('#store-catalog-type').addEventListener('change', renderStoreCatalog);
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const name = event.currentTarget.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
+  const form = event.currentTarget, name = form.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (active(state.stores).some(store => store.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))) throw new Error('Dieses Geschäft gibt es bereits.');
+  const chainKey = form.elements.chainKey.value || null;
+  if (chainKey && !catalogByKey(chainKey)) throw new Error('Bitte den Händler erneut auswählen.');
+  if (chainKey && active(state.stores).some(store => !isSeparate(store) && chainForStore(store)?.key === chainKey)) throw new Error('Dieser Händler ist bereits hinzugefügt. Für eine weitere Filiale kannst du einen eigenen Namen eintragen.');
+  const identity = { name, chainKey }, typed = offerUrl(form.elements.offersUrl.value);
   const id = uid();
-  commit([nextOp('stores', id, { name, offersUrl: offerUrl(event.currentTarget.elements.offersUrl.value) })]); event.currentTarget.reset(); storeFresh = id; renderStores();
+  commit([nextOp('stores', id, { name, chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed })]); form.reset(); form.elements.chainKey.value = ''; renderStoreTemplate(); storeFresh = id; renderStores();
 }); });
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
@@ -2979,6 +3064,7 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
       !next.branch || !next.path.endsWith('.json') || next.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Bitte Benutzername, Repository, Branch und einen relativen JSON-Dateinamen prüfen (keine vollständige URL).');
   if (!sameTarget(config, next) && pending.length) throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
   delete next.savedAt;
+  if (next.actor !== config.actor) { delete next.memberId; delete next.memberScope; }
   saveConfig(next); retryAt = 0; message(); await loadWorkspace();
   // „Gespeichert am …“ erst, wenn die Verbindung klappt; sonst bleibt der Knopf für einen neuen Versuch aktiv.
   connectFailed = $('#status').dataset.state === 'error';
@@ -3011,7 +3097,7 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 // Gilt sofort, ohne Neuladen: Aus = keine Kacheln, die Zeile sieht aus wie früher.
-$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); }));
+$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#glass-on').addEventListener('change', () => guard(() => { saveConfig({ ...config, glass: $('#glass-on').checked }); applyTheme(); }));
@@ -3059,9 +3145,6 @@ $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
 $('#spending-first').addEventListener('click', () => guard(() => openPurchase()));
 $('#budget-form').addEventListener('submit', event => { event.preventDefault(); guard(saveBudget); });
 $('#budget-remove').addEventListener('click', () => guard(() => { $('#budget-dialog').close(); commit([nextOp('budgets', 'monthly', { cents: 0 })], 'Monatsbudget entfernt'); }));
-$('#month-prev').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, -1); renderSpending(); });
-$('#month-next').addEventListener('click', () => { spendMonth = shiftMonth(spendMonth, 1); renderSpending(); });
-$('#month-today').addEventListener('click', () => { spendMonth = monthOf(isoDate()); renderSpending(); });
 // Das „+“ im Betragsfeld: Ein Tipp darauf fügt den Einkauf hinzu und schließt die Tastatur (auch wenn etwas fehlt, damit die Meldung nicht verdeckt wird).
 let purchasePlus = 0;
 $('#purchase-plus').addEventListener('pointerdown', () => { purchasePlus = Date.now(); });
@@ -3102,7 +3185,8 @@ $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
 $('#welcome-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
-  saveConfig({ ...config, actor }); fillSettings(); render(); $('#welcome').close();
+  const next = { ...config, actor }; if (actor !== config.actor) { delete next.memberId; delete next.memberScope; }
+  saveConfig(next); fillSettings(); render(); $('#welcome').close();
   if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
   if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => addFromLink(pending)); }
 }); });

@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Einkauf & Rezepte",
-  "short_name": "Einkauf",
+  "name": "Sattplan",
+  "short_name": "Sattplan",
   "description": "Gemeinsame Einkaufsliste und Rezepte, auch aus Links und Screenshots.",
   "lang": "de",
   "start_url": "./",
@@ -12,7 +12,6 @@
   "theme_color": "#ecf0f9",
   "categories": ["food", "lifestyle", "shopping"],
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }

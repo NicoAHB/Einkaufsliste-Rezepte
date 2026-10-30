@@ -6,9 +6,9 @@ import { takesAnywhere } from '../shop.js';
 
 test('bekannte Ketten werden am Namen erkannt, unbekannte nicht', () => {
   const known = { Edeka: 'edeka', 'EDEKA Müller': 'edeka', Lidl: 'lidl', Rewe: 'rewe', 'REWE Center': 'rewe', Rossmann: 'rossmann', Roßmann: 'rossmann', 'ROẞMANN': 'rossmann',
-    'Rossmann Drogerie': 'rossmann', ' aldi süd': 'aldi', Kaufland: 'kaufland', Penny: 'penny' };
+    'Rossmann Drogerie': 'rossmann', ' aldi süd': 'aldi-sued', Kaufland: 'kaufland', Penny: 'penny', dm: 'dm', Müller: 'mueller' };
   for (const [name, key] of Object.entries(known)) assert.equal(brandOf(name), key, name);
-  for (const name of ['Bäckerei Rewe', 'Metzger', 'Hofladen', '', undefined, 'Lidlberg', 'Rossmann24', 'dm', 'Müller']) assert.equal(brandOf(name), '', String(name));
+  for (const name of ['Bäckerei Rewe', 'Metzger', 'Hofladen', '', undefined, 'Lidlberg', 'Rossmann24']) assert.equal(brandOf(name), '', String(name));
 });
 
 test('Drogerien: ganze Namen, nicht jeder Name, der so beginnt', () => {

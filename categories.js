@@ -3,6 +3,8 @@
    für denselben Namen verwendete Kategorie (die App lernt aus euren Artikeln), dann eine Schätzung
    nach Stichwörtern. Ohne Treffer bleibt der Artikel unter „Sonstiges“, es wird nichts erfunden. */
 import { productKey } from './prices.js';
+import { PRODUCT_ROWS } from './product-catalog-data.js';
+const catalogCategories = new Map(PRODUCT_ROWS.map(([, name, , , category]) => [productKey(name), category]));
 
 // Reihenfolge = typischer Weg durch den Laden.
 export const CATEGORIES = [
@@ -34,6 +36,7 @@ const RULES = [
   ['kuehl', /kaffeesahne|kaffeemilch|kochsahne/],
   ['snacks', /butterkeks|buttergebäck/],
   ['brot', /kuchen$|torte$|^kuchen/],
+  ['brot', /^(?:apfel|quark|nuss|marzipan|blaetterteig)taschen?$/],
   ['vorrat', /tomatenmark|passierte|passata|dosentomaten|kokosmilch|kokosnussmilch|erdnussbutter|nussnugat|nutella|thunfisch|sardine|sardellen|kichererbse|kidneybohne|linse|konserve|sauerkraut|tomatensauce|tomatensoße|nudelsauce|pesto|^oliven$|kapern|essiggurke|cornichon|apfelmus|backpulver|^mais$|kerne$|nudel|spaghetti|penne|fusilli|tagliatelle|makkaroni|lasagne|^pasta$|pasta$|tortellini|ravioli|gnocchi|spätzle|reis$|^hefe$|trockenhefe|gelatine/],
   ['vorrat', null, /gehackte tomaten|geschälte tomaten|stückige tomaten|tomaten aus der dose|tomaten in dosen/],
   ['getraenke', /^wasser$|wasser$|^saft|saft$|^säfte|^limo|limonade|^cola$|bier$|^(rot|weiß|weiss|rosé)?wein$|^sekt$|prosecco|schorle|tee$|^kaffee|getränk|sprudel|energydrink|whisky|^gin$|wodka|^rum$|likör|smoothie|haferdrink|sojadrink|mandeldrink|milchshake/],
@@ -52,6 +55,8 @@ const tokensOf = name => productKey(name).split(/[^\p{L}\p{N}]+/u).filter(Boolea
 export function guessCategory(name) {
   const full = productKey(name);
   if (!full) return null;
+  // Der feste Katalog kennt diese vollständigen Namen genau; Teilwörter bleiben davon unberührt.
+  if (catalogCategories.has(full)) return catalogCategories.get(full);
   const words = tokensOf(name);
   for (const [id, word, phrase] of RULES) {
     if (phrase && phrase.test(full)) return id;
