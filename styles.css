@@ -4376,3 +4376,6 @@ html, body, body * {
 /* Zwei Kochmodi passen auch auf schmale Handys in die vorhandene Segmentleiste. */
 #cookable-modes { grid-template-columns:repeat(2,minmax(0,1fr)) }
 #cookable-modes button { min-width:0; min-height:44px; padding:8px 6px; white-space:normal }
+
+/* Meldungen lassen die komplette Auswahlleiste einschließlich Fertig frei. */
+body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-bottom) + var(--select-h, 0px) + 10px) }

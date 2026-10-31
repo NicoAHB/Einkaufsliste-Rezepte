@@ -8243,4 +8243,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.equal(milkAmount284(await storedDemo(page)),1400);assert.deepEqual(problems,[]);await ctx.close();
   });
 
+  test('2.85: Löschhinweis verdeckt Auswahlknöpfe nicht und verschwindet sofort mit Fertig; kurzer Platzhalter',async()=>{
+    for(const width of [280,390]){
+      const {ctx,page,problems}=await context({context:{viewport:{width,height:844}}});await open(page);assert.equal(await page.getAttribute('#item-form [name=name]','placeholder'),'Was brauchst du?');
+      await page.click('#select-mode');await page.locator('#items .select-mark').first().click();page.once('dialog',dialog=>dialog.accept());await page.click('#select-delete');await page.waitForSelector('#notice:not([hidden])');await page.waitForTimeout(250);
+      const geometry=await page.evaluate(()=>{const notice=document.querySelector('#notice').getBoundingClientRect(),bar=document.querySelector('#select-bar').getBoundingClientRect();return {noticeBottom:notice.bottom,barTop:bar.top};});assert.ok(geometry.noticeBottom<=geometry.barTop,JSON.stringify(geometry));assert.match(await page.textContent('#notice-text'),/1 Artikel gelöscht/);assert.equal(await page.locator('#select-done').isVisible(),true);
+      await page.click('#select-done');assert.equal(await page.locator('#notice').isHidden(),true);assert.equal(await page.locator('#select-bar').isHidden(),true);await storeButton(page,'#store-chips','Lidl').click();assert.equal(await page.getAttribute('#item-form [name=name]','placeholder'),'Was brauchst du?');assert.deepEqual(problems,[]);await ctx.close();
+    }
+  });
+
 });

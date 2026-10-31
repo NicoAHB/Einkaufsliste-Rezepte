@@ -246,7 +246,7 @@ function showView(next) {
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
-  queueMicrotask(() => { const id = form.elements.storeId.value; form.elements.name.placeholder = id ? `Was brauchst du? → ${storeName(id)}` : 'Was brauchst du? z. B. Zwiebeln'; });
+  queueMicrotask(() => { form.elements.name.placeholder = 'Was brauchst du?'; });
   if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
   const current = form.elements.storeId.value;
   box.replaceChildren();
@@ -3253,7 +3253,7 @@ $('#delete-wish').addEventListener('click', () => guard(() => {
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });
-$('#select-done').addEventListener('click', () => guard(() => setSelecting(false)));
+$('#select-done').addEventListener('click', () => guard(() => { clearTimeout(noticeTimer); noticeUndo=null; $('#notice').hidden=true; setSelecting(false); }));
 $('#select-all').addEventListener('click', () => guard(() => {
   const all = visibleItems(true).filter(inView), everything = all.length && selectedItems().length === all.length;
   selected.clear(); if (!everything) all.forEach(row => selected.add(row.id));
