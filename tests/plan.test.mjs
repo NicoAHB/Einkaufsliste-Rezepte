@@ -159,3 +159,88 @@ test('Schlüssel der Zeilen: Name und Einheit (Schreibweisen gleich), kommt ders
   assert.notEqual(shortHash('abc'), shortHash('abd'));
   assert.ok(keys.every(key => /^[0-9a-z-]+$/.test(key)), 'nur Zeichen, die in einer Kennung stehen dürfen');
 });
+
+// Quellenbezogene Rücknahmen: manuelle Mengen und gleichzeitige Geräte erhalten.
+import { emptyData, merge, addToList, operation, active } from '../data.js';
+import { planReduction } from '../plan-list.js';
+import { compact } from '../compact.js';
+const planAt = n => `2026-10-31T10:00:${String(n).padStart(2,'0')}.000Z`;
+function plannedFixture(manual = 100, fresh = false) {
+  let data=emptyData();
+  if(!fresh)data=merge(data,addToList([{name:'Reis',quantity:manual,unit:'g'}],'','Nico',planAt(1)).ops);
+  const result=addToList([{name:'Reis',quantity:400,unit:'g',key:'reis'}],'','Nico',planAt(2),data.items,data.items,'meal');
+  for(const op of result.ops)op.patch.planLinked=true;
+  data=merge(data,result.ops);const source=result.ops[0],item=data.items.find(row=>row.id===source.entityId),amount=source.patch.add||source.patch;
+  const part={itemId:item.id,sourceId:source.id,name:item.name,storeId:'',at:source.at,quantity:amount.quantity,unit:amount.unit,remaining:amount.quantity};
+  return {data,item,meal:{id:'meal',recipeId:'recipe',servings:4,listedServings:4,listedParts:[part]}};
+}
+function correction(data, meal, target, tick=3) {
+  const reduction=planReduction(meal,target===null?null:{recipeId:'recipe',servings:target},data.items);
+  const ops=reduction.changes.map(({item,part,cut})=>operation('items',item.id,{cutPlan:{...cut,originalQuantity:part.quantity}},'Nico',planAt(tick)));
+  return {reduction,ops,data:merge(data,ops)};
+}
+test('Plan-Korrektur: weniger Portionen lässt manuelle Zusatzmengen erhalten',()=>{
+  const {data,meal}=plannedFixture();const out=correction(data,meal,2);
+  assert.equal(out.reduction.changes[0].remove,200);assert.equal(out.data.items[0].quantity,300);assert.equal(out.data.sync.minRev,10);
+});
+test('Plan-Korrektur: Entfernen löscht nur den Rezeptanteil, niemals den manuellen Rest',()=>{
+  const {data,meal}=plannedFixture();assert.equal(correction(data,meal,null).data.items[0].quantity,100);
+});
+test('Plan-Korrektur: reine Rezeptzutat verschwindet; ein späterer manueller Zuwachs bleibt sichtbar',()=>{
+  const {data,meal,item}=plannedFixture(0,true);let out=correction(data,meal,null).data;
+  assert.equal(active(out.items).length,0);assert.equal(out.items[0].quantity,0);
+  out=merge(out,[operation('items',item.id,{add:{quantity:50,unit:'g'}},'Anna',planAt(5))]);assert.equal(active(out.items)[0].quantity,50);
+});
+test('Plan-Korrektur: unterschiedliche Bestätigungen zweier Geräte ziehen denselben Anteil nur einmal ab',()=>{
+  const {data,meal}=plannedFixture();const a=correction(data,meal,2,3).ops,b=correction(data,meal,2,4).ops;
+  for(const ops of [[...a,...b],[...b,...a],[...a,...a,...b]])assert.equal(merge(data,ops).items[0].quantity,300);
+});
+test('Plan-Korrektur: gleichzeitiges manuelles Hinzufügen bleibt auch bei kg/g-Umrechnung erhalten',()=>{
+  const {data,meal,item}=plannedFixture(800);const a=correction(data,meal,2).ops,b=[operation('items',item.id,{add:{quantity:.5,unit:'kg'}},'Anna',planAt(4))];
+  for(const ops of [[...a,...b],[...b,...a]]){const out=merge(data,ops).items[0];assert.equal(out.quantity,1.5);assert.equal(out.unit,'kg');}
+});
+test('Plan-Korrektur: weitere Verringerung verwendet den kumulierten Anteil statt zweimal abzuziehen',()=>{
+  const {data,meal}=plannedFixture();const first=correction(data,meal,2);const next={...meal,servings:2,listedServings:2,listedParts:first.reduction.parts};
+  const second=correction(first.data,next,1,4);assert.equal(second.data.items[0].quantity,200);assert.equal(correction(second.data,{...next,servings:1,listedServings:1,listedParts:second.reduction.parts},null,5).data.items[0].quantity,100);
+});
+test('Plan-Korrektur: gekaufte, verschobene, gelöschte und manuell neu gesetzte Artikel werden übersprungen',()=>{
+  for(const patch of [{checked:true},{storeId:'anders'},{deletedAt:planAt(3)},{quantity:900,unit:'g'},{name:'Basmatireis'}]){
+    const {data,meal,item}=plannedFixture();const changed=merge(data,[operation('items',item.id,patch,'Anna',planAt(3))]);const result=correction(changed,meal,2,4);
+    assert.equal(result.reduction.changes.length,0);assert.equal(result.reduction.skipped.length,1);
+  }
+});
+test('Plan-Korrektur: Rezeptwechsel und alte Übernahmen sind ausdrücklich unterscheidbar',()=>{
+  const {data,meal}=plannedFixture();assert.equal(planReduction(meal,{recipeId:'anders',servings:4},data.items).changes[0].remove,400);
+  assert.equal(planReduction({...meal,listedParts:undefined},null,data.items).legacy,true);
+});
+test('Plan-Korrektur: Aufräumen erhält die exakte Quellenzuordnung',()=>{
+  const {data,meal}=plannedFixture();const tidied=compact(data,new Date('2027-02-01T10:00:00Z')).data;assert.equal(correction(tidied,meal,2).data.items[0].quantity,300);
+  const corrected=correction(data,meal,2).data;const tidied2=compact(corrected,new Date('2027-02-01T10:00:00Z')).data;assert.equal(merge(tidied2,[]).items[0].quantity,300);
+});
+test('Plan-Korrektur: eine nachträglich manuell gesetzte Gesamtmenge verdrängt alte Abzüge',()=>{
+  const {data,meal,item}=plannedFixture();const reduced=correction(data,meal,2).data;
+  const out=merge(reduced,[operation('items',item.id,{quantity:700,unit:'g'},'Anna',planAt(5))]);assert.equal(out.items[0].quantity,700);
+});
+
+test('Plan-Korrektur: Verschieben oder Umbenennen nach einem Abzug stellt entfernte Mengen nicht wieder her',()=>{
+  for(const patch of [{storeId:'anders'},{name:'Basmatireis'},{checked:true}]){
+    const {data,meal,item}=plannedFixture();const reduced=correction(data,meal,2).data;const out=merge(reduced,[operation('items',item.id,patch,'Anna',planAt(5))]);assert.equal(out.items[0].quantity,300);
+  }
+});
+test('Plan-Korrektur: gleichzeitige verschiedene Portionsziele folgen derselben jüngsten Entscheidung',()=>{
+  const {data,meal}=plannedFixture();const older=correction(data,meal,1,3).ops,newer=correction(data,meal,2,4).ops;
+  for(const ops of [[...older,...newer],[...newer,...older]])assert.equal(merge(data,ops).items[0].quantity,300);
+  assert.equal(merge(merge(data,newer),older).items[0].quantity,300);
+});
+test('Plan-Korrektur: die Anteile eines anderen Gerichts bleiben im gemeinsamen Artikel erhalten',()=>{
+  const {data,meal}=plannedFixture();const added=addToList([{name:'Reis',quantity:200,unit:'g',key:'reis'}],'','Anna',planAt(3),data.items,data.items,'anderes-gericht');
+  const shared=merge(data,added.ops),out=correction(shared,meal,null,4).data;assert.equal(out.items[0].quantity,300);
+});
+test('Plan-Korrektur: stabile Quelle wird auch nach abweichender Artikelzuordnung zweier Geräte gefunden',()=>{
+  const {data,meal,item}=plannedFixture(0,true);const stale={...meal,listedParts:meal.listedParts.map(part=>({...part,itemId:'anderer-lokaler-artikel'}))};
+  const out=correction(data,stale,2);assert.equal(out.reduction.changes[0].item.id,item.id);assert.equal(out.data.items[0].quantity,200);
+});
+test('Plan-Korrektur: vollständig entfernte Anteile werden nach der normalen Aufbewahrungszeit aufgeräumt',()=>{
+  const {data,meal}=plannedFixture(0,true);const empty=correction(data,meal,null).data;assert.equal(active(empty.items).length,0);assert.equal(empty.items.length,1);
+  assert.equal(compact(empty,new Date('2027-02-01T12:00:00Z')).data.items.length,0);
+});

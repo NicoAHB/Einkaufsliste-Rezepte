@@ -94,7 +94,8 @@ export function compact(input, now = new Date(), policy = POLICY) {
   for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'aliases', 'templates', 'budgets']) {
     next[key] = next[key].filter(row => {
       const drop = (row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
-        (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays));
+        (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays)) ||
+        (key === 'items' && row._planEmpty && olderThan(row.updatedAt, policy.tombstoneDays));
       if (drop) { removed[key]++; if (key === 'items') gone.push(row); }
       return !drop;
     });
@@ -126,7 +127,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
     for (const row of next[key]) {
       if (key === 'items') removed.adds += foldOldAdds(row, new Date(now.getTime() - policy.settledDays * DAY).toISOString());
       const fields = Object.keys(row._clock || {}).filter(field => field !== '*');
-      if (fields.length && olderThan(row.updatedAt, policy.settledDays)) { row._clock = { '*': { at: row.updatedAt, id: '' } }; removed.clocks++; }
+      if (fields.length && !(key === 'items' && (row.planLinked || row._planCuts?.length)) && olderThan(row.updatedAt, policy.settledDays)) { row._clock = { '*': { at: row.updatedAt, id: '' } }; removed.clocks++; }
     }
   }
   // 6. Liste angewendeter Änderungen kürzen: Alles unter `appliedDays` Tagen bleibt (mindestens `keepApplied`, höchstens `maxApplied`).

@@ -1,5 +1,6 @@
 /* Datenmodell v1. Dieses Modul benötigt weder DOM noch externe Bibliotheken. */
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
+import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
@@ -11,7 +12,7 @@ export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices
 const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
-export const active = rows => rows.filter(row => !row.deletedAt);
+export const active = rows => rows.filter(row => !row.deletedAt && !row._planEmpty);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
@@ -59,7 +60,7 @@ export function validateRow(key, row) {
   }
   if (key === 'items' || key === 'ingredients') {
     if (typeof row.name !== 'string' || typeof row.unit !== 'string' ||
-        !Number.isFinite(row.quantity) || row.quantity <= 0 ||
+        !Number.isFinite(row.quantity) || (row.quantity <= 0 && !(key === 'items' && row.quantity === 0 && row._planEmpty && row._planCuts?.length)) ||
         typeof row[key === 'items' ? 'storeId' : 'recipeId'] !== 'string') throw new Error('Ungültige Zutat oder ungültiger Artikel.');
   }
   if (key === 'items' && (typeof row.checked !== 'boolean' || typeof row.createdBy !== 'string')) {
@@ -84,6 +85,8 @@ export function validateRow(key, row) {
   }
   if (key === 'items' && row.wishNote !== undefined && row.wishNote !== null &&
       (typeof row.wishNote !== 'string' || row.wishNote.length > WISH_NOTE_LIMIT)) throw new Error('Ungültige Notiz zum Wunsch.');
+  if (key === 'items' && row.planLinked !== undefined && typeof row.planLinked !== 'boolean') throw new Error('Ungültige Wochenplan-Zuordnung.');
+  if (key === 'items' && row._planCuts !== undefined && (!Array.isArray(row._planCuts) || !row._base || row._planCuts.some(cut => !cut || typeof cut.sourceId !== 'string' || !Number.isFinite(Date.parse(cut.at)) || !Number.isFinite(cut.quantity) || cut.quantity < 0 || !Number.isFinite(cut.originalQuantity) || cut.quantity > cut.originalQuantity || typeof cut.unit !== 'string'))) throw new Error('Ungültige Wochenplan-Korrektur.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
   if (key === 'items' && row._adds !== undefined && (!Array.isArray(row._adds) || !row._base || row._adds.some(entry => !entry || typeof entry.id !== 'string' ||
       !Number.isFinite(Date.parse(entry.at)) || !(entry.quantity > 0) || typeof entry.unit !== 'string'))) throw new Error('Ungültige Mengenänderungen.');
@@ -111,6 +114,8 @@ export function validateRow(key, row) {
   // `listedServings` und `listedAt` (Version 2.47): für wie viele Portionen die Zutaten dieses Gerichts schon auf die Einkaufsliste gesetzt wurden und wann; fehlt oder null = noch nicht.
   if (key === 'meals' && ((row.listedServings !== undefined && row.listedServings !== null && (!Number.isFinite(row.listedServings) || row.listedServings <= 0)) ||
       (row.listedAt !== undefined && row.listedAt !== null && !Number.isFinite(Date.parse(row.listedAt))))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
+  if (key === 'meals' && row.listedParts !== undefined && row.listedParts !== null && (!Array.isArray(row.listedParts) || row.listedParts.some(part => !part || typeof part.itemId !== 'string' || typeof part.sourceId !== 'string' || typeof part.name !== 'string' || typeof part.storeId !== 'string' || !Number.isFinite(Date.parse(part.at)) || !Number.isFinite(part.quantity) || part.quantity <= 0 || !Number.isFinite(part.remaining) || part.remaining < 0 || part.remaining > part.quantity || typeof part.unit !== 'string'))) throw new Error('Ungültige Zutaten-Zuordnung zum Wochenplan.');
+  if (key === 'meals' && row.listedUntracked !== undefined && typeof row.listedUntracked !== 'boolean') throw new Error('Ungültige Angabe zur früheren Übernahme.');
   // `listedRows` (Version 2.50): die Zutaten des Rezepts („Name|Menge|Einheit“) zum Zeitpunkt der Übernahme, um spätere Änderungen am Rezept zu erkennen.
   if (key === 'meals' && row.listedRows !== undefined && row.listedRows !== null && (!Array.isArray(row.listedRows) || row.listedRows.length > 80 || row.listedRows.some(entry => typeof entry !== 'string' || entry.length > 200))) throw new Error('Ungültige Angabe zur Übernahme auf die Einkaufsliste.');
   if (key === 'pantry' && (typeof row.name !== 'string' || !row.name.trim())) throw new Error('Vorrat ohne Namen.');
@@ -149,7 +154,8 @@ export function validateRow(key, row) {
 // Revision 7 (2.72): Einkaufseinheiten mit Packungsinhalt und deren gemerkte Auswahl.
 // Revision 8 (2.73): manuell gewählte Maße bleiben getrennt von Rechen-/Rezeptmengen.
 // Revision 9 (2.74): manuelle Einzelmengen getrennt von Summen/Rezepten merken.
-export const SCHEMA_REV = 9;
+// Revision 10 (2.76): Quellenbezogene Wochenplan-Korrekturen und Mengen-Reset.
+export const SCHEMA_REV = 10;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -209,7 +215,7 @@ export function foldAdds(base, adds, floor) {
 export const liveAdds = row => (row._adds || []).filter(entry => keyOf(entry) > floorKey(row));
 // Aufräumen: ältere Zuwächse in den Ausgangswert übernehmen. Gibt die Zahl der übernommenen Zuwächse zurück.
 export function foldOldAdds(row, cutoff) {
-  if (!row._adds) return 0;
+  if (!row._adds || row._planCuts?.length || row.planLinked) return 0;
   const old = row._adds.filter(entry => entry.at < cutoff);
   if (!old.length) return 0;
   row._base = foldAdds(row._base, old, floorKey(row));
@@ -244,9 +250,18 @@ export function merge(data, operations) {
       for(const [field,value] of Object.entries(amountChoice(op.patch))){row[field]=clone(value);row._clock[field]={at:op.at,id:op.id};}
     }
     for (const [field, value] of Object.entries(op.patch)) {
-      if (['id', 'createdAt', 'updatedAt', '_clock', '_base', '_adds', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
+      if (['id', 'createdAt', 'updatedAt', '_clock', '_base', '_adds', '_planCuts', '_planEmpty', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
       if (protectedChoice && ['purchaseUnit','purchaseMeasure','purchaseAt'].includes(field)) continue;
       if(protectedAmount&&['purchaseAmount','purchaseAmountAt'].includes(field))continue;
+      if (field === 'cutPlan') {
+        if (op.collection !== 'items' || !value || !Number.isFinite(value.quantity) || value.quantity < 0 || !Number.isFinite(value.originalQuantity) || value.quantity > value.originalQuantity || !planSourceLive(row, {...value, quantity:value.originalQuantity})) continue;
+        row._base ||= {quantity:row.quantity,unit:row.unit}; row._planCuts ||= [];
+        const previous = row._planCuts.find(cut => cut.sourceId === value.sourceId);
+        const revision = `${op.at}|${op.id}`;
+        if (!previous) row._planCuts.push({...clone(value),revision});
+        else if (revision > (previous.revision || '')) Object.assign(previous,clone(value),{revision});
+        touched.add(row); continue;
+      }
       if (field === 'add') {
         if (op.collection === 'items' && value && Number.isFinite(value.quantity) && value.quantity > 0 && typeof value.unit === 'string') {
           row._base ||= { quantity: row.quantity, unit: row.unit };
@@ -273,8 +288,9 @@ export function merge(data, operations) {
     applied.add(op.id);
     next.updatedAt = [next.updatedAt, op.at].sort().at(-1);
   }
-  for (const row of touched) {
-    if (row._adds?.length && row._base) { const current = foldAdds(row._base, row._adds, floorKey(row)); row.quantity = current.quantity; row.unit = current.unit; }
+  for (const row of new Set([...touched, ...next.items.filter(item => item._planCuts?.length)])) {
+    if (row._base) { const current = foldAdds(row._base, row._adds || [], floorKey(row)); row.quantity = current.quantity; row.unit = current.unit; }
+    if (row._planCuts?.length) applyPlanCuts(row);
   }
   // Eine Änderung an einem Datensatz, den es nicht mehr gibt (z. B. nach dem Aufräumen auf einem anderen Gerät),
   // legt höchstens einen unvollständigen Datensatz an. Der wird verworfen, statt die ganze Datei ungültig zu machen.
@@ -288,6 +304,7 @@ export function merge(data, operations) {
   if (next.items.some(row => row.purchaseUnit !== undefined) || next.names?.some(row => row.purchaseUnit !== undefined)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 7);
   if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
   if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
+  if (next.meals.some(row=>row.listedParts?.length) || next.items.some(row=>row._planCuts?.length || row.purchaseAmount === null)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,10);
   return validate(next);
 }
 
@@ -495,7 +512,7 @@ export function foldIntoList(rows, storeId, items = []) {
    Zusammenführung nur einmal angewendet. Artikel mit eigenem Preis bleiben getrennt (die Person wollte einen eigenen Eintrag). */
 export function duplicateFolds(items, now = new Date().toISOString()) {
   const groups = new Map();
-  for (const item of active(items).filter(row => !row.checked && !hasWishDetails(row) && (row.price === undefined || row.price === null))) {
+  for (const item of active(items).filter(row => !row.checked && !hasWishDetails(row) && (row.price === undefined || row.price === null) && !row.planLinked)) {
     const key = `${item.storeId || ''}|${productKey(item.name)}|${purchaseIdentity(item)}`;
     groups.set(key, [...(groups.get(key) || []), item]);
   }

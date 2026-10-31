@@ -1,6 +1,6 @@
 /* Große Mengenpfeile und ein Einheitenmenü für Einkauf, Bearbeiten und Nachkaufen.
    Die Tastatur erscheint nur beim bewussten Antippen der Zahl oder eigener Angaben. */
-import { preferredPurchase, purchaseView, purchaseSizeText, rawPurchase, validPurchaseUnit, hasUnitChoice, unitChoice, packOptions, countAmount, needsPackSize, startQuantity, preferredQuantity, minimumQuantity, stepQuantity } from './buying.js';
+import { preferredPurchase, purchaseView, purchaseSizeText, rawPurchase, validPurchaseUnit, hasUnitChoice, unitChoice, packOptions, countAmount, needsPackSize, startQuantity, preferredQuantity, rememberedAmount, amountChoice, minimumQuantity, stepQuantity } from './buying.js';
 import { unitSpec } from './prices.js';
 const clone = value => value ? { ...value } : null;
 const plain = value => String(value).replace('.',',');
@@ -76,7 +76,8 @@ export function mountQuantityControls(form,{getHistory=()=>[],getName=()=>form.e
     if(unitChosen)Object.assign(result,{purchaseMeasure:profile?.unit||unit.value.trim(),purchaseAt:new Date().toISOString()});
     else if(!original)Object.assign(result,inherited);
     if(!hasUnitChoice(result)&&!hasUnitChoice(original)&&(!original||quantityTouched||rememberOnSave))Object.assign(result,{purchaseUnit:clone(profile),purchaseMeasure:profile?.unit||unit.value.trim(),purchaseAt:new Date().toISOString()});
-    if(!original||quantityTouched||rememberOnSave)Object.assign(result,{purchaseAmount:{quantity:result.quantity,unit:result.unit},purchaseAmountAt:new Date().toISOString()});
+    if(form.elements.onceOnly?.checked) Object.assign(result,amountChoice(rememberedAmount(getName(),getHistory())));
+    else if(!original||quantityTouched||rememberOnSave)Object.assign(result,{purchaseAmount:{quantity:result.quantity,unit:result.unit},purchaseAmountAt:new Date().toISOString()});
     return result;
   }
   function select(next,label){
@@ -100,17 +101,18 @@ export function mountQuantityControls(form,{getHistory=()=>[],getName=()=>form.e
   unit.addEventListener('pointerdown',event=>{event.preventDefault();if(form.dataset)form.dataset.choosingUnit='yes';document.activeElement?.blur?.();});
   unit.addEventListener('selectstart',event=>event.preventDefault());
   unit.addEventListener('click',()=>{
-    if(form.dataset)form.dataset.choosingUnit='yes';const p=unitPicker();const apply=(next,label)=>{try{if(!unit.isConnected||!unit.getClientRects().length){p.dialog.close();return false;}select(next,label);return true;}catch(error){p.error.textContent=error.message;p.error.hidden=false;return false;}};owner=unit;choose=apply;p.choices.replaceChildren();p.custom.open=false;p.error.hidden=true;
+    if(form.dataset)form.dataset.choosingUnit='yes';const p=unitPicker();const apply=(next,label)=>{try{if(!unit.isConnected||!unit.getClientRects().length){p.dialog.close();return false;}select(next,label);return true;}catch(error){p.error.textContent=error.message;p.error.hidden=false;return false;}};owner=unit;choose=apply;p.choices.replaceChildren();p.custom.open=false;p.error.hidden=true;const more=node('details',undefined,'unit-more');more.append(node('summary','Weitere Einheiten'));const moreChoices=node('div',undefined,'unit-choices');more.append(moreChoices);
     const common=packOptions(getName()),profiles=[profile,preferredPurchase(getName(),getHistory()).purchaseUnit,...common].filter(Boolean),seen=new Set();
     if(common.length){const intro=node('p','Wie viel ist in deiner Packung? Einmal wählen – die App merkt sich deine Größe.','unit-types-label hint');p.choices.append(intro);}
     for(const value of [...profiles])if(unitSpec(value.unit).group==='volume'&&value.label!=='Flasche')profiles.push({...value,label:'Flasche'});
-    for(const value of profiles){const text=`${value.label} · ${purchaseSizeText(value,getName())}`;if(seen.has(text))continue;seen.add(text);const button=node('button',text,'secondary');button.type='button';button.setAttribute('aria-pressed',String(JSON.stringify(value)===JSON.stringify(profile)));button.onclick=()=>{if(apply(value,value.label))p.dialog.close();};p.choices.append(button);}
+    for(const value of profiles){const text=`${value.label} · ${purchaseSizeText(value,getName())}`;if(seen.has(text))continue;seen.add(text);const button=node('button',text,'secondary');button.type='button';button.setAttribute('aria-pressed',String(JSON.stringify(value)===JSON.stringify(profile)));button.onclick=()=>{if(apply(value,value.label))p.dialog.close();};(value.label==='Flasche'&&JSON.stringify(value)!==JSON.stringify(profile)?moreChoices:p.choices).append(button);}
     p.choices.append(p.custom);
     if(common.length){const other=node('button','Andere Packungsgröße','secondary');other.type='button';other.classList.add('other-pack-size');other.onclick=()=>{p.label.value='Packung';p.size.value='';p.base.value='Stück';p.custom.open=true;p.custom.scrollIntoView({block:'nearest'});};p.choices.insertBefore(other,p.custom);}
-    if(profiles.length){const label=node('p','Maße und weitere Einheiten','unit-types-label hint');p.choices.append(label);}
+    if(profiles.length){const label=node('p','Häufige Einheiten','unit-types-label hint');p.choices.append(label);}
     for(const value of [...new Set([unit.value,'Stück','Packung','Flasche','Dose','Glas','Becher','Beutel','Bund','Rolle','Tube','Sack','Tafel','kg','g','l','ml','EL','TL'].filter(Boolean))].filter(value=>!profiles.some(p=>p.label===value))){
-      const button=node('button',value,'secondary');button.type='button';button.setAttribute('aria-pressed',String(!profile&&unit.value===value));button.onclick=()=>{if(needsPackSize(getName(),value)){p.label.value=value;p.size.value='';p.base.value='Stück';p.custom.open=true;p.custom.scrollIntoView({block:'nearest'});return;}if(apply(null,value))p.dialog.close();};p.choices.append(button);
+      const button=node('button',value,'secondary');button.type='button';button.setAttribute('aria-pressed',String(!profile&&unit.value===value));button.onclick=()=>{if(needsPackSize(getName(),value)){p.label.value=value;p.size.value='';p.base.value='Stück';p.custom.open=true;p.custom.scrollIntoView({block:'nearest'});return;}if(apply(null,value))p.dialog.close();};(['Stück','Packung','kg','g','l','ml','EL','TL'].includes(value)||value===unit.value?p.choices:moreChoices).append(button);
     }
+    p.choices.append(more,p.custom);
     p.label.value=profile?.label||(common.length?'Packung':unit.value||'Packung');p.size.value=profile?plain(profile.quantity):'';p.base.value=profile?.unit||(common.length?'Stück':'l');unit.setAttribute('aria-expanded','true');p.dialog.showModal();p.dialog.scrollTop=0;p.close.focus({preventScroll:true});
   });
   unit.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();unit.click();}});

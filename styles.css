@@ -4429,3 +4429,34 @@ input.purchase-unit { min-height:90px; padding:10px 22px 10px 8px; cursor:pointe
 .unit-choices>.purchase-custom { grid-column:1/-1; margin:6px 0; padding-top:6px }
 .pack-size-link { display:inline-flex; align-items:center; min-height:44px; padding:2px 4px; border:0; background:transparent; color:var(--accent); font:inherit; font-weight:650; text-decoration:underline; text-underline-offset:3px }
 .pack-size-link,.unit-choices button { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation }
+
+/* 2.76: App-Haltegesten statt Textauswahl/Kopiermenü, auch auf iOS. */
+html, body, body * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+::selection { background: transparent; color: inherit }
+.syncline { flex-wrap: wrap }
+#sync-detail { flex-basis:100%; min-width:0; white-space:normal; font-size:.72rem; line-height:1.4; color:var(--muted); font-weight:400; overflow-wrap:anywhere }
+#item-form .name-field { display:block }
+#item-form .name-field input { min-width:0; width:100%; padding-right:100px }
+
+#item-form .clear-item-name { right:48px; top:50%; transform:translateY(-50%); min-width:44px; min-height:44px; padding:0; margin:0 3px; color:#b5263c; border:0; border-radius:50%; background:transparent; font-size:27px; font-weight:600; position:absolute }
+#item-form .clear-item-name::before { content:''; position:absolute; width:23px; height:23px; border:1.5px solid currentColor; border-radius:50%; inset:0; margin:auto }
+#item-form.compact > :is(#add-item-confirm,.once-only) { display:none }
+#add-item-confirm { min-height:46px }
+.once-only { font-size:.85rem; color:var(--muted); line-height:1.4 }
+.unit-more { grid-column:1/-1; width:100%; border-top:1px solid var(--line); padding-top:10px }
+.unit-more summary { min-height:44px; display:flex; align-items:center; cursor:pointer; color:var(--accent); font-weight:600 }
+.unit-more summary::after { content:'⌄'; margin-left:auto }
+.unit-more[open] summary::after { content:'⌃' }
+.unit-more .unit-choices { padding:8px 0 }
+.remembered-amount { padding:10px 12px; border:1px solid var(--line); border-radius:14px }
+.remembered-amount p { margin:0 }
+.remembered-amount .row-actions { display:flex; flex-wrap:wrap; gap:8px 16px }
+#remembered-amount-editor { margin-top:12px }
+#remembered-amount-editor .secondary { margin-top:8px }
+.adjust-list { margin:0; padding-left:20px; line-height:1.7; overflow-wrap:anywhere }
+#select-count { line-height:1.35; overflow-wrap:anywhere }

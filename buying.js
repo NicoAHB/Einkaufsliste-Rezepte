@@ -25,18 +25,19 @@ export function newerUnitChoice(row,current={}) {
 const catalog = new Map(PRODUCT_ROWS.map(row => [key(row[1]), row]));
 const looseMeat = name => /(?:^|\s)(?:hackfleisch|rinderhack|schweinehack|putenhack|geflügelhack|rindergehacktes)(?:\s|$)/i.test(productKey(name));
 export const validPurchaseAmount = amount => Boolean(amount && typeof amount==='object' && !Array.isArray(amount) && Number.isFinite(amount.quantity) && amount.quantity>0 && amount.quantity<=1e6 && typeof amount.unit==='string' && amount.unit.trim() && amount.unit.length<=30);
-export const hasAmountChoice = row => validPurchaseAmount(row?.purchaseAmount) && typeof row.purchaseAmountAt==='string' && Number.isFinite(Date.parse(row.purchaseAmountAt));
-export const amountChoice = row => hasAmountChoice(row) ? {purchaseAmount:{quantity:row.purchaseAmount.quantity,unit:row.purchaseAmount.unit},purchaseAmountAt:row.purchaseAmountAt} : {};
+export const hasAmountChoice = row => (row?.purchaseAmount === null || validPurchaseAmount(row?.purchaseAmount)) && typeof row.purchaseAmountAt==='string' && Number.isFinite(Date.parse(row.purchaseAmountAt));
+export const amountChoice = row => hasAmountChoice(row) ? {purchaseAmount:row.purchaseAmount === null ? null : {quantity:row.purchaseAmount.quantity,unit:row.purchaseAmount.unit},purchaseAmountAt:row.purchaseAmountAt} : {};
 export function compareAmountChoice(a,b) {
   const present=Number(hasAmountChoice(a))-Number(hasAmountChoice(b));if(present||!hasAmountChoice(a))return present;
-  const signature=row=>`${row.purchaseAmountAt}|${JSON.stringify([row.purchaseAmount.quantity,row.purchaseAmount.unit])}`;
+  const signature=row=>`${row.purchaseAmountAt}|${JSON.stringify(row.purchaseAmount === null ? null : [row.purchaseAmount.quantity,row.purchaseAmount.unit])}`;
   const x=signature(a),y=signature(b);return x<y?-1:x>y?1:0;
 }
 export const newerAmountChoice = (row,current={}) => hasAmountChoice(row)&&compareAmountChoice(row,current)>=0 ? amountChoice(row) : {};
+export const rememberedAmount = (name, history) => history.filter(row => key(row.name) === key(name) && hasAmountChoice(row)).sort((a,b) => compareAmountChoice(b,a))[0] || null;
 // Nur manuell bestätigte Einzelmengen merken, niemals die aggregierte Liste.
 export function preferredQuantity(name,history,unit,profile,fallback=1) {
   const remembered=history.filter(row=>key(row.name)===key(name)&&hasAmountChoice(row)).sort((a,b)=>compareAmountChoice(b,a))[0];
-  if(!remembered)return fallback;
+  if(!remembered?.purchaseAmount)return fallback;
   const amount=remembered.purchaseAmount,source=unitSpec(amount.unit),target=unitSpec(profile?.unit||unit);
   if(source.group!==target.group)return fallback;
   const quantity=amount.quantity*source.factor/target.factor;

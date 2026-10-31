@@ -85,7 +85,7 @@ const openStores = async page => {
 const chooseUnit = async (page, selector, value) => {
   await page.locator(selector).click(); await page.waitForSelector('#purchase-unit-dialog[open]');
   const choice=page.locator('#purchase-unit-dialog .unit-choices').getByRole('button',{name:value,exact:true});
-  if(await choice.count()) { await choice.click(); await page.waitForSelector('#purchase-unit-dialog[open]',{state:'detached'}); } else { await page.locator('#purchase-unit-dialog details').evaluate(n=>n.open=true); await page.fill('#purchase-unit-dialog [name=label]',value); await page.fill('#purchase-unit-dialog [name=size]',''); await page.click('#purchase-unit-dialog button[type=submit]'); }
+  if(await choice.count()) { await choice.click(); await page.waitForSelector('#purchase-unit-dialog[open]',{state:'detached'}); } else { await page.locator('#purchase-unit-dialog .purchase-custom').evaluate(n=>n.open=true); await page.fill('#purchase-unit-dialog [name=label]',value); await page.fill('#purchase-unit-dialog [name=size]',''); await page.click('#purchase-unit-dialog button[type=submit]'); }
 };
 const expandForm = page => page.focus('#item-form input[name=name]');
 // Die Bereiche der Einstellungen sind eingeklappt; die meisten Prüfungen brauchen sie offen.
@@ -289,7 +289,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#items .select-mark').count(), 0);
     await page.click('#select-mode');
     assert.equal(await page.locator('#select-bar').isVisible(), true);
-    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt');
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt – bitte runterscrollen zum Auswählen');
     assert.equal(await page.isDisabled('#select-move'), true); assert.equal(await page.isDisabled('#select-delete'), true);
     assert.equal(await page.locator('#clear-checked').isHidden(), true);
     assert.equal(await page.getAttribute('#select-mode', 'aria-pressed'), 'true');
@@ -308,14 +308,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#items .item.selected').count(), await page.locator('#items .item').count());
     assert.equal(await page.textContent('#select-all'), 'Keine');
     await page.click('#select-all');
-    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt');
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt – bitte runterscrollen zum Auswählen');
     // Geschäft zuordnen: Tomaten und Nudeln zu Lidl
     await row('Tomaten').locator('.item-copy').click(); await row('Nudeln').locator('.item-copy').click();
     await page.click('#select-move'); await sheetOpen(page);
     assert.match(await page.textContent('#move-text'), /2 Artikel ausgewählt/);
     await page.locator('#move-choices button', { hasText: 'Lidl' }).click();
     assert.match(await page.textContent('#notice-text'), /2 Artikel → Lidl/);
-    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt', 'die Auswahl ist danach leer, der Modus bleibt');
+    assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt – bitte runterscrollen zum Auswählen', 'die Auswahl ist danach leer, der Modus bleibt');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
     const lidl = await names('#items');
     assert.ok(lidl.includes('Tomaten') && lidl.includes('Nudeln'), lidl.join(', '));
@@ -911,6 +911,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Glas-Design: Schrift bleibt bei jeder Transparenz gut lesbar (hell und dunkel), Leiste und Dialoge passen auch bei 280 px', async () => {
     for (const scheme of ['light', 'dark']) for (const level of [0, 100]) {
       const { ctx, page, problems } = await context({ config: { glassLevel: level }, context: { colorScheme: scheme, viewport: { width: 280, height: 640 } } });
+      await ctx.addInitScript(() => {
+        const viewport=Object.assign(new EventTarget(),{height:innerHeight,scale:1});
+        Object.defineProperty(window,'visualViewport',{value:viewport});
+        window.__glassKeyboard=()=>{viewport.height=innerHeight-320;viewport.dispatchEvent(new Event('resize'));};
+      });
       await open(page);
       // Grau auf den Karten: die Mischfarbe aus Hintergrund, Lichtfleck und Karte ergibt sich im Bild; hier genügt die Prüfung der Grundfarben
       const [text, muted, bg] = [await colorOf(page, '--text'), await colorOf(page, '--muted'), await colorOf(page, '--bg')];
@@ -922,7 +927,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(tabs.length, 5); assert.ok(tabs.every(entry => entry.inside && entry.fits), `${scheme} ${level}: Reiter passen ${JSON.stringify(tabs)}`);
       // Tastatur offen: die schwebende Leiste verschwindet ganz
       await page.focus('#item-form input[name=name]');
-      await page.evaluate(() => document.body.classList.add('typing'));
+      await page.evaluate(() => window.__glassKeyboard());
       await page.waitForFunction(() => document.querySelector('.tabs').getBoundingClientRect().top >= innerHeight, null, { timeout: 2000 }).catch(() => {});
       assert.ok(await page.evaluate(() => document.querySelector('.tabs').getBoundingClientRect().top >= innerHeight), `${scheme} ${level}: Leiste bei offener Tastatur außerhalb des Bildes`);
       assert.deepEqual(problems, []);
@@ -1406,7 +1411,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await page.touchscreen.tap(...Object.values(await spendCenter(note)));
       assert.equal(await focusedName(), 'note');
       assert.equal(await menu.isVisible(), false, 'Tippen ins Feld klappt die Liste zu');
-      await page.waitForFunction(length => { const node = document.querySelector('#purchase-form input[name=note]'); return node.selectionEnd - node.selectionStart === length; }, 'Geschenk'.length, { timeout: 3000 }).catch(() => { throw new Error('der Text ist nicht ausgewählt: Tippen würde ihn nicht ersetzen'); });
+      await page.waitForFunction(() => { const node = document.querySelector('#purchase-form input[name=note]'); return node.selectionEnd === node.selectionStart; });
       assert.deepEqual(problems, []);
       await ctx.close();
     });
@@ -3253,12 +3258,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
-  test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; unter „Planen“ bleibt Text auswählbar', async () => {
+  test('Im Laden: keine Textauswahl (langer Druck markiert nichts blau), auch nicht beim Gedrückthalten gesperrt; auch unter „Planen“ bleibt nichts markiert', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const selectable = selector => page.locator(selector).first().evaluate(node => getComputedStyle(node).userSelect);
-    assert.notEqual(await selectable('#items .group-head span'), 'none', 'unter „Planen“ unverändert');
-    assert.equal(await page.evaluate(() => { const node = document.querySelector('#items .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), false);
+    assert.equal(await selectable('#items .group-head span'), 'none', 'auch unter Planen keine Textauswahl');
+    assert.equal(await page.evaluate(() => { const node = document.querySelector('#items .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), true);
     await inShop(page);
     for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
       assert.equal(await selectable(selector), 'none', `${selector}: keine Textauswahl`);
@@ -3268,7 +3273,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // … und eine vorhandene Auswahl verschwindet, wenn gesperrt ein Kreis gehalten wird
     await page.click('#shop-lock');
     await page.evaluate(() => getSelection().selectAllChildren(document.querySelector('#shop-lockbar span')));   // etwas Markierbares außerhalb der Liste
-    assert.ok((await page.evaluate(() => getSelection().toString())).length > 0, 'Vorbereitung: etwas ist markiert');
+    await page.waitForFunction(() => getSelection().toString() === '');
     await pressAndHold(page, '#shop-list .shop-tap', 650); await page.mouse.up();
     assert.equal(await itemState(page, 'Tomaten'), true, 'abgehakt');
     assert.equal(await page.evaluate(() => getSelection().toString()), '', 'nichts bleibt markiert');
@@ -5434,7 +5439,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   const weekRowsText = async page => (await page.locator('#week-ingredients .transfer-row').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim());
   const weekEmpty = async page => (await page.textContent('#week-ingredients')).replace(/\s+/g, ' ').trim();
   const ALL_LISTED = 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.';
-  const listQty = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === wanted).map(row => `${row.quantity} ${row.unit}`), name);
+  const listQty = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && !row._planEmpty && row.name === wanted).map(row => `${row.quantity} ${row.unit}`), name);
   const takeWeek = async (page, store = 'Lidl') => { await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page); if (store) await page.selectOption('#week-form select[name=storeId]', { label: store }); };
 
   test('Dasselbe Produkt in anderer Schreibweise wird zusammengeführt: „Zwiebel“ im Rezept zählt zu „Zwiebeln“ auf der Liste, im Wochen-Einkauf ein Eintrag, im Eingabefeld und im Vorrat', async () => {
@@ -5595,6 +5600,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   // Version 2.51: ein Gericht lange halten und auf einen anderen Tag ziehen
   const dragMeal = async (page, name, toDay) => {
+    await page.locator('.meal', {hasText:name}).locator('.meal-copy').evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));
     const from = await page.locator('.meal', { hasText: name }).locator('.meal-copy').boundingBox(), to = await page.locator(`.day[data-day="${toDay}"]`).boundingBox();
     await page.mouse.move(from.x + 20, from.y + from.height / 2); await page.mouse.down(); await page.waitForSelector('.drag-ghost');
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
@@ -5731,14 +5737,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Wochen-Einkauf nach Portionsänderung: mehr Portionen nehmen nur das Zusätzliche mit, weniger ändert nichts; ein anderes Rezept am Gericht gilt wieder als neu', async () => {
+  test('Wochen-Einkauf nach Portionsänderung: mehr Portionen nehmen nur das Zusätzliche mit, weniger fragt nach und kann die Liste unverändert lassen; ein anderes Rezept am Gericht gilt wieder als neu', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await planPasta(page, '2', 'Kichererbsen-Curry');   // 150 g Reis für 2 Portionen
     await takeWeek(page); await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
     assert.deepEqual(await listQty(page, 'Reis'), ['150 g']);
     // 2 → 5 Portionen: zusätzlich 3 Portionen = 225 g Reis
-    const edit = async servings => { await page.click('[data-tab=plan]'); await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).click(); await sheetOpen(page); await page.fill('#meal-form input[name=servings]', servings); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' }); };
+    const edit = async servings => { await page.click('[data-tab=plan]'); await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).click(); await sheetOpen(page); await page.fill('#meal-form input[name=servings]', servings); await page.click('#meal-form button[type=submit]'); if(await page.locator('#plan-adjust-dialog').evaluate(node=>node.open))await page.click('#plan-adjust-keep'); await page.waitForSelector('#meal-dialog', { state: 'hidden' }); };
     await edit('5');
     assert.deepEqual(await page.locator('.day.today .meal .meal-listed').allTextContents(), ['Zutaten für 2 Portionen übernommen']);
     await takeWeek(page);
@@ -5757,7 +5763,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // anderes Rezept am Gericht: die Übernahme gilt nicht mehr, das Gericht kommt ganz
     await page.click('[data-tab=plan]'); await page.getByRole('button', { name: /Kichererbsen-Curry ändern/ }).click(); await sheetOpen(page);
     await page.locator('#recipe-pick .pick-row', { hasText: 'Apfel-Pfannkuchen' }).click();
-    await page.fill('#meal-form input[name=servings]', '2'); await page.click('#meal-form button[type=submit]'); await page.waitForSelector('#meal-dialog', { state: 'hidden' });
+    await page.fill('#meal-form input[name=servings]', '2'); await page.click('#meal-form button[type=submit]'); await page.click('#plan-adjust-keep'); await page.waitForSelector('#meal-dialog', { state: 'hidden' });
     assert.equal(await page.locator('.day.today .meal .meal-listed').count(), 0);
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.meals.filter(row => !row.deletedAt).map(row => [row.recipeId, row.listedServings, row.listedAt]));
     assert.deepEqual(stored, [['recipe-pfannkuchen', null, null]]);
@@ -7888,7 +7894,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const seedLocal = (ctx,data) => ctx.addInitScript(data=>{if(!localStorage.getItem('einkauf-demo-v1'))localStorage.setItem('einkauf-demo-v1',JSON.stringify({base:data,pending:[]}));},data);
   async function transferMilk(page,title){await goTab(page,'recipes');await page.locator('.recipe-card',{hasText:title}).getByRole('button',{name:'Auf die Liste',exact:true}).click();await page.selectOption('#transfer-form [name=storeId]','store-edeka');await page.click('#transfer-form button:not([data-close])');await page.waitForSelector('#transfer-dialog[open]',{state:'detached'});}
-  async function choosePack(page,form,label,size,unit){await page.click(`${form} [name=unit]`);await page.click('#purchase-unit-dialog summary');await page.fill('#purchase-unit-dialog [name=label]',label);await page.fill('#purchase-unit-dialog [name=size]',size);await page.selectOption('#purchase-unit-dialog [name=base]',unit);await page.click('#purchase-unit-dialog button[type=submit]');}
+  async function choosePack(page,form,label,size,unit){await page.click(`${form} [name=unit]`);await page.click('#purchase-unit-dialog .purchase-custom summary');await page.fill('#purchase-unit-dialog [name=label]',label);await page.fill('#purchase-unit-dialog [name=size]',size);await page.selectOption('#purchase-unit-dialog [name=base]',unit);await page.click('#purchase-unit-dialog button[type=submit]');}
   test('Einkaufsmengen: Fertig schließt Tastatur, Pfeile zählen ab eins und speichern erst nach Bestätigung',async()=>{
     const {ctx,page,problems}=await context();await open(page);await page.fill('#item-form [name=name]','Milch');await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea,select')),false);assert.equal(await page.inputValue('#item-form [name=quantity]'),'1');assert.equal(await page.inputValue('#item-form [name=unit]'),'Packung');
@@ -7901,7 +7907,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await open(page);await page.fill('#item-form [name=name]','mi');await page.locator('#item-suggestions').getByRole('button',{name:'Milch',exact:true}).click();
     assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea,select')),false);await page.click('#item-form [name=unit]');
     assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea,select')),false);assert.ok(await page.getAttribute('#item-form [name=unit]','readonly')!==null);
-    assert.equal(await page.locator('#purchase-unit-dialog').getByRole('button',{name:'Flasche · 1 l',exact:true}).count(),1);
+    assert.equal(await page.locator('#purchase-unit-dialog').getByRole('button',{name:'Flasche · 1 l',exact:true}).count(),0);await page.click('#purchase-unit-dialog .unit-more summary');assert.equal(await page.locator('#purchase-unit-dialog').getByRole('button',{name:'Flasche · 1 l',exact:true}).count(),1);
     await page.locator('#purchase-unit-dialog .unit-choices').getByRole('button',{name:'l',exact:true}).click();assert.equal(await page.inputValue('#item-form [name=unit]'),'l');
     await page.fill('#item-form [name=quantity]','0,5');await page.click('#item-form button[type=submit]');const row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch'&&!r.storeId);assert.equal(row.quantity,.5);assert.equal(row.purchaseUnit,null);assert.deepEqual(problems,[]);await ctx.close();
   });
@@ -8041,4 +8047,65 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(!JSON.stringify(backup).includes('token'));
     await ctx.close();
   });
+  test('2.76: rotes Kreuz verwirft nur den Entwurf, Hinzufügen klappt zu und freie Fläche schließt die Tastatur',async()=>{
+    const {ctx,page,problems}=await context();await open(page);
+    const before=await page.locator('#items .item').count();
+    await page.fill('#item-form [name=name]','Hackfleisch gemischt');await page.fill('#item-form [name=quantity]','450');
+    await page.screenshot({path:'/tmp/sattplan276-eingabe.png'});
+    await page.click('#clear-item-name');
+    assert.equal(await page.inputValue('#item-form [name=name]'),'');assert.ok(await page.locator('#item-form').evaluate(node=>node.classList.contains('compact')));assert.equal(await page.locator('#items .item').count(),before);
+    assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea')),false);
+    await page.fill('#item-form [name=name]','Hackfleisch gemischt');await page.fill('#item-form [name=quantity]','450');
+    await page.touchscreen.tap(4,400);assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea')),false);assert.equal(await page.locator('#item-form .qty').isVisible(),true);
+    await page.click('#add-item-confirm');assert.equal(await page.inputValue('#item-form [name=name]'),'');assert.equal(await page.locator('#item-form .qty').isVisible(),false);assert.match(await page.textContent('#items'),/Hackfleisch/);
+    await page.click('#select-mode');assert.match(await page.textContent('#select-count'),/Nichts ausgewählt.*runterscrollen/);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: gemerkte Menge separat ändern und zurücksetzen, einmaliger Einkauf überschreibt sie nicht',async()=>{
+    const {ctx,page,problems}=await context();await open(page);
+    await page.fill('#item-form [name=name]','Hackfleisch gemischt');await page.fill('#item-form [name=quantity]','450');await page.click('#add-item-confirm');
+    const item=()=>page.locator('#items .item',{hasText:'Hackfleisch gemischt'}).locator('.item-copy');
+    await item().click();await sheetOpen(page);assert.match(await page.textContent('#remembered-amount-text'),/450 g/);
+    await page.click('#change-remembered-amount');await page.fill('#edit-item-form [name=memoryQuantity]','600');await page.click('#save-remembered-amount');
+    assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'450');assert.match(await page.textContent('#remembered-amount-text'),/600 g/);
+    await page.check('#edit-item-form [name=onceOnly]');await page.fill('#edit-item-form [name=quantity]','1000');await page.click('#edit-item-form button[type=submit]');
+    await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'600');await page.click('#clear-item-name');
+    await item().click();await sheetOpen(page);await page.click('#reset-remembered-amount');assert.match(await page.textContent('#remembered-amount-text'),/Keine eigene Menge/);await page.click('#item-dialog [data-close]');
+    await page.reload();await open(page);await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'100');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: seltene Einheiten sind eingeklappt, Eier-Packungsgrößen bleiben direkt erreichbar',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await page.fill('#item-form [name=name]','Eier');await page.click('#item-form [name=unit]');
+    assert.equal(await page.getByRole('button',{name:'Packung · 6 Eier',exact:true}).isVisible(),true);
+    assert.equal(await page.getByRole('button',{name:'Tube',exact:true}).isVisible(),false);await page.click('#purchase-unit-dialog .unit-more summary');assert.equal(await page.getByRole('button',{name:'Tube',exact:true}).isVisible(),true);
+    await page.getByRole('button',{name:'Tube',exact:true}).click();assert.equal(await page.inputValue('#item-form [name=unit]'),'Tube');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: Einkaufsabschluss unter Alle ordnet die Ausgabe einem Geschäft zu und entfernt weiterhin alle abgehakten Artikel',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await page.click('#mode-shop');await storeButton(page,'#shop-chips','Alle').click();
+    await shopTap(page,'Tomaten').click();await shopTap(page,'Milch').click();await finishShop(page);await sheetOpen(page);
+    assert.equal(await page.locator('#finish-store-field').isVisible(),true);await page.selectOption('#finish-form [name=expenseStoreId]','store-lidl');await page.fill('#finish-form [name=amount]','23,45');
+    await page.screenshot({path:'/tmp/sattplan276-abschluss.png'});await page.click('#finish-form .add-button');
+    const out=await expenseStored(page),purchase=out.purchases.at(-1);assert.equal(purchase.storeId,'store-lidl');assert.equal(purchase.storeName,'Lidl');assert.equal(purchase.cents,2345);assert.ok(out.items.filter(row=>['Tomaten','Milch'].includes(row.name)).every(row=>row.deletedAt));assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: Portionsvorschau und Gericht entfernen erhalten manuell hinzugefügten Reis',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await planPasta(page,'4','Kichererbsen-Curry');await takeWeek(page);await page.click('#week-form button[type=submit]');await page.waitForSelector('#week-dialog',{state:'hidden'});
+    await page.fill('#item-form [name=name]','Reis');await storeButton(page,'#store-pick','Lidl').click();await page.click('#item-form [name=unit]');await page.getByRole('button',{name:'g',exact:true}).click();await page.fill('#item-form [name=quantity]','100');await page.click('#add-item-confirm');
+    await goTab(page,'plan');await page.getByRole('button',{name:'Kichererbsen-Curry ändern',exact:true}).click();await sheetOpen(page);await page.fill('#meal-form [name=servings]','2');await page.click('#meal-form button[type=submit]');
+    await page.waitForSelector('#plan-adjust-dialog[open]');assert.match(await page.textContent('#plan-adjust-list'),/Reis/);await page.screenshot({path:'/tmp/sattplan276-plan.png'});await page.click('#plan-adjust-apply');await page.waitForSelector('#plan-adjust-dialog',{state:'hidden'});
+    assert.deepEqual((await listQty(page,'Reis')).sort(),['100 g','150 g']);await page.getByRole('button',{name:'Kichererbsen-Curry aus dem Plan entfernen',exact:true}).click();await page.waitForSelector('#plan-adjust-dialog[open]');await page.click('#plan-adjust-apply');assert.deepEqual(await listQty(page,'Reis'),['100 g']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: globaler Auswahl- und Kontextmenüschutz lässt Eingeben und App-Haltegesten zu',async()=>{
+    const {ctx,page,problems}=await context();await open(page);
+    for(const selector of ['#shopping-title','#items','.tabs','#item-form [name=name]']){
+      assert.equal(await page.locator(selector).evaluate(node=>getComputedStyle(node).userSelect),'none');
+      assert.equal(await page.locator(selector).evaluate(node=>{const event=new Event('contextmenu',{bubbles:true,cancelable:true});node.dispatchEvent(event);return event.defaultPrevented;}),true);
+    }
+    await page.fill('#item-form [name=name]','Testeingabe');const fieldBox=await page.locator('#item-form [name=name]').boundingBox();await page.mouse.move(fieldBox.x+30,fieldBox.y+20);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();await page.waitForFunction(()=>{const field=document.querySelector('#item-form [name=name]');return field.selectionStart===field.selectionEnd;});
+    await page.fill('#item-form [name=name]','Andere Eingabe');assert.equal(await page.inputValue('#item-form [name=name]'),'Andere Eingabe');await page.click('#clear-item-name');await inShop(page);await finishShop(page);assert.equal(await page.locator('#finish-dialog').evaluate(node=>node.open),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.76: Speicherstatus unterscheidet gemeinsam gespeichert und nur lokal wartende Änderungen',async()=>{
+    const remote=github(demo);const {ctx,page}=await context({config:connectedConfig});let offline=false;
+    await ctx.route('https://api.github.com/**',route=>offline?route.abort():remote.handler(route));await open(page);await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ok');assert.match(await page.textContent('#sync-detail'),/Auf GitHub gespeichert.*um \d{2}:\d{2} Uhr/);
+    offline=true;await page.fill('#item-form [name=name]','Testartikel');await page.click('#add-item-confirm');await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='error');assert.match(await page.textContent('#sync-detail'),/1 Änderung nur auf diesem Gerät.*wird später gesendet/);
+    offline=false;await page.click('#refresh');await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='ok');assert.match(await page.textContent('#sync-detail'),/Auf GitHub gespeichert/);assert.ok(remote.content.items.some(row=>row.name==='Testartikel'));await ctx.close();
+  });
+
 });

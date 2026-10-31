@@ -1,5 +1,5 @@
-import { active, addToList, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
-import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate } from './prices.js';
+import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
@@ -20,7 +20,8 @@ import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
-import { shoppingAmount, purchaseView, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
+import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
+import { planReduction } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
@@ -151,8 +152,18 @@ function saveLocal(nextBase, nextPending) {
 }
 function status(text, mode = 'local') {
   $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode;
+  syncDetail();
   if (mode === 'ok' && connectFailed) { connectFailed = false; updateSaveButtons(); }
 }
+function syncDetail() {
+  const node = $('#sync-detail');
+  if (!connected()) { node.textContent = 'Deine Änderungen sind lokal gespeichert.'; return; }
+  if (pending.length) { node.textContent = `${pending.length} ${pending.length === 1 ? 'Änderung nur' : 'Änderungen nur'} auf diesem Gerät – ${pending.length === 1 ? 'wird' : 'werden'} später gesendet`; return; }
+  let at = 0; try { at = Number(localStorage.getItem(`einkauf-last-saved-v1:${namespace()}`)) || 0; } catch { /* status remains available */ }
+  const date = new Date(at), today = new Date().toDateString() === date.toDateString();
+  node.textContent = at ? `Auf GitHub gespeichert · zuletzt ${today ? '' : date.toLocaleDateString('de-DE') + ' '}um ${date.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr` : 'Warte auf den ersten erfolgreichen GitHub-Abgleich.';
+}
+function rememberSyncTime() { try { localStorage.setItem(`einkauf-last-saved-v1:${namespace()}`, String(lastSyncAt)); } catch { /* sync already succeeded */ } }
 function restingStatus() {
   if (!connected()) status('Nur auf diesem Gerät', 'local');
   else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
@@ -432,7 +443,7 @@ const selectedItems = () => visibleItems(true).filter(row => inView(row) && sele
 function renderSelectBar() {
   const rows = selectedItems(), bar = $('#select-bar');
   bar.hidden = !selecting;
-  $('#select-count').textContent = rows.length ? `${rows.length} ausgewählt` : 'Nichts ausgewählt';
+  $('#select-count').textContent = rows.length ? `${rows.length} ausgewählt` : 'Nichts ausgewählt – bitte runterscrollen zum Auswählen';
   for (const id of ['select-move', 'select-delete']) $(`#${id}`).disabled = !rows.length;
   const all = visibleItems(true).filter(inView);
   $('#select-all').textContent = all.length && rows.length === all.length ? 'Keine' : 'Alle';
@@ -495,6 +506,8 @@ function syncForm() {
   const form = $('#item-form');
   const open = form.dataset.choosingUnit === 'yes' || form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
   form.classList.toggle('compact', !open);
+  $('#clear-item-name').hidden = !form.elements.name.value;
+  $('#add-item-confirm').disabled = !form.elements.name.value.trim();
 }
 function renderItemSuggestions(event) {
   if (event?.type === 'input') delete $('#item-form').dataset.keepName;
@@ -611,6 +624,20 @@ function readPricing(form) {
   }
   return { price, salePrice, onSale, saleUntil: form.elements.saleUntil.value || null };
 }
+function renderRememberedAmount() {
+  const form = $('#edit-item-form'), memory = rememberedAmount(form.elements.name.value.trim(),itemHistory());
+  $('#remembered-amount-text').textContent = memory?.purchaseAmount ? `Deine gemerkte Menge: ${amountText(memory.purchaseAmount)}` : 'Keine eigene Menge gemerkt – die App nutzt den üblichen Vorschlag.';
+  $('#reset-remembered-amount').disabled = !memory?.purchaseAmount;
+}
+function saveRememberedAmount(amount) {
+  const form = $('#edit-item-form'), item = active(state.items).find(row => row.id === form.elements.id.value);
+  if (!item) throw new Error('Dieser Artikel wurde inzwischen entfernt.');
+  if (form.elements.name.value.trim() !== item.name) throw new Error('Bitte den geänderten Artikelnamen zuerst speichern.');
+  if (amount !== null && !validPurchaseAmount(amount)) throw new Error('Bitte eine gültige Menge und Einheit eingeben (höchstens 1.000.000).');
+  const stamp = nextOp('items',item.id,{}).at;
+  commit([nextOp('items',item.id,{purchaseAmount:amount,purchaseAmountAt:stamp})], amount ? 'Gemerkte Menge gespeichert' : 'Gemerkte Menge zurückgesetzt');
+  $('#remembered-amount-editor').hidden = true; renderRememberedAmount();
+}
 function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
@@ -629,6 +656,7 @@ function editItem(id) {
   // Preis & Angebot sind zugeklappt (Name, Menge, Einheit, Geschäft stehen oben); die Zeile verrät den Stand.
   const quote = itemQuote(item), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
+  $('#remembered-amount-editor').hidden = true; renderRememberedAmount();
   message(); $('#item-dialog').showModal();
 }
 
@@ -1133,7 +1161,7 @@ function mealRow(meal, recipes, past = false) {
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
   row.append(check, copy);
-  if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => removeRows('meals', [meal.id])));
+  if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => changePlannedMeal(meal,{deletedAt:new Date().toISOString()},null)));
   return row;
 }
 // Ein Gericht auf einen anderen Tag verschieben (Version 2.51): Gericht lange halten, auf einen anderen Tag ziehen und loslassen. Ist der Tag frei, zieht es dorthin um; sonst fragt das Fenster
@@ -1226,12 +1254,78 @@ function saveMeal(event) {
     const id = form.elements.id.value || uid();
     const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
     if (!mealBaseline) patch.done = false;
-    else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null, listedRows: null });   // ein anderes Rezept: die Übernahme gilt nicht mehr
+    else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null, listedRows: null, listedParts: null, listedUntracked: false });   // ein anderes Rezept: die Übernahme gilt nicht mehr
     const delta = changed(patch, mealBaseline);
-    if (Object.keys(delta).length) commit([nextOp('meals', id, delta)]);
-    planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan');
+    const finish = () => { planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan'); };
+    if (Object.keys(delta).length && mealBaseline) changePlannedMeal(state.meals.find(row=>row.id===id),delta,{...mealBaseline,...patch},finish);
+    else { if(Object.keys(delta).length) commit([nextOp('meals',id,delta)]); finish(); }
   });
 }
+// Jede Wochenübernahme behält je Gericht die tatsächlich ausgewählten Anteile.
+// Die Mengenänderungen bleiben normale additive Operationen; neue manuelle
+// Einträge können deshalb auch während einer Korrektur sicher dazukommen.
+function transferWeekParts(plan, selected, storeId, rememberPantry) {
+  const take=weekTakeId(plan.basket.use), ops=[],rename=new Map(appliedAliases().map(alias=>[alias.from,alias.name])); let projected=state;
+  for(const use of plan.basket.use) {
+    const meal=plan.meals.find(row=>row.id===use.id);
+    const rows=aggregateIngredients([use],active(state.recipes),active(state.ingredients)).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group));
+    const keys=weekRowKeys(rows),inputs=rows.map((row,index)=>({...listRow(row),key:keys[index]}));
+    lastTime=Math.max(Date.now(),lastTime+1,Date.parse(projected.updatedAt)+1);
+    const result=addToList(inputs,storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
+    for(const op of result.ops)op.patch.planLinked=true;
+    projected=merge(projected,result.ops);ops.push(...result.ops);
+    const parts=result.ops.filter(op=>!rows.find(row=>row.unit===NO_AMOUNT&&sameProduct(row.name,op.patch.name||projected.items.find(item=>item.id===op.entityId)?.name||''))).map(op=>{
+      const item=projected.items.find(row=>row.id===op.entityId),amount=op.patch.add||op.patch;
+      return {itemId:item.id,sourceId:op.id,at:op.at,name:item.name,storeId:item.storeId,quantity:amount.quantity,unit:amount.unit,remaining:amount.quantity};
+    });
+    ops.push(nextOp('meals',meal.id,{listedServings:meal.servings,listedAt:new Date().toISOString(),listedRows:snapshotRows(active(state.ingredients).filter(row=>row.recipeId===meal.recipeId)),listedUntracked:Boolean(meal.listedUntracked||(meal.listedServings&&!meal.listedParts?.length)),listedParts:[...(meal.listedParts||[]),...parts]}));
+  }
+  if(rememberPantry){
+    const unchecked=[...$('#week-ingredients').children].filter(label=>label._row&&!label.querySelector('input').checked).map(label=>label._row.name);
+    for(const change of pantryChanges(pantryAdditions(unchecked,pantryKeys(state.pantry)),state.pantry||[]))ops.push(nextOp('pantry',change.id,change.patch));
+  }
+  commit(ops,'Wochenzutaten übernommen');
+}
+let planAdjustment=null;
+const adjustmentSignature = id => JSON.stringify([state.meals.find(row=>row.id===id),state.items]);
+function changePlannedMeal(meal, patch, next, finish=()=>{}) {
+  if(!meal||meal.deletedAt)throw new Error('Dieses Gericht wurde inzwischen entfernt.');
+  const reduces=Number(meal.listedServings)>0&&(!next||next.recipeId!==meal.recipeId||next.servings<meal.listedServings);
+  if(!reduces){commit([nextOp('meals',meal.id,patch)]);finish();return;}
+  planAdjustment={mealId:meal.id,patch,next,finish,scope:namespace()};renderPlanAdjustment();
+  $('#plan-adjust-dialog').showModal();
+}
+function renderPlanAdjustment() {
+  const request=planAdjustment,meal=state.meals.find(row=>row.id===request.mealId);
+  if(!meal||meal.deletedAt)throw new Error('Dieses Gericht wurde inzwischen entfernt.');
+  request.reduction=planReduction(meal,request.next,state.items);request.signature=adjustmentSignature(meal.id);
+  const box=$('#plan-adjust-list');box.replaceChildren();const byItem=new Map();
+  for(const change of request.reduction.changes){const entry=byItem.get(change.item.id)||{item:change.item,remove:0};entry.remove+=change.remove*unitSpec(change.part.unit).factor/unitSpec(change.item.unit).factor;byItem.set(change.item.id,entry);}
+  for(const {item,remove} of byItem.values()){
+    const left=Math.max(0,item.quantity-remove);
+    box.append(element('li',`${item.name} · ${storeName(item.storeId)}: ${amountText(item)} → ${left>1e-8?amountText({...item,quantity:left}):'entfällt'}`));
+  }
+  const {legacy,partial,skipped}=request.reduction;
+  $('#plan-adjust-note').textContent=legacy?'Für diese frühere Übernahme fehlt eine genaue Zuordnung. Die Einkaufsliste bleibt unverändert; bitte die Mengen selbst prüfen.':partial?'Ein Teil stammt aus einer früheren Übernahme ohne genaue Zuordnung. Nur die zugeordneten Anteile werden angepasst; bitte die übrigen Mengen selbst prüfen.':skipped.length?'Bereits gekaufte, entfernte, verschobene oder manuell neu gesetzte Zutaten bleiben unverändert. Bitte diese Mengen bei Bedarf selbst prüfen.':byItem.size?'Nur die hier aufgeführten Wochenplan-Anteile werden entfernt.':'Es gibt keine zugehörigen offenen Mengen mehr. Deine Einkaufsliste bleibt unverändert.';
+  $('#plan-adjust-apply').textContent=byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  $('#plan-adjust-error').hidden=true;
+}
+function finishPlanAdjustment(adjust) {
+  const request=planAdjustment;if(!request)return;
+  const error=$('#plan-adjust-error');
+  try{
+    if(request.scope!==namespace())throw new Error('Die Datenverbindung hat sich geändert. Bitte das Fenster schließen und neu beginnen.');
+    if(request.signature!==adjustmentSignature(request.mealId)){renderPlanAdjustment();throw new Error('Der gemeinsame Stand hat sich geändert. Bitte die aktualisierte Vorschau erneut bestätigen.');}
+    const patch={...request.patch},ops=[];
+    if(adjust){
+      for(const {item,part,cut} of request.reduction.changes)ops.push(nextOp('items',item.id,{cutPlan:{...cut,originalQuantity:part.quantity}}));
+      if(!request.reduction.legacy){patch.listedServings=request.reduction.target||null;patch.listedParts=request.next?.recipeId===state.meals.find(row=>row.id===request.mealId).recipeId?request.reduction.parts:[];}
+    }
+    ops.push(nextOp('meals',request.mealId,patch));commit(ops,adjust&&request.reduction.changes.length?'Wochenplan und Einkaufsliste angepasst':'Wochenplan geändert');
+    $('#plan-adjust-dialog').close();planAdjustment=null;request.finish();
+  }catch(problem){error.textContent=problem.message;error.hidden=false;}
+}
+
 function currentRecipe(id) {
   if (!active(state.recipes).some(recipe => recipe.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte ein anderes wählen.');
 }
@@ -1750,7 +1844,7 @@ async function sync(manual = false) {
     for (let attempt = 0; attempt < 4; attempt++) {
       // Ohne eigene Änderungen genügt die Frage „hat sich etwas geändert?“ (HTTP 304).
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
-      if (!file) { retryAt = 0; lastSyncAt = Date.now(); message(); restingStatus(); hydratePhotos(); return; }
+      if (!file) { retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message(); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
       const batch = pending.slice();
       let merged = merge(remote, batch), tidy = null;
@@ -1775,7 +1869,7 @@ async function sync(manual = false) {
       saveLocal(merged, pending.filter(op => !sent.has(op.id)));
       remoteEtag = written ? '' : file.etag;
       if (compactRequested) { compactRequested = false; noteCompaction(tidy); }
-      ready = true; retryAt = 0; lastSyncAt = Date.now(); message();
+      ready = true; retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message();
       // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
       if (!wasReady || signature() !== before) render();
       restingStatus(); hydratePhotos();
@@ -1784,7 +1878,7 @@ async function sync(manual = false) {
   } catch (error) {
     compactRequested = false;
     retryAt = error.retryAt || Date.now() + ([401, 404].includes(error.status) ? 60000 : 15000);
-    status(pending.length ? 'Fehler · lokal gesichert' : 'Abgleich nicht möglich', 'error'); message(error.message);
+    status(pending.length ? 'Lokal gesichert · Abgleich später' : 'Abgleich nicht möglich', 'error'); message(error.message);
   } finally {
     busy = false; $('#refresh').disabled = false;
     if (pending.length && !retryAt) setTimeout(() => void sync(), 300);
@@ -2026,7 +2120,21 @@ document.addEventListener('click', event => {
 }, true);
 function endLockHold() { if (lockHold) { clearTimeout(lockHold.timer); lockHold.node.classList.remove('holding'); lockHold = null; } }
 // Ein langer Druck markiert auf iOS sonst Text in der Nähe (blaue Auswahl mit Griffen): Im Laden gibt es keine Textauswahl (CSS), und beim Gedrückthalten wird sie zusätzlich unterbunden.
-document.addEventListener('selectstart', event => { if (shopOn() && (event.target.parentElement || event.target).closest?.('#shop-view')) event.preventDefault(); }, true);
+// Native Eingabefelder müssen weiterhin leeren, ersetzen und einfügen können.
+// Nur die Auswahl durch eine echte Haltegeste wird dort zusammengeklappt.
+let selectionPointer=null;
+const textField=node=>node?.matches?.('input:not([type=checkbox]):not([type=radio]),textarea');
+function collapseFieldSelection(field){if(textField(field)&&typeof field.selectionStart==='number'&&field.selectionStart!==field.selectionEnd)field.setSelectionRange(field.selectionEnd,field.selectionEnd);}
+document.addEventListener('pointerdown',event=>{selectionPointer=event.isPrimary&&textField(event.target)?{field:event.target,at:Date.now()}:null;},true);
+document.addEventListener('pointerup',()=>{if(selectionPointer&&Date.now()-selectionPointer.at>=450){collapseFieldSelection(selectionPointer.field);}selectionPointer=null;},true);
+document.addEventListener('pointercancel',()=>{selectionPointer=null;},true);
+document.addEventListener('selectstart',event=>{if(!textField(event.target)||selectionPointer)event.preventDefault();},true);
+document.addEventListener('contextmenu', event => {event.preventDefault();collapseFieldSelection(event.target);}, true);
+document.addEventListener('select',event=>{if(selectionPointer&&Date.now()-selectionPointer.at>=450)collapseFieldSelection(event.target);},true);
+document.addEventListener('selectionchange', () => {
+  if(textField(document.activeElement))return;
+  const selection=window.getSelection();if(selection&&!selection.isCollapsed)selection.removeAllRanges();
+});
 const clearSelection = () => { try { getSelection()?.removeAllRanges(); } catch { /* keine Auswahl */ } };
 document.addEventListener('pointerdown', event => {
   if (!isLocked() || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
@@ -2170,6 +2278,10 @@ function openFinish() {
     + (others > 0 ? ` ${others === 1 ? 'Ein abgehakter Artikel eines anderen Geschäfts bleibt' : `${others} abgehakte Artikel anderer Geschäfte bleiben`} bis zum jeweiligen Abschluss stehen.` : '');
   $('#finish-form').reset(); message(); finishScope = namespace();
   spendingView.fillBuyer($('#finish-form').elements.buyerId, spendingView.defaultBuyer());
+  const expenseStores=$('#finish-form').elements.expenseStoreId;
+  expenseStores.replaceChildren(new Option('Ohne Zuordnung',''));
+  for(const store of active(state.stores).filter(row=>!isSeparate(row)))expenseStores.add(new Option(store.name,store.id));
+  $('#finish-store-field').hidden=shopStore!==ALL_STORES;
   $('#finish-dialog').showModal();
 }
 // Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
@@ -2178,7 +2290,7 @@ let finishScope = '';
 function finishShopping(amount = '') {
   if (finishScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Einkauf erneut öffnen.');
   const checked = finishItems(), ids = checked.map(item => item.id), typed = amount.trim();
-  const storeId = shopStore === ALL_STORES ? '' : shopStore;
+  const storeId = shopStore === ALL_STORES && typed ? currentStore($('#finish-form').elements.expenseStoreId.value) : shopStore === ALL_STORES ? '' : shopStore;
   const buyer = typed ? purchaseBuyer($('#finish-form').elements.buyerId.value) : null;
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
@@ -2759,7 +2871,17 @@ $('#syncline').addEventListener('click', () => guard(() => {
 $('#reload').addEventListener('click', () => location.reload());
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
-$('#item-form').elements.name.addEventListener('input', renderQuickPick);
+$('#item-form').elements.name.addEventListener('input', () => { delete $('#item-form').dataset.keepOpen; renderQuickPick(); });
+$('#clear-item-name').addEventListener('click',clearItemDraft);
+$('#clear-item-name').addEventListener('pointerdown',event=>event.preventDefault());
+$('#change-remembered-amount').addEventListener('click',()=>{
+  const form=$('#edit-item-form'),memory=rememberedAmount(form.elements.name.value.trim(),itemHistory());
+  form.elements.memoryQuantity.value=plain(memory?.purchaseAmount?.quantity||1);form.elements.memoryUnit.value=memory?.purchaseAmount?.unit||form.elements.unit.value;
+  $('#remembered-amount-editor').hidden=false;
+});
+$('#reset-remembered-amount').addEventListener('click',()=>guard(()=>saveRememberedAmount(null)));
+$('#save-remembered-amount').addEventListener('click',()=>guard(()=>saveRememberedAmount({quantity:positive($('#edit-item-form').elements.memoryQuantity.value),unit:$('#edit-item-form').elements.memoryUnit.value.trim()})));
+$('#edit-item-form').elements.name.addEventListener('input',renderRememberedAmount);
 for (const event of ['focusin', 'focusout', 'input', 'toggle']) $('#item-form').addEventListener(event, () => setTimeout(syncForm, 0), true);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
@@ -2825,6 +2947,13 @@ function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [],
     stocked.length && `${stocked.length} in den Vorrat`].filter(Boolean);
   commit([...result.ops, ...pantryOps, ...extraOps], `Übernommen: ${parts.join(', ') || 'alles stand schon auf der Liste'}`);
 }
+function clearItemDraft() {
+  const form=$('#item-form'),kept=form.elements.storeId.value;
+  document.activeElement?.blur?.(); form.reset();form.elements.storeId.value=kept;
+  form.querySelector('.price-fields').open=false;
+  delete form.dataset.manualPrice;delete form.dataset.keepName;delete form.dataset.keepOpen;
+  renderStorePick();itemQuantity.reset();rememberPriceInForm();$('#item-suggestions').hidden=true;renderQuickPick();syncForm();
+}
 // Fertig/Enter prüft den Namen und schließt die Tastatur. Das „+“ bestätigt die Einkaufsmenge.
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, typed = form.elements.name.value.trim(), unit = form.elements.unit.value.trim();
@@ -2846,9 +2975,7 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
     commit(ops, inView(item) ? renamed : `${renamed ? `${renamed}; ` : ''}„${name}“ steht bei „${storeName(item.storeId)}“`);
   }
   // Das gewählte Geschäft bleibt stehen: Man trägt meist mehrere Artikel nacheinander für denselben Laden ein.
-  const kept = form.elements.storeId.value;
-  form.reset(); form.elements.storeId.value = kept; renderStorePick(); delete form.dataset.manualPrice; delete form.dataset.keepName; itemQuantity.reset(); rememberPriceInForm(); $('#item-suggestions').hidden = true; renderQuickPick();
-  document.activeElement?.blur?.();
+  clearItemDraft();
 }); });
 $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.id.value;
@@ -3111,6 +3238,9 @@ $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
 $('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
 $('#meal-form').addEventListener('submit', saveMeal);
+$('#plan-adjust-apply').addEventListener('click',()=>finishPlanAdjustment(true));
+$('#plan-adjust-keep').addEventListener('click',()=>finishPlanAdjustment(false));
+$('#plan-adjust-dialog').addEventListener('close',()=>{planAdjustment=null;});
 $('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
 $('#week-form').elements.skipListed.addEventListener('change', renderWeekRows);
 $('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
@@ -3122,12 +3252,7 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const storeId = currentStore(form.elements.storeId.value);
   // Die Gerichte, deren Zutaten jetzt auf die Liste gehen, merken sich das (für wie viele Portionen), damit ein zweites Mal nichts verdoppelt. Dieselbe Änderung wie die Artikel.
-  const stamp = new Date().toISOString(), marks = [...new Set(form._plan.basket.use.map(meal => meal.id))].map(id => form._plan.meals.find(meal => meal.id === id)).filter(Boolean)
-    .map(meal => nextOp('meals', meal.id, { listedServings: meal.servings, listedAt: stamp, listedRows: snapshotRows(active(state.ingredients).filter(row => row.recipeId === meal.recipeId)) }));
-  // Dieselbe Übernahme von zwei Geräten zählt nur einmal: feste Kennungen aus den Gerichten und den Zeilen (siehe weekTakeId in plan.js)
-  const keys = weekRowKeys(selected);
-  addRows(selected.map((row, index) => ({ ...listRow(row), key: keys[index] })), storeId, [...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => label._row.name),
-    form.elements.rememberPantry.checked, marks, weekTakeId(form._plan.basket.use));
+  transferWeekParts(form._plan,selected,storeId,form.elements.rememberPantry.checked);
   view = 'all'; $('#week-dialog').close(); render(); tab('shopping');
 }); });
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
@@ -3260,7 +3385,7 @@ $('#purchase-form').addEventListener('submit', event => {
     box.querySelector('[aria-pressed=true]')?.scrollIntoView({ block: 'nearest' });
   });
   // Wer ins Feld tippt, will schreiben: Die Liste klappt zu, der Text ist ausgewählt (Tippen ersetzt ihn).
-  note.addEventListener('focus', () => { showNotePicks(false); setTimeout(() => { if (document.activeElement === note) note.select(); }, 0); });
+  note.addEventListener('focus', () => { showNotePicks(false); });
   $('#purchase-form').elements.storeId.addEventListener('change', () => { if (!box.hidden) renderNotePicks(); });
 }
 // Einträge wie Artikel löschen: Zeile lange halten und nach rechts in den roten Mülleimer schieben (statt nachträglich zu bearbeiten).

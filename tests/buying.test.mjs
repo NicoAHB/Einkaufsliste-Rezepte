@@ -151,3 +151,18 @@ test('Menge merken: auch mehr als 300 verschiedene eigene Produkte behalten ihre
   d=merge(d,d.items.map(row=>operation('items',row.id,{checked:true,deletedAt:time(2)},'Nico',time(2))));const out=compact(d,new Date('2026-12-30T12:00:00Z')).data;
   assert.equal(out.names.length,400);assert.equal(preferredQuantity('Eigener Artikel 399',out.names,'g',null,100),400);assert.equal(out.sync.minRev,9);
 });
+
+test('Gemerkte Menge: Reset gewinnt gegen ältere Offline-Vorgaben und übersteht Aufräumen',()=>{
+  const shared=merge(emptyData(),addToList([amountRow()],'','Nico',time(1)).ops),id=shared.items[0].id;
+  const reset=operation('items',id,{purchaseAmount:null,purchaseAmountAt:time(3)},'Nico',time(3));
+  const offline=addToList([amountRow(450,1)],'','Anna',time(4),shared.items).ops;
+  for(const ops of [[reset,...offline],[...offline,reset]]){
+    const out=merge(shared,ops);assert.equal(out.items[0].purchaseAmount,null);assert.equal(preferredQuantity('Hackfleisch gemischt',out.items,'g',null,100),100);assert.equal(out.sync.minRev,10);
+    const removed=merge(out,[operation('items',id,{deletedAt:time(5)},'Nico',time(5))]);const tidy=compact(removed,new Date('2027-01-01T12:00:00Z')).data;
+    assert.equal(preferredQuantity('Hackfleisch gemischt',tidy.names,'g',null,100),100);assert.equal(tidy.names[0].purchaseAmount,null);
+  }
+});
+test('Gemerkte Menge: neue ausdrückliche Vorgabe ersetzt einen Reset',()=>{
+  let d=merge(emptyData(),addToList([amountRow()],'','Nico',time(1)).ops);const id=d.items[0].id;
+  d=merge(d,[operation('items',id,{purchaseAmount:null,purchaseAmountAt:time(2)},'Nico',time(2)),operation('items',id,{purchaseAmount:{quantity:800,unit:'g'},purchaseAmountAt:time(3)},'Nico',time(3))]);assert.equal(preferredQuantity('Hackfleisch gemischt',d.items,'g',null,100),800);
+});

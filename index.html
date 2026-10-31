@@ -62,7 +62,7 @@
 
   <header class="topbar">
     <h1 class="visually-hidden">Sattplan</h1>
-    <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Einstellungen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span></p>
+    <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Einstellungen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span><small id="sync-detail"></small></p>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
   <div id="message" class="notice error" role="alert" hidden></div>
@@ -78,7 +78,7 @@
       <div id="plan-view">
       <div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <form id="item-form" class="card add-form">
-        <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
+        <div class="name-field wide"><input name="name" placeholder="Was brauchst du? z. B. Zwiebeln" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden>×</button></div>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
 
         <input name="storeId" type="hidden" value="">
@@ -87,6 +87,8 @@
         <div class="list-shortcuts wide"><button id="open-products" class="product-open" type="button" aria-label="Produkte auswählen" title="Produkte auswählen"><svg class="icon"><use href="#i-grid"/></svg><span>Produkte</span><small id="product-favorite-count" hidden></small></button><button id="open-templates" class="chip-button template-open" type="button"><svg class="icon"><use href="#i-bookmark"/></svg>Vorlagen</button><button id="open-pantry" class="chip-button" type="button"><svg class="icon"><use href="#i-box"/></svg>Vorrat <small id="pantry-shortcut-count"></small></button><div class="shop-tools"><a id="offers-link" class="button secondary small" target="_blank" rel="noopener noreferrer" title="Angebote ansehen"><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote</span></a><button id="set-offers" class="secondary small" type="button" aria-label="Angebote einrichten" title="Angebote einrichten" hidden><svg class="icon"><use href="#i-tag"/></svg><span class="label">Angebote einrichten</span></button></div></div>
         <label class="qty">Menge<input name="quantity" inputmode="decimal" value="1" maxlength="16" required></label>
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
+        <button id="add-item-confirm" type="submit" class="wide">Hinzufügen</button>
+        <label class="checkbox-label wide once-only"><input name="onceOnly" type="checkbox"> Nur für diesen Einkauf</label>
         <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>
           <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
           <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
@@ -256,7 +258,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.74 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.76 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -328,6 +330,8 @@
   <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
+    <section class="remembered-amount" aria-label="Gemerkte Einkaufsmenge"><p id="remembered-amount-text" class="hint"></p><div class="row-actions"><button id="change-remembered-amount" type="button" class="text-button">Ändern</button><button id="reset-remembered-amount" type="button" class="text-button">Zurücksetzen</button></div><div id="remembered-amount-editor" hidden><div class="price-grid unit-grid"><label>Gemerkte Menge<input name="memoryQuantity" inputmode="decimal" maxlength="16"></label><label>Einheit<input name="memoryUnit" list="units" maxlength="30"></label></div><button id="save-remembered-amount" type="button" class="secondary">Vorgabe speichern</button></div></section>
+    <label class="checkbox-label once-only"><input name="onceOnly" type="checkbox"> Nur für diesen Einkauf – gemerkte Menge behalten</label>
     <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
     <details id="item-price-fold" class="price-fold"><summary><span>Preis & Angebot</span><small id="item-price-summary"></small></summary>
       <div class="stack">
@@ -386,6 +390,7 @@
     <button type="button" data-close="help-dialog" class="secondary">Schließen</button></div></dialog>
   <dialog id="finish-dialog"><form id="finish-form" class="stack" novalidate><div class="sheet-head"><h2>Einkauf beenden</h2><button type="button" data-close="finish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="finish-text"></p>
+    <label id="finish-store-field">Betrag zuordnen<select name="expenseStoreId" aria-label="Geschäft für den bezahlten Betrag"></select></label>
     <label>Was hast du bezahlt? (optional)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Bezahlter Betrag in Euro"><button class="add-button" type="submit" aria-label="Beenden und Betrag unter Ausgaben speichern"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <div class="purchase-person-field"><label>Eingekauft von<select name="buyerId" aria-label="Person für diesen Einkauf"></select></label><button id="finish-person-add" type="button" class="icon-button secondary" aria-label="Person hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
     <p class="hint">Mit dem + wird der Einkauf beendet und der Betrag unter Ausgaben gespeichert.</p>
@@ -497,6 +502,7 @@
   <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
   <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
   <!-- Nur im Querformat auf Handys sichtbar (siehe syncTurned in app.js): die App steht immer hochkant -->
+  <dialog id="plan-adjust-dialog"><div class="stack"><div class="sheet-head"><h2>Einkaufsliste anpassen?</h2><button type="button" data-close="plan-adjust-dialog" class="icon-button round" aria-label="Abbrechen">×</button></div><p>Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.</p><ul id="plan-adjust-list" class="adjust-list"></ul><p id="plan-adjust-note" class="hint"></p><button id="plan-adjust-apply" type="button">Einkaufsliste anpassen</button><button id="plan-adjust-keep" type="button" class="secondary">Einkaufsliste unverändert lassen</button><p id="plan-adjust-error" role="alert" class="dialog-error" hidden></p></div></dialog>
   <div id="turn-hint" class="turn-hint" role="status"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><p>Bitte das Handy hochkant halten</p></div>
 </body>
 </html>
