@@ -1,6 +1,10 @@
-# Sattplan – Version 2.82
+# Sattplan – Version 2.83
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.83: Abwählen ohne versehentliches Verschwinden
+
+In **Aktueller Vorrat** bleiben abgewählte Produkte bis zum Speichern an derselben Stelle. Foto und Text werden ausgegraut, der Haken entfällt. Erneutes Antippen nimmt die Änderung zurück. Erst **Änderungen speichern** übernimmt die Zu-/Abwahlen dauerhaft; Schließen verwirft sie. Das gilt für alle Vorratsprodukte. Der Zwischenbereich **Kürzlich entfernt** und sein ungenutzter Code entfallen. Datenmodell, Bilder, Favoriten, Einkaufsgesten und natives Scrollen bleiben erhalten. Offline-Paket **einkauf-shell-v95**.
 
 ## Neu in Version 2.82: entfernte Grundvorräte zurückholen
 
