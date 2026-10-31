@@ -4,7 +4,7 @@
 import { daysBetween } from './plan.js';
 
 export const LONG_AGO_DAYS = 28;   // so lange darf ein Rezept höchstens nicht gekocht worden sein; wer noch nie gekocht wurde, zählt mit
-export const ALL = '', FAVORITES = 'favorites', LONG_AGO = 'long-ago';
+export const ALL = '', FAVORITES = 'favorites', LONG_AGO = 'long-ago', WITH_PANTRY='available-pantry', WITH_SHOPPING='available-shopping';
 const TAG = 'tag:';
 
 const tagKey = tag => String(tag ?? '').trim().toLocaleLowerCase('de');
@@ -19,8 +19,9 @@ export function cookedLongAgo(recipe, today) {
 }
 
 // Die Einträge des Auswahlfelds: [{ value, label, count }]. „Alle Rezepte“ steht immer da, Favoriten und „Lange nicht gekocht“ nur mit mindestens einem Rezept.
-export function filterOptions(recipes, today) {
+export function filterOptions(recipes, today, available) {
   const options = [{ value: ALL, label: 'Alle Rezepte', count: recipes.length }];
+  if(available)for(const [value,label]of [[WITH_PANTRY,'Mit Vorrat kochbar'],[WITH_SHOPPING,'Mit Vorrat + Einkaufszettel kochbar']])options.push({value,label,count:recipes.filter(recipe=>available(recipe,value)).length});
   const favorites = recipes.filter(recipe => recipe.favorite).length, longAgo = recipes.filter(recipe => cookedLongAgo(recipe, today)).length;
   if (favorites) options.push({ value: FAVORITES, label: '★ Favoriten', count: favorites });
   if (longAgo) options.push({ value: LONG_AGO, label: 'Lange nicht gekocht', count: longAgo });
@@ -42,13 +43,13 @@ export function filterOptions(recipes, today) {
 // Die Rezepte für die Auswahlliste, in der Reihenfolge der Anzeige. `keep` (das gerade gewählte Rezept) bleibt immer in der Liste,
 // auch wenn der Filter es ausschließt: So sieht man im Fenster stets, was gespeichert würde.
 // „Lange nicht gekocht“: das am längsten nicht gekochte zuerst (noch nie gekochte ganz vorn). Sonst: Favoriten zuerst, dann nach Namen.
-export function pickRecipes(recipes, value, { today, keep = '' } = {}) {
+export function pickRecipes(recipes, value, { today, keep = '', available } = {}) {
   if (value === LONG_AGO) {
     return recipes.filter(recipe => recipe.id === keep || cookedLongAgo(recipe, today))
       .sort((a, b) => String(a.lastCookedAt || '').slice(0, 10).localeCompare(String(b.lastCookedAt || '').slice(0, 10)) || byName(a, b));
   }
   const wanted = String(value).startsWith(TAG) ? String(value).slice(TAG.length) : '';
-  const matches = value === FAVORITES ? recipe => Boolean(recipe.favorite) : wanted ? recipe => tagsOf(recipe).includes(wanted) : () => true;
+  const matches = [WITH_PANTRY,WITH_SHOPPING].includes(value) ? recipe=>Boolean(available?.(recipe,value)) : value === FAVORITES ? recipe => Boolean(recipe.favorite) : wanted ? recipe => tagsOf(recipe).includes(wanted) : () => true;
   return recipes.filter(recipe => recipe.id === keep || matches(recipe))
     .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byName(a, b));
 }

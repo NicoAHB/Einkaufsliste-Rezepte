@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALL, FAVORITES, LONG_AGO, LONG_AGO_DAYS, cookedLongAgo, filterOptions, pickRecipes } from '../recipe-filter.js';
+import { ALL, WITH_PANTRY, WITH_SHOPPING, FAVORITES, LONG_AGO, LONG_AGO_DAYS, cookedLongAgo, filterOptions, pickRecipes } from '../recipe-filter.js';
 
 const TODAY = '2026-10-28';
 const recipe = (id, name, extra = {}) => ({ id, name, tags: [], servings: 2, favorite: false, lastCookedAt: '', ...extra });
@@ -83,4 +83,10 @@ test('Die Eingabe wird nicht verändert', () => {
   const copy = structuredClone(recipes);
   pickRecipes(recipes, 'tag:x', { today: TODAY }); filterOptions(recipes, TODAY);
   assert.deepEqual(recipes, copy);
+});
+
+test('Verfügbarkeitsfilter: Vorrat und Vorrat plus offene Einkaufsliste werden getrennt angeboten und angewendet',()=>{
+ const recipes=[recipe('stock','Vorrat'),recipe('cart','Einkauf'),recipe('missing','Fehlt')],available=(recipe,mode)=>recipe.id==='stock'||mode===WITH_SHOPPING&&recipe.id==='cart';
+ assert.deepEqual(filterOptions(recipes,TODAY,available).slice(1,3).map(row=>[row.value,row.count]),[[WITH_PANTRY,1],[WITH_SHOPPING,2]]);
+ assert.deepEqual(ids(pickRecipes(recipes,WITH_PANTRY,{today:TODAY,available})),['stock']);assert.deepEqual(new Set(ids(pickRecipes(recipes,WITH_SHOPPING,{today:TODAY,available}))),new Set(['stock','cart']));
 });

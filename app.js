@@ -1,4 +1,4 @@
-import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
@@ -24,15 +24,15 @@ import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, un
 import { planReduction } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
-import { addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
-import { LONG_AGO, filterOptions, pickRecipes } from './recipe-filter.js';
+import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
+import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required } from './cookable.js';
 import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -1268,12 +1268,30 @@ function openMeal(options = {}) {
   $('#meal-dialog').showModal();
   $('#recipe-pick').querySelector('[aria-pressed=true]')?.scrollIntoView({ block: 'nearest' });
 }
+function recipeStockMissing(recipe,mode='pantry') {
+  const index=indexNames(cookableNames(mode));
+  return active(state.ingredients).filter(row=>row.recipeId===recipe.id&&required(row)&&availability(row.name,index)==='missing');
+}
+const recipeAvailable=(recipe,filter)=>recipeStockMissing(recipe,filter===WITH_SHOPPING?'shopping':'pantry').length===0;
+function weekShoppingNeeds(plan,snapshot=state) {
+  const recipes=active(snapshot.recipes),ingredients=active(snapshot.ingredients);
+  const reserved=plan.basket.again?[]:aggregateIngredients((plan.coverageMeals||plan.meals).filter(meal=>Number(meal.listedServings)>0).map(meal=>({...meal,servings:Math.min(meal.servings,meal.listedServings)})),recipes,ingredients);
+  return shoppingDeficits(aggregateIngredients(plan.basket.use,recipes,ingredients),snapshot.pantry||[],withoutSeparate(snapshot.items,snapshot.stores),reserved);
+}
 function syncMealForm(changedRecipe) {
   const form = $('#meal-form'), choice = form.elements.recipeId.value;
   form.querySelector('[data-custom]').hidden = choice !== '__custom';
   const recipe = active(state.recipes).find(row => row.id === choice);
   if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
-  $('#meal-save-shopping').disabled = !recipe || !ready;
+  $('#meal-save-shopping').disabled = !recipe || !ready || form.elements.date.value < isoDate();
+  const hint=$('#meal-save-shopping small');
+  if(recipe){
+    const stock=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size;
+    const servings=Number(form.elements.servings.value.replace(',','.'))||recipe.servings;
+    const rows=aggregateIngredients([{recipeId:recipe.id,servings}],[recipe],active(state.ingredients)).filter(required);
+    const remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
+    hint.textContent=`Nur Vorrat: ${stock} ${stock===1?'Produkt fehlt':'Produkte fehlen'} · ${remaining} noch auf den Einkaufszettel`;
+  }else hint.textContent='Auf den Einkaufszettel für die gewählten Portionen';
 }
 function saveMeal(event) {
   event.preventDefault(); guard(() => {
@@ -1306,9 +1324,14 @@ function saveMeal(event) {
 // Einträge können deshalb auch während einer Korrektur sicher dazukommen.
 function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = state, unchecked = []) {
   const take=weekTakeId(plan.takeUse||plan.basket.use), ops=[],rename=new Map(appliedAliases().map(alias=>[alias.from,alias.name])); let projected=snapshot;
+  const quotas=weekShoppingNeeds(plan,snapshot).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group)).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
   for(const use of plan.basket.use) {
     const meal=plan.meals.find(row=>row.id===use.id);
-    const rows=aggregateIngredients([use],active(snapshot.recipes),active(snapshot.ingredients)).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group));
+    const rows=aggregateIngredients([use],active(snapshot.recipes),active(snapshot.ingredients)).flatMap(row=>{
+      const quota=quotas.find(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group);if(!quota)return [];
+      const factor=unitSpec(row.unit).factor,amount=Math.min(row.quantity*factor,quota.left);quota.left-=amount;
+      return amount>1e-7?[{...row,quantity:Math.round(amount/factor*1e6)/1e6}]:[];
+    });
     const keys=weekRowKeys(rows),inputs=rows.map((row,index)=>({...listRow(row),key:keys[index]}));
     lastTime=Math.max(Date.now(),lastTime+1,Date.parse(projected.updatedAt)+1);
     const result=addToList(inputs,storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
@@ -1333,18 +1356,19 @@ function transferWeekParts(plan,selected,storeId,rememberPantry) {
 // bleibt beides unverändert, und ein erneuter Tipp zählt nichts doppelt.
 function withMealShopping(ops,mealId) {
   const snapshot=merge(state,ops),meal=active(snapshot.meals).find(row=>row.id===mealId);
+  if(meal?.date<isoDate())throw new Error('Für vergangene Tage werden keine Einkaufszutaten hinzugefügt.');
   if(!meal?.recipeId)throw new Error('Dieses Gericht hat kein verfügbares Rezept.');
   if(!active(snapshot.recipes).some(recipe=>recipe.id===meal.recipeId))throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const basket=weekBasket([meal]),rows=aggregateIngredients(basket.use,active(snapshot.recipes),active(snapshot.ingredients));
-  const keys=pantryKeys(snapshot.pantry),selected=rows.filter(row=>row.unit!==NO_AMOUNT&&!inPantry(keys,row.name));
+  const keys=pantryKeys(snapshot.pantry),selected=rows.filter(row=>required(row)&&!inPantry(keys,row.name));
   if(!basket.use.length)return {ops,notice:'Gericht gespeichert · Zutaten sind bereits auf dem Einkaufszettel berücksichtigt'};
-  if(!selected.length)return {ops,notice:rows.length?'Gericht gespeichert · keine weiteren Zutaten für den Einkaufszettel':'Gericht gespeichert · keine Zutaten hinterlegt'};
+
   // Dieselbe Übernahme wie beim normalen Wochen-Einkauf erkennen, auch wenn
   // auf dem zweiten Gerät die ganze Woche gleichzeitig bestätigt wird.
   const days=new Set(weekDays(meal.date)),known=new Set(active(snapshot.recipes).map(row=>row.id));
-  const weekMeals=active(snapshot.meals).filter(row=>days.has(row.date)&&known.has(row.recipeId)&&(row.id===meal.id||!row.done));
+  const weekMeals=active(snapshot.meals).filter(row=>days.has(row.date)&&row.date>=isoDate()&&known.has(row.recipeId)&&(row.id===meal.id||!row.done));
   const takeUse=weekBasket(weekMeals).use;
-  const transfer=prepareWeekParts({meals:[meal],basket,rows,takeUse},selected,currentStore(defaultStore()),false,snapshot);
+  const transfer=prepareWeekParts({meals:[meal],coverageMeals:weekMeals,basket,rows,takeUse},selected,currentStore(defaultStore()),false,snapshot);
   return {ops:[...ops,...transfer],notice:'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt'};
 }
 let planAdjustment=null;
@@ -1403,10 +1427,11 @@ function currentRecipe(id) {
 // Die Gerichte der Woche mit Rezept und, was davon noch auf die Liste soll (siehe weekBasket in plan.js): schon Übernommenes bleibt draußen, sonst verdoppelten sich die Mengen.
 function weekPlan() {
   const form = $('#week-form'), days = weekDays(planWeek), recipes = active(state.recipes), known = new Set(recipes.map(recipe => recipe.id));
-  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.recipeId && known.has(meal.recipeId) && !(form.elements.skipDone.checked && meal.done))
+  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.date>=isoDate() && meal.recipeId && known.has(meal.recipeId) && !(form.elements.skipDone.checked && meal.done))
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
-  const basket = weekBasket(meals, !form.elements.skipListed.checked);
-  return { meals, basket, rows: aggregateIngredients(basket.use, recipes, active(state.ingredients)) };
+  const basket = {...weekBasket(meals, !form.elements.skipListed.checked),again:!form.elements.skipListed.checked};
+  const plan={ meals, basket, rows: aggregateIngredients(basket.use, recipes, active(state.ingredients)) };
+  plan.deficits=weekShoppingNeeds(plan);return plan;
 }
 // Der Hinweis über den Zutaten: was schon auf der Liste steht (und bleibt draußen) oder, mit abgewähltem Haken, was doppelt aufgenommen würde.
 function weekListedNote(plan) {
@@ -1415,12 +1440,12 @@ function weekListedNote(plan) {
   const listed = plan.basket.listed, same = listed.filter(entry => entry.kind !== 'more'), more = listed.filter(entry => entry.kind === 'more');
   const parts = [];
   if (again) {
-    if (listed.length) parts.push(`Diese Gerichte wurden schon übernommen und kommen noch einmal dazu. Stehen ihre Zutaten noch auf der Liste, verdoppeln sich die Mengen: ${listed.map(label).join(', ')}.`);
+    if (listed.length) parts.push(`Diese Gerichte werden erneut auf fehlende Mengen geprüft; vorhandene Einkaufsartikel werden angerechnet: ${listed.map(label).join(', ')}.`);
   } else {
     if (same.length) parts.push(`Schon übernommen: ${same.map(label).join(', ')}.`);
     if (more.length) parts.push(`Mehr Portionen seit der Übernahme, nur die zusätzlichen kommen dazu: ${more.map(entry => `${label(entry)} (+${format(entry.extra)})`).join(', ')}.`);
   }
-  const note = $('#week-listed'); note.textContent = parts.join(' '); note.hidden = !parts.length; note.classList.toggle('warn', again && listed.length > 0);
+  const note = $('#week-listed'); note.textContent = parts.join(' '); note.hidden = !parts.length; note.classList.remove('warn');
 }
 // Was am Rezept eines übernommenen Gerichts seit der Übernahme geändert wurde (siehe recipeChanges in plan.js), oder null.
 function mealChanges(meal) {
@@ -1444,7 +1469,7 @@ function weekChangeLines() {
   return lines;
 }
 // Woran man erkennt, dass sich die Vorschau überholt hat: welche Gerichte mit wie vielen Portionen aufgenommen werden und welche Zutaten daraus werden.
-const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit]), weekChangeLines()]);
+const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit]), (plan.deficits||[]).map(row=>[row.name,row.quantity,row.unit]), weekChangeLines()]);
 // Die Vorschau neu aufbauen, ohne abgewählte Zutaten wieder anzuhaken (Schlüssel: Name und Einheit).
 function refreshWeekRows() {
   const unchecked = new Set([...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => `${productKey(label._row.name)}|${label._row.unit}`));
@@ -1453,27 +1478,32 @@ function refreshWeekRows() {
 }
 function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
-  const plan = weekPlan(), rows = plan.rows, keys = pantryKeys(state.pantry);
+  const plan = weekPlan(), rows = plan.rows, keys = pantryKeys(state.pantry), deficits=weekShoppingNeeds(plan);
   $('#week-form')._plan = plan; weekListedNote(plan);
   const lines = weekChangeLines(), changes = $('#week-changes'); changes.textContent = lines.length ? `Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: ${lines.join(' ')}` : ''; changes.hidden = !lines.length;
   if (!rows.length) {
     const allListed = plan.basket.listed.length > 0 && $('#week-form').elements.skipListed.checked;
-    box.append(element('p', allListed ? 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.'
+    box.append(element('p', allListed ? 'Alles aus dieser Woche ist schon übernommen. Ohne diesen Haken werden die fehlenden Mengen erneut geprüft; vorhandene Einkaufsartikel zählen mit.'
       : 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
   }
   for (const row of rows) {
-    const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(row));
+    const missing=deficits.find(needed=>sameProduct(needed.name,row.name)&&unitSpec(needed.unit).group===unitSpec(row.unit).group);
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(missing||row));
     const stocked = inPantry(keys, row.name);
-    check.type = 'checkbox'; check.checked = row.unit !== NO_AMOUNT && !stocked;
+    check.type = 'checkbox'; check.checked = required(row) && !stocked && Boolean(missing);
     label._row = row;
     if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
-    label.append(check, text); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    label.append(check, text); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));else if(!missing&&row.unit!==NO_AMOUNT)label.append(element('small','Bereits auf dem Einkaufszettel','pantry-badge'));
     box.append(label);
   }
+  if(rows.length&&!deficits.filter(required).length)box.append(element('p','Vorrat und Einkaufszettel decken die Zutaten ab. Es müssen keine weiteren Produkte hinzugefügt werden.','hint'));
+  syncWeekSubmit();
 }
+function syncWeekSubmit(){ $('#week-form button[type=submit]').disabled=!$('#week-ingredients input:checked'); }
+$('#week-ingredients').addEventListener('change',syncWeekSubmit);
 function openWeekShopping() {
   const form = $('#week-form'); storeOptions(form.elements.storeId, defaultStore(), true);
-  $('#week-intro').textContent = `${weekLabel(planWeek)}: Zutaten aller geplanten Gerichte, zusammengezählt und auf die Portionen umgerechnet.`;
+  $('#week-intro').textContent = `${weekLabel(planWeek)}: Nur heute und künftige Tage: fehlende Zutaten nach Abgleich mit Vorrat und offenen Einkaufsartikeln.`;
   form.elements.rememberPantry.checked = false; form.elements.skipListed.checked = true; renderWeekRows(); $('#week-dialog').showModal();
 }
 
@@ -2503,8 +2533,8 @@ function renderPick() {
     const when = recipe.lastCookedAt ? relativeDay(recipe.lastCookedAt) : '';
     return !recipe.lastCookedAt ? ' · noch nie gekocht' : when === 'geplant' ? '' : ` · zuletzt ${when}`;
   };
-  const shown = pickRecipes(pickPool, filter, { today: isoDate(), keep: choice });
-  for (const recipe of shown) row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)}`, false);
+  const shown = pickRecipes(pickPool, filter, { today: isoDate(), keep: choice, available:recipeAvailable });
+  for (const recipe of shown) { const missing=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size; row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)} · ${missing} ${missing===1?'Produkt fehlt':'Produkte fehlen'} im Vorrat`, false); }
   if (!shown.length) list.append(element('p', 'Kein Rezept dafür.', 'pick-empty'));
   row('__custom', 'Eigenes Gericht (ohne Rezept)', '', true);
   syncPickHint();
@@ -2512,7 +2542,7 @@ function renderPick() {
 // Das Auswahlfeld für den Filter (Alle, Favoriten, Lange nicht gekocht, jedes Stichwort); mit nur einem Eintrag gibt es nichts zu filtern.
 function fillRecipePick(recipes) {
   pickPool = recipes;
-  const select = $('#recipe-filter'), options = filterOptions(recipes, isoDate());
+  const select = $('#recipe-filter'), options = filterOptions(recipes, isoDate(),recipeAvailable);
   select.replaceChildren(...options.map(option => { const node = element('option', `${option.label} (${option.count})`); node.value = option.value; return node; }));
   select.value = ''; select.hidden = options.length < 2;
   renderPick();
@@ -3317,6 +3347,7 @@ $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
 $('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
 $('#meal-form').addEventListener('submit', saveMeal);
+for(const field of ['servings','date'])$('#meal-form').elements[field].addEventListener('input',()=>syncMealForm(false));
 $('#plan-adjust-apply').addEventListener('click',()=>finishPlanAdjustment(true));
 $('#plan-adjust-keep').addEventListener('click',()=>finishPlanAdjustment(false));
 $('#plan-adjust-dialog').addEventListener('close',()=>{planAdjustment=null;});

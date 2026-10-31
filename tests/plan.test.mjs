@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, aggregateIngredients, dayMonthLabel, daysBetween, isoDate, isoWeek, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from '../plan.js';
+import { addDays, aggregateIngredients, shoppingDeficits, dayMonthLabel, daysBetween, isoDate, isoWeek, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from '../plan.js';
 import { validDay } from '../data.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
@@ -243,4 +243,20 @@ test('Plan-Korrektur: stabile Quelle wird auch nach abweichender Artikelzuordnun
 test('Plan-Korrektur: vollständig entfernte Anteile werden nach der normalen Aufbewahrungszeit aufgeräumt',()=>{
   const {data,meal}=plannedFixture(0,true);const empty=correction(data,meal,null).data;assert.equal(active(empty.items).length,0);assert.equal(empty.items.length,1);
   assert.equal(compact(empty,new Date('2027-02-01T12:00:00Z')).data.items.length,0);
+});
+
+test('Einkaufsbedarf: vorhandene Mengen anrechnen, nur Differenz, Bestand nicht verändern',()=>{
+ const rows=[{name:'Milch',quantity:1,unit:'l'},{name:'Mehl',quantity:500,unit:'g'}],items=[{name:'Milch',quantity:300,unit:'ml'},{name:'Mehl',quantity:1,unit:'kg'}],before=structuredClone(items);
+ assert.deepEqual(shoppingDeficits(rows,[],items),[{name:'Milch',quantity:.7,unit:'l'}]);assert.deepEqual(items,before);
+ assert.deepEqual(shoppingDeficits(rows,[{name:'Milch',available:true}],items),[]);
+ assert.equal(shoppingDeficits(rows,[{name:'Milch',available:false}],items)[0].quantity,.7);
+});
+test('Einkaufsbedarf: Mengen anderer künftiger Gerichte bleiben reserviert; gekaufte oder gelöschte Artikel zählen nicht',()=>{
+ const rows=[{name:'Karotte',quantity:500,unit:'g'}],items=[{name:'Karotten',quantity:700,unit:'g'},{name:'Karotte',quantity:5,unit:'kg',checked:true},{name:'Karotte',quantity:5,unit:'kg',deletedAt:'2026-10-01'}];
+ assert.equal(shoppingDeficits(rows,[],items,[{name:'Karotte',quantity:400,unit:'g'}])[0].quantity,200);
+ assert.deepEqual(shoppingDeficits(rows,[],items),[]);
+});
+
+test('Einkaufsbedarf: nicht vergleichbare Packungsgrößen erzeugen keine zweite Zeile desselben Produkts',()=>{
+ assert.deepEqual(shoppingDeficits([{name:'Mehl',quantity:500,unit:'g'}],[],[{name:'Mehl',quantity:1,unit:'Packung'}]),[]);
 });

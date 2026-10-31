@@ -5411,7 +5411,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const weekRowsText = async page => (await page.locator('#week-ingredients .transfer-row').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim());
   const weekEmpty = async page => (await page.textContent('#week-ingredients')).replace(/\s+/g, ' ').trim();
-  const ALL_LISTED = 'Alles aus dieser Woche ist schon übernommen. Nimm den Haken bei „Schon übernommene Gerichte auslassen“ heraus, um es noch einmal aufzunehmen.';
+  const ALL_LISTED = 'Alles aus dieser Woche ist schon übernommen. Ohne diesen Haken werden die fehlenden Mengen erneut geprüft; vorhandene Einkaufsartikel zählen mit.';
   const listQty = (page, name) => page.evaluate(wanted => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && !row._planEmpty && row.name === wanted).map(row => `${row.quantity} ${row.unit}`), name);
   const takeWeek = async (page, store = 'Lidl') => { await page.click('[data-tab=plan]'); await page.click('#plan-shopping'); await sheetOpen(page); if (store) await page.selectOption('#week-form select[name=storeId]', { label: store }); };
 
@@ -5461,23 +5461,22 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)));
     // A übernimmt
     await a.page.click('#week-form button[type=submit]'); await a.page.waitForSelector('#week-dialog', { state: 'hidden' }); await synced(a.page);
-    assert.deepEqual(nudeln(), ['200 g', '500 g']);
+    assert.deepEqual(nudeln(), ['500 g']);
     // B gleicht ab, das Fenster steht noch offen: es wird von selbst aktualisiert
     await pollNow(b.page);
     await b.page.waitForFunction(() => /schon übernommen/.test(document.querySelector('#week-ingredients').textContent), null, { timeout: 20000 });
     assert.equal(await b.page.locator('#week-dialog[open]').count(), 1);
     assert.match(await b.page.textContent('#notice-text'), /Der Wochenplan hat sich geändert/);
-    await b.page.click('#week-form button[type=submit]');
-    assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /mindestens eine Zutat/);
+    assert.equal(await b.page.locator('#week-form button[type=submit]').isDisabled(),true);
     await synced(b.page);
-    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'nichts wurde noch einmal addiert');
+    assert.deepEqual(nudeln(), ['500 g'], 'nichts wurde noch einmal addiert');
     // Überholte Vorschau, bevor das Fenster aktualisiert war: die Prüfung unmittelbar vor dem Übernehmen greift
     await b.page.uncheck('#week-form input[name=skipListed]');
     await b.page.evaluate(() => { const form = document.querySelector('#week-form'); form._plan = { ...form._plan, basket: { use: [], listed: [] }, rows: [] }; });
-    await b.page.click('#week-form button[type=submit]');
+    await b.page.locator('#week-form').evaluate(form=>form.requestSubmit());
     assert.match(await b.page.textContent('#week-dialog [data-dialog-error]'), /Der Wochenplan hat sich geändert[\s\S]*noch einmal bestätigen/);
     assert.ok((await weekRowsText(b.page)).some(row => /Nudeln/.test(row)), 'die Vorschau ist aktuell (Haken heraus: alles wieder da)');
-    assert.deepEqual(nudeln(), ['200 g', '500 g'], 'auch jetzt nicht addiert');
+    assert.deepEqual(nudeln(), ['500 g'], 'auch jetzt nicht addiert');
     assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource/.test(text)), []);
     await a.ctx.close(); await b.ctx.close();
   });
@@ -5673,7 +5672,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   }
 
-  test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; nur ausdrücklich noch einmal', async () => {
+  test('Wochen-Einkauf zweimal: schon übernommene Gerichte bleiben draußen, die Mengen verdoppeln sich nicht; erneute Prüfung ergänzt ausschließlich Fehlmengen', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await planPasta(page, '2'); await planPasta(page, '4', 'Kichererbsen-Curry');
@@ -5681,7 +5680,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#week-listed').isHidden(), true, 'noch nichts übernommen: kein Hinweis');
     assert.ok((await weekRowsText(page)).some(row => /Nudeln/.test(row)) && (await weekRowsText(page)).some(row => /Reis/.test(row)));
     await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
-    assert.deepEqual((await listQty(page, 'Nudeln')).sort(), ['200 g', '500 g'], 'die 500 g der Beispielliste und 200 g aus dem Rezept (anderes Geschäft)');
+    assert.deepEqual((await listQty(page, 'Nudeln')).sort(), ['500 g'], 'die 500 g der Beispielliste und 200 g aus dem Rezept (anderes Geschäft)');
     const before = { nudeln: await listQty(page, 'Nudeln'), reis: await listQty(page, 'Reis') };
     assert.deepEqual(before.reis, ['300 g'], '4 Portionen Curry statt 2: 300 g Reis');
     // im Plan steht, was übernommen ist
@@ -5691,17 +5690,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#plan-shopping'); await sheetOpen(page);
     assert.match(await page.textContent('#week-listed'), /^Schon übernommen: .+: Tomaten-Pasta, .+: Kichererbsen-Curry\.$/);
     assert.equal(await weekEmpty(page), ALL_LISTED);
-    await page.click('#week-form button[type=submit]');
-    assert.match(await page.textContent('#week-dialog [data-dialog-error]'), /mindestens eine Zutat/);
+    assert.equal(await page.locator('#week-form button[type=submit]').isDisabled(),true);
     assert.deepEqual({ nudeln: await listQty(page, 'Nudeln'), reis: await listQty(page, 'Reis') }, before, 'nichts hat sich geändert');
     // Haken heraus: Warnung, Zutaten da; wer es so will, bekommt die doppelte Menge
     await page.uncheck('#week-form input[name=skipListed]');
-    assert.match(await page.textContent('#week-listed'), /^Diese Gerichte wurden schon übernommen und kommen noch einmal dazu\. Stehen ihre Zutaten noch auf der Liste, verdoppeln sich die Mengen: /);
-    assert.equal(await page.locator('#week-listed.warn').count(), 1);
+    assert.match(await page.textContent('#week-listed'), /erneut auf fehlende Mengen geprüft/);
+    assert.equal(await page.locator('#week-listed.warn').count(), 0);
     assert.ok((await weekRowsText(page)).some(row => /Reis/.test(row)));
     await page.selectOption('#week-form select[name=storeId]', { label: 'Lidl' });
-    await page.click('#week-form button[type=submit]'); await page.waitForSelector('#week-dialog', { state: 'hidden' });
-    assert.deepEqual(await listQty(page, 'Reis'), ['600 g'], 'ausdrücklich noch einmal: doppelt');
+    assert.equal(await page.locator('#week-form button[type=submit]').isDisabled(),true);await page.click('#week-dialog [data-close]');
+    assert.deepEqual(await listQty(page, 'Reis'), ['300 g'], 'erneute Prüfung zählt nichts doppelt');
     // und danach wieder zu: der Haken ist beim nächsten Öffnen wieder gesetzt
     await takeWeek(page);
     assert.equal(await page.isChecked('#week-form input[name=skipListed]'), true);
@@ -8223,6 +8221,26 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.83: letzte Kachel bleibt in ihrer Kategorie; Schließen verwirft Abwahl, bestätigtes Speichern entfernt dauerhaft',async()=>{
     const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await seedLocal(ctx,pantryData278([{name:'Milch',available:true}]));await open(page);await openPantry(page);const before=await storedDemo(page);await page.selectOption('#product-picker-category','kuehl');await page.locator('.product-pick').click();assert.equal(await page.inputValue('#product-picker-category'),'kuehl');assert.equal(await page.locator('.product-card.pending-removal').count(),1);assert.equal(await page.textContent('#product-picker-status'),'0 Produkte im aktuellen Vorrat');assert.ok(await horizontalOverflow(page)<=1);await closePantry(page);assert.deepEqual(await storedDemo(page),before);
     await openPantry(page);assert.equal(await page.locator('.product-pick').getAttribute('aria-pressed'),'true');await page.locator('.product-pick').click();await page.getByRole('button',{name:'Änderungen speichern',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.equal((await storedDemo(page)).pantry[0].available,false);await closePantry(page);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openPantry(page);assert.equal(await page.locator('.product-card').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.84: Rezeptauswahl filtert nach Vorrat und Einkaufszettel; Mengenhinweis nennt nur tatsächlich fehlende Einkaufsprodukte',async()=>{
+    const data=data280();data.items.find(row=>row.name==='Milch').unit='g';const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');await page.locator('.day.today .day-head .icon-button').click();await sheetOpen(page);
+    assert.match(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),/Mit Vorrat kochbar.*1/);assert.match(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),/Einkaufszettel.*2/);
+    await page.selectOption('#recipe-filter','available-pantry');assert.deepEqual(await page.locator('#recipe-pick .pick-row:not(.custom)').evaluateAll(nodes=>nodes.map(node=>node.dataset.value)),['r280-0']);
+    await page.selectOption('#recipe-filter','available-shopping');assert.equal(await page.locator('#recipe-pick .pick-row:not(.custom)').count(),2);await page.locator('#recipe-pick [data-value=r280-1]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 1 Produkt fehlt.*0 noch/);await page.fill('#meal-form [name=servings]','4');assert.match(await page.textContent('#meal-save-shopping small'),/1 noch auf den Einkaufszettel/);
+    await page.selectOption('#recipe-filter','');await page.locator('#recipe-pick [data-value=r280-0]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 0 Produkte fehlen.*0 noch/);const before=(await storedDemo(page)).items;await page.click('#meal-save-shopping');assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  function data284(){const data=milkRecipes(),stamp='2026-10-30T09:00:00Z',record=(id,fields)=>({id,...fields,createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{}}),today=isoDay(new Date());data.items=[];data.recipes.push({...data.recipes[0],id:'old284',name:'Vergangenes Gericht'});data.ingredients.push({...data.ingredients[0],id:'old-i284',recipeId:'old284',name:'Hummer',quantity:1,unit:'Stück'});data.meals=[record('past284',{date:isoDay(new Date(Date.now()-86400000)),recipeId:'old284',servings:2,done:false})];return {data,record,today};}
+  const milkAmount284=data=>data.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Milch').reduce((sum,row)=>sum+row.quantity*(row.unit==='l'?1000:1),0);
+  test('2.84: Wochen-Einkauf ignoriert vergangene Tage und ergänzt nur die Mengendifferenz zum offenen Einkaufszettel',async()=>{
+    const {data,record,today}=data284();data.items=[{...demo.items[0],id:'milk-manual284',name:'Milch',storeId:'',quantity:300,unit:'ml',checked:false}];data.meals.push(record('a284',{date:today,recipeId:'milk-a',servings:2}),record('b284',{date:today,recipeId:'milk-b',servings:2}));const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.ok(!(await page.textContent('#week-ingredients')).includes('Hummer'));assert.equal(await page.locator('#week-ingredients input:checked').count(),1);await page.click('#week-form button[type=submit]');assert.equal(milkAmount284(await storedDemo(page)),1400);assert.equal((await storedDemo(page)).items.some(row=>row.name==='Hummer'),false);
+    await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);await page.uncheck('#week-form [name=skipListed]');assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.equal(await page.locator('#week-form button[type=submit]').isDisabled(),true);assert.equal(milkAmount284(await storedDemo(page)),1400);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.84: Kombi-Speichern und späterer Wochen-Einkauf verdoppeln nichts und reservieren Mengen für beide Gerichte',async()=>{
+    const {data}=data284(),{ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');
+    const pick=async(id)=>{await page.locator('.day.today .day-head .icon-button').click();await sheetOpen(page);await page.locator(`#recipe-pick [data-value=${id}]`).click();};
+    await pick('milk-a');await page.click('#meal-save-shopping');assert.equal(milkAmount284(await storedDemo(page)),500);await pick('milk-b');await page.click('#meal-save');await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.ok(!(await page.textContent('#week-ingredients')).includes('Hummer'));await page.click('#week-form button[type=submit]');const saved=await storedDemo(page);assert.equal(milkAmount284(saved),1400);assert.ok(saved.meals.find(row=>row.recipeId==='milk-a').listedServings);assert.ok(saved.meals.find(row=>row.recipeId==='milk-b').listedServings);
+    await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.equal(milkAmount284(await storedDemo(page)),1400);assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });
