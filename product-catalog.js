@@ -4,6 +4,7 @@
 import { CATEGORIES, isCategory, suggestCategory } from './categories.js';
 import { matchProductName } from './product-names.js';
 import { productKey } from './prices.js';
+import { pantryKey, pantryRows } from './data.js';
 import { amountChoice } from './buying.js';
 
 import { PRODUCT_ROWS, PRODUCT_SHEETS } from './product-catalog-data.js';
@@ -56,10 +57,10 @@ export function productLibrary(history = [], favorites = [], pantry = []) {
   }
   return [...products.values()];
 }
-export function filterProducts(products, { mode = 'all', query = '', category = '' } = {}) {
+export function filterProducts(products, { mode = 'all', query = '', category = '', includeOwn = false } = {}) {
   const words = searchProductText(query).split(/\s+/).filter(Boolean);
   const eligible = products.filter(product => (!category || product.category === category) &&
-    (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : words.length || !product.own));
+    (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : includeOwn || words.length || !product.own));
   let found = eligible.filter(product => words.every(word => searchProductText(product.name).includes(word)));
   // Erst die normale Suche; bei Tippfehlern passende ganze Namen anbieten.
   if (!found.length && words.length) {
@@ -90,8 +91,17 @@ export function pantryProductAllowed(product) {
   return !/(?:^| )(?:tv|fernseher|smart ?tv|television|laptop|notebook|computer|monitor|smartphone|handy|tablet|konsole|playstation|xbox|kopfhorer|ladekabel|drucker|blumenerde|rasenmaher|gartenmobel|sofa|sessel|regal|springseil)(?: |$)/.test(searchProductText(product.name));
 }
 export function pantryProductLibrary(history = [], favorites = [], pantry = []) {
-  const ownPantry = new Set(pantry.filter(p => !p.deletedAt).map(p => productKey(p.name)));
-  const allowed = p => pantryProductAllowed(p) && (catalogNames.has(productKey(p.name)) || (p.category && p.category !== 'sonstiges') || ownPantry.has(productKey(p.name)));
-  return productLibrary(history.filter(allowed), favorites.filter(allowed), pantry.filter(allowed)).filter(allowed);
+  const inventory=new Map(pantryRows(pantry).map(row=>[pantryKey(row.name),row]));
+  const allowed=product=>inventory.has(pantryKey(product.name)) || (pantryProductAllowed(product)&&(catalogNames.has(productKey(product.name))||product.favorite||(product.category&&product.category!=='sonstiges')));
+  const merged=new Map();
+  for(const product of productLibrary(history.filter(allowed),favorites.filter(product=>inventory.has(pantryKey(product.name))||pantryProductAllowed(product)),pantry).filter(allowed)){
+    const key=pantryKey(product.name),previous=merged.get(key);
+    if(previous){previous.count+=product.count;previous.favorite ||= product.favorite;if(product.imageKey)previous.imageKey=product.imageKey;}
+    else merged.set(key,{...product});
+  }
+  return [...merged.entries()].map(([key,product])=>{
+    const row=inventory.get(key);
+    return row?{...product,name:row.name,category:isCategory(row.category)?row.category:product.category,...(row.imageKey?{imageKey:row.imageKey}:{})}:product;
+  });
 }
 export const isPantryBasic = product => basicIds.has(product.id);

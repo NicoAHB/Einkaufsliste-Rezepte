@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { makeNameMatcher } from '../product-names.js';
 import { GROCERY_PRODUCTS, filterProducts } from '../product-catalog.js';
 import { GROCERY_NAMES } from '../grocery-names.js';
-import { filterPantry } from '../pantry.js';
+import { pantryKeys, pantryKey } from '../data.js';
 const match = makeNameMatcher([...GROCERY_NAMES, ...GROCERY_PRODUCTS]);
 test('Tippfehler: eindeutige Buchstabendreher und ein fehlender/doppelter Buchstabe werden erkannt', () => {
   for (const [typed, name] of [['Tmoaten','Tomaten'],['Mlich','Milch'],['Spagetti','Spaghetti'],['Joguhrt','Joghurt'],['Zuchini','Zucchini'],['Toiletenpapier','Toilettenpapier'],['Kochschinkne','Kochschinken'],['Rote Zweibeln','Rote Zwiebeln']]) assert.equal(match(typed).correction, name, typed);
@@ -25,5 +25,5 @@ test('Tippfehlersuche respektiert Kategorie, Favoriten und Vorratsstatus', () =>
   assert.deepEqual(filterProducts(GROCERY_PRODUCTS,{query:'Tmoaten',category:'haushalt'}),[]);
   assert.deepEqual(filterProducts(GROCERY_PRODUCTS,{query:'Tmoaten',mode:'favorites'}),[]);
   const rows=[{id:'a',name:'Tomaten',available:true},{id:'b',name:'Toilettenpapier',available:false}];
-  assert.deepEqual(filterPantry(rows,{query:'Tmoaten'}).map(row=>row.name),['Tomaten']); assert.deepEqual(filterPantry(rows,{query:'Toiletenpapier',status:'available'}),[]);
+  assert.deepEqual(filterProducts(rows,{query:'Tmoaten',includeOwn:true}).map(row=>row.name),['Tomaten']); assert.deepEqual(filterProducts(rows.filter(row=>pantryKeys(rows).has(pantryKey(row.name))),{query:'Toiletenpapier',includeOwn:true}),[]);
 });

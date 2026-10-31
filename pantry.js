@@ -1,19 +1,8 @@
 /* Leichter Haushaltsvorrat: vorhanden/aufgebraucht, keine automatische Mengenbuchhaltung.
    Die App speichert jeden Eintrag und jedes Feld mit ihrer vorhandenen Offline-/Merge-Logik. */
-import { matchProductName } from './product-names.js';
 import { pantryKey, pantryRows } from './data.js';
-import { isCategory, itemCategory, suggestCategory } from './categories.js';
-import { searchProductText, pantryProductAllowed } from './product-catalog.js';
-
-export function filterPantry(rows, { query = '', status = 'all', category = '' } = {}) {
-  const words = searchProductText(query).split(/\s+/).filter(Boolean);
-  const eligible = pantryRows(rows).filter(row => (status === 'all' || (status === 'out' ? row.available === false : row.available !== false)) && (!category || itemCategory(row) === category));
-  let found = eligible.filter(row => words.every(word => searchProductText(row.name).includes(word)));
-  if (!found.length && words.length) {
-    const near = new Set(matchProductName(query, eligible).suggestions); found = eligible.filter(row => near.has(row.name));
-  }
-  return found.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-}
+import { isCategory, suggestCategory } from './categories.js';
+import { pantryProductAllowed } from './product-catalog.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
@@ -27,7 +16,7 @@ export function pantryChanges(products, rows = []) {
   for (const product of products) {
     const name = String(typeof product === 'string' ? product : product?.name || '').trim().replace(/\s+/g, ' ');
     if (!name || name.length > 120) throw new Error('Bitte einen Produktnamen mit 1 bis 120 Zeichen eingeben.');
-    if (!pantryProductAllowed({ name })) throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht. Technik und Einrichtungsartikel gehören auf die Einkaufsliste oder den Wunschzettel.');
+    if (!rows.some(row=>pantryKey(row.name)===pantryKey(name)) && !pantryProductAllowed({ name })) throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht. Technik und Einrichtungsartikel gehören auf die Einkaufsliste oder den Wunschzettel.');
     const key = pantryKey(name); if (seen.has(key)) continue; seen.add(key);
     const matches = rows.filter(row => pantryKey(row.name) === key), live = matches.filter(row => !row.deletedAt);
     if (live.length) {
@@ -43,7 +32,16 @@ export function pantryChanges(products, rows = []) {
   return changes;
 }
 
-// Nachkaufen ist eine ausdrückliche Aktion; offene vorhandene Artikel werden niemals blind aufgestockt.
-export function pantryOnList(row, items, storeId) {
-  return items.some(item => !item.deletedAt && !item.checked && item.storeId === storeId && pantryKey(item.name) === pantryKey(row.name));
+// Bildauswahl: nur ausdrückliche Zu-/Abwahlen übernehmen. Bestehende IDs,
+// Namen, Kategorien, Bilder und unbekannte Erweiterungen bleiben erhalten.
+export function pantrySelectionChanges(products,rows=[]) {
+  const changes=[],seen=new Set();
+  for(const product of products){
+    const key=pantryKey(product.name);if(seen.has(key))continue;seen.add(key);
+    if(product.pantryAvailable===false){
+      const existing=pantryRows(rows).find(row=>pantryKey(row.name)===key);
+      if(existing)for(const id of existing.ids){const row=rows.find(value=>value.id===id);if(row.available!==false)changes.push({id,patch:{available:false}});}
+    }else changes.push(...pantryChanges([product],rows));
+  }
+  return changes;
 }

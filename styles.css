@@ -530,9 +530,6 @@ main {
 #pantry-shortcut-count:not(:empty) { min-width:20px; padding:2px 5px; border-radius:99px; background:var(--accent-soft); color:var(--accent) }
 .product-more { display:block; width:100%; margin:14px 0; min-height:48px }
 .product-cart-row.product-cart-simple { grid-template-columns:minmax(0,1fr) 44px }
-#product-picker-dialog[data-target=image] .product-pick { padding-top:8px }
-#product-picker-dialog[data-target=image] .product-photo { margin-top:0 }
-#product-picker-dialog[data-target=pantry] .product-pick:is(:disabled,[aria-disabled=true]) { opacity:.6; cursor:default }
 .product-modes {
   display:flex;
   gap:6px;
@@ -1834,12 +1831,11 @@ body.in-store main {
   padding-top:10px
 }
 /* Im Laden gibt es unten keine Leiste (Einkauf, Rezepte, Plan, Ausgaben, Einstellungen): zurück geht es mit „Planen“ oben. Alles, was sich an der Leiste ausrichtet
-   (Sperre, Meldungen, Platz unter der Liste), richtet sich an `--tabs-h` aus und rutscht dadurch an den unteren Rand.
-   Auch der Vorrat hat keine untere Leiste; sein Rückweg ist „Zur Liste“ oben. */
-body.in-store,body.in-pantry {
+   (Sperre, Meldungen, Platz unter der Liste), richtet sich an `--tabs-h` aus und rutscht dadurch an den unteren Rand. */
+body.in-store {
   --tabs-h:0px
 }
-body.in-store .tabs,body.in-pantry .tabs {
+body.in-store .tabs {
   display:none
 }
 .shop-list {
@@ -2069,7 +2065,7 @@ body.in-store .tabs,body.in-pantry .tabs {
 .inline-form button {
   flex:none
 }
-.pantry-list {
+.alias-list {
   display:flex;
   flex-wrap:wrap;
   gap:8px;
@@ -2077,7 +2073,7 @@ body.in-store .tabs,body.in-pantry .tabs {
   padding:0;
   list-style:none
 }
-.pantry-list li {
+.alias-list li {
   display:inline-flex;
   align-items:center;
   gap:4px;
@@ -2087,67 +2083,22 @@ body.in-store .tabs,body.in-pantry .tabs {
   border-radius:999px;
   background:var(--card)
 }
-.pantry-list li.empty {
+.alias-list li.empty {
   min-height:0;
   padding:0;
   border:0;
   background:transparent;
   color:var(--muted)
 }
-.pantry-list .icon-button {
+.alias-list .icon-button {
   width:32px;
   min-height:32px;
   height:32px
 }
-/* Vorrat: abgerundete Bildkacheln, gut treffbare Statusknöpfe, Mengen sind keine Pflicht. */
-#pantry-summary-count { color:var(--muted); font-size:.75rem; font-weight:500 }
-.pantry-shortcuts { display:flex; flex-wrap:wrap; align-items:stretch; gap:8px }
-.pantry-shortcuts>#pantry-products { flex:1 1 170px; min-width:0; padding:8px 10px }
-#pantry-favorites { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px; max-width:100%; padding:8px 10px; font-size:.85rem }
-#pantry-favorites .icon { flex:none; width:19px; height:19px; fill:currentColor }
-#pantry-favorite-count { font-size:.75rem; font-variant-numeric:tabular-nums }
-.pantry-manual { align-items:center; margin:0 }
-.pantry-manual .pantry-photo { width:44px; height:44px }
-.pantry-manual input { min-height:48px; padding-left:10px }
-.pantry-manual>button { width:44px; min-width:44px; height:48px; min-height:48px; color:var(--on-accent); background:var(--accent) }
+/* Foto im Einkaufsdialog der Vorratsauswahl. */
 .pantry-photo { display:block; flex:none; width:52px; height:52px; border:1px solid var(--line-strong); border-radius:12px; background-clip:padding-box }
-.pantry-photo-empty { display:grid; place-items:center; color:var(--muted); background:var(--card) }
-.pantry-photo-empty .icon { width:22px; height:22px }
-.pantry-tools { display:grid; grid-template-columns:minmax(0,1fr); gap:8px }
-.pantry-tools label { min-width:0; margin:0 }
-.pantry-tools input,.pantry-tools select { min-width:0; width:100%; min-height:44px }
-.pantry-filters { flex-wrap:wrap; overflow:visible; margin:0 }
-.pantry-filters .chip { min-height:44px; padding:6px 10px; font-size:.8rem }
-@media(min-width:360px) { .pantry-tools { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) } }
-.pantry-inventory { display:grid; gap:8px; margin:0; padding:0; list-style:none }
-.pantry-category { margin:12px 0 2px; color:var(--muted); font-size:.75rem; font-weight:750; letter-spacing:.05em; text-transform:uppercase }
-.pantry-entry { display:grid; grid-template-columns:44px minmax(0,1fr) 36px; column-gap:4px; align-items:center; padding:8px 4px; border:1px solid var(--line); border-radius:15px; background:var(--card) }
-.pantry-toggle { display:grid; place-items:center; width:40px; height:44px; min-height:44px; padding:0; border:1px solid var(--line-strong); border-radius:50%; color:var(--muted); background:transparent }
-.pantry-toggle[aria-pressed=true] { color:var(--on-accent); background:var(--accent); border-color:var(--accent) }
-.pantry-toggle .icon { width:22px; height:22px }
-.pantry-entry-main { display:flex; align-items:center; gap:9px; min-width:0; min-height:56px; padding:0; text-align:left; border:0; background:transparent; color:var(--text) }
-.pantry-entry-text { display:flex; flex-direction:column; gap:3px; min-width:0 }
-.pantry-name { font-size:.92rem; font-weight:650; overflow-wrap:anywhere; line-height:1.3 }
-.pantry-state { font-size:.75rem; color:var(--muted) }
-.pantry-out .pantry-state { color:var(--accent); font-weight:650 }
-.pantry-remove { width:36px; height:44px; min-height:44px; padding:0 }
-.pantry-restock { grid-column:2/-1; justify-self:start; min-height:44px; margin-top:4px }
-.pantry-suggest-fold { border-top:1px solid var(--line-strong); padding-top:10px }
-.pantry-suggest-fold>summary { min-height:44px; padding:10px 0; cursor:pointer; font-weight:650 }
-.pantry-suggest-fold .pantry-suggest { border-top:0; padding-top:0 }
-.pantry-image-editor { display:flex; flex-wrap:wrap; align-items:center; gap:12px }
-.pantry-image-editor>.pantry-photo { width:80px; height:80px; border-radius:16px }
-.pantry-image-editor>div { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; flex:1 }
-#pantry-image-label { display:block; overflow-wrap:anywhere }
 .pantry-buy-name { display:flex; align-items:center; gap:12px; overflow-wrap:anywhere }
-@media(max-width:340px) {
-  .pantry-photo { width:44px; height:44px; border-radius:10px }
-  .pantry-manual .pantry-photo { width:36px; height:36px }
-  .pantry-entry { grid-template-columns:40px minmax(0,1fr) 32px; column-gap:2px }
-  .pantry-entry-main { gap:6px }
-  .pantry-toggle { width:36px }
-  .pantry-remove { width:32px }
-}
+@media(max-width:340px) { .pantry-photo { width:44px; height:44px; border-radius:10px } }
 /* Gemerkte Namen: alte Zuordnungen zur Prüfung (Version 2.47): je eine ganze Zeile, Text links, „Behalten“ und „×“ rechts */
 #alias-doubt {
   margin-top:10px
@@ -3820,60 +3771,6 @@ html[data-landscape] .turn-hint {
   height:26px
 }
 
-/* Einstellungen → Vorrat: Vorschläge häufiger Vorräte zum Übernehmen (Chips mit Plus, gestrichelt, je Gruppe) */
-.pantry-suggest {
-  margin-top:6px;
-  padding-top:14px;
-  border-top:1px solid var(--line-strong)
-}
-.suggest-head {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px 10px
-}
-.suggest-head h4 {
-  flex:1 1 120px;
-  margin:0;
-  font-size:1rem
-}
-.suggest-head button {
-  flex:none;
-  width:auto;
-  min-height:40px;
-  padding:0 14px
-}
-.suggest-group {
-  margin-top:12px
-}
-.suggest-title {
-  display:block;
-  margin-bottom:6px;
-  color:var(--muted);
-  font-size:.8rem;
-  font-weight:700;
-  letter-spacing:.06em;
-  text-transform:uppercase
-}
-.suggest-chips {
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px
-}
-.suggest-chips .chip {
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:0 14px 0 10px;
-  border-style:dashed
-}
-.suggest-chips .chip .icon {
-  width:16px;
-  height:16px;
-  color:var(--accent)
-}
-
 /* Bearbeiten-Fenster (Artikel, Rezept): Das Wichtige steht oben, Preise und Angebote sind ausklappbar, „Speichern“ bleibt am unteren Rand erreichbar */
 .sheet-actions {
   position:sticky;
@@ -4359,7 +4256,16 @@ body.selecting .item .item-copy {
   -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
 }
 #product-picker-dialog[data-target=pantry] .product-pick { touch-action:pan-y }
-#pantry-basics { min-height:44px }
+/* Vorratsbilder: zwei gut lesbare Karten nebeneinander, Farben aus der bestehenden Auswahl. */
+#product-picker-dialog[data-target=pantry] .product-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
+.product-search-row { display:flex; align-items:center; gap:8px }
+.product-search-row input { flex:1; min-width:0; width:100% }
+.product-search-row>button { flex:none; width:44px; min-height:48px }
+.product-card.in-stock { border-color:var(--accent); background:var(--accent-soft) }
+.product-card.pending-removal { border-style:dashed }
+.pantry-basics-action { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:48px; margin:12px 0 }
+.pantry-basics-action .icon { width:20px; height:20px }
+
 
 .daily-review-choices { margin-top:14px }
 .daily-review-choices button { white-space:normal; min-height:48px; width:100% }
@@ -4369,29 +4275,9 @@ body.selecting .item .item-copy {
 
 #daily-review-nav { position:sticky; top:0; z-index:2; padding:4px 10px; margin-bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:14px }
 
-/* Gleiche Bild-/Textpositionen in allen Vorratszeilen, unabhängig vom Namen. */
-.pantry-entry-main { display:grid; grid-template-columns:minmax(0,1fr); justify-content:start; min-height:56px }
-.pantry-entry-main.has-photo { grid-template-columns:44px minmax(0,1fr); column-gap:8px }
-.pantry-entry-main>.pantry-photo { width:44px; height:44px }
-.pantry-entry-text { width:100%; overflow:hidden }
-.pantry-name { display:block; white-space:nowrap; overflow:visible; overflow-wrap:normal }
-.pantry-name.pantry-name-wrap { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow-wrap:anywhere; overflow:hidden }
-.pantry-state { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-@media(max-width:340px) {
-  .pantry-entry-main.has-photo { grid-template-columns:36px minmax(0,1fr); column-gap:6px }
-  .pantry-entry-main>.pantry-photo { width:36px; height:36px }
-}
 .move-delete-section { margin-top:8px }
 .move-delete-rule { border:0; height:1px; margin:18px 0; background:linear-gradient(90deg,transparent,var(--line-strong) 12%,var(--line-strong) 88%,transparent) }
 .move-delete { width:100%; min-height:52px; justify-content:flex-start; gap:12px; padding:10px 18px }
-
-/* Vorrat als eigene, flache Einkaufsansicht. */
-.pantry-head { align-items:center; margin:4px 0 14px }
-.pantry-head h2 { margin:0 0 2px }
-.pantry-head .hint { display:block; margin:0 }
-.pantry-head button { flex:none; min-height:44px }
-#pantry-card>.hint { margin:0; font-size:.88rem }
-#pantry-card { scroll-margin-top:12px }
 
 .name-correction { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; color:var(--muted) }
 .name-correction .hint { margin:0; overflow-wrap:anywhere; flex:1; min-width:100px }
@@ -4460,3 +4346,22 @@ html, body, body * {
 #remembered-amount-editor .secondary { margin-top:8px }
 .adjust-list { margin:0; padding-left:20px; line-height:1.7; overflow-wrap:anywhere }
 #select-count { line-height:1.35; overflow-wrap:anywhere }
+
+/* 2.77: Wochenplan – klare Aktionen und eine einzelne Rezeptansicht. */
+.pick-pdf-hint { display:none; color:var(--accent); font-size:.76rem; font-weight:500; line-height:1.4; margin-top:4px; overflow-wrap:anywhere }
+.pick-row[aria-pressed=true]:not(.custom) .pick-pdf-hint { display:block }
+#plan-shopping { min-width:0; gap:8px; max-width:100%; white-space:normal; text-align:left }
+.plan-shopping-copy { display:grid; gap:3px; min-width:0 }
+.plan-shopping-copy strong { font:inherit }
+.plan-shopping-copy small { font-size:.68rem; line-height:1.35; font-weight:400; max-width:165px }
+#plan > .section-head { flex-wrap:wrap; align-items:center }
+#plan > .section-head h2 { margin-block:0 }
+.meal-actions { display:grid; gap:8px; position:sticky; bottom:calc(-22px - env(safe-area-inset-bottom)); z-index:2; margin:8px -18px calc(-22px - env(safe-area-inset-bottom)); padding:10px 18px calc(22px + env(safe-area-inset-bottom)); background:var(--card); border-top:1px solid var(--line) }
+.meal-actions button { display:block; width:100%; white-space:normal; min-height:46px; line-height:1.35 }
+.meal-actions button small { display:block; font-size:.74rem; font-weight:400; line-height:1.35; margin-top:3px }
+#meal-dialog .recipe-pick { max-height:min(30dvh,250px) }
+#plan-recipe-dialog { overscroll-behavior:contain }
+#plan-recipe-content .recipe-card { margin:0; box-shadow:none }
+#plan-recipe-content .recipe-head h3 { font-size:1.35rem }
+#plan-recipe-dialog > .stack > .sheet-actions { margin-top:8px }
+#plan-adjust-dialog button { white-space:normal; overflow-wrap:anywhere; line-height:1.4 }

@@ -1,6 +1,26 @@
-# Sattplan – Version 2.76
+# Sattplan – Version 2.78
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.78: Vorrat direkt in der Bildauswahl
+
+- **Vorrat** öffnet direkt **Vorrat auswählen**. Die bisherige zusätzliche Vorratsseite und ihre Menüs entfallen.
+- Die horizontalen Filter heißen **Aktueller Vorrat · Alle · Favoriten · Häufig gekauft**. Beim Öffnen ist immer **Aktueller Vorrat** aktiv, mit passender Produktanzahl. Auch eigene und ältere gespeicherte Vorräte werden angezeigt.
+- Vorhandene Produkte tragen einen Haken. Antippen merkt Hinzufügen oder Entfernen vor; **Auswahl übernehmen** sichert die Änderungen gemeinsam. **×** verwirft unbestätigte Änderungen. Nicht vorhandene Produkte können unter **Alle** erneut ausgewählt oder durch langes Drücken mit Menge und Geschäft nachgekauft werden.
+- Ein kleines **+** neben der Suche legt eigene Produkte an. **Grundvorrat hinzufügen** am Ende des Rasters merkt wichtige Kochzutaten zusammen vor. Suche, Kategorien, Favoriten und Einkaufsgesten bleiben erhalten.
+- Gespeicherte Vorratsdaten werden beim Öffnen weder zurückgesetzt noch migriert. Änderungen setzen ausschließlich den vorhandenen Status `available`; IDs, eigene Bilder, Kategorien und andere Felder bleiben erhalten. Rezepte, Wochenplan und Einkauf verwenden weiterhin denselben Vorrat.
+
+Offline-Paket **einkauf-shell-v90**. Datenformat und Mindestrevision bleiben unverändert. Browserdaten und persönliche GitHub-Daten müssen nicht gelöscht oder ersetzt werden.
+
+## Neu in Version 2.77: übersichtlicher Wochenplan
+
+- Das gewählte Rezept zeigt direkt beim Haken **Lange drücken: Rezept als PDF anzeigen**. Vor der Auswahl hilft der Hinweis unter der Liste. Langes Drücken bleibt eine PDF-Vorschau und ändert keine Auswahl.
+- Der Button **Einkauf** im Wochenplan erklärt darunter: **Zutaten dem Einkaufszettel hinzufügen**.
+- Ein Tipp auf den Rezeptnamen eines geplanten Gerichts öffnet eine eigene Ansicht nur dieses Rezepts mit den geplanten Portionen. Die übrigen Rezepte erscheinen beim Scrollen nicht. **Zurück zum Wochenplan** führt zurück. PDF, Kochen und Bearbeiten bleiben erreichbar; eine Zutatenübernahme aus dieser Ansicht wird dem Gericht zugeordnet.
+- **Speichern** plant wie bisher. **Speichern & Zutaten hinzufügen** übernimmt zusätzlich die noch nicht berücksichtigten Zutaten für genau dieses Gericht und die gewählten Portionen. Wiederholtes Speichern zählt nichts doppelt; bei mehr Portionen kommt nur die zusätzliche Menge dazu. Vorrat und „nach Bedarf“ werden wie beim Wochen-Einkauf berücksichtigt. Plan und Einkauf werden zusammen lokal gesichert; bei einem Speicherfehler bleibt beides unverändert. Eigene Gerichte ohne Rezept lassen sich normal speichern.
+- Beim Entfernen eines Gerichts mit übernommenen Zutaten gibt es drei klare Entscheidungen: **Ja, Zutaten dieses Rezepts entfernen**, **Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel** und **Abbrechen**. Abbrechen ändert nichts. Das gespeicherte Rezept bleibt in der Rezeptsammlung. Manuelle Zusatzmengen werden erhalten. Nicht sicher zugeordnete ältere Mengen bleiben zur manuellen Prüfung geschützt.
+
+Offline-Paket **einkauf-shell-v89**. Das Datenformat bleibt unverändert (JSON Version 1, bestehende Mindestrevision 10). Browserdaten und persönliche GitHub-Daten müssen nicht gelöscht oder ersetzt werden.
 
 ## Neu in Version 2.76: Wochenplan, Mengen und bequemere Eingabe
 
@@ -79,18 +99,13 @@ Für Milch, passende Pflanzendrinks und übliche Säfte ist 1 l vorbelegt. Einig
 - [ ] Packungsgröße auf Flasche/500 ml ändern: 1,4 l benötigen drei Flaschen. Wahl später erneut verwenden, Export und Offline-Abgleich prüfen.
 - [ ] Lose Zutaten, Eier, andere Geschäfte, Wunschlisten, nicht kompatible Einheiten und abgehakte Artikel bleiben nachvollziehbar getrennt.
 
-## Neu in Version 2.71: Vorrat ohne untere Leiste
+## Historisch: Vorratsnavigation aus Version 2.71
 
-In **Einkauf → Vorrat** ist die untere Hauptnavigation ausgeblendet. Auch ihr bisher reservierter Platz entfällt; der sichere Abstand zum unteren Displayrand bleibt erhalten. **Zur Liste** oben führt zurück zum Einkauf und blendet die Leiste wieder ein. Geschäftsfilter und angefangene Eingaben bleiben erhalten. Bildauswahl, Nachkaufen und andere Vorratsdialoge bleiben ohne Leiste. Die anderen Hauptbereiche behalten ihre bisherige Navigation; Im Laden bleibt wie bisher ohne Leiste.
-
-**Version 2.71**, Offline-Paket **einkauf-shell-v83**. Keine Änderung am Datenmodell oder den persönlichen Daten. Nach Veröffentlichung App schließen und neu öffnen; keine Browserdaten löschen.
-
-- [ ] Vorrat öffnen, scrollen, Produkt ergänzen und Bildauswahl/Nachkaufen öffnen: unten keine Hauptleiste und kein unnötiger Leerraum.
-- [ ] **Zur Liste**: Hauptleiste wieder sichtbar, Einkauf/Rezepte/Plan/Ausgaben/Einstellungen erreichbar. Noch einmal Vorrat öffnen und den Rückweg prüfen.
+Die frühere zusätzliche Vorratsseite wurde in Version 2.78 entfernt. Der Vorrat öffnet jetzt direkt als Bildauswahl; **×** führt zurück zum unveränderten Einkaufsentwurf.
 
 ## Neu in Version 2.70: eigener Vorrat und lokale Tippfehlerhilfe
 
-**Einkauf → Vorrat** öffnet eine eigene, flache Ansicht mit Überschrift und **Zur Liste**. Einkauf bleibt unten aktiv; der Vorrat steht nicht mehr zwischen den Einstellungen. Einkaufsliste, Geschäftsfilter und noch nicht abgeschickte Eingaben bleiben beim Wechsel erhalten. Suche, Status, Bilder, Favoriten, Grundvorrat und Nachkaufen sind direkt erreichbar. Nur zusätzliche ältere Vorschläge ohne Bilder bleiben freiwillig eingeklappt. Ein erneutes Öffnen startet mit allen Vorräten; Neuladen startet wie bisher beim Einkauf.
+Der damals eingeführte eigene Vorratsbereich wurde in Version 2.78 durch die direkte Bildauswahl ersetzt. Gespeicherte Daten bleiben erhalten.
 
 **Kleine eindeutige Tippfehler** werden beim manuellen Hinzufügen zur Einkaufsliste und zum Vorrat automatisch berichtigt, z. B. `Tmoaten → Tomaten`, `Spagetti → Spaghetti`, `Joguhrt → Joghurt`. Die Hilfe läuft vollständig lokal, auch offline. Sie nutzt den Katalog und eigene bekannte Produktnamen; sie braucht weder KI-Dienst noch Einrichtung. Vorab steht **Beim Hinzufügen: …** mit **Original behalten**; beim Einkauf zeigt auch der Speicherhinweis die Änderung. Mehrere ähnlich passende Produkte werden als Vorschläge angeboten. Kurze Namen, exakte eigene Namen und normale Ein-/Mehrzahl bleiben erhalten. Sorten, Marken, Zahlen und Zusätze werden nicht entfernt. Die Automatik ändert keine alten Artikel, importierten Rezeptzutaten oder Wünsche und erzeugt keine dauerhaften Zuordnungen. Die vorsichtigen bestehenden Regeln zum Zusammenzählen bleiben unverändert.
 
@@ -174,19 +189,9 @@ Kurze Prüfung auf euren Handys:
 - [ ] Offline je einen Einkauf erfassen, App neu öffnen und später abgleichen: beide Einträge und Personen bleiben erhalten.
 - [ ] CSV für eine Person und einen Zeitraum sowie JSON-Backup speichern; kein Token enthalten.
 
-## Bisher in Version 2.66: Favoriten im Vorrat schneller finden
+## Bisher in Version 2.66: gemeinsame Produktfavoriten
 
-Unter **Vorrat** steht neben **Mit Bildern auswählen** jetzt ein direkter **★ Favoriten**-Knopf mit der Zahl gemerkter Produkte. Er öffnet sofort die Favoriten zum Übernehmen. Die Bildauswahl erklärt die schon vorhandenen Sterne ausdrücklich: Stern antippen merkt ein Produkt, ein zweiter Tipp entfernt nur den Favoriten. Ein Stern fügt nichts in den Vorrat oder auf die Einkaufsliste ein und verändert keinen Vorratsstatus.
-
-Markierte Produkte erscheinen beim nächsten normalen Öffnen der Vorratsauswahl automatisch zuerst. Auch Produkte, die schon vorhanden sind, lassen sich mit dem Stern merken; der Stern bleibt neben der ausgegrauten Übernahme bedienbar. Eigene manuell eingetragene Produkte findet ihr über Suche oder **Eigene** und könnt sie samt ihrem gewählten Bild als Favoriten behalten. Noch leere Favoriten erklären den Weg über **Alle → Stern**.
-
-Einkauf und Vorrat verwenden dieselben gemeinsamen Produktfavoriten. Sie bleiben nach Neustart erhalten, funktionieren offline und werden auf dem zweiten Gerät abgeglichen. Es gibt keine zusätzliche Einrichtung und keine Änderung am JSON-Modell. Das Offline-Paket heißt **einkauf-shell-v78**.
-
-- [ ] **Vorrat → ★ Favoriten** öffnet direkt die Favoriten; eine leere Auswahl zeigt die kurze Anleitung.
-- [ ] Unter **Alle** einen Stern setzen. Es wird noch kein Vorrat eingetragen; die Zahl am Favoriten-Knopf steigt.
-- [ ] Favorit auswählen und in den Vorrat übernehmen; beim nächsten Öffnen erscheint er zuerst und ist als vorhanden gekennzeichnet.
-- [ ] Auch bei einem vorhandenen Produkt den Stern setzen oder entfernen; der Vorrat bleibt bestehen.
-- [ ] Eigenen Artikel mit Bild offline merken, App neu öffnen und später auf dem zweiten Gerät wiederfinden.
+Einkauf und Vorrat verwenden dieselben gemeinsamen Produktfavoriten. Ein Stern merkt ein Produkt, ohne seinen Vorratsstatus zu ändern. Favoriten bleiben nach Neustart und offline erhalten und werden mit dem anderen Gerät abgeglichen. Seit Version 2.78 sind sie als Filter direkt in der Vorrats-Bildauswahl erreichbar; Standard ist dort immer **Aktueller Vorrat**.
 
 ## Bisher in Version 2.65: 1.024 Produktbilder und ein einfacher bebilderter Vorrat
 
@@ -194,32 +199,7 @@ Der Katalog enthält jetzt **1.024 einzelne Produktmotive** und weiterhin **32 G
 
 `product-catalog-data.js` hält Namen, Startmengen, Kategorien und stabile Bildpositionen. Die bisherigen 192 Kennungen und alle Favoriten bleiben erhalten. Die Produktauswahl zeigt anfangs **96 Produkte**; **Weitere Produkte anzeigen** lädt die nächsten 96 in die Ansicht. Die Suche durchsucht sofort den gesamten Katalog, auch nicht angezeigte Produkte. Kategorie, Favoriten und häufige Käufe bleiben verfügbar. Auch die Vorschläge beim Tippen kennen die zusätzlichen Namen. Vollständige Katalognamen haben eine geprüfte Kategorie; unklare Teilwörter werden dadurch nicht gleichgesetzt. Frischer und getrockneter Oregano sowie verzehrfertiger Milchreis heißen ausdrücklich unterschiedlich.
 
-**Vorrat bedienen:**
-
-1. Unter **Einkauf → Planen** auf **Vorrat** tippen oder **Einstellungen → Vorrat** öffnen. Es gibt keinen zusätzlichen Tab.
-2. **Mit Bildern auswählen** öffnet denselben Katalog. Mehrere Produkte markieren und **… in den Vorrat** drücken; Mengen und Geschäft sind dabei nicht nötig. Bereits Vorhandenes ist gekennzeichnet.
-3. Alternativ im Feld **Oder selbst eingeben** einen Produktnamen schreiben und **+** drücken. Das Produkt bekommt automatisch ein passendes Einzel- oder Gruppenbild. Namen bleiben genau eure Eingabe, auch zusammengesetzte Namen.
-4. Das Produkt antippen: Name/Kategorie ändern, **Bild auswählen** (Einzel- oder Gruppenmotiv) oder **Automatisch zuordnen**. Ein bewusst gewähltes Bild wird mit dem Eintrag gespeichert und mit dem anderen Gerät geteilt.
-5. Links auf den Kreis tippen: **Vorhanden** ↔ **Aufgebraucht**. Es gibt keine Pflichtmengen, Haltbarkeitsdaten oder automatische Verbrauchsschätzung. Suche, Kategorien und Statusfilter halten große Listen übersichtlich; der Vorrat-Knopf zeigt die Zahl aufgebrauchter Produkte.
-6. Bei Aufgebrauchtem auf **Nachkaufen** tippen, Menge/Einheit und optional Geschäft wählen, dann bestätigen. Das eigene Bild kommt auf die Einkaufsliste mit. Steht derselbe Artikel dort im Zielgeschäft schon offen, wird er nicht versehentlich ein zweites Mal hinzugefügt oder erhöht. Nachkaufen markiert den Vorrat noch nicht als vorhanden: Das bestätigt ihr, wenn das Produkt wieder zu Hause ist.
-
-Nur **vorhandener** Vorrat wird bei der Rezeptübernahme und beim Wocheneinkauf vorab abgewählt. **Aufgebraucht** zählt auch bei „Was kann ich kochen?“ nicht als vorhanden; die ausdrückliche Markierung hat Vorrang vor einer alten Einkaufserinnerung. Die bereits vorhandenen Grundvorrat-Vorschläge stehen nun in einem aufklappbaren Bereich.
-
-Eine eigene Vorratskategorie wird beim Nachkaufen übernommen; eine zuvor bewusst verwendete Einkaufskategorie desselben Produkts behält Vorrang. Produktauswahl- und Vorratsfenster beginnen beim erneuten Öffnen oben. Artikelvorschläge stehen direkt unter dem Namensfeld; die Tab-Beschriftung passt auch bei 375 Pixeln Breite vollständig in die schwebende Leiste.
-
-Technisch bleibt die JSON-Datei bei `version: 1`. `pantry` ist weiterhin eine optionale Sammlung. Neu sind die freiwilligen Felder `available` (fehlt = vorhanden), `category` und `imageKey` (fehlt/null = automatisch). `imageKey` enthält ausschließlich eine lokale Produkt- oder Gruppenkennung, keine URL. Auch Listenartikel und Favoriten können diese Kennung erhalten. Neue Vorräte haben pro Produkt eine feste ID, damit dieselbe gleichzeitige Anlage nicht doppelt erscheint; alte IDs werden weiterverwendet. Status-, Namens- und Bildänderungen werden feldweise zusammengeführt; geöffnete Entwürfe senden nur geänderte Felder. Vorrats-Löschmarkierungen bleiben beim Aufräumen als Schutz vor späten Offline-Änderungen erhalten.
-
-Sobald „Aufgebraucht“ genutzt wird, trägt die Datei **`sync.minRev: 5`**. Beide Geräte brauchen dann diese neue App-Version; eine ältere unterstützende App stoppt verständlich, statt den leeren Vorrat weiter als vorhanden zu behandeln. Keine Daten werden gelöscht. Das Offline-Paket heißt jetzt **`einkauf-shell-v77`**.
-
-Kurze Prüfung:
-
-- [ ] Im Katalog nach einem neuen Produkt wie „Kühlakku“, „Kichererbsen“, „Säuglingsnahrung“ oder „Roggenmehl“ suchen; Suche findet auch Produkte außerhalb der ersten 96 Karten.
-- [ ] Mehrere Produkte per Bild in den Vorrat übernehmen; erneutes Hinzufügen erzeugt keine Dubletten.
-- [ ] Einen eigenen Namen eintippen, passendes Bild wählen, App schließen/neu öffnen: Name und Bild bleiben erhalten.
-- [ ] Einen vorhandenen Vorrat als aufgebraucht markieren; die Rezeptübernahme wählt ihn wieder zum Einkaufen aus.
-- [ ] Nachkaufen: eigenes Bild, Menge und Zielgeschäft prüfen; erneuter Versuch zeigt „Steht schon auf der Liste“.
-- [ ] Flugmodus: App neu öffnen, Bildauswahl/Vorrat bearbeiten; nach Rückkehr ins Netz auf dem zweiten Gerät kontrollieren.
-- [ ] Auf zwei Geräten gleichzeitig Status und Bild desselben Vorrats ändern: beide Änderungen bleiben erhalten.
+Der Vorrat verwendet seit dieser Version lokale Produkt- und Gruppenbilder sowie den Status `available`. Alte Namenslisten bleiben ohne Migration lesbar; Bild und Status werden unabhängig zusammengeführt. Der frühere zusätzliche Listenablauf ist in Version 2.78 durch die direkte Bildauswahl ersetzt. Details und aktuelle Bedienung stehen oben unter Version 2.78.
 
 ## Bisher in Version 2.64: Eigene Bilder unter Planen, Im Laden und in der Produktauswahl
 
@@ -754,17 +734,9 @@ Weitere Testpunkte für Version 2.36:
 - [ ] „Im Laden“ öffnen: „Bildschirm anlassen“ ist angehakt und „Einkauf beenden“ steht da. Schloss tippen: **beides ist weg**, nur die Liste und der Knopf zum Entsperren bleiben. Der Bildschirm wird nicht dunkel. Entsperren: beides ist wieder da.
 - [ ] Haken abwählen, App neu laden: bleibt abgewählt.
 
-## Neu in Version 2.35: Vorschläge für den Vorrat
+## Historisch: Vorratsvorschläge aus Version 2.35
 
-- **Einstellungen → Vorrat** bietet unter der Liste **Vorschläge häufiger Vorräte** zum Übernehmen an: Würzen (Salz, Pfeffer, Paprikapulver, Zimt, Muskat, Oregano, Thymian, Currypulver), Backen (Mehl, Zucker, Vanillezucker, Puderzucker, Backpulver), Öl, Essig & Soßen (Öl, Olivenöl, Essig, Senf, Sojasauce, Tomatenmark, Gemüsebrühe), Haltbares (Nudeln, Reis, Haferflocken) und Gemüse, meist da (Zwiebel, Knoblauchzehen). Die Namen sind so geschrieben, wie sie in Rezepten meistens stehen, denn der Vorrat vergleicht Namen genau (Groß- und Kleinschreibung egal).
-- **Ein Tipp auf einen Namen** (Chip mit Plus) nimmt ihn in den Vorrat; er erscheint oben in der Liste, der Vorschlag verschwindet. **„Alle übernehmen“** nimmt alle noch fehlenden auf einmal. Was schon im Vorrat steht, auch selbst eingetippt in anderer Schreibweise (`pfeffer` für „Pfeffer“), wird nicht mehr angeboten; entfernt man einen Eintrag (✕), kommt der Vorschlag zurück. Stehen alle im Vorrat, sagt eine Zeile „Alle Vorschläge stehen schon im Vorrat.“
-- Wirkung wie bei selbst eingetragenen Vorräten: Beim Übernehmen von Rezepten und beim Wocheneinkauf sind diese Zutaten vorab abgewählt und mit „Vorrat“ gekennzeichnet; sie zählen bei „Was kann ich kochen?“ als vorhanden. Der Vorrat gilt für beide Personen (gemeinsame Datei).
-- Neue Datei `pantry-suggestions.js` (Liste und Auswahl, mit Tests); im Offline-Paket und in der Upload-Liste.
-- **Nicht getestet:** das Aussehen auf einem echten iPhone oder Android-Gerät (geprüft nur im Chromium-Browser mit iPhone-13-Emulation, bei 280 und 390 px, hell und dunkel).
-
-Weiterer Testpunkt für Version 2.35:
-
-- [ ] Einstellungen → Vorrat aufklappen: Unter der Liste stehen die Vorschläge in Gruppen. Ein paar antippen (sie wandern in die Liste), dann **Alle übernehmen**. Einen Eintrag mit ✕ entfernen: Der Vorschlag kommt zurück.
+Die damaligen Vorschlags-Chips und ihr Modul wurden in Version 2.78 vollständig entfernt. **Grundvorrat hinzufügen** in der Bildauswahl übernimmt diese Aufgabe.
 
 ## Neu in Version 2.34: im Laden keine Leiste unten
 
@@ -1417,7 +1389,7 @@ Quelle: [GitHub: Grenzen fein eingestellter Tokens](https://docs.github.com/en/a
 3. Name: `Einkaufsliste-Rezepte`; Sichtbarkeit **Public**. Falls du es neu erstellst, **Add a README file** aktivieren und **Create repository** drücken.
 4. Falls das vorhandene Repo privat ist: Nur wenn dort keine privaten Daten oder Tokens einschließlich älterer Stände liegen, unter **Settings → General → Danger Zone → Change repository visibility** auf Public wechseln. Bei diesem Projekt gehören ausschließlich Code und erfundene Beispieldaten hinein.
 5. Lade die bereitgestellten Dateien herunter. Falls du das ZIP verwendest, entpacke es zuerst. Ein ZIP einfach hochzuladen reicht nicht.
-6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `wishes.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `plan-list.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `store-catalog.js`, `product-catalog.js`, `product-catalog-data.js`, `product-picker.js`, `product-images.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `family.js`, `spending-view.js`, `cookable.js`, `grocery-names.js`, `product-names.js`, `buying.js`, `quantity-controls.js`, `pantry-suggestions.js`, `pantry.js`, `pantry-view.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `assets`** (Händlerlogos und Produktbilder; mit den Unterordnern `stores`, `products` und `branding` hochladen) und den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
+6. Im Repo **Code → Add file → Upload files** wählen. `index.html`, `styles.css`, `app.js`, `data.js`, `prices.js`, `wishes.js`, `recipe-import.js`, `page-source.js`, `ocr.js`, `categories.js`, `plan.js`, `plan-list.js`, `photos.js`, `compact.js`, `receipt.js`, `cook.js`, `news.js`, `shop.js`, `brand.js`, `store-catalog.js`, `product-catalog.js`, `product-catalog-data.js`, `product-picker.js`, `product-images.js`, `daily.js`, `recipe-maker.js`, `emoji.js`, `spending.js`, `family.js`, `spending-view.js`, `cookable.js`, `grocery-names.js`, `product-names.js`, `buying.js`, `quantity-controls.js`, `pantry.js`, `pantry-view.js`, `zip.js`, `pdf.js`, `pdf-fonts.js`, `recipe-sheet.js`, `sheet-view.js`, `recipe-filter.js`, `help.js`, `dragdelete.js`, `theme.js`, `sw.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `beispieldaten.json`, `rezepte-des-tages.json`, `.nojekyll` und `README.md` sowie den **Ordner `assets`** (Händlerlogos und Produktbilder; mit den Unterordnern `stores`, `products` und `branding` hochladen) und den **Ordner `vendor`** (Texterkennung, ca. 9 MB; den Ordner per Drag & Drop auf die Upload-Seite ziehen) gemeinsam hochladen. Alles muss so liegen wie im Repository, die Dateien **direkt im Hauptordner**. Die Ordner `tests` und `worker` sowie `package.json` sind für die App nicht erforderlich (`worker/recipe-proxy.js` brauchst du nur für Abschnitt 13, und zwar bei Cloudflare, nicht auf GitHub).
 7. Unten **Commit changes** wählen. Wenn du nach dem Branch gefragt wirst: `main`.
 
 Du kannst Textdateien auch einzeln über **Add file → Create new file** anlegen: Dateinamen eingeben, vollständigen Inhalt hineinkopieren, speichern. Das PNG-Bild bitte als Datei hochladen. **Keine persönlichen Daten und niemals einen Token öffentlich hochladen.** Die Beispielrezepte sind bewusst öffentlich und erfunden.

@@ -6,10 +6,10 @@ import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
 import { GROCERY_PRODUCTS, favoriteId } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
-import { mountPantry } from './pantry-view.js';
+import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
 import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMember } from './family.js';
-import { pantryChanges } from './pantry.js';
+import { pantryChanges, pantrySelectionChanges } from './pantry.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, dailyRecord, dailyHistory, dailySnapshot, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
@@ -43,7 +43,7 @@ const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
-let productPicker = null, pantryView = null, spendingView = null;
+let productPicker = null, pantryBuyer = null, spendingView = null;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let wishBaseline = null;
@@ -196,9 +196,9 @@ function commit(ops, notice = '') {
 }
 
 function tab(name) {
-  for (const id of ['shopping', 'pantry', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
+  for (const id of ['shopping', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
-    if (node.dataset.tab === (name === 'pantry' ? 'shopping' : name)) node.setAttribute('aria-current', 'page');
+    if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
@@ -277,6 +277,7 @@ function render() {
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
   renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm();
+  if ($('#plan-recipe-dialog').open) renderPlanRecipe();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
@@ -287,7 +288,7 @@ function render() {
   $('#import-recipe').disabled = !ready;
   $('#manage-stores').disabled = !ready;
   $('#open-products').disabled = !ready;
-  $('#open-pantry').disabled = !ready; $('#pantry-products').disabled = !ready; $('#pantry-favorites').disabled = !ready; $('#pantry-basics').disabled = !ready;
+  $('#open-pantry').disabled = !ready;
   const favorites = active(state.productFavorites || []).length;
   $('#product-favorite-count').textContent = favorites ? `★ ${favorites}` : '';
   $('#product-favorite-count').hidden = !favorites;
@@ -824,7 +825,7 @@ function renderRecipes() {
   if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
   hydratePhotos();
 }
-function recipeCard(recipe, ingredients) {
+function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
   if (recipe.photoId) {
     const frame = element('div', undefined, 'recipe-photo'), image = element('img');
@@ -837,20 +838,20 @@ function recipeCard(recipe, ingredients) {
   star.setAttribute('aria-pressed', String(Boolean(recipe.favorite)));
   head.append(element('h3', recipe.name), star); card.append(head);
   const source = webUrl(recipe.sourceUrl), cooked = recipe.lastCookedAt && relativeDay(recipe.lastCookedAt);
-  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(recipe.servings)} Portionen`, source && hostLabel(source),
+  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(options.servings ?? recipe.servings)} Portionen`, source && hostLabel(source),
     cooked && cooked !== 'geplant' && `gekocht ${cooked}`].filter(Boolean).join(' · '), 'recipe-meta'));
   if (recipe.tags.length) {
     const tags = element('div', undefined, 'tags');
     recipe.tags.forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
   }
-  const details = element('details', undefined, 'recipe-details'); details.open = openRecipes.has(recipe.id);
-  details.addEventListener('toggle', () => { if (details.open) openRecipes.add(recipe.id); else openRecipes.delete(recipe.id); });
+  const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);
+  details.addEventListener('toggle', () => { if (options.isolated) return; if (details.open) openRecipes.add(recipe.id); else openRecipes.delete(recipe.id); });
   details.append(element('summary', 'Zutaten & Zubereitung'));
   const servingInput = element('input'), list = element('ul', undefined, 'recipe-ingredients');
-  servingInput.inputMode = 'decimal'; servingInput.value = plain(portions.get(recipe.id) || recipe.servings);
+  servingInput.inputMode = 'decimal'; servingInput.value = plain(options.servings ?? portions.get(recipe.id) ?? recipe.servings);
   servingInput.setAttribute('aria-label', `Portionen für ${recipe.name}`);
   const updateAmounts = () => {
-    const count = positive(servingInput.value); portions.set(recipe.id, count);
+    const count = positive(servingInput.value); if (!options.isolated) portions.set(recipe.id, count);
     list.replaceChildren(...ingredients.map(row => element('li', ingredientLabel(row, count / recipe.servings))));
   };
   const step = delta => () => { servingInput.value = plain(Math.max(1, positive(servingInput.value) + delta)); updateAmounts(); };
@@ -876,9 +877,9 @@ function recipeCard(recipe, ingredients) {
   details.append(more);
   card.append(details);
   const actions = element('div', undefined, 'actions');
-  actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value)), 'primary-action'),
+  actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value), null, options.mealId), 'primary-action'),
     button('Kochen', () => openCook(recipe.id, positive(servingInput.value)), 'secondary'),
-    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => openMeal({ recipeId: recipe.id, servings: positive(servingInput.value) })),
+    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({ recipeId:recipe.id,servings }); }),
     iconButton('text', `${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id, positive(servingInput.value))));
   card.append(actions);
   return card;
@@ -1037,10 +1038,17 @@ function saveRecipe(event) {
   });
 }
 // `only`: Kennungen der Zutaten, die vorausgewählt sein sollen (z. B. nur das, was zum Kochen noch fehlt); sonst alles außer Vorrat und „nach Bedarf“.
-function openTransfer(id, servings, only = null) {
+function openTransfer(id, servings, only = null, mealId = null) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
+  const meal=mealId?active(state.meals).find(row=>row.id===mealId&&row.recipeId===id):null;
+  if(mealId&&!meal)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Wochenplan erneut öffnen.');
+  form._meal=meal?clone(meal):null;
+  form._mealRecipeSignature=meal?transferRecipeSignature(id):'';
+  form._mealScope=namespace();
+  $('#transfer-plan-note').hidden=!meal;
+  $('#transfer-plan-note').textContent=meal?(meal.listedServings?'Die Zutaten sind für dieses Gericht schon berücksichtigt. Eine weitere Übernahme fügt die gewählte Menge zusätzlich hinzu.':'Diese Zutaten werden dem Gericht im Wochenplan zugeordnet. Beim Entfernen des Gerichts kannst du sie wieder vom Einkaufszettel nehmen.'):'';
   storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren(); form.elements.rememberPantry.checked = false;
   const keys = pantryKeys(state.pantry);
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
@@ -1052,6 +1060,10 @@ function openTransfer(id, servings, only = null) {
     $('#transfer-ingredients').append(label);
   }
   updateTransfer(); $('#transfer-dialog').showModal();
+}
+function transferRecipeSignature(id) {
+  const recipe=active(state.recipes).find(row=>row.id===id);
+  return JSON.stringify([recipe?.servings,active(state.ingredients).filter(row=>row.recipeId===id).map(row=>[row.id,row.name,row.quantity,row.unit]).sort((a,b)=>a[0].localeCompare(b[0]))]);
 }
 function updateTransfer() {
   const factor = positive($('#transfer-form').elements.servings.value) / transferRecipe.servings;
@@ -1156,7 +1168,7 @@ function mealRow(meal, recipes, past = false) {
   check.setAttribute('aria-pressed', String(Boolean(meal.done)));
   const copy = element('div', undefined, 'meal-copy');
   const listed = Number(meal.listedServings) > 0 ? Number(meal.listedServings) : 0;   // Zutaten schon auf die Einkaufsliste übernommen (siehe weekBasket in plan.js)
-  copy.append(recipe ? button(name, () => showRecipe(recipe.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
+  copy.append(recipe ? button(name, () => showRecipe(recipe.id, meal.id), 'link-button') : element('strong', name), element('small', `${format(meal.servings)} Portionen`));
   const changed = recipe && listed ? mealChanges(meal) : null;
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
@@ -1207,10 +1219,30 @@ function toggleMeal(id) {
   if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day }));
   commit(ops);
 }
-function showRecipe(id) {
-  $('#recipe-search').value = ''; tagFilter = ''; favoritesOnly = false; oldestFirst = false; openRecipes.add(id);
-  tab('recipes'); renderRecipes();
-  document.querySelector(`[data-recipe-id="${id}"]`)?.scrollIntoView({ block: 'start' });
+let plannedRecipe = null;
+function showRecipe(id, mealId) {
+  const meal=state.meals.find(row=>row.id===mealId&&!row.deletedAt);
+  if(!meal||meal.recipeId!==id)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Wochenplan erneut öffnen.');
+  plannedRecipe={recipeId:id,mealId,signature:'',servings:meal.servings,scope:namespace()};
+  renderPlanRecipe(); $('#plan-recipe-dialog').showModal();
+}
+function renderPlanRecipe() {
+  if(!plannedRecipe)return;
+  const meal=state.meals.find(row=>row.id===plannedRecipe.mealId&&!row.deletedAt);
+  const recipe=active(state.recipes).find(row=>row.id===plannedRecipe.recipeId);
+  const ingredients=active(state.ingredients).filter(row=>row.recipeId===plannedRecipe.recipeId);
+  const signature=JSON.stringify([meal,recipe,ingredients]);
+  if(signature===plannedRecipe.signature)return;
+  const dialog=$('#plan-recipe-dialog'),content=$('#plan-recipe-content'),scroll=dialog.scrollTop;
+  let servings=meal?.servings;
+  if(meal?.servings===plannedRecipe.servings){try{servings=positive(content.querySelector('.stepper input')?.value||servings);}catch{/* unfinished input */}}
+  const expanded=content.querySelector('.recipe-details')?.open??true;
+  plannedRecipe.signature=signature;plannedRecipe.servings=meal?.servings;
+  content.replaceChildren();
+  $('#plan-recipe-title').textContent=meal?`${dayName(meal.date)} ${dayMonthLabel(meal.date)}`:'Rezept zum Wochenplan';
+  if(plannedRecipe.scope!==namespace()||!meal||meal.recipeId!==plannedRecipe.recipeId||!recipe){content.append(element('p','Das Gericht oder Rezept wurde inzwischen geändert oder entfernt. Bitte den Wochenplan erneut öffnen.','hint'));return;}
+  content.append(recipeCard(recipe,ingredients,{isolated:true,expanded,servings,mealId:meal.id}));
+  dialog.scrollTop=scroll;hydratePhotos();
 }
 function openMeal(options = {}) {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -1241,15 +1273,18 @@ function syncMealForm(changedRecipe) {
   form.querySelector('[data-custom]').hidden = choice !== '__custom';
   const recipe = active(state.recipes).find(row => row.id === choice);
   if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
+  $('#meal-save-shopping').disabled = !recipe || !ready;
 }
 function saveMeal(event) {
   event.preventDefault(); guard(() => {
+    const alsoAdd=event.submitter?.value==='shopping';
     const form = event.currentTarget, choice = form.elements.recipeId.value, custom = choice === '__custom', title = form.elements.title.value.trim();
     const date = form.elements.date.value;
     if (!validDay(date)) throw new Error('Bitte einen Tag auswählen.');
     if (date < isoDate() && (!mealBaseline || mealBaseline.date !== date)) throw new Error('Vergangene Tage lassen sich nicht mehr planen. Bitte heute oder einen späteren Tag wählen.');
     if (!choice) throw new Error('Bitte ein Rezept wählen oder „Eigenes Gericht“ eintragen.');
     if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
+    if(alsoAdd&&custom)throw new Error('Für ein eigenes Gericht ohne Rezept sind keine Zutaten hinterlegt. Bitte nur speichern oder ein Rezept wählen.');
     if (!custom) currentRecipe(choice);
     const id = form.elements.id.value || uid();
     const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
@@ -1257,18 +1292,23 @@ function saveMeal(event) {
     else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null, listedRows: null, listedParts: null, listedUntracked: false });   // ein anderes Rezept: die Übernahme gilt nicht mehr
     const delta = changed(patch, mealBaseline);
     const finish = () => { planWeek = weekStart(date); $('#meal-dialog').close(); renderPlan(); tab('plan'); };
-    if (Object.keys(delta).length && mealBaseline) changePlannedMeal(state.meals.find(row=>row.id===id),delta,{...mealBaseline,...patch},finish);
-    else { if(Object.keys(delta).length) commit([nextOp('meals',id,delta)]); finish(); }
+    if (Object.keys(delta).length && mealBaseline) changePlannedMeal(state.meals.find(row=>row.id===id),delta,{...mealBaseline,...patch},finish,alsoAdd);
+    else {
+      let ops=Object.keys(delta).length?[nextOp('meals',id,delta)]:[],notice='Gericht gespeichert';
+      if(alsoAdd)({ops,notice}=withMealShopping(ops,id));
+      if(ops.length)commit(ops,notice);else showNotice(notice);
+      finish();
+    }
   });
 }
 // Jede Wochenübernahme behält je Gericht die tatsächlich ausgewählten Anteile.
 // Die Mengenänderungen bleiben normale additive Operationen; neue manuelle
 // Einträge können deshalb auch während einer Korrektur sicher dazukommen.
-function transferWeekParts(plan, selected, storeId, rememberPantry) {
-  const take=weekTakeId(plan.basket.use), ops=[],rename=new Map(appliedAliases().map(alias=>[alias.from,alias.name])); let projected=state;
+function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = state, unchecked = []) {
+  const take=weekTakeId(plan.takeUse||plan.basket.use), ops=[],rename=new Map(appliedAliases().map(alias=>[alias.from,alias.name])); let projected=snapshot;
   for(const use of plan.basket.use) {
     const meal=plan.meals.find(row=>row.id===use.id);
-    const rows=aggregateIngredients([use],active(state.recipes),active(state.ingredients)).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group));
+    const rows=aggregateIngredients([use],active(snapshot.recipes),active(snapshot.ingredients)).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group));
     const keys=weekRowKeys(rows),inputs=rows.map((row,index)=>({...listRow(row),key:keys[index]}));
     lastTime=Math.max(Date.now(),lastTime+1,Date.parse(projected.updatedAt)+1);
     const result=addToList(inputs,storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
@@ -1278,21 +1318,45 @@ function transferWeekParts(plan, selected, storeId, rememberPantry) {
       const item=projected.items.find(row=>row.id===op.entityId),amount=op.patch.add||op.patch;
       return {itemId:item.id,sourceId:op.id,at:op.at,name:item.name,storeId:item.storeId,quantity:amount.quantity,unit:amount.unit,remaining:amount.quantity};
     });
-    ops.push(nextOp('meals',meal.id,{listedServings:meal.servings,listedAt:new Date().toISOString(),listedRows:snapshotRows(active(state.ingredients).filter(row=>row.recipeId===meal.recipeId)),listedUntracked:Boolean(meal.listedUntracked||(meal.listedServings&&!meal.listedParts?.length)),listedParts:[...(meal.listedParts||[]),...parts]}));
+    ops.push(nextOp('meals',meal.id,{listedServings:meal.servings,listedAt:new Date().toISOString(),listedRows:snapshotRows(active(snapshot.ingredients).filter(row=>row.recipeId===meal.recipeId)),listedUntracked:Boolean(meal.listedUntracked||(meal.listedServings&&!meal.listedParts?.length)),listedParts:[...(meal.listedParts||[]),...parts]}));
   }
   if(rememberPantry){
-    const unchecked=[...$('#week-ingredients').children].filter(label=>label._row&&!label.querySelector('input').checked).map(label=>label._row.name);
-    for(const change of pantryChanges(pantryAdditions(unchecked,pantryKeys(state.pantry)),state.pantry||[]))ops.push(nextOp('pantry',change.id,change.patch));
+    for(const change of pantryChanges(pantryAdditions(unchecked,pantryKeys(snapshot.pantry)),snapshot.pantry||[]))ops.push(nextOp('pantry',change.id,change.patch));
   }
-  commit(ops,'Wochenzutaten übernommen');
+  return ops;
+}
+function transferWeekParts(plan,selected,storeId,rememberPantry) {
+  const unchecked=[...$('#week-ingredients').children].filter(label=>label._row&&!label.querySelector('input').checked).map(label=>label._row.name);
+  commit(prepareWeekParts(plan,selected,storeId,rememberPantry,state,unchecked),'Wochenzutaten übernommen');
+}
+// Plan und Einkauf werden zusammen lokal gespeichert: bei einem Speicherfehler
+// bleibt beides unverändert, und ein erneuter Tipp zählt nichts doppelt.
+function withMealShopping(ops,mealId) {
+  const snapshot=merge(state,ops),meal=active(snapshot.meals).find(row=>row.id===mealId);
+  if(!meal?.recipeId)throw new Error('Dieses Gericht hat kein verfügbares Rezept.');
+  if(!active(snapshot.recipes).some(recipe=>recipe.id===meal.recipeId))throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
+  const basket=weekBasket([meal]),rows=aggregateIngredients(basket.use,active(snapshot.recipes),active(snapshot.ingredients));
+  const keys=pantryKeys(snapshot.pantry),selected=rows.filter(row=>row.unit!==NO_AMOUNT&&!inPantry(keys,row.name));
+  if(!basket.use.length)return {ops,notice:'Gericht gespeichert · Zutaten sind bereits auf dem Einkaufszettel berücksichtigt'};
+  if(!selected.length)return {ops,notice:rows.length?'Gericht gespeichert · keine weiteren Zutaten für den Einkaufszettel':'Gericht gespeichert · keine Zutaten hinterlegt'};
+  // Dieselbe Übernahme wie beim normalen Wochen-Einkauf erkennen, auch wenn
+  // auf dem zweiten Gerät die ganze Woche gleichzeitig bestätigt wird.
+  const days=new Set(weekDays(meal.date)),known=new Set(active(snapshot.recipes).map(row=>row.id));
+  const weekMeals=active(snapshot.meals).filter(row=>days.has(row.date)&&known.has(row.recipeId)&&(row.id===meal.id||!row.done));
+  const takeUse=weekBasket(weekMeals).use;
+  const transfer=prepareWeekParts({meals:[meal],basket,rows,takeUse},selected,currentStore(defaultStore()),false,snapshot);
+  return {ops:[...ops,...transfer],notice:'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt'};
 }
 let planAdjustment=null;
 const adjustmentSignature = id => JSON.stringify([state.meals.find(row=>row.id===id),state.items]);
-function changePlannedMeal(meal, patch, next, finish=()=>{}) {
+function changePlannedMeal(meal, patch, next, finish=()=>{}, alsoAdd=false) {
   if(!meal||meal.deletedAt)throw new Error('Dieses Gericht wurde inzwischen entfernt.');
   const reduces=Number(meal.listedServings)>0&&(!next||next.recipeId!==meal.recipeId||next.servings<meal.listedServings);
-  if(!reduces){commit([nextOp('meals',meal.id,patch)]);finish();return;}
-  planAdjustment={mealId:meal.id,patch,next,finish,scope:namespace()};renderPlanAdjustment();
+  if(!reduces){
+    const result=alsoAdd?withMealShopping([nextOp('meals',meal.id,patch)],meal.id):{ops:[nextOp('meals',meal.id,patch)],notice:'Gericht gespeichert'};
+    commit(result.ops,result.notice);finish();return;
+  }
+  planAdjustment={mealId:meal.id,patch,next,finish,alsoAdd,scope:namespace()};renderPlanAdjustment();
   $('#plan-adjust-dialog').showModal();
 }
 function renderPlanAdjustment() {
@@ -1307,7 +1371,12 @@ function renderPlanAdjustment() {
   }
   const {legacy,partial,skipped}=request.reduction;
   $('#plan-adjust-note').textContent=legacy?'Für diese frühere Übernahme fehlt eine genaue Zuordnung. Die Einkaufsliste bleibt unverändert; bitte die Mengen selbst prüfen.':partial?'Ein Teil stammt aus einer früheren Übernahme ohne genaue Zuordnung. Nur die zugeordneten Anteile werden angepasst; bitte die übrigen Mengen selbst prüfen.':skipped.length?'Bereits gekaufte, entfernte, verschobene oder manuell neu gesetzte Zutaten bleiben unverändert. Bitte diese Mengen bei Bedarf selbst prüfen.':byItem.size?'Nur die hier aufgeführten Wochenplan-Anteile werden entfernt.':'Es gibt keine zugehörigen offenen Mengen mehr. Deine Einkaufsliste bleibt unverändert.';
-  $('#plan-adjust-apply').textContent=byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  const removing=!request.next;
+  $('#plan-adjust-title').textContent=removing?`Gericht vom ${dayName(meal.date)} entfernen?`:'Einkaufsliste anpassen?';
+  $('#plan-adjust-intro').textContent=removing?'Möchtest du auch die Zutaten dieses Rezepts vom Einkaufszettel entfernen? Manuelle Zusatzmengen und das gespeicherte Rezept bleiben erhalten.':'Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.';
+  $('#plan-adjust-apply').textContent=removing?'Ja, Zutaten dieses Rezepts entfernen':byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  $('#plan-adjust-apply').disabled=removing&&!byItem.size;
+  $('#plan-adjust-keep').textContent=removing?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':'Einkaufsliste unverändert lassen';
   $('#plan-adjust-error').hidden=true;
 }
 function finishPlanAdjustment(adjust) {
@@ -1321,7 +1390,9 @@ function finishPlanAdjustment(adjust) {
       for(const {item,part,cut} of request.reduction.changes)ops.push(nextOp('items',item.id,{cutPlan:{...cut,originalQuantity:part.quantity}}));
       if(!request.reduction.legacy){patch.listedServings=request.reduction.target||null;patch.listedParts=request.next?.recipeId===state.meals.find(row=>row.id===request.mealId).recipeId?request.reduction.parts:[];}
     }
-    ops.push(nextOp('meals',request.mealId,patch));commit(ops,adjust&&request.reduction.changes.length?'Wochenplan und Einkaufsliste angepasst':'Wochenplan geändert');
+    ops.push(nextOp('meals',request.mealId,patch));
+    const result=request.alsoAdd?withMealShopping(ops,request.mealId):{ops,notice:adjust&&request.reduction.changes.length?'Wochenplan und Einkaufsliste angepasst':'Wochenplan geändert'};
+    commit(result.ops,result.notice);
     $('#plan-adjust-dialog').close();planAdjustment=null;request.finish();
   }catch(problem){error.textContent=problem.message;error.hidden=false;}
 }
@@ -2033,7 +2104,6 @@ function applyMode() {
 // Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
 function syncChrome() {
   document.body.classList.toggle('in-store', shopOn() && !$('#shopping').hidden);
-  document.body.classList.toggle('in-pantry', !$('#pantry').hidden);
   armLock();
 }
 function syncShopAwake() {
@@ -2411,6 +2481,7 @@ function renderPick() {
     const node = element('button', undefined, `pick-row${custom ? ' custom' : ''}`); node.type = 'button'; node.dataset.value = value;
     node.setAttribute('aria-pressed', String(value === choice));
     node.append(element('strong', title)); if (meta) node.append(element('small', meta));
+    if (!custom) node.append(element('span','Lange drücken: Rezept als PDF anzeigen','pick-pdf-hint'));
     list.append(node);
   };
   // Bei „Lange nicht gekocht“ steht dabei, wie lange es her ist.
@@ -2423,6 +2494,7 @@ function renderPick() {
   for (const recipe of shown) row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)}`, false);
   if (!shown.length) list.append(element('p', 'Kein Rezept dafür.', 'pick-empty'));
   row('__custom', 'Eigenes Gericht (ohne Rezept)', '', true);
+  syncPickHint();
 }
 // Das Auswahlfeld für den Filter (Alle, Favoriten, Lange nicht gekocht, jedes Stichwort); mit nur einem Eintrag gibt es nichts zu filtern.
 function fillRecipePick(recipes) {
@@ -2433,9 +2505,11 @@ function fillRecipePick(recipes) {
   renderPick();
 }
 $('#recipe-filter').addEventListener('change', () => { renderPick(); $('#recipe-pick').scrollTop = 0; });
+function syncPickHint() { $('#recipe-pick').nextElementSibling.hidden=Boolean($('#recipe-pick .pick-row[aria-pressed=true]:not(.custom)')); }
 function setRecipeChoice(value) {
   $('#meal-form').elements.recipeId.value = value;
   $('#recipe-pick').querySelectorAll('.pick-row').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.value === value)));
+  syncPickHint();
 }
 let pickOpenedAt = 0, pickHeld = false;   // pickHeld: Der Finger liegt nach dem langen Drücken noch auf der Zeile; sein Loslassen wählt nichts
 function openPickedSheet(node) {
@@ -2709,11 +2783,10 @@ function renderAliases() {
   }
 }
 function renderPantry() {
-  pantryView?.refresh();
-}
-function addToPantry(products) {
-  const changes = pantryChanges(products, state.pantry || []);
-  if (changes.length) commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch)));
+  pantryBuyer?.refresh();
+  const count=pantryKeys(state.pantry||[]).size;
+  $('#pantry-shortcut-count').textContent=count?String(count):'';
+  $('#open-pantry').setAttribute('aria-label',`Vorrat öffnen, ${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat`);
 }
 
 /* ---------- Vorlagen ---------- */
@@ -3156,8 +3229,9 @@ productPicker = mountProductPicker({
   getData: () => ({ favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
-  onPantry: addToPantry,
-  onQuickBuy: product => pantryView.buyProduct(product),
+  onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]); if(changes.length)commit(changes.map(({id,patch})=>nextOp('pantry',id,patch))); },
+  recognizeName,
+  onQuickBuy: product => pantryBuyer.buyProduct(product),
   onFavorite: product => {
     const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
     const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {
@@ -3167,17 +3241,10 @@ productPicker = mountProductPicker({
     commit([nextOp('productFavorites', id, patch)]);
   }
 });
-pantryView = mountPantry({
-  getData: () => ({ pantry: state.pantry || [], items: listItems(), favorites: state.productFavorites || [] }), getScope: namespace,
-  getStores: () => active(state.stores).filter(store => !isSeparate(store)),
-  getPreferredStore: () => $('#open-products').hidden ? '' : $('#item-form').elements.storeId.value,
-  imagesOn, recognizeName, getHistory:itemHistory,
-  onChange: changes => commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch))),
-  onRemove: ids => removeRows('pantry', ids), onBuy: (rows, storeId) => addRows(rows, currentStore(storeId)),
-  onProducts: mode => productPicker.open('', { target: 'pantry', mode }),
-  onImages: (imageKey, onImage) => productPicker.open('', { target: 'image', imageKey, onImage }),
-  onCancelImages: () => productPicker.cancelImage(),
-  onShopping: event => { tab('shopping'); window.scrollTo(0, pantryReturnScroll); if (!event.detail) $('#open-pantry').focus({ preventScroll: true }); }
+pantryBuyer = mountPantryBuy({
+  getScope:namespace,getStores:()=>active(state.stores).filter(store=>!isSeparate(store)),
+  getPreferredStore:()=>$('#open-products').hidden?'':$('#item-form').elements.storeId.value,
+  getHistory:itemHistory,onBuy:(rows,storeId)=>addRows(rows,currentStore(storeId))
 });
 spendingView = mountSpending({
   getData: () => ({ purchases: state.purchases || [], members: state.members || [], stores: state.stores }), getScope: namespace,
@@ -3199,8 +3266,7 @@ spendingView = mountSpending({
     commit([nextOp('members', id, { archived })]);
   }
 });
-let pantryReturnScroll = 0;
-$('#open-pantry').addEventListener('click', () => { pantryReturnScroll = window.scrollY; tab('pantry'); pantryView.open(); });
+$('#open-pantry').addEventListener('click',()=>guard(()=>{if(!ready)throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');productPicker.open('',{target:'pantry'});}));
 $('#open-products').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
   productPicker.open($('#item-form').elements.storeId.value);
@@ -3241,6 +3307,7 @@ $('#meal-form').addEventListener('submit', saveMeal);
 $('#plan-adjust-apply').addEventListener('click',()=>finishPlanAdjustment(true));
 $('#plan-adjust-keep').addEventListener('click',()=>finishPlanAdjustment(false));
 $('#plan-adjust-dialog').addEventListener('close',()=>{planAdjustment=null;});
+$('#plan-recipe-dialog').addEventListener('close',()=>{if(!$('#plan-recipe-dialog').open){plannedRecipe=null;$('#plan-recipe-content').replaceChildren();}});
 $('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
 $('#week-form').elements.skipListed.addEventListener('change', renderWeekRows);
 $('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
@@ -3273,8 +3340,14 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
-  addRows(selected.map(row => listRow(row, factor)), currentStore(form.elements.storeId.value),
-    [...$('#transfer-ingredients').children].filter(label => !label.querySelector('input').checked).map(label => label._ingredient.name), form.elements.rememberPantry.checked);
+  const unchecked=[...$('#transfer-ingredients').children].filter(label=>!label.querySelector('input').checked).map(label=>label._ingredient.name);
+  if(form._meal){
+    const meal=active(state.meals).find(row=>row.id===form._meal.id&&row.recipeId===transferRecipe.id);
+    if(form._mealScope!==namespace()||!meal||JSON.stringify(meal)!==JSON.stringify(form._meal)||transferRecipeSignature(transferRecipe.id)!==form._mealRecipeSignature)throw new Error('Das Gericht wurde inzwischen geändert. Bitte die Zutatenübernahme schließen und aus dem Wochenplan erneut öffnen.');
+    const count=positive(form.elements.servings.value),use={...meal,servings:count},mark={...meal,servings:(Number(meal.listedServings)||0)+count};
+    commit(prepareWeekParts({meals:[mark],basket:{use:[use]}},selected,currentStore(form.elements.storeId.value),form.elements.rememberPantry.checked,state,unchecked),'Zutaten für das geplante Gericht übernommen');
+  }else addRows(selected.map(row=>listRow(row,factor)),currentStore(form.elements.storeId.value),unchecked,form.elements.rememberPantry.checked);
+  if(form._meal)$('#plan-recipe-dialog').close();
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {

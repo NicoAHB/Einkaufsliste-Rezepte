@@ -4,7 +4,7 @@ import { mountQuantityControls } from './quantity-controls.js';
 import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice, preferredQuantity } from './buying.js';
 import { CATEGORIES } from './categories.js';
 import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic } from './product-catalog.js';
-import { PRODUCT_GROUP_IMAGES, groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
+import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys } from './data.js';
 import { bindWishHold } from './wishes.js';
@@ -16,15 +16,20 @@ const svg = name => {
   icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); icon.append(use); return icon;
 };
 
-export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy }) {
+export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName }) {
   const $ = id => document.getElementById(id), dialog = $('product-picker-dialog'), form = $('product-picker-form');
   const search = $('product-picker-search'), category = $('product-picker-category'), store = $('product-picker-store'), grid = $('product-picker-list');
   const selection = new Map();
   const PAGE_SIZE = 96;
-  let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE, chooseImage = null;
+  let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE;
   const fail = error => { $('product-picker-error').textContent = error.message; $('product-picker-error').hidden = false; $('product-picker-error').scrollIntoView({ block: 'nearest' }); };
   const clearError = () => { $('product-picker-error').hidden = true; };
-  const library = () => { const data = getData(); return (target === 'pantry' ? pantryProductLibrary : productLibrary)(data.history, data.favorites, data.pantry); };
+  const library = () => {
+    const data=getData(),products=(target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry);
+    if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
+    return products;
+  };
+  const stockedKeys = () => {const keys=pantryKeys(getData().pantry||[]);for(const product of selection.values()){if(product.pantryAvailable===false)keys.delete(pantryKey(product.name));else keys.add(pantryKey(product.name));}return keys;};
 
   function photo(product) {
     const frame = node('span', undefined, 'product-photo'); frame.setAttribute('aria-hidden', 'true');
@@ -40,7 +45,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function updateFooter() {
     const count = selection.size, invalidStore = target === 'list' && store.value && !getStores().some(shop => shop.id === store.value);
     $('product-picker-add').disabled = !count || submitting || Boolean(invalidStore);
-    $('product-picker-add').textContent = count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'} ${target === 'pantry' ? 'in den Vorrat' : 'hinzufügen'}` : 'Produkte auswählen';
+    $('product-picker-add').textContent = target==='pantry'&&count ? 'Auswahl übernehmen' : count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'} hinzufügen` : 'Produkte auswählen';
     $('product-picker-clear').hidden = !count;
     $('product-picker-selected').textContent = `Auswahl (${count})${target === 'list' ? ' · Mengen ändern' : ' ansehen'}`;
     $('product-picker-cart').hidden = !count;
@@ -52,7 +57,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     cartControls.clear();
     const box = $('product-picker-cart-rows'); box.replaceChildren();
     for (const product of selection.values()) {
-      const row = node('div', undefined, 'product-cart-row'), label = node('span', product.name);
+      const row = node('div', undefined, 'product-cart-row'), label = node('span', product.name+(target==='pantry'?product.pantryAvailable===false?' · entfernen':' · hinzufügen':''));
       const qtyLabel = node('label'), qty = node('input'), unitLabel = node('label'), unit = node('input');
       qtyLabel.append(node('span', 'Menge', 'sr-only')); qty.value = product.quantity; qty.inputMode = 'decimal'; qty.maxLength = 16;
       qty.setAttribute('aria-label', `${product.name}: Menge`);  qtyLabel.append(qty);
@@ -81,74 +86,100 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     return {...product,...(p.remembered?{purchaseUnit:null,...unitChoice(p)}:{}),unit,quantity:preferredQuantity(product.name,history,unit,null,fallback)};
   };
   function renderProducts() {
-    $('product-picker-title').textContent = target === 'pantry' ? mode === 'basics' ? 'Grundvorrat auswählen' : 'Vorrat auswählen' : target === 'image' ? 'Produktbild auswählen' : 'Produkte auswählen';
-    const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
-    const focusKey = focused?.dataset.productAction, focusId = focused?.dataset.product;
-    // Die Bildauswahl zeigt immer die originalen Katalogmotive; eigene Bildänderungen dürfen
-    // nicht die zur Auswahl stehenden Originale desselben Produkts ersetzen.
-    const products = mode === 'groups' && target === 'image' ? PRODUCT_GROUP_IMAGES.map(image => ({ id: image.key, name: image.label, image, category: 'sonstiges', quantity: 1, unit: 'Stück', count: 0 })) : target === 'image' ? GROCERY_PRODUCTS : library().filter(product => mode !== 'basics' || isPantryBasic(product));
-    const visible = filterProducts(products, { mode: mode === 'groups' ? 'all' : mode, query: search.value, category: mode === 'groups' ? '' : category.value });
+    $('product-picker-title').textContent=target==='pantry'?'Vorrat auswählen':'Produkte auswählen';
+    const focused=dialog.contains(document.activeElement)?document.activeElement:null;
+    const focusKey=focused?.dataset.productAction,focusId=focused?.dataset.product;
+    const available=target==='pantry'?stockedKeys():pantryKeys(getData().pantry||[]);
+    const products=library().filter(product=>mode!=='current'||available.has(pantryKey(product.name)));
+    const visible=filterProducts(products,{mode:mode==='current'?'all':mode,query:search.value,category:category.value,includeOwn:target==='pantry'});
     const data = getData(), allItems = data.items || [], selectedStore = store.value;
-    const available = pantryKeys(data.pantry), stockNames = new Set((data.pantry || []).filter(row => !row.deletedAt).map(row => pantryKey(row.name)));
     const exactOnList = new Map();
     for (const item of allItems) if (!item.deletedAt && !item.checked && item.storeId === selectedStore) exactOnList.set(productKey(item.name), item);
     // Neuer eigener Name ist ausdrücklich möglich, ohne eine unklare Schreibweise in ein bekanntes Produkt umzudeuten.
-    if (target !== 'image' && !visible.length && ['all', 'own'].includes(mode) && search.value.trim().length >= 2) {
+    if (!visible.length && ['all', 'own'].includes(mode) && search.value.trim().length >= 2) {
       const own = products.find(product => productKey(product.name) === productKey(search.value)) || ownProduct(search.value);
       if ((!category.value || category.value === own.category) && (target !== 'pantry' || pantryProductAllowed(own))) visible.push(own);
     }
     grid.replaceChildren();
     // Favoriten und häufige Käufe bleiben ein kompaktes Raster, auch wenn sie aus vielen Gängen stammen.
     const shown = visible.slice(0, visibleLimit);
-    const groups = ['favorites', 'frequent', 'groups'].includes(mode) ? [{ label: mode === 'favorites' ? 'Deine Favoriten' : mode === 'groups' ? 'Passende Produktgruppen' : 'Oft auf deiner Liste' }] : CATEGORIES;
+    const groups = ['favorites','frequent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':'Oft auf deiner Liste'}]:CATEGORIES;
     for (const group of groups) {
       const matches = group.id ? shown.filter(product => product.category === group.id) : shown; if (!matches.length) continue;
       const section = node('section', undefined, 'product-group'), heading = node('h3', group.label), cards = node('div', undefined, 'product-grid');
       section.append(heading, cards); grid.append(section);
       for (const product of matches) {
-        const chosen = selection.get(product.id), picked = target === 'image' ? product.image?.key === dialog.dataset.imageKey || product.id === dialog.dataset.imageKey : Boolean(chosen);
+        const chosen=selection.get(product.id),picked=Boolean(chosen);
         const amount = shoppingAmount(chosen || purchaseStart(product));
         const stocked = available.has(pantryKey(product.name));
-        const card = node('div', undefined, `product-card${picked ? ' picked' : ''}`);
+        const card=node('div',undefined,`product-card${picked?' picked':''}${target==='pantry'&&stocked?' in-stock':''}${target==='pantry'&&chosen?.pantryAvailable===false?' pending-removal':''}`);
         card.dataset.product = product.id; card.dataset.id = product.id;
         const pick = node('button', undefined, 'product-pick'); pick.type = 'button'; pick.dataset.productAction = 'pick'; pick.dataset.product = product.id;
-        pick.setAttribute('aria-pressed', String(picked)); pick.setAttribute('aria-label', target === 'image' ? `${product.name}: Bild auswählen` :
-          target === 'pantry' ? `${product.name}: ${stocked ? 'bereits vorhanden' : picked ? 'Auswahl aufheben' : 'für Vorrat auswählen'}` : `${product.name}, ${amount}: ${picked ? 'Auswahl aufheben' : 'auswählen'}`);
-        if (target === 'pantry') { pick.setAttribute('aria-disabled', String(stocked)); pick.setAttribute('aria-keyshortcuts', 'Shift+F10'); pick.setAttribute('aria-description', 'Lange drücken: auf die Einkaufsliste. Auch mit Umschalt und F10.'); }
-        const check = node('span', undefined, 'product-picked'); check.append(svg('check')); check.hidden = !picked; check.setAttribute('aria-hidden', 'true');
+        pick.setAttribute('aria-pressed',String(target==='pantry'?stocked:picked));
+        pick.setAttribute('aria-label',target==='pantry'?`${product.name}: ${stocked?'aus dem Vorrat nehmen':'als vorhanden auswählen'}`:`${product.name}, ${amount}: ${picked?'Auswahl aufheben':'auswählen'}`);
+        if(target==='pantry'){pick.setAttribute('aria-keyshortcuts','Shift+F10');pick.setAttribute('aria-description','Lange drücken: auf die Einkaufsliste. Änderungen am Vorrat unten übernehmen.');}
+        const check=node('span',undefined,'product-picked');check.append(svg('check'));check.hidden=target==='pantry'?!stocked:!picked;check.setAttribute('aria-hidden','true');
         pick.append(photo(product), node('span', product.name, 'product-name'));
         if (target === 'list') pick.append(node('small', amount, 'product-amount'));
         pick.append(check);
         const inList = exactOnList.get(productKey(product.name));
-        if (target === 'pantry' && stockNames.has(pantryKey(product.name))) pick.append(node('small', stocked ? 'Schon vorhanden' : 'Aufgebraucht', 'product-on-list'));
-        else if (target === 'list' && inList) pick.append(node('small', `Auf Liste: ${shoppingAmount(inList)}`, 'product-on-list'));
-        else if (product.own) pick.append(node('small', 'Eigener Artikel', 'product-on-list'));
-        pick.addEventListener('click', () => {
+        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird hinzugefügt'):'Vorhanden','product-on-list'));
+        else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
+        else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
+        pick.addEventListener('click',()=>{
           clearError();
-          if (target === 'pantry' && stocked) return;
-          if (target === 'image') { try { chooseImage?.((product.image || imageForProduct(product)).key); dialog.close(); } catch (error) { fail(error); } return; }
-          if (selection.has(product.id)) selection.delete(product.id); else selection.set(product.id, target==='list' ? purchaseStart(product) : { ...product, quantity: number(product.quantity) });
-          renderCart(); renderProducts();
+          if(selection.has(product.id))selection.delete(product.id);
+          else selection.set(product.id,target==='list'?purchaseStart(product):{...product,quantity:number(product.quantity),pantryAvailable:!stocked});
+          renderCart();renderProducts();
         });
         const star = node('button', undefined, 'product-star'); star.type = 'button'; star.dataset.productAction = 'star'; star.dataset.product = product.id;
         star.setAttribute('aria-label', `${product.name}: ${product.favorite ? 'aus Favoriten entfernen' : 'zu Favoriten hinzufügen'}`);
         star.setAttribute('aria-pressed', String(Boolean(product.favorite))); star.append(svg('star'));
         star.addEventListener('click', () => { try { clearError(); onFavorite(product); renderProducts(); } catch (error) { fail(error); } });
-        card.append(pick); if (target !== 'image') card.append(star); cards.append(card);
+        card.append(pick,star);cards.append(card);
       }
     }
     const count = visible.length;
-    $('product-picker-status').textContent = count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'}${mode === 'favorites' ? ' in Favoriten' : mode === 'frequent' ? ' häufig gekauft' : ''}${count > visibleLimit ? ` · ${shown.length} angezeigt` : ''}` :
-      search.value.trim() ? 'Keine passenden Produkte in dieser Auswahl.' : mode === 'favorites' ? target === 'pantry' ? 'Noch keine Favoriten. Tippe auf „Alle“ und merke Produkte mit dem Stern – auch was schon im Vorrat steht.' : 'Deine Favoriten sind noch leer. Merke Produkte mit dem Stern.' :
-        mode === 'frequent' ? 'Hier erscheinen Produkte, die du mindestens zweimal eingetragen hast.' : mode === 'own' ? 'Hier findest du eure eigenen Artikel. Oder suche einen neuen Namen.' : 'Keine Produkte in dieser Kategorie.';
+    $('product-picker-status').textContent=mode==='current'?`${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:count?`${count} ${count===1?'Produkt':'Produkte'}${mode==='favorites'?' in Favoriten':mode==='frequent'?' häufig gekauft':''}${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:
+      search.value.trim()?'Keine passenden Produkte in dieser Auswahl.':mode==='favorites'?'Noch keine Favoriten. Merke Produkte unter „Alle“ mit dem Stern.':mode==='frequent'?'Hier erscheinen Produkte, die du mindestens zweimal eingetragen hast.':mode==='own'?'Hier findest du eure eigenen Artikel. Oder suche einen neuen Namen.':'Keine Produkte in dieser Kategorie.';
+    if(!count&&mode==='current')grid.append(node('p',search.value.trim()||category.value?'Keine passenden Produkte im aktuellen Vorrat. Unter „Alle“ findest du weitere.':'Dein aktueller Vorrat ist leer. Unter „Alle“ kannst du Produkte auswählen oder mit + eigene anlegen.','empty'));
     $('product-picker-count').textContent = `${selection.size} ausgewählt`;
     $('product-picker-more').hidden = count <= visibleLimit;
     $('product-picker-more').textContent = `Weitere ${Math.min(PAGE_SIZE, Math.max(0, count - visibleLimit))} Produkte anzeigen`;
-    category.hidden = mode === 'groups';
+    category.hidden=false;
     for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.setAttribute('aria-pressed', String(tab.dataset.productMode === mode));
     updateFooter();
     if (focusId && focusKey) grid.querySelector(`[data-product-action="${focusKey}"][data-product="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
   }
+  const ownDialog=$('pantry-own-dialog'),ownForm=$('pantry-own-form');let keepName='';
+  function ownHint(){const typed=ownForm.elements.name.value.trim(),correction=keepName===typed?null:recognizeName?.(typed).correction;$('pantry-own-hint').hidden=!correction;$('pantry-own-hint').querySelector('span').textContent=correction?`Beim Hinzufügen: „${correction}“`:'';}
+  $('pantry-own-add').addEventListener('click',()=>{ownForm.reset();keepName='';$('pantry-own-error').hidden=true;ownHint();ownDialog.showModal();ownForm.elements.name.focus();});
+  ownForm.elements.name.addEventListener('input',()=>{keepName='';ownHint();});
+  $('pantry-own-original').addEventListener('click',()=>{keepName=ownForm.elements.name.value.trim();ownHint();});
+  ownForm.addEventListener('submit',event=>{
+    event.preventDefault();try{
+      if(target!=='pantry'||scope!==getScope())throw new Error('Die Datenverbindung hat sich geändert. Bitte den Vorrat erneut öffnen.');
+      const typed=ownForm.elements.name.value.trim().replace(/\s+/g,' '),name=keepName===typed?typed:recognizeName?.(typed).name||typed;
+      if(!name||name.length>120)throw new Error('Bitte einen Produktnamen mit 1 bis 120 Zeichen eingeben.');
+      if(!pantryProductAllowed({name}))throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht.');
+      const known=library().find(product=>pantryKey(product.name)===pantryKey(name)),product=known?{...known,name}:ownProduct(name);
+      if(!pantryKeys(getData().pantry||[]).has(pantryKey(name)))selection.set(product.id,{...product,pantryAvailable:true});
+      else selection.delete(product.id);
+      mode='current';search.value=name;category.value='';visibleLimit=PAGE_SIZE;clearError();renderCart();renderProducts();ownDialog.close();
+    }catch(error){$('pantry-own-error').textContent=error.message;$('pantry-own-error').hidden=false;}
+  });
+  $('pantry-add-basics').addEventListener('click',()=>{
+    if(target!=='pantry')return;
+    const available=pantryKeys(getData().pantry||[]),products=library();let added=0;
+    for(const basic of GROCERY_PRODUCTS.filter(isPantryBasic)){
+      const product=products.find(row=>pantryKey(row.name)===pantryKey(basic.name))||basic;
+      if(available.has(pantryKey(product.name)))selection.delete(product.id);
+      else{selection.set(product.id,{...product,pantryAvailable:true});added++;}
+    }
+    mode='current';search.value='';category.value='';visibleLimit=PAGE_SIZE;clearError();renderCart();renderProducts();
+    $('product-picker-feedback').textContent=added?`${added} Grundvorratsprodukte ausgewählt – unten übernehmen.`:'Der Grundvorrat ist bereits vorhanden.';$('product-picker-feedback').hidden=false;
+    $('product-picker-count').scrollIntoView({block:'nearest'});
+  });
   bindWishHold(grid, '.product-pick', id => { try { const product = library().find(p => p.id === id); if (product) onQuickBuy?.({ ...product, imageKey: product.imageKey || imageForProduct(product).key }); } catch (error) { fail(error); } }, () => !dialog.open || target !== 'pantry' || scope !== getScope());
   grid.addEventListener('selectstart', event => { if (target === 'pantry') event.preventDefault(); });
   for (const group of CATEGORIES) category.add(new Option(group.label, group.id));
@@ -162,27 +193,29 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   form.addEventListener('submit', event => {
     event.preventDefault(); if (!dialog.open || submitting || !selection.size) return;
     try {
-      clearError(); if(target==='list')for(const [id,controls]of cartControls){try{Object.assign(selection.get(id),controls.read());}catch(error){throw new Error(`${selection.get(id).name}: ${error.message}`);}} const selected = target === 'pantry' ? [...selection.values()] : selectedProducts(selection);
+      clearError();if(scope!==getScope())throw new Error('Die Datenverbindung hat sich geändert. Bitte die Auswahl erneut öffnen.'); if(target==='list')for(const [id,controls]of cartControls){try{Object.assign(selection.get(id),controls.read());}catch(error){throw new Error(`${selection.get(id).name}: ${error.message}`);}} const selected = target === 'pantry' ? [...selection.values()] : selectedProducts(selection);
       if (target === 'list' && store.value && !getStores().some(shop => shop.id === store.value)) throw new Error('Dieses Geschäft wurde gelöscht. Bitte wähle ein anderes.');
       submitting = true; updateFooter();
       if (target === 'pantry') onPantry(selected); else onAdd(selected, store.value);
-      selection.clear(); dialog.close();
+      selection.clear();
+      if(target==='pantry'){$('product-picker-feedback').textContent='Vorrat gespeichert.';$('product-picker-feedback').hidden=false;renderCart();renderProducts();}
+      else dialog.close();
     } catch (error) { fail(error); }
     finally { submitting = false; updateFooter(); }
   });
-  dialog.addEventListener('close', () => { if (!dialog.open) { selection.clear(); chooseImage = null; renderCart(); clearError(); } });
+  dialog.addEventListener('close', () => { if (!dialog.open) { selection.clear();$('pantry-own-dialog').close();renderCart(); clearError(); } });
   return {
     open(storeId = '', options = {}) {
-      target = options.target || 'list'; chooseImage = options.onImage || null;
-      dialog.dataset.target = target; dialog.dataset.imageKey = options.imageKey || '';
+      target=options.target==='pantry'?'pantry':'list';
+      dialog.dataset.target=target;
       scope = getScope(); $('product-picker-feedback').hidden = true; selection.clear(); search.value = ''; category.value = ''; clearError(); visibleLimit = PAGE_SIZE;
-      mode = target === 'image' ? (String(options.imageKey || '').startsWith('group-') ? 'groups' : 'all') : library().some(product => product.favorite) ? 'favorites' : 'all';
-      if (target !== 'image' && ['all', 'favorites', 'frequent', 'own', ...(target === 'pantry' ? ['basics'] : [])].includes(options.mode)) mode = options.mode;
-      $('product-picker-hint').textContent = target === 'pantry' ? 'Wähle aus, was ihr zu Hause habt. Mit dem Stern Favoriten merken; sie erscheinen beim nächsten Öffnen zuerst. Vorhandene Produkte sind gekennzeichnet. Lange drücken: auf die Einkaufsliste (Menge und Geschäft wählen).' :
-        target === 'image' ? 'Ein Bild antippen. Für eigene Produkte passen auch die Gruppenbilder.' : 'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
-      dialog.querySelector('.product-target').hidden = target !== 'list';
-      dialog.querySelector('.product-picker-footer').hidden = target === 'image';
-      for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.hidden = target === 'image' ? !['all', 'groups'].includes(tab.dataset.productMode) : tab.dataset.productMode === 'groups' || (tab.dataset.productMode === 'basics' && target !== 'pantry');
+      mode=target==='pantry'?'current':library().some(product=>product.favorite)?'favorites':'all';
+      if(target==='list'&&['all','favorites','frequent','own'].includes(options.mode))mode=options.mode;
+      $('product-picker-hint').textContent=target==='pantry'?'Markiere, was zu Hause ist, und übernimm die Auswahl unten. ★ merkt Favoriten. Lange drücken: Menge und Geschäft für die Einkaufsliste wählen.':'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
+      dialog.querySelector('.product-target').hidden=target!=='list';
+      $('pantry-own-add').hidden=target!=='pantry';$('pantry-add-basics').hidden=target!=='pantry';
+      dialog.querySelector('[data-close]').setAttribute('aria-label',target==='pantry'?'Vorratsauswahl schließen':'Produktauswahl schließen');
+      for(const tab of dialog.querySelectorAll('[data-product-mode]'))tab.hidden=target==='pantry'?tab.dataset.productMode==='own':tab.dataset.productMode==='current';
       renderStores(); store.value = getStores().some(shop => shop.id === storeId) ? storeId : '';
       renderCart(); renderProducts(); dialog.showModal(); dialog.scrollTop = 0;
       // Auf dem iPhone keine Tastatur beim Öffnen: Erst bewusst in die Suche tippen.
@@ -195,8 +228,6 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       if (getScope() !== scope) { dialog.close(); return; }
       renderStores(); renderProducts();
     },
-    cancelImage() {
-      if (dialog.open && target === 'image') dialog.close();
-    }
+
   };
 }
