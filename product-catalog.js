@@ -105,3 +105,10 @@ export function pantryProductLibrary(history = [], favorites = [], pantry = []) 
   });
 }
 export const isPantryBasic = product => basicIds.has(product.id);
+
+// Kategorien und Raster verwenden dieselbe Sammlung, noch ohne Such-/Kategorie-Filter.
+export function pantryProductsForMode(products, mode, available = new Set()) {
+  return products.filter(product => mode === 'current' ? available.has(pantryKey(product.name)) :
+    mode === 'favorites' ? Boolean(product.favorite) : mode === 'frequent' ? product.count >= 2 :
+    mode === 'basics' ? isPantryBasic(product) : true);
+}

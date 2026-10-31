@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { RECENT_DAYS, availability, indexNames, namesFrom, rankRecipes, required } from '../cookable.js';
+import { availability, indexNames, namesFrom, rankRecipes, required } from '../cookable.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
 const check = (name, have = [], soon = []) => availability(name, indexNames({ have, soon }));
@@ -38,16 +38,16 @@ describe('Zutaten finden', () => {
   test('da geht vor „kommt noch“, mehrere Teile: der schlechteste zählt', () => {
     assert.equal(check('Nudeln', ['Nudeln'], ['Nudeln']), 'have');
     assert.equal(check('Nudeln', [], ['Nudeln']), 'soon');
-    assert.equal(check('Salz und Pfeffer', ['Salz']), 'missing');
+    assert.equal(check('Salz und Pfeffer', ['Salz']), 'have');
     assert.equal(check('Salz und Pfeffer', ['Salz', 'Pfeffer']), 'have');
-    assert.equal(check('Salz, Pfeffer', ['Salz'], ['Pfeffer']), 'soon');
+    assert.equal(check('Salz, Pfeffer', ['Salz'], ['Pfeffer']), 'have');
     assert.equal(check('Wasser'), 'have', 'Wasser ist immer da');
     assert.equal(check(''), 'have');
   });
   test('Zutaten „nach Bedarf“ und Wasser sind nicht erforderlich', () => {
     assert.equal(required(row('1', 'Salz', NO_AMOUNT)), false);
     assert.equal(required(row('2', 'Wasser', 'ml')), false);
-    assert.equal(required(row('3', 'Wasser und Salz', 'ml')), true);
+    assert.equal(required(row('3', 'Wasser und Salz', 'ml')), false);
     assert.equal(required(row('4', 'Mehl', 'g')), true);
   });
 });
@@ -104,15 +104,23 @@ describe('Rezepte ordnen', () => {
 describe('Was ist da?', () => {
   const now = Date.parse('2026-05-20T12:00:00.000Z'), day = 86400000, at = days => new Date(now - days * day).toISOString();
   const item = (name, extra) => ({ name, checked: false, updatedAt: at(0), deletedAt: null, ...extra });
-  test('Vorrat und abgehakte Artikel sind da, offene kommen noch, Entferntes zählt nur, wenn es vorher abgehakt war', () => {
-    const names = namesFrom({ now, pantry: [{ name: 'Salz' }, { name: 'Mehl', deletedAt: at(1) }, { name: 'Öl' }], items: [
+  test('Nur aktueller Vorrat ist da, offene Artikel kommen nur im Zettel-Modus noch', () => {
+    const names = namesFrom({ now, mode:'shopping', pantry: [{ name: 'Salz' }, { name: 'Mehl', deletedAt: at(1) }, { name: 'Öl' }], items: [
       item('Nudeln', { checked: true }), item('Milch'), item('Tomaten', { checked: true, deletedAt: at(2), updatedAt: at(2) }),
-      item('Butter', { checked: true, deletedAt: at(RECENT_DAYS + 1), updatedAt: at(RECENT_DAYS + 1) }),
-      item('Käse', { checked: false, deletedAt: at(1), updatedAt: at(1) }), item('Brot', { checked: true, updatedAt: at(RECENT_DAYS + 3) }), { name: 5 }] });
-    assert.deepEqual(names.have, ['Salz', 'Öl', 'Nudeln', 'Tomaten']);
+      item('Butter', { checked: true, deletedAt: at(7 + 1), updatedAt: at(7 + 1) }),
+      item('Käse', { checked: false, deletedAt: at(1), updatedAt: at(1) }), item('Brot', { checked: true, updatedAt: at(7 + 3) }), { name: 5 }] });
+    assert.deepEqual(names.have, ['Salz', 'Öl']);
     assert.deepEqual(names.soon, ['Milch']);
   });
   test('ohne Angaben leere Listen', () => {
     assert.deepEqual(namesFrom({}), { have: [], soon: [] });
   });
+});
+
+test('Nur Vorrat ist Standard; Einkauf und Kaufdatum machen Zutaten niemals automatisch verfügbar',()=>{
+ const pantry=[{name:'Karotten',available:true},{name:'Milch',available:false}],items=[{name:'Nudeln',checked:false},{name:'Milch',checked:true,shopBoughtAt:new Date().toISOString()}];
+ assert.deepEqual(namesFrom({pantry,items}),{have:['Karotten'],soon:[]});
+ assert.deepEqual(namesFrom({pantry,items,mode:'shopping'}),{have:['Karotten'],soon:['Nudeln']});
+ assert.equal(availability('KAROTTE',indexNames(namesFrom({pantry,items}))),'have');
+ for(const name of ['Salz','Pfeffer','Wasser'])assert.equal(required(row('x',name,'g')),false);
 });

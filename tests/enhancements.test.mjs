@@ -5,6 +5,8 @@ import { dailyHistory, dailyRecord, dailySnapshot } from '../daily.js';
 import { GROCERY_PRODUCTS, PANTRY_BASIC_IDS, pantryProductAllowed, pantryProductLibrary, productLibrary } from '../product-catalog.js';
 import { pantryChanges } from '../pantry.js';
 import { layoutRecipe, PAGE } from '../recipe-sheet.js';
+import { recentPurchases, purchaseLabel } from '../recent-purchases.js';
+import { compact, POLICY } from '../compact.js';
 import { makePdf, textWidth } from '../pdf.js';
 
 const at = '2026-10-30T09:00:00.000Z', op = (collection, id, patch, time = at) => operation(collection, id, patch, 'Nico', time);
@@ -91,4 +93,17 @@ test('Eigener Kochvorrat behält sein Bild, offensichtliche Technik wird auch ma
   assert.equal(pantryProductLibrary([], [], pantry).find(p => p.name === pantry[0].name).imageKey, 'muesli');
   for (const name of ['TV', 'Smart TV', 'Laptop', 'Blumenerde']) assert.throws(() => pantryChanges([name]), /Vorrat/);
   assert.equal(pantryChanges(['Mein Gewürzmix'])[0].patch.name, 'Mein Gewürzmix');
+});
+
+test('Letzte Einkäufe: ausschließlich echtes Kaufdatum, neueste zuerst, Einzahl/Mehrzahl einmal, kein updatedAt-Raten',()=>{
+ const now=Date.parse('2026-10-31T12:00:00Z'),at=days=>new Date(now-days*86400000).toISOString();
+ const rows=[{name:'Karotte',shopBoughtAt:at(2)},{name:'KAROTTEN',shopBoughtAt:at(1),deletedAt:at(0)},{name:'Milch',checked:true,updatedAt:at(0)},{name:'Mehl',shopBoughtAt:at(7)},{name:'Reis',shopBoughtAt:at(8)},{name:'Butter',shopBoughtAt:at(-1)}],before=structuredClone(rows);
+ assert.deepEqual(recentPurchases(rows,now).map(row=>row.name),['KAROTTEN','Mehl']);assert.deepEqual(rows,before);assert.equal(purchaseLabel(at(0),now),'heute gekauft');
+});
+test('Kaufdatum bleibt bei Entfernen, Export und parallelem Bearbeiten erhalten; Aufräumen schützt sieben Tage',()=>{
+ const now=Date.parse('2026-10-31T12:00:00Z'),at=days=>new Date(now-days*86400000).toISOString();
+ const base=merge(emptyData(),[operation('items','bought',{name:'Milch',quantity:1,unit:'l',storeId:'',checked:true,createdBy:'Nico',shopBoughtAt:at(2),deletedAt:at(1)},'Nico',at(1))]);
+ const data=merge(base,[operation('items','bought',{imageKey:'milch'},'Anna',at(0))]);assert.equal(validate(JSON.parse(JSON.stringify(data))).items[0].shopBoughtAt,at(2));
+ assert.equal(compact(data,new Date(now),{...POLICY,tombstoneDays:0}).data.items.length,1);assert.equal(compact(data,new Date(now+15*86400000)).data.items.length,0);
+ assert.throws(()=>merge(data,[operation('items','bought',{shopBoughtAt:'gestern'},'Nico',at(0))]),/Kaufdatum/);
 });

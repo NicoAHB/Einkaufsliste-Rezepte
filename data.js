@@ -70,6 +70,7 @@ export function validateRow(key, row) {
   if (key === 'items' && row.purchaseMeasure !== undefined && (typeof row.purchaseMeasure !== 'string' || !row.purchaseMeasure.trim() || row.purchaseMeasure.length>30)) throw new Error('Ungültige gemerkte Maßeinheit.');
   if (key === 'items' && row.purchaseAt !== undefined && (typeof row.purchaseAt !== 'string' || !Number.isFinite(Date.parse(row.purchaseAt)))) throw new Error('Ungültige Einkaufseinheit-Zeit.');
   if (key === 'items' && (row.purchaseAmount!==undefined||row.purchaseAmountAt!==undefined) && !hasAmountChoice(row)) throw new Error('Ungültige gemerkte Einkaufsmenge oder Zeit.');
+  if (key === 'items' && row.shopBoughtAt != null && (typeof row.shopBoughtAt !== 'string' || !Number.isFinite(Date.parse(row.shopBoughtAt)))) throw new Error('Ungültiges Kaufdatum.');
   if (key === 'items' && row.price !== undefined && row.price !== null && !validQuote(row.price)) throw new Error('Ungültiger Artikelpreis.');
   if (key === 'items' && row.salePrice !== undefined && row.salePrice !== null && !validQuote(row.salePrice)) throw new Error('Ungültiger Angebotspreis.');
   if (key === 'items' && row.onSale !== undefined && typeof row.onSale !== 'boolean') throw new Error('Ungültige Angebotsmarkierung.');

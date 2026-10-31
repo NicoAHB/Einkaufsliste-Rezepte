@@ -242,7 +242,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.78 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.80 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -275,7 +275,7 @@
     <div class="sheet-head"><h2 id="product-picker-title">Produkte auswählen</h2><button type="button" data-close="product-picker-dialog" class="icon-button round" aria-label="Produktauswahl schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="product-picker-hint" class="hint product-picker-hint">Antippen zum Auswählen · Mit dem Stern als Favorit merken.</p>
     <label class="sr-only" for="product-picker-search">Produkte suchen oder eigenen Namen eingeben</label><div class="product-search-row"><input id="product-picker-search" type="search" placeholder="Suchen, z. B. Milch oder Äpfel" maxlength="120" autocomplete="off" autocapitalize="off"><button id="pantry-own-add" type="button" class="icon-button secondary" aria-label="Eigenes Vorratsprodukt anlegen" hidden><svg class="icon"><use href="#i-plus"/></svg></button></div>
-    <div class="product-modes" role="group" aria-label="Produktsammlung"><button type="button" data-product-mode="current" aria-pressed="false" hidden>Aktueller Vorrat</button><button type="button" data-product-mode="all" aria-pressed="true">Alle</button><button type="button" data-product-mode="favorites" aria-pressed="false">★ Favoriten</button><button type="button" data-product-mode="frequent" aria-pressed="false">Häufig gekauft</button><button type="button" data-product-mode="own" aria-pressed="false">Eigene</button></div>
+    <div class="product-modes" role="group" aria-label="Produktsammlung"><button type="button" data-product-mode="current" aria-pressed="false" hidden>Aktueller Vorrat</button><button type="button" data-product-mode="all" aria-pressed="true">Alle</button><button type="button" data-product-mode="favorites" aria-pressed="false">★ Favoriten</button><button type="button" data-product-mode="frequent" aria-pressed="false">Häufig gekauft</button><button type="button" data-product-mode="basics" aria-pressed="false" hidden>Grundvorrat</button><button type="button" data-product-mode="recent" aria-pressed="false" hidden>Letzte 7 Tage gekauft</button><button type="button" data-product-mode="own" aria-pressed="false">Eigene</button></div><span id="product-modes-status" class="sr-only" role="status" aria-live="polite"></span>
     <label class="sr-only" for="product-picker-category">Produktkategorie</label><select id="product-picker-category"><option value="">Alle Kategorien</option></select>
     <p id="product-picker-feedback" class="hint" role="status" hidden></p><p id="product-picker-status" class="hint" role="status"></p><p id="product-picker-error" class="dialog-error" role="alert" hidden></p>
     <details id="product-picker-cart" class="product-cart" hidden><summary id="product-picker-selected">Auswahl (0) · Mengen ändern</summary><div id="product-picker-cart-rows"></div><button id="product-picker-clear" class="text-button" type="button" hidden>Auswahl leeren</button></details>
@@ -376,9 +376,10 @@
     <button id="finish-only" type="button" class="secondary">Nur beenden</button>
   </form></dialog>
   <dialog id="cookable-dialog"><div class="stack"><div class="sheet-head"><h2>Was kann ich kochen?</h2><button type="button" data-close="cookable-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div id="cookable-modes" class="segmented two" role="group" aria-label="Zutaten berücksichtigen"><button type="button" class="chip" data-cookable-mode="pantry" aria-pressed="true">Nur Vorrat</button><button type="button" class="chip" data-cookable-mode="shopping" aria-pressed="false">Vorrat + Einkaufszettel</button></div>
     <p id="cookable-count" class="hint" role="status"></p>
     <div id="cookable-list" class="cookable-list"></div>
-    <details class="hint cookable-how"><summary>So wird gerechnet</summary><p><strong>Da</strong> ist, was im Vorrat als vorhanden steht oder in den letzten 7 Tagen abgehakt wurde (auch wenn es inzwischen von der Liste entfernt ist). <strong>Kommt noch</strong> ist, was offen auf der Einkaufsliste steht. Als aufgebraucht markierter Vorrat zählt nicht als da. Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Salz, Pfeffer und andere Zutaten „nach Bedarf“ und Wasser zählen nicht mit.</p></details>
+    <details class="hint cookable-how"><summary>So wird gerechnet</summary><p id="cookable-explanation"></p></details>
   </div></dialog>
   <dialog id="cook-dialog" class="cook" aria-labelledby="cook-title"><div class="cook-head"><h2 id="cook-title"></h2><button type="button" data-close="cook-dialog" class="icon-button round" aria-label="Kochmodus beenden"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="cook-portions" class="hint"></p>

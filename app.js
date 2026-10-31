@@ -32,7 +32,7 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability } from './cookable.js';
 import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -409,7 +409,7 @@ function itemRow(item, withStore = false) {
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
-    commit([nextOp('items', item.id, { checked: !latest.checked })]);
+    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null} : {}) })]);
   }, 'check');
   if (item.checked) check.append(icon('check'));
   check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
@@ -1041,7 +1041,7 @@ function saveRecipe(event) {
 function openTransfer(id, servings, only = null, mealId = null) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
-  const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
+  const form = $('#transfer-form'); form._cookableMissing=false; form.elements.servings.value = plain(servings);
   const meal=mealId?active(state.meals).find(row=>row.id===mealId&&row.recipeId===id):null;
   if(mealId&&!meal)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Wochenplan erneut öffnen.');
   form._meal=meal?clone(meal):null;
@@ -1820,17 +1820,25 @@ $('#daily-review-next').addEventListener('click', () => { if (dailyReview && dai
 $('#daily-review-finish').addEventListener('click', () => { dailyReview = null; showDaily(); });
 
 /* ---------- Was kann ich kochen? ---------- */
-// Ordnet die Rezepte danach, wie viele Zutaten schon da sind (Vorrat, Eingekauftes) oder noch kommen (offen auf der Einkaufsliste). Logik in cookable.js.
+const cookableMode = () => config.cookableMode === 'shopping' ? 'shopping' : 'pantry';
+function cookableNames(mode = cookableMode()) {
+  const stores=active(state.stores),live=new Set(stores.map(store=>store.id));
+  return namesFrom({pantry:state.pantry||[],items:withoutSeparate(state.items.filter(item=>!item.storeId||live.has(item.storeId)),stores),mode});
+}
+function cookableMissing(rows) {
+  const index=indexNames(cookableNames('shopping'));
+  return rows.filter(row=>availability(row.name,index)==='missing');
+}
 function renderCookable() {
-  const recipes = active(state.recipes), ingredients = active(state.ingredients), live = new Set(active(state.stores).map(store => store.id));
-  // Auch bereits entfernte Artikel zählen (schon eingekauft); eine eigene Liste („Wünsche“) zählt nicht.
-  const names = namesFrom({ pantry: state.pantry || [], items: withoutSeparate(state.items.filter(item => !item.storeId || live.has(item.storeId)), active(state.stores)), now: Date.now() });
+  const recipes = active(state.recipes), ingredients = active(state.ingredients), mode=cookableMode(), names=cookableNames(mode);
+  for(const button of document.querySelectorAll('[data-cookable-mode]'))button.setAttribute('aria-pressed',String(button.dataset.cookableMode===mode));
+  $('#cookable-explanation').textContent='„Da“ heißt: steht im aktuellen Vorrat. '+(mode==='shopping'?'„Kommt noch“ heißt: steht offen auf der Einkaufsliste. ':'')+'Aufgebrauchter Vorrat zählt nicht. Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Salz, Pfeffer, Zutaten „nach Bedarf“ und Wasser zählen nicht mit.';
   const ranked = rankRecipes(recipes, recipe => ingredients.filter(row => row.recipeId === recipe.id), names);
   const ready = ranked.filter(entry => entry.tier === 0).length, soon = ranked.filter(entry => entry.tier === 1).length;
-  $('#cookable-count').textContent = !recipes.length ? 'Noch kein Rezept.' : !ranked.length ? 'Noch passt kein Rezept zu euren Vorräten und der Einkaufsliste.' :
+  $('#cookable-count').textContent = !recipes.length ? 'Noch kein Rezept.' : !ranked.length ? mode==='shopping'?'Noch passt kein Rezept zu euren Vorräten und der Einkaufsliste.':'Noch passt kein Rezept zu eurem aktuellen Vorrat.' :
     [ready && `${ready} ${ready === 1 ? 'Rezept' : 'Rezepte'} könnt ihr sofort kochen`, soon && `${soon} nach dem Einkauf`].filter(Boolean).join(' · ') || (ranked.length === 1 ? '1 Vorschlag, bei dem nur wenig fehlt' : `${ranked.length} Vorschläge, bei denen nur wenig fehlt`);
   const box = $('#cookable-list'); box.replaceChildren();
-  if (recipes.length && !ranked.length) box.append(element('p', 'Tippe unter Einkauf → Vorrat ein, was ihr immer zu Hause habt, oder setze Artikel auf die Einkaufsliste. Dann erscheinen hier passende Rezepte.', 'empty'));
+  if (recipes.length && !ranked.length) box.append(element('p', 'Pflegt unter Einkauf → Vorrat, was ihr aktuell zu Hause habt. Dann erscheinen hier passende Rezepte.', 'empty'));
   const line = (label, list) => { const item = element('li'); item.append(element('strong', `${label}: `), document.createTextNode(list.join(', '))); return item; };
   const later = action => () => { $('#cookable-dialog').close(); action(); };
   for (const entry of ranked) {
@@ -1843,11 +1851,16 @@ function renderCookable() {
     card.append(lines);
     const actions = element('div', undefined, 'actions');
     actions.append(button('Kochen', later(() => openCook(recipe.id, servings)), 'secondary'));
-    if (entry.missing.length) actions.append(button('Fehlendes auf die Liste', later(() => openTransfer(recipe.id, servings, new Set(entry.missing.map(row => row.id)))), 'primary-action'));
+    if (entry.missing.length) actions.append(button('Fehlendes auf die Liste', later(() => {
+      const missing=cookableMissing(entry.missing);
+      if(!missing.length){showNotice('Die fehlenden Zutaten stehen bereits offen auf der Einkaufsliste.');return;}
+      openTransfer(recipe.id,servings,new Set(missing.map(row=>row.id)));$('#transfer-form')._cookableMissing=true;
+    }), 'primary-action'));
     actions.append(iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, later(() => openMeal({ recipeId: recipe.id, servings }))));
     card.append(actions); box.append(card);
   }
 }
+for(const button of document.querySelectorAll('[data-cookable-mode]'))button.addEventListener('click',()=>guard(()=>{saveConfig({...config,cookableMode:button.dataset.cookableMode});renderCookable();}));
 $('#cookable-open').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   renderCookable(); $('#cookable-dialog').showModal();
@@ -2250,12 +2263,12 @@ function shopRow(item) {
     if (!latest || latest.deletedAt) return;
     // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
     if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
-    commit([nextOp('items', item.id, { checked: !latest.checked })]);
+    commit([nextOp('items', item.id, { checked: !latest.checked, shopBoughtAt: !latest.checked && !isWish(latest) ? new Date().toISOString() : null })]);
     // Ein versehentliches Abhaken lässt sich gleich zurücknehmen (der Artikel verschwindet sonst aus der offenen Liste).
     if (!latest.checked) showNotice(`„${latest.name}“ abgehakt`, () => {
       const now = state.items.find(entry => entry.id === item.id);
       if (!now || now.deletedAt || !now.checked) return;
-      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false })]);
+      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null })]);
     });
   }));
   row.append(tap, text);
@@ -3226,7 +3239,7 @@ $('#manage-stores').addEventListener('click', () => openStoresDialog());
 productPicker = mountProductPicker({
   getScope: namespace,
   getStores: () => active(state.stores).filter(store => !isSeparate(store)),
-  getData: () => ({ favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
+  getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]); if(changes.length)commit(changes.map(({id,patch})=>nextOp('pantry',id,patch))); },
@@ -3335,10 +3348,11 @@ $('#transfer-form').elements.servings.addEventListener('change', () => guard(upd
 // Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
 $('#transfer-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, selected = [...$('#transfer-ingredients').children]
+  const form = event.currentTarget; let selected = [...$('#transfer-ingredients').children]
     .filter(label => label.querySelector('input').checked).map(label => label._ingredient);
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
+  if(form._cookableMissing){selected=cookableMissing(selected);if(!selected.length){$('#transfer-dialog').close();showNotice('Die Zutaten stehen bereits im Vorrat oder offen auf der Einkaufsliste.');return;}}
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
   const unchecked=[...$('#transfer-ingredients').children].filter(label=>!label.querySelector('input').checked).map(label=>label._ingredient.name);
   if(form._meal){

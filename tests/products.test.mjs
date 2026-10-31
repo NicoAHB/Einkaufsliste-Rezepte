@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { GROCERY_PRODUCTS, PRODUCT_PHOTOS, favoriteId, filterProducts, ownProduct, productById, productLibrary, selectedProducts } from '../product-catalog.js';
-import { addToList, merge, operation, validate } from '../data.js';
+import { GROCERY_PRODUCTS, PRODUCT_PHOTOS, favoriteId, filterProducts, ownProduct, productById, productLibrary, selectedProducts, pantryProductLibrary, pantryProductsForMode } from '../product-catalog.js';
+import { addToList, merge, operation, validate, pantryKey } from '../data.js';
+import { PANTRY_TAB_ORDER, pantryTabOrder } from '../product-tab-order.js';
 import { compact } from '../compact.js';
 import { isCategory, suggestCategory } from '../categories.js';
 
@@ -106,4 +107,24 @@ test('Gesammelte Übernahme zählt nur passende Artikel des Zielgeschäfts dazu,
   assert.deepEqual([out.items.find(row => row.id === 'milk').quantity, out.items.find(row => row.id === 'milk').unit], [1.5, 'l']);
   assert.equal(out.items.find(row => row.id === 'other').quantity, 4);
   assert.deepEqual([added.quantity, added.unit, added.storeId, added.price, added.createdBy], [250, 'g', 'store-edeka', null, 'Nico']);
+});
+
+test('Vorratsreiter: Kategoriezugehörigkeit folgt dem Bestand, Favoriten und häufigen Käufen, ohne Daten zu verändern', () => {
+  const rows=[{id:'stock',name:'Meine Hausmischung',category:'sonstiges',available:true},{id:'out',name:'Mehl',category:'vorrat',available:false}];
+  const before=structuredClone(rows),favorite={name:'Salz',productId:'salz',quantity:1,unit:'Packung',deletedAt:null};
+  const library=pantryProductLibrary([{name:'Milch',weight:2}], [favorite], rows);
+  const categories=mode=>new Set(pantryProductsForMode(library,mode,new Set([pantryKey('Meine Hausmischung')])).map(row=>row.category));
+  assert.deepEqual(categories('current'),new Set(['sonstiges']));assert.deepEqual(categories('favorites'),new Set(['gewuerze']));
+  assert.deepEqual(categories('frequent'),new Set(['kuehl']));assert.ok(categories('all').has('haushalt'));
+  assert.equal(pantryProductsForMode(library,'basics').length,28);assert.ok(!categories('basics').has('haushalt'));assert.deepEqual(rows,before);
+});
+test('Vorratsreiter: leere Sammlungen bleiben leer, Grundvorrat ist von vorhanden und Favoriten unabhängig',()=>{
+  const library=pantryProductLibrary();
+  for(const mode of ['current','favorites','frequent'])assert.deepEqual(pantryProductsForMode(library,mode),[]);
+  const basics=pantryProductsForMode(library,'basics');assert.ok(basics.some(row=>row.name==='Salz'));assert.ok(basics.some(row=>row.name==='Mehl'));assert.ok(!basics.some(row=>row.name==='Zahnpasta'));
+});
+test('Vorratsreiter: persönliche Reihenfolge bleibt vollständig, neue Reiter werden ergänzt und fehlerhafte Werte ignoriert',()=>{
+  const saved=['favorites','favorites','gone','all'];const before=[...saved];
+  assert.deepEqual(pantryTabOrder(saved),['favorites','all','current','frequent','basics','recent']);assert.deepEqual(saved,before);
+  for(const value of [null,{},'favorites',42])assert.deepEqual(pantryTabOrder(value),PANTRY_TAB_ORDER);
 });

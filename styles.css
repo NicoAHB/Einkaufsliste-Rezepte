@@ -529,7 +529,6 @@ main {
 .add-form.compact .template-open { display:none }
 #pantry-shortcut-count:not(:empty) { min-width:20px; padding:2px 5px; border-radius:99px; background:var(--accent-soft); color:var(--accent) }
 .product-more { display:block; width:100%; margin:14px 0; min-height:48px }
-.product-cart-row.product-cart-simple { grid-template-columns:minmax(0,1fr) 44px }
 .product-modes {
   display:flex;
   gap:6px;
@@ -552,6 +551,12 @@ main {
   background:var(--accent-soft);
   color:var(--accent)
 }
+/* Reiter normal seitlich wischen, nach langem Halten verschieben. */
+#product-picker-dialog[data-target=pantry] .product-modes button { touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none }
+.product-modes.reordering { cursor:grabbing }
+.product-modes .moving-tab { position:relative; z-index:1; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); opacity:.78; cursor:grabbing; transform:scale(1.03) }
+#product-picker-dialog[data-target=pantry] #product-picker-count:disabled { opacity:1; cursor:default }
+#product-picker-category option:disabled { color:var(--muted) }
 .product-group { margin:16px 0 22px }
 .product-group h3 { margin:0 0 10px; font-size:1rem }
 .product-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px }
@@ -1422,7 +1427,7 @@ button.link-button {
   color:var(--muted);
   font-size:.9rem
 }
-.segmented button[aria-selected=true],.segmented button[aria-checked=true] {
+.segmented button[aria-selected=true],.segmented button[aria-checked=true],#cookable-modes button[aria-pressed=true] {
   background:var(--card);
   color:var(--accent);
   box-shadow:0 1px 3px rgba(0,0,0,.12)
@@ -3443,7 +3448,7 @@ output {
   border:1px solid var(--glass-line);
   box-shadow:inset 0 1px 2px hsl(var(--h) 40% 20% / .08)
 }
-:root[data-glass] :is(.segmented button[aria-selected=true],.segmented button[aria-checked=true]) {
+:root[data-glass] :is(.segmented button[aria-selected=true],.segmented button[aria-checked=true],#cookable-modes button[aria-pressed=true]) {
   background:var(--seg-on);
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px hsl(var(--h) 60% 30% / .18)
 }
@@ -4365,3 +4370,6 @@ html, body, body * {
 #plan-recipe-content .recipe-head h3 { font-size:1.35rem }
 #plan-recipe-dialog > .stack > .sheet-actions { margin-top:8px }
 #plan-adjust-dialog button { white-space:normal; overflow-wrap:anywhere; line-height:1.4 }
+/* Zwei Kochmodi passen auch auf schmale Handys in die vorhandene Segmentleiste. */
+#cookable-modes { grid-template-columns:repeat(2,minmax(0,1fr)) }
+#cookable-modes button { min-width:0; min-height:44px; padding:8px 6px; white-space:normal }

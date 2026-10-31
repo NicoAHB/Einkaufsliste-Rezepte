@@ -3591,8 +3591,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Was kann ich kochen?: Vorschläge aus Vorrat und Einkaufsliste, Fehlendes auf die Liste, Eingekauftes zählt auch nach „Einkauf beenden“', async () => {
-    const { ctx, page, problems } = await context();
+  test('Was kann ich kochen?: Vorschläge aus Vorrat und Einkaufsliste, Fehlendes auf die Liste, Eingekauftes zählt nach „Einkauf beenden“ nicht automatisch als Vorrat', async () => {
+    const { ctx, page, problems } = await context({config:{cookableMode:'shopping'}});
     await open(page);
     const cards = () => page.locator('#cookable-list .cookable-card');
     const status = name => cards().filter({ hasText: name }).locator('.cookable-status').textContent();
@@ -3625,8 +3625,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await finishShop(page); await sheetOpen(page); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.ok(!(await page.textContent('#items')).includes('Nudeln'), 'von der Liste entfernt');
     await openList();
-    assert.equal(await status('Tomaten-Pasta'), 'Alles da');
-    assert.match(await page.textContent('#cookable-count'), /1 Rezept könnt ihr sofort kochen/);
+    assert.equal(await status('Tomaten-Pasta'), 'Es fehlen 2 von 4 Zutaten');
+    assert.ok(!(await page.textContent('#cookable-count')).includes('sofort kochen'));
     // 5. Kochen öffnet den Kochmodus, das Vorschlagsfenster schließt sich
     await cards().first().getByRole('button', { name: 'Kochen' }).click();
     await page.waitForSelector('#cook-dialog[open]');
@@ -7584,10 +7584,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for (const width of [280, 320, 390]) for (const theme of ['light', 'dark']) {
     test(`Neue Funktionen (${width} px ${theme}): Grundvorrat, schneller Einkauf, Tagesrückblick und Notizen bleiben lesbar`, async () => {
-      const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 844 }, colorScheme: theme } }); await open(page); await openPantry(page);await page.click('#pantry-add-basics');
+      const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 844 }, colorScheme: theme } }); await open(page); await openPantry(page,'basics');await page.click('#pantry-add-basics');
       const fits = async label => { assert.equal(await horizontalOverflow(page), 0, label); assert.ok(await page.evaluate(() => [...document.querySelectorAll('dialog[open]')].every(n => n.scrollWidth <= n.clientWidth + 1)), `${label}: Dialog`); };
       assert.equal(await page.textContent('#product-picker-title'),'Vorrat auswählen');
-      assert.equal(await page.locator('[data-product-mode=current]').evaluate(node => { const r = node.getBoundingClientRect(), box = node.parentElement.getBoundingClientRect(); return r.left >= box.left - 1 && r.right <= box.right + 1; }), true, 'aktiver Grundvorrat-Filter sichtbar');
+      assert.equal(await page.getAttribute('[data-product-mode=basics]','aria-pressed'),'true');
       await fits('Grundvorrat'); await holdProduct(page, 'salz'); await fits('Auf Einkaufsliste'); await page.click('#pantry-buy-dialog [data-close]'); await page.click('#product-picker-dialog [data-close]');
       await finishDailyForReview(page); await fits('Tagesübersicht'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients'); await fits('Tagesrückblick'); await page.click('#daily-dialog [data-close]');
       await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('details').evaluate(node => { node.open = true; }); await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page); await page.fill('#recipe-form [name=notes]', 'Eigene Notizen bleiben gut lesbar.'); await fits('Notizen');
@@ -7929,11 +7929,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   function pantryData278(rows=[]) {
     const data=structuredClone(demo),stamp='2026-10-29T09:00:00.000Z';data.pantry=rows.map((row,index)=>({id:`saved-stock-${index}`,createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{},...row}));return data;
   }
-  test('2.78: Vorrat öffnet direkt mit vier Filtern und aktuellem Bestand, ohne gespeicherte Daten neu zu setzen',async()=>{
+  test('2.78: Vorrat öffnet direkt mit sechs Filtern und aktuellem Bestand, ohne gespeicherte Daten neu zu setzen',async()=>{
     const data=pantryData278([{name:'Milch'},{name:'Mehl',available:false},{name:'Meine besondere Mischung',category:'sonstiges',imageKey:'group-breakfast',available:true}]);
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await openPantry(page);
     assert.equal(await page.textContent('#product-picker-title'),'Vorrat auswählen');
-    assert.deepEqual(await page.locator('.product-modes [data-product-mode]:visible').evaluateAll(nodes=>nodes.map(n=>n.textContent.replace('★','').trim())),['Aktueller Vorrat','Alle','Favoriten','Häufig gekauft']);
+    assert.deepEqual(await page.locator('.product-modes [data-product-mode]:visible').evaluateAll(nodes=>nodes.map(n=>n.textContent.replace('★','').trim())),['Aktueller Vorrat','Alle','Favoriten','Häufig gekauft','Grundvorrat','Letzte 7 Tage gekauft']);
     assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.equal(await page.textContent('#product-picker-status'),'2 Produkte im aktuellen Vorrat');
     assert.deepEqual((await page.locator('.product-name').allTextContents()).sort(),['Meine besondere Mischung','Milch']);
     assert.equal(await page.locator('.product-card.in-stock .product-picked:visible').count(),2);
@@ -7949,7 +7949,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const onion=page.locator('.product-card').filter({has:page.locator('.product-name',{hasText:/^Zwiebel$/})});await onion.locator('.product-pick').click();
     assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.textContent('#product-picker-status'),'1 Produkt im aktuellen Vorrat');assert.equal(await onion.count(),0);
     assert.deepEqual((await storedDemo(page)).pantry,before.pantry,'Antippen merkt die Änderung vor');
-    await page.click('#product-picker-count');await page.locator('.product-cart-remove').click();assert.equal(await onion.count(),1);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
+    assert.equal(await page.locator('#product-picker-cart').isHidden(),true);assert.equal(await page.locator('#product-picker-cart-rows>*').count(),0);await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Zwiebel');await onion.locator('.product-pick').click();await page.fill('#product-picker-search','');await page.click('[data-product-mode=current]');assert.equal(await onion.count(),1);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
     await onion.locator('.product-pick').click();await page.click('#product-picker-add');let saved=await storedDemo(page),out=saved.pantry.find(row=>row.id==='original-onion');
     assert.equal(out.available,false);assert.equal(out.deletedAt,null);assert.equal(out.imageKey,'group-vegetables');assert.equal(out.category,'obst');assert.equal(out.name,'Zwiebel');assert.deepEqual(saved.pantry.find(row=>row.name==='Salz'),before.pantry.find(row=>row.name==='Salz'));
     await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Zwiebel');assert.equal(await onion.locator('.product-pick').getAttribute('aria-pressed'),'false');await onion.locator('.product-pick').click();await page.click('#product-picker-add');
@@ -7985,9 +7985,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#pantry-own-dialog [data-close]');await closePantry(page);await openPantry(page,'all');await page.fill('#product-picker-search','Tmoaten');assert.equal(await page.locator('.product-card[data-product=tomaten]').count(),1);
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.78: Grundvorrat am Rasterende ergänzt fehlende Kochzutaten ohne vorhandene Daten zurückzusetzen',async()=>{
+  test('2.78: Grundvorrat im eigenen Reiter ergänzt fehlende Kochzutaten ohne vorhandene Daten zurückzusetzen',async()=>{
     const data=pantryData278([{id:'my-salt',name:'Salz',available:true,category:'vorrat',imageKey:'group-spices'},{name:'Meine Hausmischung',available:true},{id:'my-flour',name:'Mehl',available:false,imageKey:'mehl'}]);
-    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await openPantry(page);await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'27 ausgewählt');assert.deepEqual((await storedDemo(page)).pantry,before.pantry);
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await openPantry(page,'basics');await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'27 ausgewählt');assert.deepEqual((await storedDemo(page)).pantry,before.pantry);
     assert.equal(await page.locator('#product-picker-cart input').count(),0);await page.click('#product-picker-add');const saved=await storedDemo(page);
     assert.equal(saved.pantry.filter(row=>!row.deletedAt&&row.available!==false).length,29);assert.deepEqual(saved.pantry.find(row=>row.id==='my-salt'),before.pantry.find(row=>row.id==='my-salt'));assert.equal(saved.pantry.find(row=>row.id==='my-flour').available,true);assert.equal(saved.pantry.find(row=>row.id==='my-flour').imageKey,'mehl');
     await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');assert.match(await page.textContent('#product-picker-feedback'),/bereits vorhanden/);assert.deepEqual(await storedDemo(page),saved);
@@ -8042,8 +8042,159 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const modes=await page.locator('.product-modes').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth,wrap:getComputedStyle(node).flexWrap}));assert.ok(modes.scroll>modes.client);assert.equal(modes.wrap,'nowrap');
     const plus=await page.locator('#pantry-own-add').boundingBox();assert.ok(plus.width>=44&&plus.height>=44);await page.click('[data-product-mode=frequent]');assert.equal(await page.getAttribute('[data-product-mode=frequent]','aria-pressed'),'true');await fits();
     await page.click('#pantry-own-add');await page.fill('#pantry-own-form [name=name]','Zuchini');assert.equal(await page.locator('#pantry-own-hint').isVisible(),true);assert.equal(await page.locator('#pantry-own-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);await page.click('#pantry-own-dialog [data-close]');
-    await page.click('[data-product-mode=current]');await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'28 ausgewählt');await fits();
+    await page.click('[data-product-mode=basics]');await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'28 ausgewählt');await fits();
     await page.screenshot({path:`/tmp/sattplan278-vorrat-${width}-${theme}.png`});assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  // Vorratsreiter und passende Kategorien (2.79).
+  const tabIds279 = page => page.locator('.product-modes [data-product-mode]:visible').evaluateAll(nodes=>nodes.map(node=>node.dataset.productMode));
+  const defaultTabs279 = ['current','all','favorites','frequent','basics','recent'];
+  const enabledCategories279 = page => page.locator('#product-picker-category').evaluate(node=>[...node.options].filter(option=>!option.disabled).map(option=>option.value));
+  const savedTabs279 = page => page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-pantry-tabs-v1')));
+  async function startTabDrag279(page,id) {
+    const tab=page.locator(`[data-product-mode=${id}]`);await tab.scrollIntoViewIfNeeded();const rect=await tab.boundingBox();
+    await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(550);
+    assert.equal(await page.locator('.product-modes.reordering').count(),1);return rect;
+  }
+  test('2.79: Kategorien ohne Produkte bleiben sichtbar und werden nur im jeweiligen Vorratsreiter ausgegraut',async()=>{
+    const data=pantryData278([{name:'Milch',available:true},{name:'Meine Hausmischung',category:'sonstiges',available:true},{name:'Mehl',available:false}]);
+    data.items=[0,1].map(i=>({...demo.items[0],id:`paste-${i}`,name:'Zahnpasta',category:'haushalt',quantity:1,unit:'Tube',checked:true}));data.names=[];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await openPantry(page);const before=await storedDemo(page);
+    const categories=await page.locator('#product-picker-category option').allTextContents();assert.equal(categories.length,12);
+    assert.deepEqual(await enabledCategories279(page),['','kuehl','sonstiges']);
+    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,12);
+    await page.fill('#product-picker-search','Salz');await page.locator('.product-card[data-product=salz] .product-star').click();await page.fill('#product-picker-search','');await page.click('[data-product-mode=favorites]');
+    assert.deepEqual(await enabledCategories279(page),['','gewuerze']);assert.deepEqual(await page.locator('#product-picker-category option').allTextContents(),categories);
+    await page.fill('#product-picker-search','Milch');assert.equal(await page.locator('.product-card').count(),0);assert.deepEqual(await enabledCategories279(page),['','gewuerze'],'Kategorien gehören zum gesamten Reiter, unabhängig von der Suche');
+    await page.fill('#product-picker-search','');await page.click('[data-product-mode=frequent]');assert.deepEqual(await enabledCategories279(page),['','haushalt']);
+    await page.click('[data-product-mode=basics]');assert.equal(await page.locator('.product-card').count(),28);assert.deepEqual(await enabledCategories279(page),['','obst','kuehl','vorrat','gewuerze']);
+    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,12);assert.deepEqual((await storedDemo(page)).pantry,before.pantry);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: ein Reiterwechsel behält passende Kategorien und setzt eine ausgegraute Auswahl auf Alle Kategorien zurück',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,pantryData278([{name:'Milch',available:true}]));await open(page);await openPantry(page,'all');
+    await page.selectOption('#product-picker-category','kuehl');await page.click('[data-product-mode=current]');assert.equal(await page.inputValue('#product-picker-category'),'kuehl');
+    await page.click('[data-product-mode=favorites]');assert.equal(await page.inputValue('#product-picker-category'),'');assert.deepEqual(await enabledCategories279(page),['']);
+    await page.click('[data-product-mode=all]');await page.selectOption('#product-picker-category','obst');await page.click('[data-product-mode=current]');assert.equal(await page.inputValue('#product-picker-category'),'');assert.deepEqual(await page.locator('.product-name').allTextContents(),['Milch']);
+    await page.selectOption('#product-picker-category','kuehl');await page.locator('.product-pick').click();assert.equal(await page.inputValue('#product-picker-category'),'');assert.deepEqual(await enabledCategories279(page),['']);assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');
+    assert.equal((await storedDemo(page)).pantry[0].available,true);assert.equal(await page.locator('#product-picker-cart').isHidden(),true);assert.equal(await page.locator('#product-picker-cart-rows>*').count(),0);assert.equal(await page.locator('#product-picker-count').isDisabled(),true);
+    await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Milch');await page.locator('.product-card[data-product=milch] .product-pick').click();await page.fill('#product-picker-search','');await page.click('[data-product-mode=current]');assert.deepEqual(await enabledCategories279(page),['','kuehl']);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: Kategorien berücksichtigen auch Produkte außerhalb der ersten 96 Karten',async()=>{
+    const data=pantryData278([...Array.from({length:100},(_,i)=>({name:`Meine Frucht ${String(i).padStart(3,'0')}`,category:'obst',available:true})),{name:'Mein Shampoo',category:'haushalt',available:true}]);
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await openPantry(page);assert.equal(await page.locator('.product-card').count(),96);assert.match(await page.textContent('#product-picker-status'),/101 Produkte.*96 angezeigt/);
+    assert.deepEqual(await enabledCategories279(page),['','obst','haushalt']);await page.selectOption('#product-picker-category','haushalt');assert.deepEqual(await page.locator('.product-name').allTextContents(),['Mein Shampoo']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: Grundvorrat zeigt wichtige Kochzutaten ohne automatische Auswahl, behält Einzelwahl und Einkaufsgeste',async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen'}});await seedLocal(ctx,pantryData278([{name:'Salz',available:true}]));await open(page);const before=await storedDemo(page);await openPantry(page,'basics');
+    assert.equal(await page.textContent('#product-picker-status'),'28 Produkte im Grundvorrat');assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');assert.equal(await page.locator('#pantry-add-basics').isVisible(),true);assert.deepEqual(await storedDemo(page),before);
+    assert.equal(await page.locator('.product-card[data-product=salz] .product-pick').getAttribute('aria-pressed'),'true');await page.locator('.product-card[data-product=mehl] .product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.locator('#product-picker-cart').isHidden(),true);await page.screenshot({path:'/tmp/sattplan279-grundvorrat.png'});await page.click('#product-picker-add');assert.equal((await storedDemo(page)).pantry.find(row=>row.name==='Mehl').available,true);
+    await page.fill('#product-picker-search','Zahnpasta');assert.equal(await page.locator('.product-card').count(),0);await page.fill('#product-picker-search','Mehl');await holdProduct(page,'mehl');assert.match(await page.textContent('#pantry-buy-name'),/Mehl/);await page.click('#pantry-buy-dialog [data-close]');
+    await page.fill('#product-picker-search','');await page.click('#pantry-add-basics');assert.equal(await page.textContent('#product-picker-count'),'26 ausgewählt');assert.equal(await page.locator('#product-picker-feedback').isVisible(),true);await page.locator('.product-card[data-product=nudeln] .product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'25 ausgewählt');assert.equal(await page.locator('#product-picker-feedback').isHidden(),true);await page.click('[data-product-mode=current]');assert.equal(await page.locator('#pantry-add-basics').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: langes Halten verschiebt einen Reiter und speichert die Reihenfolge ohne Filter- oder Vorratsänderung',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:900,height:1200}}});await seedLocal(ctx,pantryData278([{name:'Milch',available:true}]));await open(page);await openPantry(page);const before=await storedDemo(page);
+    const rect=await startTabDrag279(page,'favorites'),bar=await page.locator('.product-modes').boundingBox();await page.mouse.move(bar.x+3,rect.y+rect.height/2,{steps:8});await page.mouse.up();
+    const expected=['favorites','current','all','frequent','basics','recent'];assert.deepEqual(await tabIds279(page),expected);assert.deepEqual(await savedTabs279(page),expected);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.equal(await page.locator('.product-modes.reordering').count(),0);assert.deepEqual(await storedDemo(page),before);
+    await closePantry(page);await openPantry(page);assert.deepEqual(await tabIds279(page),expected);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.click('#open-pantry');await sheetOpen(page);assert.deepEqual(await tabIds279(page),expected);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(await storedDemo(page),before);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: Escape und abgebrochene Haltegesten verwerfen die verschobene Reihenfolge',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:900,height:1200}}});await open(page);await openPantry(page);const rect=await startTabDrag279(page,'favorites'),bar=await page.locator('.product-modes').boundingBox();await page.mouse.move(bar.x+3,rect.y+rect.height/2,{steps:6});assert.notDeepEqual(await tabIds279(page),defaultTabs279);
+    await page.keyboard.press('Escape');await page.mouse.up();assert.equal(await page.locator('#product-picker-dialog[open]').count(),1);assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);
+    const again=await startTabDrag279(page,'frequent');await page.mouse.move(bar.x+3,again.y+again.height/2,{steps:6});await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.up();assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: normales Wischen scrollt die Reiter, ohne zu sortieren oder einen Filter auszulösen',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await open(page);await openPantry(page);const bar=await page.locator('.product-modes').boundingBox(),cdp=await ctx.newCDPSession(page),x=bar.x+bar.width-20,y=bar.y+bar.height/2;
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await page.waitForTimeout(40);
+    for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-i*25,y,id:1}]});await page.waitForTimeout(20);}
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(550);
+    assert.ok(await page.locator('.product-modes').evaluate(node=>node.scrollLeft)>80);assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.equal(await page.locator('.product-modes.reordering').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: echte Touch-Haltegeste sortiert über den sichtbaren Rand hinaus und scrollt automatisch mit',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await seedLocal(ctx,pantryData278([{name:'Salz',available:true}]));await open(page);await openPantry(page);const before=await storedDemo(page),bar=await page.locator('.product-modes').boundingBox(),button=await page.locator('[data-product-mode=current]').boundingBox(),cdp=await ctx.newCDPSession(page),y=bar.y+bar.height/2;
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y,id:1}]});await page.waitForTimeout(550);assert.equal(await page.locator('.product-modes.reordering').count(),1);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:bar.x+bar.width-3,y,id:1}]});await page.waitForFunction(()=>[...document.querySelectorAll('.product-modes [data-product-mode]:not([hidden])')].at(-1)?.dataset.productMode==='current',null,{timeout:8000});assert.equal(await page.locator('.product-modes.reordering').count(),1);assert.ok(await page.locator('.product-modes').evaluate(node=>node.scrollLeft)>80);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});const order=await tabIds279(page);assert.equal(order.at(-1),'current');assert.deepEqual(await savedTabs279(page),order);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(await storedDemo(page),before);
+    await closePantry(page);await openPantry(page);assert.deepEqual(await tabIds279(page),order);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: Touch-Abbruch und ein zweiter Finger speichern keine neue Reiterreihenfolge',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await open(page);await openPantry(page);const cdp=await ctx.newCDPSession(page);
+    for(const cancel of ['cancel','second']){
+      const bar=await page.locator('.product-modes').boundingBox(),button=await page.locator('[data-product-mode=current]').boundingBox(),x=button.x+button.width/2,y=bar.y+bar.height/2;
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await page.waitForTimeout(550);await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:bar.x+bar.width-3,y,id:1}]});await page.waitForTimeout(200);
+      if(cancel==='second')await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:bar.x+bar.width-3,y,id:1},{x:bar.x+30,y:y+8,id:2}]});
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);assert.equal(await page.locator('.product-modes.reordering').count(),0);
+    }
+    assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.79: Tastatur-Reihenfolge bleibt auf diesem Gerät, Einkauf und andere Geräte behalten ihre Reiter',async()=>{
+    const a=await context(),b=await context();await open(a.page);await openPantry(a.page);await a.page.locator('[data-product-mode=favorites]').focus();await a.page.keyboard.press('Alt+ArrowLeft');
+    const expected=['current','favorites','all','frequent','basics','recent'];assert.deepEqual(await tabIds279(a.page),expected);assert.deepEqual(await savedTabs279(a.page),expected);assert.equal(await a.page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');
+    await closePantry(a.page);await a.page.click('#open-products');assert.deepEqual(await tabIds279(a.page),['all','favorites','frequent','own']);assert.equal(await a.page.locator('[data-product-mode=basics]').isHidden(),true);await a.page.click('#product-picker-dialog [data-close]');await openPantry(a.page);assert.deepEqual(await tabIds279(a.page),expected);
+    await open(b.page);await openPantry(b.page);assert.deepEqual(await tabIds279(b.page),defaultTabs279);assert.equal(await savedTabs279(b.page),null);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+  test('2.79: ältere persönliche Reihenfolgen werden um fehlende Reiter ergänzt, fehlerhafte Einstellungen verhindern das Öffnen nicht',async()=>{
+    for(const [stored,expected]of [[JSON.stringify(['favorites','all','favorites','gone']),['favorites','all','current','frequent','basics','recent']],['{defekt',defaultTabs279]]){
+      const {ctx,page,problems}=await context();await ctx.addInitScript(value=>{if(!localStorage.getItem('einkauf-pantry-tabs-v1'))localStorage.setItem('einkauf-pantry-tabs-v1',value);},stored);await open(page);const before=await storedDemo(page);await openPantry(page);assert.deepEqual(await tabIds279(page),expected);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+    }
+  });
+
+  test('2.79: Halten ohne Ziehen verschiebt auch einen nur teilweise sichtbaren Reiter nicht',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await open(page);await openPantry(page);const bar=await page.locator('.product-modes').boundingBox(),cdp=await ctx.newCDPSession(page),x=bar.x+bar.width-12,y=bar.y+bar.height/2;
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await page.waitForTimeout(950);assert.equal(await page.locator('.product-modes.reordering').count(),1);assert.equal(await page.locator('.product-modes').evaluate(node=>node.scrollLeft),0);assert.deepEqual(await tabIds279(page),defaultTabs279);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal(await savedTabs279(page),null);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  function data280(){
+    const data=pantryData278([{name:'Karotten',available:true},{name:'Tomaten',available:false}]);data.items=[];
+    data.recipes=['Vorrat komplett','Mit Einkaufszettel','Nur kürzlich gekauft'].map((name,i)=>({...demo.recipes[0],id:`r280-${i}`,name,servings:2}));
+    data.ingredients=[['Karotte','Salz','Pfeffer','Wasser'],['Karotte','Milch'],['Karotte','Tomate']].flatMap((names,i)=>names.map((name,j)=>({...demo.ingredients[0],id:`i280-${i}-${j}`,recipeId:`r280-${i}`,name,quantity:1,unit:'g'})));
+    const base={...demo.items[0],storeId:'',quantity:1,unit:'Stück'};
+    data.items=[{...base,id:'open-milk',name:'Milch',checked:false},{...base,id:'bought-tomato',name:'Tomaten',checked:true,shopBoughtAt:new Date().toISOString(),deletedAt:new Date().toISOString()}];return data;
+  }
+  const openCookable280=async page=>{await goTab(page,'recipes');await page.click('#cookable-open');await sheetOpen(page);};
+  test('2.80: Nur Vorrat ist Standard; Zettel zählt nur im gewählten Modus, kürzlicher Kauf zählt nie als da',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data280());await open(page);await openCookable280(page);
+    const card=name=>page.locator('.cookable-card',{hasText:name}),status=name=>card(name).locator('.cookable-status').textContent();
+    assert.equal(await page.getAttribute('[data-cookable-mode=pantry]','aria-pressed'),'true');assert.equal(await status('Vorrat komplett'),'Alles da');assert.equal(await status('Mit Einkaufszettel'),'Es fehlen 1 von 2 Zutaten');assert.equal(await status('Nur kürzlich gekauft'),'Es fehlen 1 von 2 Zutaten');assert.ok(!(await page.textContent('#cookable-list')).includes('Kommt noch'));assert.ok(!(await page.textContent('#cookable-count')).includes('nach dem Einkauf'));assert.ok(!(await page.textContent('#cookable-explanation')).includes('7 Tagen'));
+    const before=await storedDemo(page);await card('Mit Einkaufszettel').getByRole('button',{name:'Fehlendes auf die Liste',exact:true}).click();assert.equal(await page.locator('#transfer-dialog[open]').count(),0);assert.deepEqual((await storedDemo(page)).items,before.items,'keine Mengenverdopplung im Nur-Vorrat-Modus');
+    await openCookable280(page);await page.click('[data-cookable-mode=shopping]');assert.match(await status('Mit Einkaufszettel'),/sobald ihr einkauft/);assert.match(await page.textContent('#cookable-count'),/1 Rezept.*sofort.*1 nach dem Einkauf/);assert.equal(await status('Nur kürzlich gekauft'),'Es fehlen 1 von 2 Zutaten');assert.match(await page.textContent('#cookable-explanation'),/Kommt noch/);
+    await page.click('#cookable-dialog [data-close]');await openCookable280(page);assert.equal(await page.getAttribute('[data-cookable-mode=shopping]','aria-pressed'),'true');await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openCookable280(page);assert.equal(await page.getAttribute('[data-cookable-mode=shopping]','aria-pressed'),'true');
+    await card('Nur kürzlich gekauft').getByRole('button',{name:'Fehlendes auf die Liste'}).click();await sheetOpen(page);assert.deepEqual(await page.locator('#transfer-ingredients input').evaluateAll(nodes=>nodes.map(node=>node.checked)),[false,true]);await page.click('#transfer-form button[type=submit]');let after=await storedDemo(page);assert.equal(after.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Tomate').length,1);
+    await openCookable280(page);await page.click('[data-cookable-mode=pantry]');await card('Nur kürzlich gekauft').getByRole('button',{name:'Fehlendes auf die Liste'}).click();assert.deepEqual((await storedDemo(page)).items,after.items);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.80: nur Abhaken im Laden erzeugt Kaufdatum; Einkauf beenden erhält es und Übernahme in Vorrat bleibt ausdrücklich',async()=>{
+    const data=milkRecipes();data.items=[{...demo.items[0],id:'milk280',name:'Milch',storeId:'',checked:false}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();assert.equal((await storedDemo(page)).items[0].shopBoughtAt,undefined);await openPantry(page,'recent');assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-list'),/Noch keine Einkäufe/);await closePantry(page);
+    await page.getByRole('button',{name:'Milch: wieder öffnen',exact:true}).click();await page.click('#mode-shop');await shopTap(page,'Milch').click();assert.ok((await storedDemo(page)).items[0].shopBoughtAt);await page.click('#notice-undo');assert.equal((await storedDemo(page)).items[0].shopBoughtAt,null);await shopTap(page,'Milch').click();const bought=(await storedDemo(page)).items[0].shopBoughtAt;
+    await finishShop(page);await sheetOpen(page);await page.click('#finish-only');await page.waitForSelector('#finish-dialog[open]',{state:'detached'});const removed=(await storedDemo(page)).items.find(row=>row.id==='milk280');assert.ok(removed.deletedAt);assert.equal(removed.shopBoughtAt,bought);
+    await openCookable280(page);assert.equal(await page.locator('.cookable-card').count(),0,'auch frisch gekauft nicht im Vorrat');await page.click('#cookable-dialog [data-close]');await openPantry(page,'recent');const product=page.locator('.product-card[data-product=milch]');assert.match(await product.textContent(),/heute gekauft/);assert.equal(await product.locator('.product-pick').getAttribute('aria-pressed'),'false');await product.locator('.product-pick').click();assert.equal((await storedDemo(page)).pantry.length,0);await page.click('#product-picker-add');assert.equal((await storedDemo(page)).pantry[0].available,true);
+    await product.locator('.product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt','Vorhandenes wird hier nicht entfernt');await closePantry(page);await openCookable280(page);assert.ok((await page.locator('.cookable-status').allTextContents()).every(text=>text==='Alles da'));assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.80: letzte Einkäufe sind eindeutig, zeitlich sortiert, bleiben nach Neustart und nutzen keine alten Änderungsdaten',async()=>{
+    const data=data280(),now=Date.now(),stamp=days=>new Date(now-days*86400000).toISOString(),base={...demo.items[0],storeId:'',checked:true};data.items=[{...base,id:'old-carrot',name:'Karotte',shopBoughtAt:stamp(3),deletedAt:stamp(2)},{...base,id:'new-carrot',name:'Karotten',shopBoughtAt:stamp(2)},{...base,id:'new-flour',name:'Mehl',shopBoughtAt:stamp(1)},{...base,id:'too-old',name:'Reis',shopBoughtAt:stamp(8)},{...base,id:'legacy',name:'Milch',updatedAt:stamp(0)}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await openPantry(page,'recent');assert.deepEqual(await page.locator('.product-name').allTextContents(),['Mehl','Karotten']);assert.match(await page.textContent('#product-picker-list'),/gekauft vor 2 Tagen/);assert.equal(await page.locator('.product-card').filter({hasText:'Karotten'}).locator('.product-pick').getAttribute('aria-pressed'),'true');
+    await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openPantry(page,'recent');assert.deepEqual(await page.locator('.product-name').allTextContents(),['Mehl','Karotten']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.80: Kaufdatum und anschließende Vorratsübernahme erreichen das zweite Gerät',async()=>{
+    const data=milkRecipes();data.items=[{...demo.items[0],id:'milk-sync280',name:'Milch',storeId:'',checked:false}];const api=github(data),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}await openPantry(b.page,'recent');assert.equal(await b.page.locator('.product-card').count(),0);
+    await a.page.click('#mode-shop');await shopTap(a.page,'Milch').click();await synced(a.page);await pollNow(b.page);await b.page.waitForSelector('.product-card[data-product=milch]');await b.page.locator('.product-card[data-product=milch] .product-pick').click();await b.page.click('#product-picker-add');await synced(b.page);assert.equal(api.content.pantry.find(row=>row.name==='Milch').available,true);assert.ok(api.content.items.find(row=>row.id==='milk-sync280').shopBoughtAt);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+
+  test('2.80: Fehlendes übernimmt nach parallelem Einkaufseintrag keine doppelte Menge',async()=>{
+    const api=github(data280()),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}
+    await openCookable280(a.page);await a.page.locator('.cookable-card',{hasText:'Nur kürzlich gekauft'}).getByRole('button',{name:'Fehlendes auf die Liste'}).click();await sheetOpen(a.page);
+    await b.page.fill('#item-form [name=name]','Tomate');await b.page.click('#item-form button[type=submit]');await synced(b.page);await pollNow(a.page);await a.page.waitForFunction(()=>document.querySelector('#items').textContent.includes('Tomate'));await a.page.click('#transfer-form button[type=submit]');await synced(a.page);
+    const rows=api.content.items.filter(row=>!row.deletedAt&&!row.checked&&/^Tomate/.test(row.name));assert.equal(rows.length,1);assert.equal(rows[0].quantity,1);assert.equal(await a.page.locator('#transfer-dialog[open]').count(),0);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+
+  for(const width of [280,320,390])test(`2.80 Layout ${width}: Kochmodi und Kaufreiter passen auf das Handy`,async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen'},context:{viewport:{width,height:844}}});await seedLocal(ctx,data280());await open(page);await openCookable280(page);
+    for(const mode of ['pantry','shopping']){await page.click(`[data-cookable-mode=${mode}]`);assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#cookable-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);}
+    await page.click('#cookable-dialog [data-close]');await openPantry(page,'recent');assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#product-picker-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });

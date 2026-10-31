@@ -3,11 +3,13 @@
 import { mountQuantityControls } from './quantity-controls.js';
 import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice, preferredQuantity } from './buying.js';
 import { CATEGORIES } from './categories.js';
-import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic } from './product-catalog.js';
+import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic, pantryProductsForMode } from './product-catalog.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys } from './data.js';
+import { recentPurchases, purchaseLabel } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
+import { mountProductTabOrder } from './product-tab-order.js';
 
 const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3, useGrouping: false }).format(value);
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -24,6 +26,11 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE;
   const fail = error => { $('product-picker-error').textContent = error.message; $('product-picker-error').hidden = false; $('product-picker-error').scrollIntoView({ block: 'nearest' }); };
   const clearError = () => { $('product-picker-error').hidden = true; };
+  const tabOrder = mountProductTabOrder(dialog.querySelector('.product-modes'), {
+    enabled: () => dialog.open && target === 'pantry' && scope === getScope(),
+    announce: text => { $('product-modes-status').textContent = text; },
+    onError: fail
+  });
   const library = () => {
     const data=getData(),products=(target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry);
     if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
@@ -47,28 +54,27 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     $('product-picker-add').disabled = !count || submitting || Boolean(invalidStore);
     $('product-picker-add').textContent = target==='pantry'&&count ? 'Auswahl übernehmen' : count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'} hinzufügen` : 'Produkte auswählen';
     $('product-picker-clear').hidden = !count;
-    $('product-picker-selected').textContent = `Auswahl (${count})${target === 'list' ? ' · Mengen ändern' : ' ansehen'}`;
-    $('product-picker-cart').hidden = !count;
-    $('product-picker-count').disabled = !count;
-    $('product-picker-count').setAttribute('aria-label', `${count} ausgewählt: ${target === 'list' ? 'Mengen ändern' : 'Auswahl ansehen'}`);
+    $('product-picker-selected').textContent = `Auswahl (${count}) · Mengen ändern`;
+    $('product-picker-cart').hidden = target !== 'list' || !count;
+    $('product-picker-count').disabled = target === 'pantry' || !count;
+    $('product-picker-count').setAttribute('aria-label', target === 'pantry' ? `${count} ausgewählt` : `${count} ausgewählt: Mengen ändern`);
   }
   const cartControls=new Map();
   function renderCart() {
     cartControls.clear();
     const box = $('product-picker-cart-rows'); box.replaceChildren();
-    for (const product of selection.values()) {
-      const row = node('div', undefined, 'product-cart-row'), label = node('span', product.name+(target==='pantry'?product.pantryAvailable===false?' · entfernen':' · hinzufügen':''));
+    if (target === 'list') for (const product of selection.values()) {
+      const row = node('div', undefined, 'product-cart-row'), label = node('span', product.name);
       const qtyLabel = node('label'), qty = node('input'), unitLabel = node('label'), unit = node('input');
       qtyLabel.append(node('span', 'Menge', 'sr-only')); qty.value = product.quantity; qty.inputMode = 'decimal'; qty.maxLength = 16;
       qty.setAttribute('aria-label', `${product.name}: Menge`);  qtyLabel.append(qty);
       unitLabel.append(node('span', 'Einheit', 'sr-only')); unit.value = product.unit; unit.maxLength = 30; unit.setAttribute('list', 'units');
       unit.setAttribute('aria-label', `${product.name}: Einheit`);  unitLabel.append(unit);
       const remove = node('button', undefined, 'icon-button product-cart-remove'); remove.type = 'button'; remove.setAttribute('aria-label', `${product.name}: Auswahl entfernen`); remove.append(svg('x'));
-      remove.addEventListener('click', () => { selection.delete(product.id); renderCart(); renderProducts(); });
-      if (target === 'list') row.append(label, qtyLabel, unitLabel, remove);
-      else { row.classList.add('product-cart-simple'); row.append(label, remove); }
+      remove.addEventListener('click', () => { selection.delete(product.id); $('product-picker-feedback').hidden = true; renderCart(); renderProducts(); });
+      row.append(label, qtyLabel, unitLabel, remove);
       box.append(row);
-      if(target==='list'){const controls=mountQuantityControls({elements:{quantity:qty,unit}},{getHistory:()=>getData().history||[],getName:()=>product.name,rememberOnSave:true});controls.load(product);cartControls.set(product.id,controls);
+      {const controls=mountQuantityControls({elements:{quantity:qty,unit}},{getHistory:()=>getData().history||[],getName:()=>product.name,rememberOnSave:true});controls.load(product);cartControls.set(product.id,controls);
         const update=()=>{try{Object.assign(product,controls.read());}catch{product.quantity=qty.value;}clearError();updateAmount(product);};
         qty.addEventListener('input',update);qty.addEventListener('change',update);unit.addEventListener('change',update);
       }
@@ -90,8 +96,15 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const focused=dialog.contains(document.activeElement)?document.activeElement:null;
     const focusKey=focused?.dataset.productAction,focusId=focused?.dataset.product;
     const available=target==='pantry'?stockedKeys():pantryKeys(getData().pantry||[]);
-    const products=library().filter(product=>mode!=='current'||available.has(pantryKey(product.name)));
-    const visible=filterProducts(products,{mode:mode==='current'?'all':mode,query:search.value,category:category.value,includeOwn:target==='pantry'});
+    const allProducts=library();
+    const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
+    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, available) : allProducts;
+    const categories = new Set(products.map(product => product.category));
+    for (const option of category.options) option.disabled = target === 'pantry' && mode !== 'all' && Boolean(option.value) && !categories.has(option.value);
+    if (category.selectedOptions[0]?.disabled) category.value = '';
+    const visible = filterProducts(products, {mode:target === 'pantry' && ['current','basics','recent'].includes(mode) ? 'all' : mode,
+      query:search.value, category:category.value, includeOwn:target === 'pantry'});
+    if(mode==='recent')visible.sort((a,b)=>Date.parse(b.shopBoughtAt)-Date.parse(a.shopBoughtAt));
     const data = getData(), allItems = data.items || [], selectedStore = store.value;
     const exactOnList = new Map();
     for (const item of allItems) if (!item.deletedAt && !item.checked && item.storeId === selectedStore) exactOnList.set(productKey(item.name), item);
@@ -103,7 +116,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     grid.replaceChildren();
     // Favoriten und häufige Käufe bleiben ein kompaktes Raster, auch wenn sie aus vielen Gängen stammen.
     const shown = visible.slice(0, visibleLimit);
-    const groups = ['favorites','frequent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':'Oft auf deiner Liste'}]:CATEGORIES;
+    const groups = ['favorites','frequent','recent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':mode==='recent'?'Letzte Einkäufe':'Oft auf deiner Liste'}]:CATEGORIES;
     for (const group of groups) {
       const matches = group.id ? shown.filter(product => product.category === group.id) : shown; if (!matches.length) continue;
       const section = node('section', undefined, 'product-group'), heading = node('h3', group.label), cards = node('div', undefined, 'product-grid');
@@ -126,8 +139,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird hinzugefügt'):'Vorhanden','product-on-list'));
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
+        if(mode==='recent')pick.append(node('small',purchaseLabel(product.shopBoughtAt),'product-on-list'));
         pick.addEventListener('click',()=>{
-          clearError();
+          if(mode==='recent'&&stocked&&!chosen)return;
+          clearError(); $('product-picker-feedback').hidden = true;
           if(selection.has(product.id))selection.delete(product.id);
           else selection.set(product.id,target==='list'?purchaseStart(product):{...product,quantity:number(product.quantity),pantryAvailable:!stocked});
           renderCart();renderProducts();
@@ -140,13 +155,15 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       }
     }
     const count = visible.length;
-    $('product-picker-status').textContent=mode==='current'?`${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:count?`${count} ${count===1?'Produkt':'Produkte'}${mode==='favorites'?' in Favoriten':mode==='frequent'?' häufig gekauft':''}${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:
+    $('product-picker-status').textContent=mode==='current'?`${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:count?`${count} ${count===1?'Produkt':'Produkte'}${mode==='favorites'?' in Favoriten':mode==='frequent'?' häufig gekauft':mode==='basics'?' im Grundvorrat':mode==='recent'?' in den letzten 7 Tagen gekauft':''}${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:
       search.value.trim()?'Keine passenden Produkte in dieser Auswahl.':mode==='favorites'?'Noch keine Favoriten. Merke Produkte unter „Alle“ mit dem Stern.':mode==='frequent'?'Hier erscheinen Produkte, die du mindestens zweimal eingetragen hast.':mode==='own'?'Hier findest du eure eigenen Artikel. Oder suche einen neuen Namen.':'Keine Produkte in dieser Kategorie.';
+    if(!count&&mode==='recent')grid.append(node('p','Noch keine Einkäufe aus den letzten 7 Tagen. Hier erscheinen Produkte, die ihr unter „Im Laden“ abhakt.','empty'));
     if(!count&&mode==='current')grid.append(node('p',search.value.trim()||category.value?'Keine passenden Produkte im aktuellen Vorrat. Unter „Alle“ findest du weitere.':'Dein aktueller Vorrat ist leer. Unter „Alle“ kannst du Produkte auswählen oder mit + eigene anlegen.','empty'));
     $('product-picker-count').textContent = `${selection.size} ausgewählt`;
     $('product-picker-more').hidden = count <= visibleLimit;
     $('product-picker-more').textContent = `Weitere ${Math.min(PAGE_SIZE, Math.max(0, count - visibleLimit))} Produkte anzeigen`;
     category.hidden=false;
+    $('pantry-add-basics').hidden = target !== 'pantry' || mode !== 'basics';
     for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.setAttribute('aria-pressed', String(tab.dataset.productMode === mode));
     updateFooter();
     if (focusId && focusKey) grid.querySelector(`[data-product-action="${focusKey}"][data-product="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
@@ -165,7 +182,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       const known=library().find(product=>pantryKey(product.name)===pantryKey(name)),product=known?{...known,name}:ownProduct(name);
       if(!pantryKeys(getData().pantry||[]).has(pantryKey(name)))selection.set(product.id,{...product,pantryAvailable:true});
       else selection.delete(product.id);
-      mode='current';search.value=name;category.value='';visibleLimit=PAGE_SIZE;clearError();renderCart();renderProducts();ownDialog.close();
+      mode='current';search.value=name;category.value='';visibleLimit=PAGE_SIZE;clearError();$('product-picker-feedback').hidden=true;renderCart();renderProducts();ownDialog.close();
+      dialog.querySelector('[data-product-mode][aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
     }catch(error){$('pantry-own-error').textContent=error.message;$('pantry-own-error').hidden=false;}
   });
   $('pantry-add-basics').addEventListener('click',()=>{
@@ -176,11 +194,11 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       if(available.has(pantryKey(product.name)))selection.delete(product.id);
       else{selection.set(product.id,{...product,pantryAvailable:true});added++;}
     }
-    mode='current';search.value='';category.value='';visibleLimit=PAGE_SIZE;clearError();renderCart();renderProducts();
+    mode='basics';search.value='';category.value='';visibleLimit=PAGE_SIZE;clearError();renderCart();renderProducts();
     $('product-picker-feedback').textContent=added?`${added} Grundvorratsprodukte ausgewählt – unten übernehmen.`:'Der Grundvorrat ist bereits vorhanden.';$('product-picker-feedback').hidden=false;
-    $('product-picker-count').scrollIntoView({block:'nearest'});
+    $('product-picker-add').scrollIntoView({block:'nearest'});
   });
-  bindWishHold(grid, '.product-pick', id => { try { const product = library().find(p => p.id === id); if (product) onQuickBuy?.({ ...product, imageKey: product.imageKey || imageForProduct(product).key }); } catch (error) { fail(error); } }, () => !dialog.open || target !== 'pantry' || scope !== getScope());
+  bindWishHold(grid, '.product-pick', id => { try { const recent=mode==='recent'?recentPurchases(getData().recentItems||[]).find(row=>ownProduct(row.name).id===id):null;const product = library().find(p => p.id === id)||(recent?ownProduct(recent.name,recent):null); if (product) onQuickBuy?.({ ...product, imageKey: product.imageKey || imageForProduct(product).key }); } catch (error) { fail(error); } }, () => !dialog.open || target !== 'pantry' || scope !== getScope());
   grid.addEventListener('selectstart', event => { if (target === 'pantry') event.preventDefault(); });
   for (const group of CATEGORIES) category.add(new Option(group.label, group.id));
   search.addEventListener('input', () => { visibleLimit = PAGE_SIZE; clearError(); renderProducts(); });
@@ -188,8 +206,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   store.addEventListener('change', () => { clearError(); renderProducts(); });
   for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.addEventListener('click', () => { mode = tab.dataset.productMode; visibleLimit = PAGE_SIZE; clearError(); renderProducts(); });
   $('product-picker-more').addEventListener('click', () => { const firstNew = visibleLimit; visibleLimit += PAGE_SIZE; renderProducts(); grid.querySelectorAll('.product-pick')[firstNew]?.focus({ preventScroll: true }); });
-  $('product-picker-clear').addEventListener('click', () => { selection.clear(); renderCart(); renderProducts(); });
-  $('product-picker-count').addEventListener('click', () => { if (selection.size) { $('product-picker-cart').open = true; $('product-picker-cart').scrollIntoView({ block: 'start', behavior: 'smooth' }); } });
+  $('product-picker-clear').addEventListener('click', () => { selection.clear(); $('product-picker-feedback').hidden = true; renderCart(); renderProducts(); });
+  $('product-picker-count').addEventListener('click', () => { if (target === 'list' && selection.size) { $('product-picker-cart').open = true; $('product-picker-cart').scrollIntoView({ block: 'start', behavior: 'smooth' }); } });
   form.addEventListener('submit', event => {
     event.preventDefault(); if (!dialog.open || submitting || !selection.size) return;
     try {
@@ -203,19 +221,22 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     } catch (error) { fail(error); }
     finally { submitting = false; updateFooter(); }
   });
-  dialog.addEventListener('close', () => { if (!dialog.open) { selection.clear();$('pantry-own-dialog').close();renderCart(); clearError(); } });
+  dialog.addEventListener('close', () => { if (!dialog.open) { tabOrder.cancel(); selection.clear();$('pantry-own-dialog').close();renderCart(); clearError(); } });
   return {
     open(storeId = '', options = {}) {
+      tabOrder.cancel();
       target=options.target==='pantry'?'pantry':'list';
+      tabOrder.arrange(target);
+      $('product-picker-cart').open = false;
       dialog.dataset.target=target;
       scope = getScope(); $('product-picker-feedback').hidden = true; selection.clear(); search.value = ''; category.value = ''; clearError(); visibleLimit = PAGE_SIZE;
       mode=target==='pantry'?'current':library().some(product=>product.favorite)?'favorites':'all';
       if(target==='list'&&['all','favorites','frequent','own'].includes(options.mode))mode=options.mode;
-      $('product-picker-hint').textContent=target==='pantry'?'Markiere, was zu Hause ist, und übernimm die Auswahl unten. ★ merkt Favoriten. Lange drücken: Menge und Geschäft für die Einkaufsliste wählen.':'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
+      $('product-picker-hint').textContent=target==='pantry'?'Produkte antippen und unten bestätigen. ★ merkt Favoriten. Produkt lange drücken: Einkaufsliste. Reiter lange halten und ziehen: Reihenfolge ändern.':'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
       dialog.querySelector('.product-target').hidden=target!=='list';
-      $('pantry-own-add').hidden=target!=='pantry';$('pantry-add-basics').hidden=target!=='pantry';
+      $('pantry-own-add').hidden=target!=='pantry';
       dialog.querySelector('[data-close]').setAttribute('aria-label',target==='pantry'?'Vorratsauswahl schließen':'Produktauswahl schließen');
-      for(const tab of dialog.querySelectorAll('[data-product-mode]'))tab.hidden=target==='pantry'?tab.dataset.productMode==='own':tab.dataset.productMode==='current';
+      for(const tab of dialog.querySelectorAll('[data-product-mode]'))tab.hidden=target==='pantry'?tab.dataset.productMode==='own':['current','basics','recent'].includes(tab.dataset.productMode);
       renderStores(); store.value = getStores().some(shop => shop.id === storeId) ? storeId : '';
       renderCart(); renderProducts(); dialog.showModal(); dialog.scrollTop = 0;
       // Auf dem iPhone keine Tastatur beim Öffnen: Erst bewusst in die Suche tippen.

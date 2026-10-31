@@ -7,6 +7,7 @@ import {hasUnitChoice,unitChoice,compareUnitChoice,hasAmountChoice,amountChoice,
    Aufgeräumt wird nur, was sicher nicht mehr gebraucht wird, und zwar auf dem gemeinsamen Stand, nicht auf einem einzelnen
    Gerät: Das Ergebnis wird wie jede Änderung mit der SHA der gelesenen Datei geschrieben. Ändert ein anderes Gerät dazwischen,
    wird neu gelesen und neu aufgeräumt. Was weg ist, liegt weiter im Git-Verlauf des privaten Daten-Repositorys. */
+import { isRecentPurchase } from './recent-purchases.js';
 import { clone, foldOldAdds, validate } from './data.js';
 import { isCategory } from './categories.js';
 import { productKey, unitSpec } from './prices.js';
@@ -93,16 +94,16 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // Offline-Anlagen nicht nachträglich wieder als neue Ausgabe zählen.
   for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'aliases', 'templates', 'budgets']) {
     next[key] = next[key].filter(row => {
-      const drop = (row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
+      const drop = !(key === 'items' && isRecentPurchase(row,now.getTime())) && ((row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
         (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays)) ||
-        (key === 'items' && row._planEmpty && olderThan(row.updatedAt, policy.tombstoneDays));
+        (key === 'items' && row._planEmpty && olderThan(row.updatedAt, policy.tombstoneDays)));
       if (drop) { removed[key]++; if (key === 'items') gone.push(row); }
       return !drop;
     });
   }
   // 2. Was an Entfernten hing, geht mit: Artikel eines entfernten Geschäfts, Zutaten eines entfernten Rezepts.
   const stores = new Set(next.stores.map(row => row.id)), recipes = new Set(next.recipes.map(row => row.id));
-  next.items = next.items.filter(row => { const drop = row.storeId && !stores.has(row.storeId); if (drop) { removed.items++; gone.push(row); } return !drop; });
+  next.items = next.items.filter(row => { const drop = row.storeId && !stores.has(row.storeId) && !isRecentPurchase(row,now.getTime()); if (drop) { removed.items++; gone.push(row); } return !drop; });
   next.prices = next.prices.filter(row => { const drop = row.storeId && !stores.has(row.storeId); if (drop) removed.prices++; return !drop; });
   next.ingredients = next.ingredients.filter(row => { const drop = !recipes.has(row.recipeId); if (drop) removed.ingredients++; return !drop; });
   // 3. Vergangene Gerichte (das Kochdatum steht am Rezept).

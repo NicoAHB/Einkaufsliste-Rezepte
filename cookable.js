@@ -1,17 +1,16 @@
 /* Was kann ich kochen? Reine Logik ohne DOM: ordnet die Rezepte danach, wie viele Zutaten schon da sind.
-   „Da“ ist, was im Vorrat steht oder schon eingekauft wurde. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
+   „Da“ ist ausschließlich der aktuelle Vorrat. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
    Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Zutaten „nach Bedarf“ (Salz, Pfeffer) und Wasser zählen nicht mit. */
-import { pantryKey, pantryRows, spellingStem } from './data.js';
+import { pantryRows, spellingStem } from './data.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
-export const RECENT_DAYS = 7;   // so lange gilt ein abgehakter Artikel als „schon eingekauft“, auch wenn er inzwischen von der Liste entfernt wurde
 
 // Verschiedene Namen für dasselbe: Wer Olivenöl hat, kann ein Rezept mit „Öl“ kochen.
 const SAME = [['öl', 'olivenöl', 'rapsöl', 'sonnenblumenöl', 'speiseöl', 'pflanzenöl'], ['sahne', 'schlagsahne', 'kochsahne'], ['hack', 'hackfleisch'],
   ['mehl', 'weizenmehl'], ['milch', 'vollmilch'], ['zwiebel', 'speisezwiebel']];
 const stemOf = word => spellingStem(word);
 const group = new Map(SAME.flatMap((names, index) => names.map(name => [stemOf(name), `g${index}`])));
-const ALWAYS = new Set(['wasser', 'leitungswasser'].map(stemOf));
+const ALWAYS = new Set(['wasser', 'leitungswasser', 'salz', 'pfeffer'].map(stemOf));
 
 // Namensteile ohne Klammerzusatz („Salz, Pfeffer“, „Tomaten und Zwiebeln“ sind mehrere Zutaten); jeder Teil als Menge von Wortstämmen.
 const parts = name => String(name ?? '').replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i)
@@ -65,16 +64,8 @@ export function rankRecipes(recipes, ingredientsOf, names, limit = 15) {
   return limit ? ranked.slice(0, limit) : ranked;
 }
 
-/* Namen für `indexNames` aus den Daten: `pantry` (Vorrat), `items` (alle Artikel der Liste einschließlich entfernter, nur Geschäfte, die es noch gibt),
-   `now` (Zeitpunkt). Da: Vorrat, abgehakte Artikel und Artikel, die in den letzten RECENT_DAYS Tagen abgehakt und danach entfernt wurden.
-   Kommt noch: offene Artikel der Liste. Wer nur entfernt (nicht abgehakt) hat, hat nichts gekauft. */
-export function namesFrom({ pantry = [], items = [], now = Date.now() }) {
-  const stock = pantryRows(pantry), depleted = new Set(stock.filter(row => row.available === false).map(row => pantryKey(row.name)));
-  const since = now - RECENT_DAYS * 86400000, have = stock.filter(row => row.available !== false).map(row => row.name), soon = [];
-  for (const item of items) {
-    if (typeof item.name !== 'string') continue;
-    // Eine ausdrückliche Aufgebraucht-Markierung ist verlässlicher als ein kürzlich abgehakter Einkauf.
-    if (item.checked) { if (!depleted.has(pantryKey(item.name)) && Date.parse(item.updatedAt) > since) have.push(item.name); } else if (!item.deletedAt) soon.push(item.name);
-  }
-  return { have, soon };
+/* Abgehakte oder entfernte Einkäufe gelten niemals automatisch als Vorrat. */
+export function namesFrom({ pantry = [], items = [], mode = 'pantry' }) {
+  return { have: pantryRows(pantry).filter(row => row.available !== false).map(row => row.name),
+    soon: mode === 'shopping' ? items.filter(item => !item.checked && !item.deletedAt && typeof item.name === 'string').map(item => item.name) : [] };
 }
