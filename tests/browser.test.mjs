@@ -8197,4 +8197,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#cookable-dialog [data-close]');await openPantry(page,'recent');assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#product-picker-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);assert.deepEqual(problems,[]);await ctx.close();
   });
 
+  test('2.81: Reiter scrollen nativ in beide Richtungen, ohne Filter oder Reihenfolge zu ändern',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await open(page);await openPantry(page);const cdp=await ctx.newCDPSession(page),bar=await page.locator('.product-modes').boundingBox(),y=bar.y+bar.height/2;
+    const position=()=>page.locator('.product-modes').evaluate(node=>node.scrollLeft);
+    await page.evaluate(()=>{window.nativePanCount=0;document.querySelector('.product-modes').addEventListener('pointercancel',()=>window.nativePanCount++);});
+    const swipe=async(direction)=>{const x=direction<0?bar.x+bar.width-22:bar.x+22;
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await page.waitForTimeout(30);
+      for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+direction*i*25,y,id:1}]});await page.waitForTimeout(20);}
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    };
+    await swipe(-1);await page.waitForTimeout(80);const forward=await position();assert.ok(forward>70);
+    await swipe(1);await page.waitForTimeout(80);assert.ok(await position()<forward-30,'Richtungswechsel scrollt zurück');
+    assert.ok(await page.evaluate(()=>window.nativePanCount)>=2,'Der Browser übernimmt beide Wischgesten als natives Scrollen');
+    assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.equal(await page.locator('.product-modes.reordering').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
 });

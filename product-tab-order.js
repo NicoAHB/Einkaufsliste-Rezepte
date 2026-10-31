@@ -33,7 +33,8 @@ export function mountProductTabOrder(root, { enabled, announce, onError }) {
     const ended = press; press = null;
     clearTimeout(ended.timer); cancelAnimationFrame(frame); frame = 0;
     root.classList.remove('reordering'); ended.button.classList.remove('moving-tab');
-    if (root.hasPointerCapture(ended.pointer)) root.releasePointerCapture(ended.pointer);
+    root.removeEventListener('touchmove', dragTouch);
+    if (!ended.touch && root.hasPointerCapture(ended.pointer)) root.releasePointerCapture(ended.pointer);
     if (ended.active) {
       swallowUntil = Date.now() + 800;
       if (commit) {
@@ -69,31 +70,59 @@ export function mountProductTabOrder(root, { enabled, announce, onError }) {
     if (delta) { root.scrollLeft += delta * elapsed / 16.7; place(); }
     frame = requestAnimationFrame(autoScroll);
   }
-  root.addEventListener('pointerdown', event => {
-    if (!enabled()) return;
-    if (!event.isPrimary) { finish(false); return; }
-    if (press) finish(false);
-    swallowUntil = 0;
-    const button = event.target.closest('[data-product-mode]');
-    if (!button || button.hidden || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
-    const started = { button, pointer: event.pointerId, startX: event.clientX, startY: event.clientY,
-      x: event.clientX, scroll: root.scrollLeft, order: ids(), active: false, scrolling: false, moved: false };
+  function start(button, pointer, x, y, touch = false) {
+    finish(false); swallowUntil = 0;
+    const started = { button, pointer, startX:x, startY:y, x, touch,
+      scroll:root.scrollLeft, order:ids(), active:false, scrolling:false, moved:false };
     press = started;
     started.timer = setTimeout(() => {
       if (press !== started || !enabled() || document.hidden) { finish(false); return; }
       started.active = true;
       getSelection()?.removeAllRanges(); root.classList.add('reordering'); button.classList.add('moving-tab');
-      root.setPointerCapture(started.pointer);
+      // Normales Wischen bleibt vollständig nativ. Erst nach dem Halten darf
+      // die erste Ziehbewegung das Scrollen für diese eine Geste unterbinden.
+      if (touch) root.addEventListener('touchmove', dragTouch, { passive:false });
+      else root.setPointerCapture(started.pointer);
       announce(`${label(button)} verschieben: nach links oder rechts ziehen.`);
       frame = requestAnimationFrame(autoScroll);
     }, 500);
+  }
+  function dragTouch(event) {
+    if (!press?.active || !press.touch) return;
+    const point = [...event.touches].find(point => point.identifier === press.pointer);
+    if (!point || event.touches.length !== 1 || !enabled() || !event.cancelable) { finish(false); return; }
+    event.preventDefault(); press.x = point.clientX;
+    press.moved ||= Math.hypot(point.clientX - press.startX, point.clientY - press.startY) > 6;
+    if (press.moved) place();
+  }
+  root.addEventListener('touchstart', event => {
+    if (!enabled() || event.touches.length !== 1) return;
+    const button = event.target.closest('[data-product-mode]');
+    if (!button || button.hidden) return;
+    const point=event.touches[0]; start(button,point.identifier,point.clientX,point.clientY,true);
+  }, { passive:true });
+  root.addEventListener('touchmove', event => {
+    if (!press?.touch || press.active) return;
+    const point=[...event.touches].find(point=>point.identifier===press.pointer);
+    if (!point || Math.hypot(point.clientX-press.startX,point.clientY-press.startY)>10) finish(false);
+  }, { passive:true });
+  root.addEventListener('touchend', event => {
+    if (press?.touch && [...event.changedTouches].some(point=>point.identifier===press.pointer)) finish(true);
+  }, { passive:true });
+  root.addEventListener('touchcancel', () => { if (press?.touch) finish(false); }, { passive:true });
+  document.addEventListener('touchstart', event => { if(event.touches.length>1)finish(false); }, { passive:true, capture:true });
+  root.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'touch' || !enabled()) return;
+    if (!event.isPrimary) { finish(false); return; }
+    const button = event.target.closest('[data-product-mode]');
+    if (!button || button.hidden || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    start(button,event.pointerId,event.clientX,event.clientY);
   });
   document.addEventListener('pointermove', event => {
-    if (!press || event.pointerId !== press.pointer) return;
+    if (!press || press.touch || event.pointerId !== press.pointer) return;
     if (!enabled()) { finish(false); return; }
     press.x = event.clientX;
     if (press.active) {
-      event.preventDefault();
       press.moved ||= Math.hypot(event.clientX - press.startX, event.clientY - press.startY) > 6;
       if (press.moved) place();
       return;
@@ -102,12 +131,12 @@ export function mountProductTabOrder(root, { enabled, announce, onError }) {
     if (!press.scrolling && Math.hypot(dx, dy) <= 10) return;
     clearTimeout(press.timer);
     if (!press.scrolling && Math.abs(dy) >= Math.abs(dx)) { finish(false); return; }
-    press.scrolling = true; root.scrollLeft = press.scroll - dx; event.preventDefault();
-  }, { capture: true, passive: false });
-  document.addEventListener('pointerup', event => { if (press && event.pointerId === press.pointer) finish(true); }, true);
-  document.addEventListener('pointercancel', event => { if (press && event.pointerId === press.pointer) finish(false); }, true);
-  document.addEventListener('pointerdown', event => { if (press && !event.isPrimary) finish(false); }, true);
-  root.addEventListener('lostpointercapture', () => finish(false));
+    press.scrolling = true; root.scrollLeft = press.scroll - dx;
+  }, { capture: true, passive: true });
+  document.addEventListener('pointerup', event => { if (press && !press.touch && event.pointerId === press.pointer) finish(true); }, true);
+  document.addEventListener('pointercancel', event => { if (press && !press.touch && event.pointerId === press.pointer) finish(false); }, true);
+  document.addEventListener('pointerdown', event => { if (press && event.pointerType !== 'touch' && !event.isPrimary) finish(false); }, true);
+  root.addEventListener('lostpointercapture', () => { if (!press?.touch) finish(false); });
   root.addEventListener('click', event => {
     if (enabled() && Date.now() < swallowUntil) { swallowUntil = 0; event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
