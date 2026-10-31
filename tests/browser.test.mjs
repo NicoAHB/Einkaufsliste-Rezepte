@@ -7946,7 +7946,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.78: vorhandene Produkte abwählen, Auswahl korrigieren und mit derselben ID samt Bild wieder hinzufügen',async()=>{
     const data=pantryData278([{id:'original-onion',name:'Zwiebel',category:'obst',imageKey:'group-vegetables',available:true},{name:'Salz',available:true}]);
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await openPantry(page);
-    const onion=page.locator('.product-card').filter({has:page.locator('.product-name',{hasText:/^Zwiebel$/})});await onion.locator('.product-pick').click();
+    const onion=page.locator('#product-picker-list .product-card').filter({has:page.locator('.product-name',{hasText:/^Zwiebel$/})});await onion.locator('.product-pick').click();
     assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.textContent('#product-picker-status'),'1 Produkt im aktuellen Vorrat');assert.equal(await onion.count(),0);
     assert.deepEqual((await storedDemo(page)).pantry,before.pantry,'Antippen merkt die Änderung vor');
     assert.equal(await page.locator('#product-picker-cart').isHidden(),true);assert.equal(await page.locator('#product-picker-cart-rows>*').count(),0);await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Zwiebel');await onion.locator('.product-pick').click();await page.fill('#product-picker-search','');await page.click('[data-product-mode=current]');assert.equal(await onion.count(),1);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
@@ -8210,6 +8210,21 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await swipe(1);await page.waitForTimeout(80);assert.ok(await position()<forward-30,'Richtungswechsel scrollt zurück');
     assert.ok(await page.evaluate(()=>window.nativePanCount)>=2,'Der Browser übernimmt beide Wischgesten als natives Scrollen');
     assert.deepEqual(await tabIds279(page),defaultTabs279);assert.equal(await savedTabs279(page),null);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');assert.equal(await page.locator('.product-modes.reordering').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.82: entfernte Grundvorräte bleiben unter der Trennlinie und lassen sich ohne Metadatenverlust zurückholen',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,pantryData278([{id:'saved-milk',name:'Milch',category:'kuehl',imageKey:'group-dairy',available:true},{name:'Salz',available:true}]));await open(page);await openPantry(page);const before=await storedDemo(page);
+    await page.locator('#product-picker-list .product-card[data-product=milch] .product-pick').click();assert.equal(await page.locator('#product-picker-list .product-card[data-product=milch]').count(),0);assert.equal(await page.locator('#pantry-removed hr').count(),1);assert.equal(await page.textContent('#pantry-removed h3'),'Kürzlich entfernt');assert.equal(await page.locator('#pantry-removed .product-picture').count(),1);assert.equal(await page.textContent('#product-picker-status'),'1 Produkt im aktuellen Vorrat');assert.deepEqual((await storedDemo(page)).pantry,before.pantry);
+    await page.locator('#pantry-removed .product-pick').click();assert.equal(await page.locator('#pantry-removed').isHidden(),true);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');assert.equal(await page.locator('#product-picker-list .product-card[data-product=milch]').count(),1);
+    await page.locator('#product-picker-list .product-card[data-product=milch] .product-pick').click();await page.click('#product-picker-add');assert.equal((await storedDemo(page)).pantry.find(row=>row.id==='saved-milk').available,false);await closePantry(page);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openPantry(page);assert.equal(await page.locator('#pantry-removed .product-picture[data-photo-key=group-dairy]').count(),1);
+    await page.locator('#pantry-removed .product-pick').click();await page.click('#product-picker-add');const saved=(await storedDemo(page)).pantry.find(row=>row.id==='saved-milk');assert.equal(saved.available,true);assert.equal(saved.imageKey,'group-dairy');assert.equal(saved.category,'kuehl');assert.equal(saved.name,'Milch');assert.equal(await page.locator('#pantry-removed').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.82: Kürzlich entfernt bleibt auf Aktueller Vorrat begrenzt; Favorit und Nachkaufen funktionieren an den Kacheln',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await seedLocal(ctx,pantryData278([{name:'Mehl',available:true},{name:'Äpfel',available:true}]));await open(page);await openPantry(page);await page.locator('#product-picker-list .product-card[data-product=mehl] .product-pick').click();
+    await page.locator('#pantry-removed .product-star').click();assert.equal(await page.locator('#pantry-removed .product-star').getAttribute('aria-pressed'),'true');await page.locator('#pantry-removed .product-pick').focus();await page.keyboard.press('Shift+F10');await sheetOpen(page);assert.match(await page.textContent('#pantry-buy-name'),/Mehl/);await page.click('#pantry-buy-dialog [data-close]');
+    await page.fill('#product-picker-search','Äpfel');assert.equal(await page.locator('#pantry-removed').isHidden(),true);await page.fill('#product-picker-search','');assert.equal(await page.locator('#pantry-removed').isVisible(),true);assert.ok(await horizontalOverflow(page)<=1);
+    for(const mode of ['all','favorites','frequent','basics','recent']){await page.click(`[data-product-mode=${mode}]`);assert.equal(await page.locator('#pantry-removed').isHidden(),true);}
+    assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });

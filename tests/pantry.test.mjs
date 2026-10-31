@@ -3,9 +3,9 @@ import { test } from 'node:test';
 import { active, addToList, emptyData, inPantry, merge, operation, pantryKey, pantryKeys, pantryRows, validate } from '../data.js';
 import { compact } from '../compact.js';
 import { namesFrom } from '../cookable.js';
-import { pantryChanges, pantrySelectionChanges } from '../pantry.js';
+import { pantryChanges, pantrySelectionChanges, recentlyRemovedBasics } from '../pantry.js';
 import { imageForProduct } from '../product-images.js';
-import { ownProduct, productLibrary, selectedProducts, pantryProductLibrary, filterProducts } from '../product-catalog.js';
+import { ownProduct, productLibrary, selectedProducts, pantryProductLibrary, filterProducts, productById } from '../product-catalog.js';
 
 const at = '2026-10-29T20:00:00.000Z', later = '2026-10-30T20:00:00.000Z';
 const ops = (changes, time = at, actor = 'Nico') => changes.map(({ id, patch }) => operation('pantry', id, patch, actor, time));
@@ -150,4 +150,11 @@ test('Vorrat: ein eigener Favorit ohne bekannte Kategorie bleibt schon vor der V
   const library=pantryProductLibrary([], [favorite], []),found=filterProducts(library,{mode:'favorites',includeOwn:true});
   assert.deepEqual(found.map(row=>row.name),['Meine Hausmischung']);assert.equal(found[0].favorite.id,favorite.id);
   assert.ok(!pantryProductLibrary([], [{...favorite,name:'TV'}], []).some(row=>row.name==='TV'));
+});
+
+test('Kürzlich entfernt: nur Grundvorräte mit tatsächlicher Statusänderung, nicht neue Bildänderungen oder alter Vorrat',()=>{
+ const now=Date.parse('2026-10-31T12:00:00Z'),at=days=>new Date(now-days*86400000).toISOString();
+ const rows=[{id:'milk',name:'Milch',available:false,_clock:{available:{at:at(1)}}},{id:'flour',name:'Mehl',available:false,updatedAt:at(0),_clock:{available:{at:at(8)}}},{id:'salt',name:'Salz',available:true},{id:'apple',name:'Äpfel',available:false,_clock:{available:{at:at(0)}}}],before=structuredClone(rows),products=['milch','mehl','salz','aepfel'].map(productById);
+ assert.deepEqual(recentlyRemovedBasics(products,rows,[],now).map(row=>row.name),['Milch']);
+ assert.deepEqual(recentlyRemovedBasics(products,rows,[{...productById('milch'),pantryAvailable:true},{...productById('salz'),pantryAvailable:false}],now).map(row=>row.name),['Salz']);assert.deepEqual(rows,before);
 });

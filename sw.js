@@ -1,5 +1,5 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v93';
+const CACHE = 'einkauf-shell-v94';
 // Die Texterkennung ist groß (ca. 5 MB) und ändert sich selten: eigener Speicher, der App-Updates übersteht.
 const VENDOR = 'einkauf-vendor-v1';
 const FILES = ['./', './index.html', './styles.css', './app.js', './data.js', './prices.js', './wishes.js', './recipe-import.js', './page-source.js', './ocr.js', './categories.js', './plan.js', './plan-list.js', './photos.js', './compact.js', './receipt.js', './cook.js', './news.js', './shop.js', './dragdelete.js', './brand.js', './store-catalog.js', './product-catalog.js', './product-catalog-data.js', './product-picker.js', './product-tab-order.js', './product-images.js', './help.js', './daily.js', './recipe-maker.js', './emoji.js', './spending.js', './family.js', './spending-view.js', './cookable.js', './recent-purchases.js', './grocery-names.js', './product-names.js', './buying.js', './quantity-controls.js', './pantry.js', './pantry-view.js', './zip.js', './pdf.js', './pdf-fonts.js', './recipe-sheet.js', './sheet-view.js', './recipe-filter.js', './theme.js',

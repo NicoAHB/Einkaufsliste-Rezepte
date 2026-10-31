@@ -1,6 +1,10 @@
-# Sattplan – Version 2.81
+# Sattplan – Version 2.82
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.82: entfernte Grundvorräte zurückholen
+
+Unter **Aktueller Vorrat** stehen kürzlich entfernte Grundvorratsprodukte unter einer Trennlinie als Bildkacheln mit der Überschrift **Kürzlich entfernt**. Sie bleiben dort sieben Tage anhand der bestehenden Statusänderungszeit sichtbar. Antippen holt sie in die aktuelle Auswahl zurück; wie bisher unten bestätigen. Unbestätigte Entfernungen lassen sich dort sofort zurücknehmen. Namen, Bilder, IDs und Datenmodell bleiben erhalten. Andere Filter und das native Scrollen bleiben unverändert. Offline-Paket **einkauf-shell-v94**.
 
 ## Neu in Version 2.81: flüssiges Scrollen der Vorratsreiter
 

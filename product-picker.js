@@ -8,6 +8,7 @@ import { groupImageFor, imageForProduct, paintProductImage } from './product-ima
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys } from './data.js';
 import { recentPurchases, purchaseLabel } from './recent-purchases.js';
+import { recentlyRemovedBasics } from './pantry.js';
 import { bindWishHold } from './wishes.js';
 import { mountProductTabOrder } from './product-tab-order.js';
 
@@ -113,14 +114,19 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       const own = products.find(product => productKey(product.name) === productKey(search.value)) || ownProduct(search.value);
       if ((!category.value || category.value === own.category) && (target !== 'pantry' || pantryProductAllowed(own))) visible.push(own);
     }
+    const removedHost=$('pantry-removed');removedHost.replaceChildren();
+    const removed=target==='pantry'&&mode==='current'?filterProducts(recentlyRemovedBasics(allProducts,getData().pantry||[],[...selection.values()]),{query:search.value,category:category.value,includeOwn:true}).sort((a,b)=>b.removedAt-a.removedAt):[];
+    removedHost.hidden=!removed.length;
     grid.replaceChildren();
     // Favoriten und häufige Käufe bleiben ein kompaktes Raster, auch wenn sie aus vielen Gängen stammen.
     const shown = visible.slice(0, visibleLimit);
     const groups = ['favorites','frequent','recent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':mode==='recent'?'Letzte Einkäufe':'Oft auf deiner Liste'}]:CATEGORIES;
-    for (const group of groups) {
-      const matches = group.id ? shown.filter(product => product.category === group.id) : shown; if (!matches.length) continue;
+    const sections=[...groups,...(removed.length?[{label:'Kürzlich entfernt',products:removed,removed:true}]:[])];
+    for (const group of sections) {
+      const matches = group.products || (group.id ? shown.filter(product => product.category === group.id) : shown); if (!matches.length) continue;
       const section = node('section', undefined, 'product-group'), heading = node('h3', group.label), cards = node('div', undefined, 'product-grid');
-      section.append(heading, cards); grid.append(section);
+      if(group.removed)section.append(node('hr',undefined,'pantry-removed-divider'));
+      section.append(heading, cards); (group.removed?removedHost:grid).append(section);
       for (const product of matches) {
         const chosen=selection.get(product.id),picked=Boolean(chosen);
         const amount = shoppingAmount(chosen || purchaseStart(product));
@@ -166,7 +172,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     $('pantry-add-basics').hidden = target !== 'pantry' || mode !== 'basics';
     for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.setAttribute('aria-pressed', String(tab.dataset.productMode === mode));
     updateFooter();
-    if (focusId && focusKey) grid.querySelector(`[data-product-action="${focusKey}"][data-product="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
+    if (focusId && focusKey) form.querySelector(`[data-product-action="${focusKey}"][data-product="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
   }
   const ownDialog=$('pantry-own-dialog'),ownForm=$('pantry-own-form');let keepName='';
   function ownHint(){const typed=ownForm.elements.name.value.trim(),correction=keepName===typed?null:recognizeName?.(typed).correction;$('pantry-own-hint').hidden=!correction;$('pantry-own-hint').querySelector('span').textContent=correction?`Beim Hinzufügen: „${correction}“`:'';}
@@ -198,8 +204,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     $('product-picker-feedback').textContent=added?`${added} Grundvorratsprodukte ausgewählt – unten übernehmen.`:'Der Grundvorrat ist bereits vorhanden.';$('product-picker-feedback').hidden=false;
     $('product-picker-add').scrollIntoView({block:'nearest'});
   });
-  bindWishHold(grid, '.product-pick', id => { try { const recent=mode==='recent'?recentPurchases(getData().recentItems||[]).find(row=>ownProduct(row.name).id===id):null;const product = library().find(p => p.id === id)||(recent?ownProduct(recent.name,recent):null); if (product) onQuickBuy?.({ ...product, imageKey: product.imageKey || imageForProduct(product).key }); } catch (error) { fail(error); } }, () => !dialog.open || target !== 'pantry' || scope !== getScope());
-  grid.addEventListener('selectstart', event => { if (target === 'pantry') event.preventDefault(); });
+  bindWishHold(form, '.product-pick', id => { try { const recent=mode==='recent'?recentPurchases(getData().recentItems||[]).find(row=>ownProduct(row.name).id===id):null;const product = library().find(p => p.id === id)||(recent?ownProduct(recent.name,recent):null); if (product) onQuickBuy?.({ ...product, imageKey: product.imageKey || imageForProduct(product).key }); } catch (error) { fail(error); } }, () => !dialog.open || target !== 'pantry' || scope !== getScope());
+  for(const box of [grid,$('pantry-removed')])box.addEventListener('selectstart', event => { if (target === 'pantry') event.preventDefault(); });
   for (const group of CATEGORIES) category.add(new Option(group.label, group.id));
   search.addEventListener('input', () => { visibleLimit = PAGE_SIZE; clearError(); renderProducts(); });
   category.addEventListener('change', () => { visibleLimit = PAGE_SIZE; renderProducts(); });

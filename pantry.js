@@ -2,7 +2,7 @@
    Die App speichert jeden Eintrag und jedes Feld mit ihrer vorhandenen Offline-/Merge-Logik. */
 import { pantryKey, pantryRows } from './data.js';
 import { isCategory, suggestCategory } from './categories.js';
-import { pantryProductAllowed } from './product-catalog.js';
+import { pantryProductAllowed, isPantryBasic } from './product-catalog.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
@@ -44,4 +44,16 @@ export function pantrySelectionChanges(products,rows=[]) {
     }else changes.push(...pantryChanges([product],rows));
   }
   return changes;
+}
+
+// Nur tatsächliche Statusänderungen zählen als Entfernen; Bilder/Namen ändern das Datum nicht.
+export function recentlyRemovedBasics(products, rows = [], pending = [], now = Date.now()) {
+  const saved=new Map(pantryRows(rows).map(row=>[pantryKey(row.name),row]));
+  const changes=new Map(pending.map(product=>[pantryKey(product.name),product]));
+  return products.filter(isPantryBasic).flatMap(product=>{
+    const key=pantryKey(product.name),row=saved.get(key),change=changes.get(key);
+    if(change?.pantryAvailable===true || (!change && row?.available!==false))return [];
+    const at=change?.pantryAvailable===false?now:Date.parse(row?._clock?.available?.at);
+    return Number.isFinite(at)&&at<=now&&at>=now-7*86400000?[{...product,removedAt:at}]:[];
+  }).sort((a,b)=>b.removedAt-a.removedAt||a.name.localeCompare(b.name,'de'));
 }
