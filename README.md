@@ -1,6 +1,15 @@
-# Sattplan – Version 2.92
+# Sattplan – Version 2.93
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.93: klar erkennbare Buttons
+
+- **Was kann ich kochen?** zeigt Kochen und Einplanen als deutlich umrandete Buttons mit Symbol und Text. **Fehlendes auf die Liste** steht darunter über die ganze Kartenbreite.
+- Im Laden heißt der Rückweg **Zurück zu planen**, mit Zurück-Pfeil und demselben grünen Buttonstil wie das gewählte Planen auf der Einkaufsseite.
+- **Wünsche** sind auch ausgeblendet über den sichtbaren Button **Wünsche öffnen** auf der Einkaufsseite und unter **Geschäfte** erreichbar. Der Ein-/Aus-Schalter bleibt in der Wünsche-Liste. Früher entfernte Wunschlisten werden beim ausdrücklichen Einblenden mit ihrer bisherigen Kennung wiederhergestellt, soweit ihre Einträge noch vorhanden sind.
+- **Speichern** beim Planen eines Gerichts hat einen deutlichen Rahmen, ein Häkchen und den Zusatz **Nur im Wochenplan**. Beide Speicheraktionen bleiben unten erreichbar. Heller und dunkler Modus sowie das Glas-Design erhalten die sichtbaren Buttonkonturen.
+
+Offline-Paket **einkauf-shell-v105**. Weitere Empfehlungen stehen in der [Bedienprüfung](docs/Bedienpruefung-2.93.md); diese zusätzlichen Vorschläge wurden noch nicht umgesetzt.
 
 ## Neu in Version 2.92: Geschäftsreihenfolge, Kochwasser und einfachere Bedienung
 

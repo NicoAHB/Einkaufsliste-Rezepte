@@ -3136,6 +3136,33 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
   });
 
+  test('2.93: ausgeblendete Wünsche auf Einkauf und unter Geschäfte sichtbar öffnen und ohne Datenverlust einblenden',async()=>{
+    const data=wishData();data.stores.find(row=>row.id==='store-wishes').wishlistEnabled=false;
+    const {ctx,page,problems}=await context({config:{palette:'gruen',glass:true,glassLevel:100}});await seedLocal(ctx,data);await open(page);
+    const before=(await storedDemo(page)).items;
+    assert.equal(await page.locator('#open-wishlist').isVisible(),true);assert.equal(await page.textContent('#wishlist-access-state'),'Ausgeblendet');
+    assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),0);
+    await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.locator('#stores-open-wishlist').isVisible(),true);
+    assert.match(await page.locator('#store-editor [data-id=store-wishes] > summary').textContent(),/Ausgeblendet/);
+    await page.click('#stores-open-wishlist');assert.equal(await page.locator('#stores-dialog').isVisible(),false);assert.equal(await page.locator('#wishlist-enabled').isChecked(),false);
+    assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);await page.check('#wishlist-enabled');
+    assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),1);assert.equal(await page.locator('#wishlist-access').isVisible(),false);
+    let saved=await storedDemo(page);assert.equal(saved.stores.filter(row=>row.name==='Wünsche'&&!row.deletedAt).length,1);assert.deepEqual(saved.items,before);
+    await page.reload();await openWishlist(page);await page.uncheck('#wishlist-enabled');await page.locator('#store-chips [data-all-stores]').click();
+    assert.equal(await page.locator('#open-wishlist').isVisible(),true);await page.click('#open-wishlist');assert.equal(await page.locator('#wishlist-enabled').isVisible(),true);
+    assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const removed of [false,true])test(`2.93: Wünsche ${removed?'nach entfernter Liste mit bisherigen Einträgen zurückholen':'auch ohne bisherige Liste sichtbar einrichten'}`,async()=>{
+    const data=wishData(),wish=data.stores.find(row=>row.id==='store-wishes');
+    if(removed)wish.deletedAt='2026-11-01T12:00:00.000Z';else{data.stores=data.stores.filter(row=>row!==wish);data.items=data.items.filter(row=>row.id!=='wish-rope');}
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=(await storedDemo(page)).items;
+    await page.click('#open-wishlist');assert.equal(await page.locator('#wishlist-enabled').isChecked(),false);await page.check('#wishlist-enabled');
+    const saved=await storedDemo(page),stores=saved.stores.filter(row=>!row.deletedAt&&row.name==='Wünsche');assert.equal(stores.length,1);assert.equal(stores[0].wishlistEnabled,true);
+    if(removed){assert.equal(stores[0].id,'store-wishes');assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);}
+    assert.deepEqual(saved.items,before);assert.equal(await page.locator('#store-chips [data-store-id]').filter({has:page.getByRole('img',{name:'Wünsche',exact:true})}).count(),1);
+    await page.reload();assert.equal(await page.locator('#open-wishlist').isVisible(),false);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
   test('2.92 PDF: Tagesempfehlung hat eigenes Symbol und Einstellungen enthalten keine Geschäfts- oder Wünsche-Karte', async () => {
     const {ctx,page,problems}=await context(); await open(page); await goTab(page,'recipes');
     assert.equal(await page.locator('#daily-open use').getAttribute('href'),'#i-sparkles');
@@ -8328,9 +8355,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.80: Nur Vorrat ist Standard; Zettel zählt nur im gewählten Modus, kürzlicher Kauf zählt nie als da',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,data280());await open(page);await openCookable280(page);
     const card=name=>page.locator('.cookable-card',{hasText:name}),status=name=>card(name).locator('.cookable-status').textContent();
-    assert.equal(await page.getAttribute('[data-cookable-mode=pantry]','aria-pressed'),'true');assert.equal(await status('Vorrat komplett'),'Alles da');assert.equal(await status('Mit Einkaufszettel'),'Es fehlen 1 von 2 Zutaten');assert.equal(await status('Nur kürzlich gekauft'),'Es fehlen 1 von 2 Zutaten');assert.ok(!(await page.textContent('#cookable-list')).includes('Kommt noch'));assert.ok(!(await page.textContent('#cookable-count')).includes('nach dem Einkauf'));assert.ok(!(await page.textContent('#cookable-explanation')).includes('7 Tagen'));
+    assert.equal(await page.getAttribute('[data-cookable-mode=pantry]','aria-pressed'),'true');assert.equal(await status('Vorrat komplett'),'Alles da');assert.equal(await status('Mit Einkaufszettel'),'Es fehlt 1 von 2 Zutaten');assert.equal(await status('Nur kürzlich gekauft'),'Es fehlt 1 von 2 Zutaten');assert.ok(!(await page.textContent('#cookable-list')).includes('Kommt noch'));assert.ok(!(await page.textContent('#cookable-count')).includes('nach dem Einkauf'));assert.ok(!(await page.textContent('#cookable-explanation')).includes('7 Tagen'));
     const before=await storedDemo(page);await card('Mit Einkaufszettel').getByRole('button',{name:'Fehlendes auf die Liste',exact:true}).click();assert.equal(await page.locator('#transfer-dialog[open]').count(),0);assert.deepEqual((await storedDemo(page)).items,before.items,'keine Mengenverdopplung im Nur-Vorrat-Modus');
-    await openCookable280(page);await page.click('[data-cookable-mode=shopping]');assert.match(await status('Mit Einkaufszettel'),/sobald ihr einkauft/);assert.match(await page.textContent('#cookable-count'),/1 Rezept.*sofort.*1 nach dem Einkauf/);assert.equal(await status('Nur kürzlich gekauft'),'Es fehlen 1 von 2 Zutaten');assert.match(await page.textContent('#cookable-explanation'),/Kommt noch/);
+    await openCookable280(page);await page.click('[data-cookable-mode=shopping]');assert.match(await status('Mit Einkaufszettel'),/sobald ihr einkauft/);assert.match(await page.textContent('#cookable-count'),/1 Rezept.*sofort.*1 nach dem Einkauf/);assert.equal(await status('Nur kürzlich gekauft'),'Es fehlt 1 von 2 Zutaten');assert.match(await page.textContent('#cookable-explanation'),/Kommt noch/);
     await page.click('#cookable-dialog [data-close]');await openCookable280(page);assert.equal(await page.getAttribute('[data-cookable-mode=shopping]','aria-pressed'),'true');await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openCookable280(page);assert.equal(await page.getAttribute('[data-cookable-mode=shopping]','aria-pressed'),'true');
     await card('Nur kürzlich gekauft').getByRole('button',{name:'Fehlendes auf die Liste'}).click();await sheetOpen(page);assert.deepEqual(await page.locator('#transfer-ingredients input').evaluateAll(nodes=>nodes.map(node=>node.checked)),[false,true]);await page.click('#transfer-form button[type=submit]');let after=await storedDemo(page);assert.equal(after.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Tomate').length,1);
     await openCookable280(page);await page.click('[data-cookable-mode=pantry]');await card('Nur kürzlich gekauft').getByRole('button',{name:'Fehlendes auf die Liste'}).click();assert.deepEqual((await storedDemo(page)).items,after.items);assert.deepEqual(problems,[]);await ctx.close();

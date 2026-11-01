@@ -265,19 +265,36 @@ function syncPrivateView() {
 const wishStores = () => orderedStores(state.stores).filter(store=>store.wishlist===true || (isSeparate(store) && defaultSymbol(store.name)==='gift'));
 const visibleStore = store => !wishStores().some(wish=>wish.id===store.id) || store.wishlistEnabled!==false;
 function renderWishOptions() {
-  const store = wishStores().find(store => store.id === view), shown = Boolean(store) || view === 'wishes-preview';
+  const stores = wishStores(), store = stores.find(store => store.id === view), shown = Boolean(store) || view === 'wishes-preview';
   $('#wishlist-controls').hidden = !shown;
   const enabled = Boolean(store && store.wishlistEnabled !== false);
   $('#wishlist-enabled').checked = enabled;
   $('#wishlist-state').textContent = enabled ? 'Eingeblendet' : 'Ausgeblendet';
+  const missing = !stores.some(store => store.wishlistEnabled !== false);
+  $('#wishlist-access').hidden = !missing || shown;
+  $('#stores-wishlist-access').hidden = !missing;
+  $('#wishlist-access-state').textContent = stores.length ? 'Ausgeblendet' : 'Noch nicht eingeblendet';
+  $('#open-wishlist').disabled = $('#stores-open-wishlist').disabled = !ready;
+}
+function openWishlist(id = '') {
+  if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+  const store = wishStores().find(store => store.id === id) || wishStores()[0];
+  $('#stores-dialog').close();
+  if (shopOn()) setShopMode(false);
+  tab('shopping'); showView(store?.id || 'wishes-preview');
 }
 function setWishesEnabled(enabled) {
   const store = wishStores().find(store => store.id === view);
+  // Beim bewussten Wiedereinblenden die bisherige Liste mit ihren Artikel-IDs
+  // zurückholen, statt neben einer früher entfernten Liste eine leere anzulegen.
+  const removed = !store && state.stores.filter(row => row.deletedAt && (row.wishlist === true || (isSeparate(row) && defaultSymbol(row.name) === 'gift')))
+    .sort((a,b) => b.deletedAt.localeCompare(a.deletedAt))[0];
+  const id = store?.id || removed?.id || 'wishlist-default';
   const ops = store ? (store.wishlistEnabled !== false) === enabled ? [] : [nextOp('stores', store.id, { wishlistEnabled: enabled })] :
-    enabled ? [nextOp('stores', 'wishlist-default', { name: 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true, symbol: 'gift' })] : [];
+    enabled ? [nextOp('stores', id, { name: removed?.name || 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true, symbol: removed?.symbol || 'gift', deletedAt: null })] : [];
   if (ops.length) commit(ops, enabled ? 'Wünsche eingeblendet' : 'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
   else renderWishOptions();
-  if (enabled && view === 'wishes-preview') showView('wishlist-default');
+  if (enabled && view === 'wishes-preview') showView(id);
 }
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
@@ -908,7 +925,7 @@ function storeEditorRow(store) {
     summary.setAttribute('aria-description', 'Lange halten und nach oben oder unten ziehen. Mit der Tastatur: Alt und Pfeil oben oder unten.');
     row.addEventListener('toggle', () => { if (row.open) storesOpen.add(store.id); else storesOpen.delete(store.id); });
     const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name));if(isSeparate(store)&&symbolOf(store))title.append(element('span',store.name));summary.append(title);
-    if (isSeparate(store)) summary.append(element('span', 'Eigene Liste', 'store-pill'));
+    if (isSeparate(store)) summary.append(element('span', wishList && store.wishlistEnabled === false ? 'Ausgeblendet' : 'Eigene Liste', 'store-pill'));
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
     input.name = 'name';
@@ -1012,7 +1029,11 @@ function storeEditorRow(store) {
       if (!confirm(`„${store.name}“ löschen? Die zugehörigen Artikel werden ausgeblendet.`)) return;
       removeRows('stores', [store.id]); renderStores();
     }, 'danger store-delete');
-    remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form, remove); row.append(summary, body);
+    remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form);
+    if (wishList) {
+      const open = button('Wünsche öffnen', () => openWishlist(store.id), 'secondary store-wishes-open'); open.prepend(icon('gift')); body.append(open);
+    }
+    body.append(remove); row.append(summary, body);
     return row;
 }
 function syncNewStoreForm() {
@@ -2231,19 +2252,26 @@ function renderCookable() {
   for (const entry of ranked) {
     const { recipe } = entry, card = element('article', undefined, 'card cookable-card'), lines = element('ul', undefined, 'cookable-lines'), servings = recipe.servings;
     card.append(element('h3', recipe.name), element('p', entry.tier === 0 ? 'Alles da' : entry.tier === 1 ? `Alles da, sobald ihr einkauft (${entry.soon.length} von der Liste)` :
-      `Es fehlen ${entry.missing.length} von ${entry.total} Zutaten`, `cookable-status tier${entry.tier}`));
+      `${entry.missing.length === 1 ? 'Es fehlt' : 'Es fehlen'} ${entry.missing.length} von ${entry.total} Zutaten`, `cookable-status tier${entry.tier}`));
     if (entry.have.length) lines.append(line('Da', entry.have));
     if (entry.soon.length) lines.append(line('Kommt noch', entry.soon));
     if (entry.missing.length) lines.append(line('Fehlt', entry.missing.map(row => row.name)));
     card.append(lines);
     const actions = element('div', undefined, 'actions');
-    actions.append(button('Kochen', later(() => openCook(recipe.id, servings)), 'secondary'));
-    if (entry.missing.length) actions.append(button('Fehlendes auf die Liste', later(() => {
+    const cook = button('', later(() => openCook(recipe.id, servings)), 'secondary cookable-action');
+    cook.append(icon('pot'), element('span', 'Kochen'));
+    const plan = button('', later(() => openMeal({ recipeId: recipe.id, servings })), 'secondary cookable-action');
+    plan.setAttribute('aria-label', `${recipe.name} im Wochenplan einplanen`);
+    plan.append(icon('calendar'), element('span', 'Einplanen'));
+    actions.append(cook, plan);
+    if (entry.missing.length) {
+      const buy = button('', later(() => {
       const missing=cookableMissing(entry.missing);
       if(!missing.length){showNotice('Die fehlenden Zutaten stehen bereits offen auf der Einkaufsliste.');return;}
       openTransfer(recipe.id,servings,new Set(missing.map(row=>row.id)));$('#transfer-form')._cookableMissing=true;
-    }), 'primary-action'));
-    actions.append(iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, later(() => openMeal({ recipeId: recipe.id, servings }))));
+      }), 'primary-action cookable-action cookable-buy');
+      buy.append(icon('cart'), element('span', 'Fehlendes auf die Liste')); actions.append(buy);
+    }
     card.append(actions); box.append(card);
   }
 }
@@ -3639,6 +3667,8 @@ $('#select-delete').addEventListener('click', () => guard(() => {
 }));
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
 $('#wishlist-enabled').addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
+$('#open-wishlist').addEventListener('click', () => guard(() => openWishlist()));
+$('#stores-open-wishlist').addEventListener('click', () => guard(() => openWishlist()));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
 function saveStoreOrder(visibleIds) {
   const order = reorderedStoreIds(state.stores, visibleIds);
