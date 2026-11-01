@@ -4575,7 +4575,6 @@ button.recipe-delete { color:var(--danger) }
 :root .chip:not([aria-selected=true]):not([aria-pressed=true]) { border-color:var(--line-strong); background:var(--card); color:var(--text) }
 :root .segmented button { border:2px solid var(--line-strong); min-height:44px }
 :root .segmented button:is([aria-selected=true],[aria-checked=true],[aria-pressed=true]) { border-color:var(--accent) }
-.item-edit-hint { display:block; width:max-content; max-width:100%; margin-top:3px; color:var(--accent); font-size:.75rem; font-weight:650; text-decoration:underline; text-underline-offset:3px }
 #pick-preview { width:100%; margin:8px 0 0; white-space:normal }
 #meal-change-day { width:100%; white-space:normal }
 .day.past .past-meal-remove { flex:none; font-size:.8rem; min-height:44px }

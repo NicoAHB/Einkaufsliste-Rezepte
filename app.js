@@ -545,7 +545,6 @@ function itemRow(item, withStore = false) {
   copy.append(element('strong', item.name), element('span', `${shoppingAmount(item)}`, 'item-qty'),
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
-  if (!selecting) copy.append(element('span', 'Bearbeiten', 'item-edit-hint'));
   row.append(pick || check, copy);
   if (imagesOn() || isWish(item)) row.append(thumbFor(item));
   return row;
