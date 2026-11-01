@@ -116,7 +116,7 @@ test('Vorratsreiter: Kategoriezugehörigkeit folgt dem Bestand, Favoriten und h�
   const categories=mode=>new Set(pantryProductsForMode(library,mode,new Set([pantryKey('Meine Hausmischung')])).map(row=>row.category));
   assert.deepEqual(categories('current'),new Set(['sonstiges']));assert.deepEqual(categories('favorites'),new Set(['gewuerze']));
   assert.deepEqual(categories('frequent'),new Set(['kuehl']));assert.ok(categories('all').has('haushalt'));
-  assert.equal(pantryProductsForMode(library,'basics').length,28);assert.ok(!categories('basics').has('haushalt'));assert.deepEqual(rows,before);
+  assert.equal(pantryProductsForMode(library,'basics').length,27);assert.ok(!categories('basics').has('haushalt'));assert.deepEqual(rows,before);
 });
 test('Vorratsreiter: leere Sammlungen bleiben leer, Grundvorrat ist von vorhanden und Favoriten unabhängig',()=>{
   const library=pantryProductLibrary();

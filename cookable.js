@@ -2,6 +2,7 @@
    „Da“ ist ausschließlich der aktuelle Vorrat. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
    Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Zutaten „nach Bedarf“ (Salz, Pfeffer) und Wasser zählen nicht mit. */
 import { pantryRows, spellingStem } from './data.js';
+import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
 
@@ -14,7 +15,7 @@ const ALWAYS = new Set(['wasser', 'leitungswasser', 'salz', 'pfeffer'].map(stemO
 
 // Namensteile ohne Klammerzusatz („Salz, Pfeffer“, „Tomaten und Zwiebeln“ sind mehrere Zutaten); jeder Teil als Menge von Wortstämmen.
 const parts = name => String(name ?? '').replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i)
-  .map(part => [...new Set(stemOf(part).split(' ').filter(Boolean).map(word => group.get(word) || word))]).filter(tokens => tokens.length);
+  .map(part => [...new Set(stemOf(canonicalProductName(part)).split(' ').filter(Boolean).map(word => group.get(word) || word))]).filter(tokens => tokens.length);
 const within = (small, big) => small.every(token => big.includes(token));
 // Passt ein Zutatenteil zu einem Namen? Gleiche Wörter (Einzahl/Mehrzahl egal), auch wenn einer mehr Wörter hat („rote Zwiebel“ zu „Zwiebeln“).
 const same = (a, b) => within(a, b) || within(b, a);

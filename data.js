@@ -2,6 +2,7 @@
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
+import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
@@ -86,6 +87,8 @@ export function validateRow(key, row) {
   }
   if (key === 'items' && row.wishNote !== undefined && row.wishNote !== null &&
       (typeof row.wishNote !== 'string' || row.wishNote.length > WISH_NOTE_LIMIT)) throw new Error('Ungültige Notiz zum Wunsch.');
+  if (key === 'items' && row.wishImageHidden !== undefined && typeof row.wishImageHidden !== 'boolean') throw new Error('Ungültige Wunschbild-Einstellung.');
+  if (key === 'stores' && row.wishlistEnabled !== undefined && typeof row.wishlistEnabled !== 'boolean') throw new Error('Ungültige Wunschlisten-Einstellung.');
   if (key === 'items' && row.planLinked !== undefined && typeof row.planLinked !== 'boolean') throw new Error('Ungültige Wochenplan-Zuordnung.');
   if (key === 'items' && row._planCuts !== undefined && (!Array.isArray(row._planCuts) || !row._base || row._planCuts.some(cut => !cut || typeof cut.sourceId !== 'string' || !Number.isFinite(Date.parse(cut.at)) || !Number.isFinite(cut.quantity) || cut.quantity < 0 || !Number.isFinite(cut.originalQuantity) || cut.quantity > cut.originalQuantity || typeof cut.unit !== 'string'))) throw new Error('Ungültige Wochenplan-Korrektur.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
@@ -156,7 +159,8 @@ export function validateRow(key, row) {
 // Revision 8 (2.73): manuell gewählte Maße bleiben getrennt von Rechen-/Rezeptmengen.
 // Revision 9 (2.74): manuelle Einzelmengen getrennt von Summen/Rezepten merken.
 // Revision 10 (2.76): Quellenbezogene Wochenplan-Korrekturen und Mengen-Reset.
-export const SCHEMA_REV = 10;
+// Revision 11 (2.86): Produktgruppen sowie ausgeblendete Wunschlisten und entfernte Wunschbilder.
+export const SCHEMA_REV = 11;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -185,6 +189,7 @@ export function validate(data) {
 // Löschmarkierungen werden wie Felder behandelt. Nur eine ausdrückliche
 // Wiederherstellung ändert deletedAt; gewöhnliches Bearbeiten belebt nichts wieder.
 export function operation(collection, entityId, patch, actor, at = new Date().toISOString()) {
+  if ((['items','pantry','ingredients','productFavorites'].includes(collection) && typeof patch.name === 'string') || (collection==='meals' && ('listedRows' in patch || 'listedParts' in patch))) patch = { ...patch, productGroupVersion:1 };
   return { id: uid(), collection, entityId, patch, actor, at };
 }
 
@@ -299,6 +304,8 @@ export function merge(data, operations) {
     try { validateRow(collection, row); } catch { next[collection].splice(next[collection].indexOf(row), 1); }
   }
   next.sync.applied = [...applied];
+  if (collections.some(key => next[key]?.some(row=>row.productOriginalName))) next.sync.minRev = Math.max(Number(next.sync.minRev)||1,11);
+  if(next.items.some(row=>row.wishImageHidden!==undefined) || next.stores.some(row=>row.wishlistEnabled!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,11);
   if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
   if (next.pantry.some(row => row.available === false)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 5);
   if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
@@ -449,7 +456,7 @@ export function ingredientItems(ingredients, recipeId, storeId, factor, actor, a
    und zählt nur dann als Vorrat, wenn jeder Teil im Vorrat steht. Klammerzusätze („Zwiebel (rot)“) bleiben unberücksichtigt. */
 const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
 // Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
-export const pantryKey = name => spellingStem(name) || productKey(name);
+export const pantryKey = name => spellingStem(canonicalProductName(name)) || productKey(canonicalProductName(name));
 // Alte Dateien können denselben Namen mit mehreren zufälligen IDs besitzen. Ein Eintrag pro Name,
 // die jüngste Fassung entscheidet. IDs bleiben zum gemeinsamen Ändern/Entfernen erhalten.
 export function pantryRows(rows = []) {
@@ -514,7 +521,7 @@ export function foldIntoList(rows, storeId, items = []) {
 export function duplicateFolds(items, now = new Date().toISOString()) {
   const groups = new Map();
   for (const item of active(items).filter(row => !row.checked && !hasWishDetails(row) && (row.price === undefined || row.price === null) && !row.planLinked)) {
-    const key = `${item.storeId || ''}|${productKey(item.name)}|${purchaseIdentity(item)}`;
+    const key = `${item.storeId || ''}|${productKey(item.name)}|${purchaseIdentity(item)}|${item.productOriginalName || ''}`;
     groups.set(key, [...(groups.get(key) || []), item]);
   }
   const ops = [];

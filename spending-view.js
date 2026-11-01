@@ -110,10 +110,10 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       column.append(node('span', entry.total ? compactEuros(entry.total) : '', 'value'), track, node('span', entry.label)); li.append(column); box.append(li);
     }
   }
-  function renderStores(summary) {
-    $('spending-stores-card').hidden = summary.byStore.length < 2;
-    const box = $('spending-stores'); box.replaceChildren(); const max = Math.max(1, ...summary.byStore.map(row => Math.abs(row.total)));
-    for (const group of summary.byStore) {
+  function renderStores(summary, type='stores', groups=summary.byStore) {
+    $( `spending-${type}-card` ).hidden = type==='stores' ? groups.length<2 : !groups.length;
+    const box = $(`spending-${type}`); box.replaceChildren(); const max = Math.max(1, ...groups.map(row => Math.abs(row.total)));
+    for (const group of groups) {
       const li = node('li', undefined, 'spend-store'), head = node('div', undefined, 'spend-store-head'), track = node('div', undefined, 'spend-share'), bar = node('span');
       head.append(node('strong', group.name), node('span', euros(group.total))); bar.style.width = `${Math.max(2, Math.round(Math.abs(group.total) / max * 100))}%`; track.append(bar);
       li.append(head, track, node('small', plural(group.count, 'Eintrag', 'Einträge'))); box.append(li);
@@ -145,7 +145,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       }
     }
     const count = $('purchase-count'); count.textContent = current.count ? plural(current.count, 'Eintrag', 'Einträge') : '';
-    renderChart(allRows, month); renderStores(current);
+    renderChart(allRows, month); renderStores(current); renderStores(current,'notes',current.byNote);
     $('spending-breakdown').textContent = `${euros(current.gross)} Einkäufe − ${euros(current.refunds)} Rückerstattungen = ${euros(current.total)}. ${current.purchaseCount ? `Ø ${euros(current.average)} pro Einkauf.` : ''}`;
     const list = $('purchase-list'); list.replaceChildren();
     if (!current.count && !none) list.append(node('li', 'Für diese Person und diesen Zeitraum gibt es keine Einträge.', 'empty'));

@@ -7,6 +7,7 @@ import { productKey } from './prices.js';
 import { pantryKey, pantryRows } from './data.js';
 import { amountChoice } from './buying.js';
 
+import { canonicalProductName, productGroup, productGroupById } from './product-groups.js';
 import { PRODUCT_ROWS, PRODUCT_SHEETS } from './product-catalog-data.js';
 
 export const PRODUCT_PHOTOS = PRODUCT_SHEETS.map(name => `assets/products/${name}.webp`);
@@ -14,7 +15,7 @@ export const GROCERY_PRODUCTS = Object.freeze(PRODUCT_ROWS.map(([id, name, quant
   id, name, quantity, unit, category, sheet: Math.floor(index / 32), cell: index % 32, own: false
 })));
 const byId = new Map(GROCERY_PRODUCTS.map(product => [product.id, product]));
-export const productById = id => byId.get(id) || null;
+export const productById = id => { const group=productGroupById(id), raw=byId.get(group?.id || id); return raw ? {...raw,...(group?{name:group.name,aliases:group.aliases}:{})} : null; };
 export const favoriteId = product => `favorite-${encodeURIComponent(product.id)}`;
 export const searchProductText = value => String(value || '').trim().toLocaleLowerCase('de')
   .replace(/ä|ae/g, 'a').replace(/ö|oe/g, 'o').replace(/ü|ue/g, 'u').replace(/ß/g, 'ss').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ');
@@ -28,11 +29,11 @@ export function ownProduct(name, extra = {}) {
 }
 // Nur genaue Namen teilen sich ein Katalogbild. „Apfeltasche“ bekommt niemals das Foto von „Äpfel“.
 export function productLibrary(history = [], favorites = [], pantry = []) {
-  const products = new Map(GROCERY_PRODUCTS.map(product => [productKey(product.name), { ...product, count: 0 }]));
+  const products = new Map(GROCERY_PRODUCTS.map(raw => { const product=productById(raw.id); return [productKey(product.name), { ...product, count:0 }]; }));
   const latest = new Map(), latestImage = new Map();
   for (const row of history) {
     if (!row?.name?.trim()) continue;
-    const key = productKey(row.name), previous = products.get(key) || { ...ownProduct(row.name, row), count: 0 };
+    const key = productKey(canonicalProductName(row.name)), previous = products.get(key) || { ...ownProduct(row.name, row), count: 0 };
     previous.count += (Number(row.weight) || 1) + (row._adds?.length || 0);
     const stamp = row.updatedAt || row.createdAt || '';
     if (previous.own && stamp >= (latest.get(key) || '')) { Object.assign(previous, ownProduct(row.name, row)); latest.set(key, stamp); }
@@ -42,14 +43,14 @@ export function productLibrary(history = [], favorites = [], pantry = []) {
   // Eigene Vorräte sind auswählbar, zählen dadurch aber nicht als häufiger gekauft.
   for (const row of pantry.filter(row => !row.deletedAt)) {
     if (!row?.name?.trim()) continue;
-    const key = productKey(row.name), product = products.get(key) || { ...ownProduct(row.name, row), count: 0 };
+    const key = productKey(canonicalProductName(row.name)), product = products.get(key) || { ...ownProduct(row.name, row), count: 0 };
     if (row.imageKey) product.imageKey = row.imageKey;
     products.set(key, product);
   }
-  for (const row of favorites.filter(row => !row.deletedAt)) {
-    const catalog = productById(row.productId), key = productKey(catalog?.name || row.name);
+  for (const row of favorites.filter(row => !row.deletedAt).sort((a,b)=>String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')))) {
+    const catalog = productById(row.productId), key = productKey(catalog?.name || canonicalProductName(row.name));
     const product = products.get(key) || { ...ownProduct(row.name, row), count: 0 };
-    product.favorite = row;
+    product.favorite = {...row,ids:[...(product.favorite?.ids || []),row.id]};
     if (validAmount(row.quantity)) product.quantity = row.quantity;
     if (row.unit?.trim()) product.unit = row.unit;
     if (row.imageKey) product.imageKey = row.imageKey;
@@ -61,7 +62,7 @@ export function filterProducts(products, { mode = 'all', query = '', category = 
   const words = searchProductText(query).split(/\s+/).filter(Boolean);
   const eligible = products.filter(product => (!category || product.category === category) &&
     (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : includeOwn || words.length || !product.own));
-  let found = eligible.filter(product => words.every(word => searchProductText(product.name).includes(word)));
+  let found = eligible.filter(product => words.every(word => searchProductText([product.name,...(product.aliases || productGroup(product.name)?.aliases || [])].join(' ')).includes(word)));
   // Erst die normale Suche; bei Tippfehlern passende ganze Namen anbieten.
   if (!found.length && words.length) {
     const near = new Set(matchProductName(query, eligible).suggestions);
@@ -104,7 +105,7 @@ export function pantryProductLibrary(history = [], favorites = [], pantry = []) 
     return row?{...product,name:row.name,category:isCategory(row.category)?row.category:product.category,...(row.imageKey?{imageKey:row.imageKey}:{})}:product;
   });
 }
-export const isPantryBasic = product => basicIds.has(product.id);
+export const isPantryBasic = product => basicIds.has(product.id) || productGroupById(product.id)?.ids.some(id=>basicIds.has(id));
 
 // Kategorien und Raster verwenden dieselbe Sammlung, noch ohne Such-/Kategorie-Filter.
 export function pantryProductsForMode(products, mode, available = new Set()) {

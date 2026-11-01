@@ -16,15 +16,26 @@ export const workerHost = value => {
 };
 
 async function download(address, timeoutMs, signal) {
+  if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
-  signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  const abort=()=>controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
   try {
     const response = await fetch(address, { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' });
     if (!response.ok) throw new Error(`Status ${response.status}`);
     const text = (await response.text()).slice(0, MAX_CHARS);
     if (text.length < 200 || !/[<{]/.test(text)) throw new Error('leere Antwort');
     return text;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort',abort); }
+}
+
+function pause(ms, signal) {
+  if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
+  return new Promise((resolve,reject)=>{
+    const abort=()=>{clearTimeout(timer);reject(new DOMException('Abgebrochen','AbortError'));};
+    const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},ms);
+    signal?.addEventListener('abort',abort,{once:true});
+  });
 }
 
 export function importRoutes(target, { workerUrl = '', allowPublic = false } = {}) {
@@ -45,13 +56,23 @@ export async function fetchRecipePage(link, options = {}, signal) {
     error.code = 'no-route'; throw error;
   }
   const failures = [];
-  for (const route of routes) {
-    try { return { html: await download(route.address, 15000, signal), via: route.name }; }
+  const attempts=5;
+  for (let attempt=0;attempt<attempts;attempt++) {
+    if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
+    if(attempt) await pause(options.retryDelayMs ?? Math.min(900,350*attempt),signal);
+    const route=routes[attempt % routes.length];
+    options.onAttempt?.(attempt+1,attempts);
+    try {
+      const html=await download(route.address,options.timeoutMs ?? 12000,signal);
+      if(options.validate) await options.validate(html);
+      return {html,via:route.name};
+    }
     catch (error) {
       if (signal?.aborted) throw new DOMException('Abgebrochen', 'AbortError');
       failures.push(`${route.name}: ${error.message}`);
     }
   }
-  const error = new Error(`Die Seite konnte nicht geladen werden (${failures.join('; ')}). Viele Rezeptseiten blockieren solche Abrufe. Öffne die Seite, kopiere Zutaten und Zubereitung und füge sie unter „Text“ ein.`);
+  const error = new Error('Die Rezeptseite konnte nach 5 Versuchen nicht geladen werden. Manche Seiten blockieren den Import. Kopiere Zutaten und Zubereitung unter „Text“ hinein oder lege das Rezept über „Neu“ von Hand an.');
+  error.failures=failures;
   error.code = 'failed'; throw error;
 }

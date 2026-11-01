@@ -1,6 +1,7 @@
 /* Ein Bildbestand für Schnellauswahl, Planen, Im Laden und Vorrat (2.65).
    Alle Bilder sind selbst erzeugte, lokale Beispielmotive. Keine Händler-/Suchdienste.
    Produktnamen werden hier nur für das Bild geprüft, niemals umbenannt oder in den Daten zusammengelegt. */
+import { productGroup } from './product-groups.js';
 import { GROCERY_PRODUCTS, PRODUCT_PHOTOS } from './product-catalog.js';
 
 export const GROUP_PHOTO = 'assets/products/groups.webp';
@@ -30,7 +31,7 @@ for (const product of GROCERY_PRODUCTS) {
 export const productImageById = id => products.get(id) || null;
 // Gespeichert werden nur lokale Kennungen, niemals frei eingebbare Bild-URLs.
 export const imageByKey = key => products.get(key) || PRODUCT_GROUP_IMAGES.find(group => group.key === key) || null;
-export const imageForProduct = row => imageByKey(row?.imageKey) || resolveProductImage(row?.name, row?.category);
+export const imageForProduct = row => imageByKey(row?.imageKey) || productImageById(productGroup(row?.name)?.id) || resolveProductImage(row?.name,row?.category);
 // Ausschließlich geprüfte, ganze Schreibweisen; kein beliebiges Abschneiden von Mehrzahlendungen oder Teilwortsuche.
 const aliases = [
   ['apfel', 'aepfel'], ['aepfel', 'aepfel'], ['birne', 'birnen'], ['banane', 'bananen'], ['orange', 'orangen'],
@@ -148,7 +149,8 @@ export function paintProductImage(node, image, fallback) {
   node.classList.add('product-picture'); node.replaceChildren(); node.classList.remove('photo-unavailable');
   node.dataset.photoKey = image.key; node.dataset.photoKind = image.kind;
   node.style.backgroundImage = `url("${image.url}")`; node.style.backgroundPosition = `${image.cell % 8 / 7 * 100}% ${Math.floor(image.cell / 8) / 3 * 100}%`;
-  node.style.backgroundSize = '800% 400%';
+  node.style.backgroundSize = image.kind==='illustration' ? 'contain' : '800% 400%';
+  if(image.kind==='illustration') node.style.backgroundPosition='center';
   const applied = image.key;
   void imageAvailable(image.url).catch(() => {
     if (!node.isConnected || node.dataset.photoKey !== applied) return;

@@ -2,6 +2,7 @@
    Tage sind lokale Kalendertage im Format JJJJ-MM-TT; gerechnet wird um 12 Uhr, damit Zeitumstellungen nie einen Tag verschieben. */
 import { sameProduct, pantryKeys, inPantry } from './data.js';
 import { productKey, unitSpec } from './prices.js';
+import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
 const pad = number => String(number).padStart(2, '0');
@@ -134,14 +135,15 @@ export function aggregateIngredients(meals, recipes, ingredients) {
 // Offene Mengen werden nur einmal verrechnet. Bereits für andere Gerichte
 // eingeplante Mengen stehen zusätzlichen Gerichten nicht nochmals zur Verfügung.
 export function shoppingDeficits(rows, pantry = [], items = [], reserved = []) {
+  const sameGroup=(a,b)=>sameProduct(canonicalProductName(a),canonicalProductName(b));
   const stock=pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
-  const consume=(row,amount)=>{for(const item of pool){if(!sameProduct(item.name,row.name)||unitSpec(item.unit).group!==unitSpec(row.unit).group)continue;const used=Math.min(amount,item.left);amount-=used;item.left-=used;if(amount<=1e-8)break;}return amount;};
+  const consume=(row,amount)=>{for(const item of pool){if(!sameGroup(item.name,row.name)||unitSpec(item.unit).group!==unitSpec(row.unit).group)continue;const used=Math.min(amount,item.left);amount-=used;item.left-=used;if(amount<=1e-8)break;}return amount;};
   for(const row of reserved)if(!inPantry(stock,row.name))consume(row,row.quantity*unitSpec(row.unit).factor);
   return rows.flatMap(row=>{
     if(inPantry(stock,row.name))return [];
     // Unbekannte Packungsgrößen/Einheiten nicht in eine zweite Produktzeile umdeuten.
-    if(pool.some(item=>item.left>0&&sameProduct(item.name,row.name)&&unitSpec(item.unit).group!==unitSpec(row.unit).group))return [];
-    if(row.unit===NO_AMOUNT)return pool.some(item=>sameProduct(item.name,row.name)&&item.left>0)?[]:[{...row}];
+    if(pool.some(item=>item.left>0&&sameGroup(item.name,row.name)&&unitSpec(item.unit).group!==unitSpec(row.unit).group))return [];
+    if(row.unit===NO_AMOUNT)return pool.some(item=>sameGroup(item.name,row.name)&&item.left>0)?[]:[{...row}];
     const spec=unitSpec(row.unit),missing=consume(row,row.quantity*spec.factor);
     return missing>1e-7?[{...row,quantity:Math.round(missing/spec.factor*1e6)/1e6}]:[];
   });

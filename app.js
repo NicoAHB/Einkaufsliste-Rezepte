@@ -4,6 +4,7 @@ import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
+import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
 import { GROCERY_PRODUCTS, favoriteId } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
@@ -12,6 +13,7 @@ import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMe
 import { pantryChanges, pantrySelectionChanges } from './pantry.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, dailyRecord, dailyHistory, dailySnapshot, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
+import { wishGroup, wishImage } from './wish-images.js';
 import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
@@ -98,7 +100,7 @@ function suggestionHistory() {
   }
   return vocabMemo.rows;
 }
-const recognizeName = typed => { suggestionHistory(); return vocabMemo.match(typed); };
+const recognizeName = typed => { suggestionHistory(); const result=vocabMemo.match(typed); return productGroup(typed) ? {...result,correction:null} : result; };
 let itemQuantity = null, editQuantity = null;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -244,11 +246,26 @@ function showView(next) {
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
+// Die Wunschliste wird gemeinsam aktiviert. Ausschalten löscht weder Liste noch Einträge.
+const wishStores = () => active(state.stores).filter(store=>store.wishlist===true || (isSeparate(store) && defaultSymbol(store.name)==='gift'));
+const wishesEnabled = () => wishStores().some(store=>store.wishlistEnabled!==false);
+const visibleStore = store => !wishStores().some(wish=>wish.id===store.id) || store.wishlistEnabled!==false;
+function renderWishOptions() {
+  for(const id of ['settings-wishes','stores-wishes','welcome-wishes']) { if(id==='welcome-wishes' && $('#welcome').open) continue; $('#'+id).checked=wishesEnabled(); }
+}
+function setWishesEnabled(enabled) {
+  $('#welcome-wishes').checked=enabled;
+  const stores=wishStores(),ops=stores.length ? stores.map(store=>nextOp('stores',store.id,{wishlistEnabled:enabled,separate:true,wishlist:true,symbol:'gift'})) :
+    enabled ? [nextOp('stores','wishlist-default',{name:'Wünsche',separate:true,wishlist:true,wishlistEnabled:true,symbol:'gift'})] : [];
+  if(ops.length) commit(ops,enabled?'Wünsche aktiviert':'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
+  else renderWishOptions();
+}
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
   queueMicrotask(() => { form.elements.name.placeholder = 'Was brauchst du?'; });
   if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
   const current = form.elements.storeId.value;
+  box.hidden=isSeparate(viewStore());
   box.replaceChildren();
   const add = (id, label, store = false) => {
     const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button'; chip.setAttribute('aria-pressed', String(id === current));
@@ -260,7 +277,7 @@ function renderStorePick() {
     box.append(chip);
   };
   add('', 'Kein Geschäft');
-  for (const store of active(state.stores)) add(store.id, store.name, true);
+  for (const store of active(state.stores).filter(store=>!isSeparate(store))) add(store.id, store.name, true);
   $('#open-products').hidden = isSeparate(viewStore()) || isSeparate(active(state.stores).find(store => store.id === current));
   $('#open-pantry').hidden = $('#open-products').hidden;
 }
@@ -271,6 +288,8 @@ function storeChanged() {
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
 function render() {
+  renderWishOptions();
+  if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
   $('#identity').textContent = config.actor || '';
   if (view !== 'all' && view !== 'none' && !viewStore()) view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
@@ -289,7 +308,7 @@ function render() {
   $('#manage-stores').disabled = !ready;
   $('#open-products').disabled = !ready;
   $('#open-pantry').disabled = !ready;
-  const favorites = active(state.productFavorites || []).length;
+  const favorites = new Set(active(state.productFavorites || []).map(row=>pantryKey(row.name))).size;
   $('#product-favorite-count').textContent = favorites ? `★ ${favorites}` : '';
   $('#product-favorite-count').hidden = !favorites;
   $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
@@ -309,7 +328,7 @@ function renderStoreChips() {
   add('all', 'Alle', open('all'));
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
-  for (const store of active(state.stores)) add(store.id, store.name, open(store.id), true);
+  for (const store of active(state.stores).filter(visibleStore)) add(store.id, store.name, open(store.id), true);
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
@@ -344,7 +363,7 @@ function newsRow(entry) {
   const actions = element('div', undefined, 'item-actions');
   actions.append(button('Übernehmen', () => acknowledge(entry.entries.map(e => e.id)), 'primary small'));
   row.append(copy);
-  if (imagesOn()) row.append(thumbFor(item));
+  if (imagesOn() || isWish(item)) row.append(thumbFor(item));
   row.append(actions);
   return row;
 }
@@ -395,7 +414,9 @@ let thumbLearned = new Map();
 function thumbFor(item) {
   const box = element('span', undefined, 'item-thumb'); box.setAttribute('aria-hidden', 'true');
   const category = itemCategory(item, thumbLearned), picture = element('span'); picture.setAttribute('aria-hidden', 'true');
-  box.append(paintProductImage(picture, imageForProduct({ ...item, category }), groupImageFor(item.name, category)));
+  const image=isWish(item) ? wishImage(item) : imageForProduct({...item,category});
+  if(image) box.append(paintProductImage(picture,image,groupImageFor(item.name,category)));
+  else { box.classList.add('wish-no-image'); box.append(icon('box')); }
   return box;
 }
 /* Mehrere Artikel gemeinsam bearbeiten (nur „Planen“): „Auswählen“ in der Listenzeile schaltet den Auswahlmodus ein. Ein Tipp auf eine Zeile wählt sie
@@ -432,7 +453,7 @@ function itemRow(item, withStore = false) {
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
   row.append(pick || check, copy);
-  if (imagesOn()) row.append(thumbFor(item));
+  if (imagesOn() || isWish(item)) row.append(thumbFor(item));
   return row;
 }
 function toggleSelected(id, row) {
@@ -445,16 +466,16 @@ function renderSelectBar() {
   const rows = selectedItems(), bar = $('#select-bar');
   bar.hidden = !selecting;
   $('#select-count').textContent = rows.length ? `${rows.length} ausgewählt` : 'Nichts ausgewählt – bitte runterscrollen zum Auswählen';
+  $('#select-move').hidden=isSeparate(viewStore()) || rows.some(isWish);
   for (const id of ['select-move', 'select-delete']) $(`#${id}`).disabled = !rows.length;
-  const all = visibleItems(true).filter(inView);
-  $('#select-all').textContent = all.length && rows.length === all.length ? 'Keine' : 'Alle';
   $('#select-mode').setAttribute('aria-pressed', String(selecting)); $('#select-mode').textContent = selecting ? 'Auswahl beenden' : 'Auswählen';
   $('#clear-checked').hidden = selecting;
   document.body.classList.toggle('selecting', selecting);
   if (selecting) document.documentElement.style.setProperty('--select-h', `${bar.offsetHeight}px`);   // Platz unter der Liste: sie bleibt bis zum Ende erreichbar
 }
 function setSelecting(on) {
-  selecting = on; if (!on) selected.clear();
+  selecting=on;
+  if(!on) { selected.clear();clearTimeout(noticeTimer);noticeUndo=null;$('#notice').hidden=true; }
   renderItems(); renderSelectBar();
 }
 function renderItems() {
@@ -513,6 +534,7 @@ function syncForm() {
 function renderItemSuggestions(event) {
   if (event?.type === 'input') delete $('#item-form').dataset.keepName;
   const form = $('#item-form'), box = $('#item-suggestions'), typed = form.elements.name.value.trim();
+  if(isSeparate(viewStore()) || isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))) { box.replaceChildren(); box.hidden=true; itemQuantity?.suggest(''); return; }
   itemQuantity?.suggest(isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?'':typed);
   const confirmed = appliedAliases().some(alias => alias.from === aliasKey(typed));
   const history = itemHistory(), correction = !confirmed && !isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) && form.dataset.keepName !== typed ? recognizeName(typed) : { suggestions: [], correction: null };
@@ -546,7 +568,7 @@ function renderItemSuggestions(event) {
 // Schnellwahl: häufig gekaufte Artikel, die gerade nicht auf der Liste stehen. Ein Tipp legt einen Artikel mit der gemerkten Einzelmenge im gewählten Geschäft an.
 function renderQuickPick() {
   const box = $('#quick-pick'), form = $('#item-form');
-  const picks = form.elements.name.value.trim() ? [] : frequentItems(itemHistory(), state.items, 6);
+  const picks = form.elements.name.value.trim() || isSeparate(viewStore()) || isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value)) ? [] : frequentItems(itemHistory(), state.items, 6);
   box.hidden = !picks.length; box.replaceChildren();
   for (const pick of picks) {
     const chip = element('button', pick.name, 'chip'); chip.type = 'button';
@@ -562,7 +584,8 @@ function renderShoppingInfo() {
   $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
   if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
   else $('#offers-link').removeAttribute('href');
-  $('.shop-tools').hidden = !store;
+  $('.shop-tools').hidden = !store || isSeparate(store);
+  $('#open-templates').hidden=isSeparate(store);
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
 function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
@@ -661,7 +684,7 @@ function editItem(id) {
   message(); $('#item-dialog').showModal();
 }
 
-// Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und die Liste (zum Verschieben) – ohne Menge, Einheit, Kategorie und
+// Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und ein lokales Gruppenbild – ohne Menge, Einheit, Kategorie und
 // Preis & Angebot. Ein kurzer Tipp und langes Drücken öffnen dasselbe Fenster; normale Artikel behalten ihr Bearbeiten-Fenster.
 function showWishProductLink() {
   const link = $('#wish-product-link');
@@ -674,11 +697,20 @@ function openWish(id) {
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch ist nicht mehr in einer Wunschliste. Bitte die Liste aktualisieren.');
   const form = $('#wish-form'); form.reset();
   form.elements.id.value = id;
-  wishBaseline = { name: item.name, storeId: item.storeId || '', wishUrl: item.wishUrl || '', wishNote: item.wishNote || '' };
-  form.elements.name.value = wishBaseline.name; storeOptions(form.elements.storeId, wishBaseline.storeId, true);
+  wishBaseline = {name:item.name,wishUrl:item.wishUrl || '',wishNote:item.wishNote || '',wishImageHidden:item.wishImageHidden===true};
+  form.dataset.imageHidden=String(wishBaseline.wishImageHidden);
+  form.elements.name.value = wishBaseline.name;
   form.elements.wishUrl.value = wishBaseline.wishUrl; form.elements.wishNote.value = wishBaseline.wishNote;
   $('#wish-title').textContent = item.name;
-  showWishProductLink(); message(); $('#wish-dialog').showModal();
+  showWishProductLink(); renderWishImage(); message(); $('#wish-dialog').showModal();
+}
+function renderWishImage() {
+  const form=$('#wish-form'),group=wishGroup(form.elements.name.value),hidden=form.dataset.imageHidden==='true',preview=$('#wish-image-preview');
+  preview.replaceChildren();preview.className='';preview.removeAttribute('style');delete preview.dataset.photoKey;delete preview.dataset.photoKind;
+  if(hidden) preview.append(icon('box')); else paintProductImage(preview,group.image);
+  preview.setAttribute('aria-label',hidden?'Kein Bild':`Gruppenbild: ${group.name}`);
+  $('#wish-image-group').textContent=hidden?'':group.name;
+  $('#wish-remove-image').hidden=hidden; $('#wish-image-removed').hidden=!hidden;
 }
 function deleteOps(collection, ids) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
@@ -721,6 +753,7 @@ function renderStoreTemplate() {
   }, 'text-button small'));
 }
 function renderStores() {
+  renderWishOptions();
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of active(state.stores)) {
     const row = element('details', undefined, 'store-row'), summary = element('summary', undefined, 'store-summary'), body = element('div', undefined, 'store-body');
@@ -777,13 +810,18 @@ function renderStores() {
       aisleReset.hidden = aisles.every((id, index) => id === CATEGORIES[index].id);
     };
     aisleFold.append(element('summary', 'Reihenfolge der Gänge'), aisleList, aisleReset); drawAisles();
+    if(wishStores().some(wish=>wish.id===store.id)) {
+      nameLabel.firstChild.textContent='Listenname'; input.setAttribute('aria-label','Listenname');
+      for(const field of [chainLabel,linkLabel,separateLabel,anywhereLabel,aisleFold]) field.hidden=true;
+      separate.checked=true;
+    }
     form.append(nameLabel, chainLabel, linkLabel, symbolLabel, separateLabel, anywhereLabel, aisleFold, save);
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id); const typed = offerUrl(link.value);
       // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
       const chainKey = chainPick.value || null, identity = { name, chainKey };
-      commit([nextOp('stores', store.id, { name, chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed, anywhere: anywhere.checked === takesAnywhere(identity) ? null : anywhere.checked, separate: separate.checked || null,
+      commit([nextOp('stores', store.id, { name, ...(wishStores().some(wish=>wish.id===store.id)?{wishlist:true}:{}), chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed, anywhere: anywhere.checked === takesAnywhere(identity) ? null : anywhere.checked, separate: separate.checked || null,
         symbol: (symbolPick.value === 'gift' ? 'gift' : '') === defaultSymbol(name) ? null : symbolPick.value === 'gift' ? 'gift' : 'none',
         aisles: aisles.every((id, index) => id === CATEGORIES[index].id) ? null : [...aisles] })]); renderStores();
     }); });
@@ -844,6 +882,16 @@ function recipeCard(recipe, ingredients, options = {}) {
     const tags = element('div', undefined, 'tags');
     recipe.tags.forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
   }
+  const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required);
+  const showStock=stock.have.length>0;
+  if(showStock && tracked.length) {
+    const have=tracked.filter(row=>availability(row.name,stockIndex)==='have').length, missing=tracked.length-have;
+    const badge=element('div',undefined,`recipe-stock ${have===tracked.length?'complete':have?'partial':'empty'}`);
+    badge.append(element('span',`${have} von ${tracked.length} Zutaten da · ${missing} fehlen`));
+    const progress=element('span',undefined,'recipe-stock-track'), fill=element('span'); fill.style.width=`${have/tracked.length*100}%`; progress.append(fill);
+    progress.setAttribute('role','progressbar'); progress.setAttribute('aria-label','Zutaten im Vorrat'); progress.setAttribute('aria-valuemin','0'); progress.setAttribute('aria-valuemax',String(tracked.length)); progress.setAttribute('aria-valuenow',String(have));
+    badge.append(progress);card.append(badge);
+  }
   const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);
   details.addEventListener('toggle', () => { if (options.isolated) return; if (details.open) openRecipes.add(recipe.id); else openRecipes.delete(recipe.id); });
   details.append(element('summary', 'Zutaten & Zubereitung'));
@@ -852,7 +900,11 @@ function recipeCard(recipe, ingredients, options = {}) {
   servingInput.setAttribute('aria-label', `Portionen für ${recipe.name}`);
   const updateAmounts = () => {
     const count = positive(servingInput.value); if (!options.isolated) portions.set(recipe.id, count);
-    list.replaceChildren(...ingredients.map(row => element('li', ingredientLabel(row, count / recipe.servings))));
+    list.replaceChildren(...ingredients.map(row => {
+      const li=element('li'), label=element('span',ingredientLabel(row,count/recipe.servings)); li.append(label);
+      if(showStock) { const have=!required(row) || availability(row.name,stockIndex)==='have', status=element('span',have?'Vorhanden':'Fehlt',`ingredient-stock ${have?'have':'missing'}`); status.prepend(icon(have?'check':'minus')); li.append(status); }
+      return li;
+    }));
   };
   const step = delta => () => { servingInput.value = plain(Math.max(1, positive(servingInput.value) + delta)); updateAmounts(); };
   const stepper = element('div', undefined, 'stepper');
@@ -876,11 +928,14 @@ function recipeCard(recipe, ingredients, options = {}) {
     }, 'danger small'));
   details.append(more);
   card.append(details);
-  const actions = element('div', undefined, 'actions');
-  actions.append(button('Auf die Liste', () => openTransfer(recipe.id, positive(servingInput.value), null, options.mealId), 'primary-action'),
-    button('Kochen', () => openCook(recipe.id, positive(servingInput.value)), 'secondary'),
-    iconButton('calendar', `${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({ recipeId:recipe.id,servings }); }),
-    iconButton('text', `${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id, positive(servingInput.value))));
+  const actions = element('div', undefined, 'actions recipe-actions');
+  const action = (symbol,label,title,callback,className='secondary') => {
+    const node=button('',callback,className); node.append(icon(symbol),element('span',label)); node.title=title; if(!['cart','pot'].includes(symbol)) node.setAttribute('aria-label',title); return node;
+  };
+  actions.append(action('cart','Einkaufen',`${recipe.name}: Zutaten auf die Einkaufsliste`, () => openTransfer(recipe.id,positive(servingInput.value),null,options.mealId),'primary-action'),
+    action('pot','Kochen',`${recipe.name} kochen`, () => openCook(recipe.id,positive(servingInput.value)),'recipe-cook'),
+    action('calendar','Einplanen',`${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({recipeId:recipe.id,servings}); }),
+    action('text','Rezeptblatt',`${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id,positive(servingInput.value))));
   card.append(actions);
   return card;
 }
@@ -1334,7 +1389,7 @@ function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = st
     });
     const keys=weekRowKeys(rows),inputs=rows.map((row,index)=>({...listRow(row),key:keys[index]}));
     lastTime=Math.max(Date.now(),lastTime+1,Date.parse(projected.updatedAt)+1);
-    const result=addToList(inputs,storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
+    const result=addToList(reuseProductNames(inputs,projected.items,storeId),storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
     for(const op of result.ops)op.patch.planLinked=true;
     projected=merge(projected,result.ops);ops.push(...result.ops);
     const parts=result.ops.filter(op=>!rows.find(row=>row.unit===NO_AMOUNT&&sameProduct(row.name,op.patch.name||projected.items.find(item=>item.id===op.entityId)?.name||''))).map(op=>{
@@ -1524,7 +1579,7 @@ function linkHint() {
   const form = $('#import-form'), proxy = workerHost(config.importProxy);
   $('#import-form [data-link-hint]').textContent = proxy ? 'Die Seite wird über deinen eigenen Hilfsdienst geladen.' :
     form.elements.publicProxy.checked ? `Nur der Link wird an ${PUBLIC_PROXIES.map(row => row.name).join(' oder ')} gesendet. Falls das nicht klappt: Seite öffnen, Text kopieren und unter „Text“ einfügen.` :
-    'Zum Laden braucht die App einen Hilfsdienst. Erlaube die öffentlichen Dienste (es wird nur der Link gesendet) oder richte einen eigenen ein. Screenshot und Text funktionieren immer ohne.';
+    'Zum Laden braucht die App einen Hilfsdienst. Erlaube die öffentlichen Dienste (es wird nur der Link gesendet) oder richte einen eigenen ein. Text und Screenshot benötigen keinen Hilfsdienst. Bitte das Ergebnis sorgfältig prüfen.';
 }
 function releasePreviews() { previewUrls.forEach(url => URL.revokeObjectURL(url)); previewUrls = []; }
 function openImport(options = {}) {
@@ -1558,8 +1613,11 @@ async function runImport() {
       const allowPublic = form.elements.publicProxy.checked;
       if (allowPublic !== Boolean(config.publicProxy)) saveConfig({ ...config, publicProxy: allowPublic });
       importStatus('Seite wird geladen …', 0.1);
-      const link = form.elements.url.value.trim(), { html } = await fetchRecipePage(link, { workerUrl: config.importProxy, allowPublic }, signal);
-      draft = recipeFromHtml(html, link);
+      const link = form.elements.url.value.trim(), { html } = await fetchRecipePage(link, {workerUrl:config.importProxy,allowPublic,
+        onAttempt:(attempt,total)=>importStatus(`Versuch ${attempt} von ${total} …`,.1+(attempt-1)*.15),
+        validate:page=>{ draft=recipeFromHtml(page,link); if(!draft.name || !draft.ingredients?.length) throw new Error('Keine Rezeptdaten gefunden'); }
+      },signal);
+      draft ||= recipeFromHtml(html,link);
       if (draft.via === 'text') raw = htmlToText(html).slice(0, 8000);
     } else if (importSource === 'image') {
       const files = [...form.elements.images.files];
@@ -1962,6 +2020,8 @@ async function sync(manual = false) {
       const remote = decodeFile(file);
       const batch = pending.slice();
       let merged = merge(remote, batch), tidy = null;
+      const groupOps=productGroupMigration(merged);
+      if(groupOps.length) merged=merge(merged,groupOps);
       // Haben zwei Geräte gleichzeitig denselben Artikel neu angelegt, wird das Doppel hier deterministisch zusammengeführt (siehe data.js).
       const folds = duplicateFolds(merged.items);
       if (folds.length) merged = merge(merged, folds);
@@ -1972,7 +2032,7 @@ async function sync(manual = false) {
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
       // nicht erneut geschrieben zu werden.
       let written = false;
-      if (batch.some(op => !remote.sync.applied.includes(op.id)) || folds.length || tidy?.changed) {
+      if (batch.some(op => !remote.sync.applied.includes(op.id)) || groupOps.length || folds.length || tidy?.changed) {
         try {
           await api('PUT', { message: 'Sattplan: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
@@ -2012,6 +2072,7 @@ async function loadWorkspace() {
     if (!response.ok) throw new Error('Die Beispieldaten konnten nicht geladen werden. Bitte alle App-Dateien hochladen.');
     base = validate(await response.json()); saveLocal(base, []); ready = true;
   }
+  if(ready) { const ops=productGroupMigration(state); if(ops.length) saveLocal(base,[...pending,...ops]); }
   render(); restingStatus(); if (connected()) await sync(true);
 }
 function fillSettings() {
@@ -2285,7 +2346,7 @@ function shopRow(item) {
     text.addEventListener('keydown', event => { if (!isLocked() && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); guard(() => openWish(item.id)); } });
   }
   text.append(element('span', item.name, 'shop-name'), element('span', `${shoppingAmount(item)}`, 'shop-qty'));
-  if (imagesOn()) text.append(thumbFor(item));
+  if (imagesOn() || isWish(item)) text.append(thumbFor(item));
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
   tap.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   tap.addEventListener('click', () => guard(() => {
@@ -2312,7 +2373,7 @@ function shopNewsRow(entry) {
   return row;
 }
 function renderShop() {
-  const stores = active(state.stores), everything = visibleItems(true);
+  const stores = active(state.stores).filter(visibleStore), everything = visibleItems(true);
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = ALL_STORES;
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
   const chips = $('#shop-chips'); chips.replaceChildren();
@@ -2864,7 +2925,7 @@ function useTemplate(id) {
   const ops = [], total = { added: 0, counted: 0, skipped: 0 };
   for (const [storeId, rows] of groups) {
     lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-    const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory());
+    const result = addToList(reuseProductNames(rows,listItems(),storeId), storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory());
     ops.push(...result.ops); total.added += result.added; total.counted += result.counted.length; total.skipped += result.skipped;
   }
   if (!ops.length) throw new Error('Alles davon steht schon auf der Liste.');
@@ -3051,7 +3112,7 @@ $('#set-offers').addEventListener('click', () => openStoresDialog(view));   // d
 // `take`: Kennung einer Wochenübernahme (siehe weekTakeId in plan.js); Zeilen mit `key` bekommen dann feste Kennungen, damit dieselbe Übernahme von zwei Geräten nur einmal zählt.
 function addRows(rows, storeId, unchecked = [], remember = false, extraOps = [], take = '') {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-  const result = addToList(rows, storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory(), take);
+  const result = addToList(reuseProductNames(rows,listItems(),storeId), storeId, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory(), take);
   const stocked = remember ? pantryAdditions(unchecked, pantryKeys(state.pantry)) : [];
   if (!result.ops.length && !stocked.length && !extraOps.length) throw new Error('Alles davon steht schon auf der Liste.');
   const pantryOps = pantryChanges(stocked, state.pantry || []).map(({ id, patch }) => {
@@ -3151,7 +3212,7 @@ bindWishHold($('#shop-list'), '.shop-item[data-wish] .shop-text', id => guard(()
 let moveDeleteIds = [], moveScope = '';
 function openMove(id) {
   const item = state.items.find(row => row.id === id && !row.deletedAt);
-  if (!item) return;
+  if (!item || isWish(item)) return;
   moveDeleteIds = [id]; moveScope = namespace(); $('#move-delete-label').textContent = 'Artikel löschen';
   $('#move-dialog').dataset.id = id;
   $('#move-text').textContent = `„${item.name}“ (${shoppingAmount(item)}) steht ${item.storeId ? `bei ${storeName(item.storeId)}` : 'ohne Geschäft'}. Wohin soll er?`;
@@ -3167,7 +3228,7 @@ function openMove(id) {
 }
 // Mehrere ausgewählte Artikel in ein Geschäft (oder ohne Geschäft) verschieben: eine Änderung für alle; gleiche offene Artikel im Ziel werden zusammengezählt.
 function openMoveSelected() {
-  const rows = selectedItems(); if (!rows.length) return;
+  const rows = selectedItems(); if (!rows.length || rows.some(isWish)) return;
   moveDeleteIds = rows.map(row => row.id); moveScope = namespace(); $('#move-delete-label').textContent = `${rows.length} Artikel löschen`;
   $('#move-dialog').dataset.id = '';
   $('#move-text').textContent = `${rows.length} Artikel ausgewählt. Wohin sollen sie?`;
@@ -3193,6 +3254,7 @@ function moveSelected(storeId) {
   let items = state.items, merged = 0, moved = 0;
   const stamp = new Date().toISOString();
   for (const item of rows) {
+    if(isWish(item)) continue;
     if ((item.storeId || '') === target) continue;
     // Wie beim einzelnen Verschieben: Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt; sonst wechselt nur das Geschäft.
     const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit:item.purchaseUnit }], target, items).counted[0] : null;
@@ -3212,6 +3274,7 @@ function fillMoveChoices(choice) {
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
+  if(isWish(state.items.find(row=>row.id===id))) return;
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const target = currentStore(storeId);
@@ -3235,11 +3298,13 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
   commit(ops); $('#item-dialog').close();
 }); });
+$('#wish-form').elements.name.addEventListener('input',renderWishImage);
+$('#wish-remove-image').addEventListener('click',()=>{ $('#wish-form').dataset.imageHidden='true'; renderWishImage(); });
 $('#wish-form').elements.wishUrl.addEventListener('input', showWishProductLink);
 $('#wish-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, item = active(state.items).find(row => row.id === form.elements.id.value);
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch wurde inzwischen gelöscht oder verschoben. Bitte schließen und die Liste aktualisieren.');
-  const patch = { name: form.elements.name.value.trim(), storeId: currentStore(form.elements.storeId.value), wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim() };
+  const patch = { name: form.elements.name.value.trim(), wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim(), wishImageHidden:form.dataset.imageHidden==='true' };
   if (!patch.name) throw new Error('Bitte einen Namen eingeben.');
   const delta = changed(patch, wishBaseline);
   if (Object.keys(delta).length) commit([nextOp('items', item.id, delta)]);
@@ -3253,18 +3318,16 @@ $('#delete-wish').addEventListener('click', () => guard(() => {
 $('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });
-$('#select-done').addEventListener('click', () => guard(() => { clearTimeout(noticeTimer); noticeUndo=null; $('#notice').hidden=true; setSelecting(false); }));
-$('#select-all').addEventListener('click', () => guard(() => {
-  const all = visibleItems(true).filter(inView), everything = all.length && selectedItems().length === all.length;
-  selected.clear(); if (!everything) all.forEach(row => selected.add(row.id));
-  renderItems();
-}));
+$('#select-done').addEventListener('click', () => guard(()=>setSelecting(false)));
 $('#select-move').addEventListener('click', () => guard(openMoveSelected));
 $('#select-delete').addEventListener('click', () => guard(() => {
   const rows = selectedItems(); if (!rows.length) return;
   if (!confirm(`${rows.length} Artikel löschen?`)) return;
   removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
 }));
+$('#settings-stores').addEventListener('click',()=>openStoresDialog());
+$('#welcome-stores').addEventListener('click',()=>openStoresDialog());
+for(const id of ['settings-wishes','stores-wishes']) $('#'+id).addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
 productPicker = mountProductPicker({
   getScope: namespace,
@@ -3281,7 +3344,8 @@ productPicker = mountProductPicker({
       name: product.name, productId: product.own ? null : product.id, quantity: product.quantity, unit: product.unit, category: product.category,
       imageKey: product.imageKey || null, deletedAt: null
     };
-    commit([nextOp('productFavorites', id, patch)]);
+    const ids=existing && !existing.deletedAt ? (product.favorite?.ids || [id]) : [id];
+    commit(ids.map(key=>nextOp('productFavorites',key,patch)));
   }
 });
 pantryBuyer = mountPantryBuy({
@@ -3526,8 +3590,9 @@ $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
 $('#welcome-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
+  const enableWishes=$('#welcome-wishes').checked;
   const next = { ...config, actor }; if (actor !== config.actor) { delete next.memberId; delete next.memberScope; }
-  saveConfig(next); fillSettings(); render(); $('#welcome').close();
+  saveConfig(next); fillSettings(); setWishesEnabled(enableWishes); render(); $('#welcome').close();
   if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
   if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => addFromLink(pending)); }
 }); });

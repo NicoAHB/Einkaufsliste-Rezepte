@@ -119,12 +119,14 @@ export function summarize(rows, month, stores = []) {
 }
 export function summarizePeriod(rows, period, stores = [], members = [], person = 'all') {
   const list = filterPurchases(rows, period, person), names = new Map(stores.map(store => [store.id, store.name]));
-  const total = list.reduce((sum, row) => sum + purchaseValue(row), 0), groups = new Map(), people = new Map();
+  const total = list.reduce((sum, row) => sum + purchaseValue(row), 0), groups = new Map(), people = new Map(), notes = new Map();
   let gross = 0, refunds = 0, refundCount = 0;
   for (const row of list) {
     const id = row.storeId && (names.has(row.storeId) || row.storeName) ? row.storeId : '';
     const name = id ? names.get(id) ?? row.storeName : (row.storeName || 'Ohne Geschäft');
     const key = id || `name:${name}`, group = groups.get(key) || { id, name, total: 0, count: 0 };
+    const noteName = row.note?.trim() || 'Ohne Notiz', noteKey = noteName.toLocaleLowerCase('de');
+    const note=notes.get(noteKey) || {name:noteName,total:0,count:0}; note.total+=purchaseValue(row); note.count++; notes.set(noteKey,note);
     const value = purchaseValue(row); group.total += value; group.count += 1; groups.set(key, group);
     if (row.kind === 'refund') { refunds += row.cents; refundCount++; } else gross += row.cents;
     const personId = buyerKey(row), individual = people.get(personId) || { id: personId, name: buyerNameOf(row, members), total: 0, count: 0, refundCount: 0 };
@@ -133,8 +135,9 @@ export function summarizePeriod(rows, period, stores = [], members = [], person 
   }
   const byStore = [...groups.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'de')).map(group => ({ ...group, share: total > 0 ? group.total / total : 0 }));
   const byPerson = [...people.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'de'));
+  const byNote = [...notes.values()].sort((a,b)=>b.total-a.total || a.name.localeCompare(b.name,'de'));
   const purchaseCount = list.length - refundCount;
-  return { ...periodBounds(period), total, gross, refunds, refundCount, purchaseCount, count: list.length, average: purchaseCount ? Math.round(gross / purchaseCount) : 0, byStore, byPerson, list };
+  return { ...periodBounds(period), total, gross, refunds, refundCount, purchaseCount, count: list.length, average: purchaseCount ? Math.round(gross / purchaseCount) : 0, byStore, byPerson, byNote, list };
 }
 // Unterschied zum Vergleichsmonat: { diff (Cent), percent (ganze Prozent, null ohne Vergleichswert) }.
 export function compareTotals(current, previous) {
