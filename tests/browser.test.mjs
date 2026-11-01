@@ -609,7 +609,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   test('Link ohne Hilfsdienst: erst nach ausdrücklicher Erlaubnis geht etwas ins Netz', async () => {
-    const { ctx, page } = await context();
+    const { ctx, page } = await context({config:{publicProxy:false}});
     const external = [];
     await ctx.route(/allorigins|codetabs/, route => { external.push(route.request().url()); return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/html' }, body: recipeHtml }); });
     await open(page);
@@ -684,9 +684,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-tab=recipes]'); await page.click('#import-recipe');
     await page.fill('#import-form input[name=url]', 'https://www.chefkoch.de/rezepte/1');
     await page.click('#import-run');
-    await page.waitForFunction(() => document.querySelector('#import-run').disabled);
+    await page.waitForFunction(() => document.querySelector('#import-run').getAttribute('aria-busy')==='true');
     await page.click('#import-dialog [data-close]');
-    await page.waitForFunction(() => !document.querySelector('#import-run').disabled);
+    await page.waitForFunction(() => document.querySelector('#import-run').getAttribute('aria-busy')!=='true');
     await ctx.close();
   });
 
@@ -704,7 +704,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#import-run');
     await page.waitForFunction(() => /erkannt|geladen/.test(document.querySelector('#import-status').textContent), null, { timeout: 30000 });
     await page.click('#import-dialog [data-close]');
-    await page.waitForFunction(() => !document.querySelector('#import-run').disabled, null, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('#import-run').getAttribute('aria-busy')!=='true', null, { timeout: 30000 });
     await page.waitForTimeout(1500);
     assert.equal(await page.locator('#recipe-dialog[open]').count(), 0, 'Nach dem Abbruch darf kein Rezept-Editor aufgehen');
     assert.deepEqual(problems, []);
@@ -4480,7 +4480,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       recipeIngredient: ['200 g Mehl', '2 Eier', '1 Prise Salz'], recipeInstructions: 'Alles verrühren.\nAusbacken.' };
     return route.fulfill({ status: 200, headers: cors, body: `<!doctype html><html><head><title>Tagesrezept ${number}</title><script type="application/ld+json">${JSON.stringify(recipe)}</script></head><body>${'x'.repeat(250)}</body></html>` });
   };
-  const dailyConfig = { importProxy: PROXY, dailySource: 'https://www.chefkoch.de/rezepte/tagesrezepte/' };
+  const dailyConfig = { importProxy: PROXY, publicProxy:false, dailySource: 'https://www.chefkoch.de/rezepte/tagesrezepte/' };
 
   test('Rezepte des Tages: bis zu zehn einzeln durchklicken, 0 bis alle hinzufügen, entschiedene kommen nicht wieder', async () => {
     const behavior = {};
@@ -4708,7 +4708,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('Rezepte des Tages mit eigener Seite: Fehler lassen sich wiederholen, Link prüfen und speichern, Stand wird gemerkt', async () => {
     const behavior = { fail: true };
-    const { ctx, page, problems } = await context({ config: { importProxy: PROXY } });
+    const { ctx, page, problems } = await context({ config: { importProxy: PROXY, publicProxy:false } });
     await ctx.route(`${PROXY}/**`, dailySite(3, behavior));
     await open(page);
     await openSettings(page);
@@ -8276,7 +8276,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   test('Arbeitsanweisung 2.86: Auswahlleiste, Importwarnungen und zehn Linkimporte mit automatischem Wiederholen',async()=>{
-    const {ctx,page,problems}=await context({config:{importProxy:'https://rezepte.test.workers.dev'}});let requests=0;
+    const {ctx,page,problems}=await context({config:{importProxy:'https://rezepte.test.workers.dev',publicProxy:false}});let requests=0;
     await ctx.route('https://rezepte.test.workers.dev/**',route=>{requests++;return route.fulfill({status:requests%2?502:200,headers:{'access-control-allow-origin':'*','content-type':'text/html'},body:requests%2?'Fehler':recipeHtml});});
     await open(page);page.on('dialog',dialog=>dialog.accept());await page.click('#select-mode');await page.locator('#items .item-copy').first().click();await page.click('#select-delete');
     assert.equal(await page.locator('#notice').isVisible(),true);
@@ -8331,6 +8331,74 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(remote.content.items.some(row=>!row.deletedAt&&row.name==='Grüne Oliven'));
     await pollNow(b.page);await synced(b.page);await b.page.waitForFunction(()=>document.querySelector('#items').textContent.includes('Grüne Oliven'));
     assert.deepEqual(a.problems,[]);assert.deepEqual(b.problems,[]);await a.ctx.close();await b.ctx.close();
+  });
+
+  test('2.87: öffentliche Hilfsdienste funktionieren mit dem voreingestellten Haken beim ersten Laden',async()=>{
+    for(const config of [{},{publicProxy:true}]) {
+      const {ctx,page,problems}=await context({config}),requests=[];
+      await ctx.route(/allorigins|codetabs/,route=>{requests.push(route.request().url());return route.fulfill({status:200,contentType:'text/html',body:recipeHtml});});
+      await open(page);await page.evaluate(()=>{document.querySelector('#import-form [name=publicProxy]').disabled=true;document.querySelector('#import-run').type='button';});await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);
+      assert.equal(await page.isChecked('#import-form [name=publicProxy]'),true);assert.equal(await page.isDisabled('#import-form [name=publicProxy]'),false);
+      assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-settings-v1')).publicProxy),true);
+      await page.evaluate(()=>document.querySelector('#import-form').reset());assert.equal(await page.isChecked('#import-form [name=publicProxy]'),true);
+      await page.fill('#import-form [name=url]','https://rezepte.lidl.de/rezepte/doener-croissant');await page.click('#import-run');await page.waitForSelector('#recipe-dialog[open]');
+      assert.equal(requests.length,1,'kein Aus-/Einschalten und kein zweiter Abruf nötig');assert.match(requests[0],/allorigins/);
+      assert.equal(await page.inputValue('#recipe-form [name=name]'),'Spaghetti Carbonara');assert.deepEqual(problems,[]);await ctx.close();
+    }
+  });
+
+  test('2.87: der Haken wird sofort gespeichert; Ausschalten bleibt nach Neuladen wirksam',async()=>{
+    const {ctx,page,problems}=await context({config:{publicProxy:false}}),requests=[];
+    await ctx.route(/allorigins|codetabs/,route=>{requests.push(route.request().url());return route.fulfill({status:200,contentType:'text/html',body:recipeHtml});});
+    const openImport=async()=>{await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);};
+    await open(page);await openImport();assert.equal(await page.isChecked('#import-form [name=publicProxy]'),false);
+    await page.check('#import-form [name=publicProxy]');assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-settings-v1')).publicProxy),true);
+    assert.equal(await page.isChecked('#import-settings-form [name=publicProxy]'),true);
+    await page.uncheck('#import-form [name=publicProxy]');assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-settings-v1')).publicProxy),false);
+    await page.click('#import-dialog [data-close]');await page.reload();await openImport();assert.equal(await page.isChecked('#import-form [name=publicProxy]'),false);
+    await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');await page.waitForSelector('#import-dialog [data-dialog-error]:not([hidden])');assert.deepEqual(requests,[]);
+    await page.check('#import-form [name=publicProxy]');await page.click('#import-run');await page.waitForSelector('#recipe-dialog[open]');assert.equal(requests.length,1);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.87: grauer Ladeknopf bricht per echtem Touch-Halten ab, kurze Berührung und Wischen nicht',async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width:320,height:844}},config:{theme:'dark',publicProxy:true}});let calls=0;
+    await ctx.route(/allorigins|codetabs/,route=>{
+      calls++;if(calls===1)return route.fulfill({status:200,body:'kurz'});
+      if(calls===2)return new Promise(()=>{});
+      return route.fulfill({status:200,contentType:'text/html',body:recipeHtml});
+    });
+    await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
+    await page.waitForFunction(()=>document.querySelector('#import-status').textContent.includes('Versuch 2'));
+    const button=page.locator('#import-run');assert.equal(await button.getAttribute('aria-busy'),'true');assert.equal(await button.isDisabled(),false);
+    assert.match(await button.textContent(),/Rezept wird geladen.*Zum Abbrechen gedrückt halten/);assert.equal(await page.isDisabled('#import-form [name=publicProxy]'),true);
+    assert.ok(await button.evaluate(node=>node.scrollWidth<=node.clientWidth+1));assert.ok(await horizontalOverflow(page)<=1);
+    assert.equal(await button.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(53, 64, 57)');
+    await button.scrollIntoViewIfNeeded();const box=await button.boundingBox(),x=box.x+box.width/2,y=box.y+box.height/2,cdp=await ctx.newCDPSession(page);
+    const touch=(type,tx=x,ty=y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'?[]:[{x:tx,y:ty,id:1}]});
+    await touch('touchStart');await page.waitForTimeout(150);await touch('touchEnd');assert.equal(await button.getAttribute('aria-busy'),'true');
+    await touch('touchStart');await page.waitForTimeout(180);await touch('touchMove',x+28,y);await page.waitForTimeout(1050);await touch('touchEnd');assert.equal(await button.getAttribute('aria-busy'),'true');
+    await touch('touchStart');await page.waitForTimeout(1100);await touch('touchEnd');
+    assert.equal(await button.getAttribute('aria-busy'),'false');assert.equal(await button.textContent(),'Rezept laden');assert.match(await page.textContent('#import-status'),/abgebrochen/);
+    assert.equal(await page.isDisabled('#import-form [name=publicProxy]'),false);await page.waitForTimeout(800);
+    assert.equal(calls,2,'kein Neustart beim Loslassen und keine weitere Wiederholung');assert.equal(await page.locator('#recipe-dialog[open]').count(),0);
+    await button.click();await page.waitForSelector('#recipe-dialog[open]');assert.equal(calls,3);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.87: verspätete Antwort nach Abbruch öffnet nichts und stört einen neuen Import nicht',async()=>{
+    const {ctx,page,problems}=await context({config:{importProxy:'https://slow.rezepte.workers.dev',publicProxy:false}});
+    await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await page.fill('#import-form [name=url]','https://example.com/rezept');
+    await page.evaluate(html=>{
+      const real=window.fetch;window.importReplies=[];window.importRequests=0;
+      window.fetch=(url,options)=>{
+        if(!String(url).startsWith('https://slow.rezepte.workers.dev/'))return real(url,options);
+        const title=++window.importRequests===1?'Alter Import':'Neuer Import';
+        return new Promise(resolve=>window.importReplies.push(()=>resolve(new Response(html.replaceAll('Spaghetti Carbonara',title),{status:200}))));
+      };
+    },recipeHtml);
+    const button=page.locator('#import-run');await button.click();await button.focus();await page.keyboard.press('Enter');assert.equal(await button.getAttribute('aria-busy'),'false');
+    await button.click();assert.equal(await button.getAttribute('aria-busy'),'true');await page.evaluate(()=>window.importReplies[0]());await page.waitForTimeout(100);
+    assert.equal(await button.getAttribute('aria-busy'),'true');assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.textContent('#import-status'),'Versuch 1 von 5 …');
+    await page.evaluate(()=>window.importReplies[1]());await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.inputValue('#recipe-form [name=name]'),'Neuer Import');assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });

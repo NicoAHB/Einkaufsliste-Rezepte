@@ -1,7 +1,7 @@
 /* Rezeptseiten laden. Browser dürfen fremde Webseiten nicht direkt lesen (CORS-Schutz), deshalb braucht
    die App einen Hilfsdienst. Reihenfolge:
    1. eigener Hilfsdienst (Cloudflare-Worker aus worker/recipe-proxy.js): verlässlich und privat
-   2. öffentliche Hilfsdienste: nur, wenn die Person sie ausdrücklich erlaubt hat; der Link wird dann dorthin gesendet */
+   2. öffentliche Hilfsdienste: nur bei aktiver Freigabe; der Link wird dann dorthin gesendet */
 import { webUrl } from './recipe-import.js';
 
 export const PUBLIC_PROXIES = [
@@ -9,6 +9,8 @@ export const PUBLIC_PROXIES = [
   { name: 'codetabs.com', url: target => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(target)}` }
 ];
 const MAX_CHARS = 2_500_000;
+// Eine gemeinsame Vorgabe für Anzeige und Abrufe. Ausdrücklich ausgeschaltet bleibt aus.
+export const publicProxyEnabled = (config = {}) => config.publicProxy === undefined || config.publicProxy === true;
 
 export const workerHost = value => {
   try { const url = new URL(String(value || '').trim()); return url.protocol === 'https:' && url.hostname.endsWith('.workers.dev') && !url.username ? url.origin : ''; }
@@ -64,7 +66,9 @@ export async function fetchRecipePage(link, options = {}, signal) {
     options.onAttempt?.(attempt+1,attempts);
     try {
       const html=await download(route.address,options.timeoutMs ?? 12000,signal);
+      if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
       if(options.validate) await options.validate(html);
+      if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
       return {html,via:route.name};
     }
     catch (error) {

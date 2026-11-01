@@ -18,7 +18,7 @@ import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
-import { PUBLIC_PROXIES, fetchRecipePage, workerHost } from './page-source.js';
+import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
@@ -1564,7 +1564,34 @@ function openWeekShopping() {
 
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
 const IMPORT_LABELS = { link: 'Rezept laden', image: 'Text erkennen', text: 'Text auswerten' };
+let stopImportHold = () => {};
+function setImportBusy(busy) {
+  const form=$('#import-form'),run=$('#import-run');
+  stopImportHold();
+  for(const field of form.querySelectorAll('input,textarea,[data-source]')) field.disabled=busy;
+  // Der Knopf bleibt bedienbar: grau bedeutet hier Laden, langes Halten bedeutet Abbrechen.
+  run.disabled=false;run.type=busy?'button':'submit';
+  run.classList.toggle('is-loading',busy);run.setAttribute('aria-busy',String(busy));
+  run.replaceChildren();
+  if(busy) run.append(element('span',importSource==='image'?'Text wird erkannt …':'Rezept wird geladen …'),element('small','Zum Abbrechen gedrückt halten'));
+  else run.textContent=IMPORT_LABELS[importSource];
+}
+function cancelImport(quiet = false) {
+  if(!importAbort) return;
+  const controller=importAbort;importAbort=null;controller.abort();
+  setImportBusy(false);
+  importStatus(quiet?'':'Laden abgebrochen.');
+}
+function saveImportPermission() {
+  const form=$('#import-form'),allowed=form.elements.publicProxy.checked;
+  if(config.publicProxy!==allowed) saveConfig({...config,publicProxy:allowed});
+  form.elements.publicProxy.defaultChecked=allowed;
+  $('#import-settings-form').elements.publicProxy.defaultChecked=allowed;
+  $('#import-settings-form').elements.publicProxy.checked=allowed;
+  linkHint();updateSaveButtons();
+}
 function setImportSource(name) {
+  if(importAbort) return;
   importSource = name;
   document.querySelectorAll('#import-form [data-source]').forEach(node => node.setAttribute('aria-selected', String(node.dataset.source === name)));
   document.querySelectorAll('#import-form [data-pane]').forEach(node => { node.hidden = node.dataset.pane !== name; });
@@ -1584,12 +1611,14 @@ function linkHint() {
 function releasePreviews() { previewUrls.forEach(url => URL.revokeObjectURL(url)); previewUrls = []; }
 function openImport(options = {}) {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  cancelImport(true);
   const form = $('#import-form'); form.reset(); releasePreviews(); $('#import-previews').replaceChildren();
-  form.elements.publicProxy.checked = Boolean(config.publicProxy);
-  setImportSource(options.source || 'link'); linkHint();
+  form.elements.publicProxy.checked = publicProxyEnabled(config);
+  saveImportPermission();
+  setImportSource(options.source || 'link'); setImportBusy(false); linkHint();
   if (options.url) form.elements.url.value = options.url;
   $('#import-dialog').showModal();
-  if (options.url && (workerHost(config.importProxy) || config.publicProxy)) form.requestSubmit();
+  if (options.url && (workerHost(config.importProxy) || form.elements.publicProxy.checked)) form.requestSubmit();
 }
 function showPreviews(files) {
   releasePreviews(); const box = $('#import-previews'); box.replaceChildren();
@@ -1604,17 +1633,17 @@ async function runImport() {
   // Ein eingefügter Link im Textfeld ist ein Link-Import.
   if (importSource === 'text' && /^https?:\/\/\S+$/i.test(text)) { form.elements.url.value = text; setImportSource('link'); }
   message();
-  importAbort = new AbortController();
-  const { signal } = importAbort, runButton = $('#import-run');
-  runButton.disabled = true;
+  const controller=new AbortController();importAbort=controller;
+  const {signal}=controller;
+  setImportBusy(true);
+  let draft,raw='';
   try {
-    let draft, raw = '';
     if (importSource === 'link') {
       const allowPublic = form.elements.publicProxy.checked;
-      if (allowPublic !== Boolean(config.publicProxy)) saveConfig({ ...config, publicProxy: allowPublic });
+      saveImportPermission();
       importStatus('Seite wird geladen …', 0.1);
       const link = form.elements.url.value.trim(), { html } = await fetchRecipePage(link, {workerUrl:config.importProxy,allowPublic,
-        onAttempt:(attempt,total)=>importStatus(`Versuch ${attempt} von ${total} …`,.1+(attempt-1)*.15),
+        onAttempt:(attempt,total)=>{if(importAbort===controller&&!signal.aborted)importStatus(`Versuch ${attempt} von ${total} …`,.1+(attempt-1)*.15);},
         validate:page=>{ draft=recipeFromHtml(page,link); if(!draft.name || !draft.ingredients?.length) throw new Error('Keine Rezeptdaten gefunden'); }
       },signal);
       draft ||= recipeFromHtml(html,link);
@@ -1623,7 +1652,7 @@ async function runImport() {
       const files = [...form.elements.images.files];
       if (!files.length) throw new Error('Bitte zuerst einen Screenshot oder ein Foto wählen.');
       const { recognizeImages } = await import('./ocr.js');
-      raw = await recognizeImages(files, (fraction, label) => importStatus(label, fraction), signal);
+      raw = await recognizeImages(files,(fraction,label)=>{if(importAbort===controller&&!signal.aborted)importStatus(label,fraction);},signal);
       if (!raw) throw new Error('Im Bild wurde kein Text erkannt. Bitte einen schärferen Ausschnitt wählen oder den Text einfügen.');
       draft = parseRecipeText(raw);
     } else {
@@ -1631,11 +1660,15 @@ async function runImport() {
       draft = recipeFromAnyText(text);
       if (draft.via === 'text') raw = text;
     }
-    $('#import-dialog').close();
-    editRecipe('', { ...draft, raw });
+    if(signal.aborted || importAbort!==controller) return;
   } catch (error) {
-    if (error?.name !== 'AbortError') { importStatus(''); message(error.message); }
-  } finally { importAbort = null; runButton.disabled = false; importStatus(''); }
+    if(importAbort===controller && !signal.aborted && error?.name!=='AbortError') { importStatus('');message(error.message); }
+    return;
+  } finally {
+    if(importAbort===controller) { importAbort=null;setImportBusy(false);importStatus(''); }
+  }
+  $('#import-dialog').close();
+  editRecipe('',{...draft,raw});
 }
 
 /* ---------- Anleitung ---------- */
@@ -1720,7 +1753,7 @@ async function loadDailyList(signal) {
       queue = planBuiltin(collection, localDay(), new Set(old.decided), known);
       if (queue.length < BUILTIN_PER_DAY) queue.push(...(await import('./recipe-maker.js')).planGenerated(localDay(), known, queue.length));
     } else {
-      const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) }, signal);
+      const { html } = await fetchRecipePage(source, { workerUrl: config.importProxy, allowPublic: publicProxyEnabled(config) }, signal);
       const links = extractRecipeLinks(html, source); found = links.length;
       queue = planDay(links, new Set(old.decided), knownRecipeKeys(), DAILY_MAX);
     }
@@ -1759,7 +1792,7 @@ async function fetchDailyDraft(item, record) {
       if (!entry) throw new Error('Dieses Rezept gibt es in der Sammlung nicht mehr.');
       draft = draftFromBuiltin(entry);
     } else {
-      const { html } = await fetchRecipePage(item.url, { workerUrl: config.importProxy, allowPublic: Boolean(config.publicProxy) });
+      const { html } = await fetchRecipePage(item.url, { workerUrl: config.importProxy, allowPublic: publicProxyEnabled(config) });
       draft = recipeFromHtml(html, item.url);
     }
   }
@@ -2080,7 +2113,7 @@ function fillSettings() {
     $('#settings-form').elements[key].value = config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '');
   }
   const importForm = $('#import-settings-form');
-  importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = Boolean(config.publicProxy);
+  importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = publicProxyEnabled(config);
   $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); applyTheme();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
@@ -2100,9 +2133,9 @@ function updateSaveButtons() {
   const form = $('#settings-form'), imports = $('#import-settings-form');
   const changed = CONNECTION_FIELDS.some(key => form.elements[key].value.trim() !== (config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '')));
   saveButtonState(form, !connected() || changed || connectFailed, config.savedAt, connected() ? 'Speichern' : 'Speichern & verbinden');
-  const importChanged = imports.elements.importProxy.value.trim() !== (config.importProxy || '') || imports.elements.dailySource.value.trim() !== (config.dailySource || '') || imports.elements.publicProxy.checked !== Boolean(config.publicProxy);
+  const importChanged = imports.elements.importProxy.value.trim() !== (config.importProxy || '') || imports.elements.dailySource.value.trim() !== (config.dailySource || '') || imports.elements.publicProxy.checked !== publicProxyEnabled(config);
   saveButtonState(imports, importChanged, config.importSavedAt, 'Import-Einstellungen speichern');
-  if (!importChanged && !config.importSavedAt && !config.importProxy && !config.publicProxy) imports.querySelector('button[type=submit]').textContent = 'Import-Einstellungen speichern';
+  if (!importChanged && !config.importSavedAt && !config.importProxy && !publicProxyEnabled(config)) imports.querySelector('button[type=submit]').textContent = 'Import-Einstellungen speichern';
 }
 for (const id of ['#settings-form', '#import-settings-form']) for (const type of ['input', 'change']) $(id).addEventListener(type, updateSaveButtons);
 function showConnectionState() {
@@ -2223,16 +2256,17 @@ function syncShopAwake() {
 /* ---------- Schutz vor versehentlichen Berührungen ---------- */
 // Gedrückt halten statt Tippen: Der Knopf füllt sich, nach `ms` wird `action` ausgeführt. Ein kurzer Tipp tut nichts (nur ein Hinweis).
 // Tastatur und Bedienhilfen (kein Zeigerereignis, nur „click“) lösen die Aktion sofort aus.
-function holdToConfirm(node, ms, action, hint = '') {
+function holdToConfirm(node, ms, action, hint = '', enabled = () => true) {
   let timer = null, startX = 0, startY = 0, pointer = false, reset = 0;
   node.style.setProperty('--hold', `${ms}ms`);
   const stop = () => { clearTimeout(timer); timer = null; node.classList.remove('holding'); };
   const settle = () => { clearTimeout(reset); reset = setTimeout(() => { pointer = false; }, 800); };   // das „click“ nach dem Loslassen gehört noch zum Zeiger
   node.addEventListener('pointerdown', event => {
+    if(!enabled()) { pointer=false;stop();return; }
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
     pointer = true; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
     stop(); node.classList.add('holding');
-    timer = setTimeout(() => { stop(); settle(); clearSelection(); navigator.vibrate?.(15); guard(action); }, ms);
+    timer = setTimeout(() => { stop(); settle(); if(!enabled())return;clearSelection(); navigator.vibrate?.(15); guard(action); }, ms);
   });
   node.addEventListener('pointermove', event => { if (timer !== null && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) stop(); });
   node.addEventListener('pointerleave', stop);
@@ -2240,8 +2274,12 @@ function holdToConfirm(node, ms, action, hint = '') {
     const early = timer !== null; stop(); settle();
     if (early && type === 'pointerup' && hint && !isLocked()) showNotice(hint);
   });
-  node.addEventListener('click', event => { event.preventDefault(); if (!pointer) guard(action); });
-  node.addEventListener('contextmenu', event => event.preventDefault());
+  node.addEventListener('click', event => {
+    if(!enabled()) { if(pointer && event.detail!==0) event.preventDefault();return; }
+    event.preventDefault();if(!pointer) guard(action);
+  });
+  node.addEventListener('contextmenu', event => { if(enabled() || pointer) event.preventDefault(); });
+  return stop;
 }
 // Sperre: Gesperrt bewirkt Tippen nichts (Scrollen geht weiter). Zum Entsperren den Knopf unten gedrückt halten. Sie greift von selbst nach einiger Zeit ohne
 // Berührung (einstellbar) und wenn die App aus dem Hintergrund zurückkommt; der Zustand wird gemerkt (auch nach einem Neuladen noch gesperrt).
@@ -3402,10 +3440,11 @@ $('#recipe-form').addEventListener('input', scheduleRecipeDraft);
 $('#recipe-form').addEventListener('click', scheduleRecipeDraft);   // Zutat hinzufügen oder entfernen
 $('#recipe-dialog').addEventListener('close', () => { saveRecipeDraft(); recipeDraftKey = null; });   // Schließen mit X oder Esc behält den Entwurf; nach dem Speichern ist er schon weg
 document.querySelectorAll('#import-form [data-source]').forEach(node => node.addEventListener('click', () => setImportSource(node.dataset.source)));
-$('#import-form').elements.publicProxy.addEventListener('change', linkHint);
+$('#import-form').elements.publicProxy.addEventListener('change', () => guard(saveImportPermission));
+stopImportHold=holdToConfirm($('#import-run'),1000,()=>cancelImport(),'',()=>Boolean(importAbort));
 $('#import-form').elements.images.addEventListener('change', event => showPreviews([...event.target.files]));
 $('#import-form').addEventListener('submit', event => { event.preventDefault(); guard(runImport); });
-$('#import-dialog').addEventListener('close', () => { importAbort?.abort(); releasePreviews(); importStatus(''); });
+$('#import-dialog').addEventListener('close', () => { cancelImport(true); releasePreviews(); importStatus(''); });
 $('#week-prev').addEventListener('click', () => { planWeek = addDays(planWeek, -7); renderPlan(); });
 $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7); renderPlan(); });
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });

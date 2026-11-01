@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import worker from '../worker/recipe-proxy.js';
-import { fetchRecipePage, importRoutes, workerHost } from '../page-source.js';
+import { fetchRecipePage, importRoutes, publicProxyEnabled, workerHost } from '../page-source.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -84,4 +84,25 @@ test('Worker: liefert die Seite mit CORS-Header, erkennt Zeichensatz und begrenz
   assert.equal((await call('?url=https://a.de/x')).status, 502);
   globalThis.fetch = async () => { throw new Error('Zeitüberschreitung'); };
   assert.equal((await call('?url=https://a.de/x')).status, 504);
+});
+
+
+test('Öffentliche Hilfsdienste: gemeinsame Vorgabe ist an, ausdrücklich aus bleibt aus',()=>{
+  assert.equal(publicProxyEnabled({}),true);assert.equal(publicProxyEnabled({publicProxy:true}),true);
+  for(const publicProxy of [false,null,'false']) assert.equal(publicProxyEnabled({publicProxy}),false);
+});
+
+test('Importabbruch: auch eine verspätete Antwort wird weder ausgewertet noch als Rezept zurückgegeben',async()=>{
+  const controller=new AbortController();let deliver,validate=0,calls=0;
+  globalThis.fetch=()=>{calls++;return new Promise(resolve=>{deliver=()=>resolve(htmlResponse());});};
+  const pending=fetchRecipePage('https://example.com/rezept',{allowPublic:true,retryDelayMs:0,validate:()=>{validate++;}},controller.signal);
+  controller.abort();deliver();
+  await assert.rejects(pending,{name:'AbortError'});assert.equal(validate,0);assert.equal(calls,1);
+});
+
+test('Importabbruch: während der Wiederholungspause startet kein weiterer Abruf',async()=>{
+  const controller=new AbortController();let calls=0;
+  globalThis.fetch=async()=>{calls++;setTimeout(()=>controller.abort(),10);return new Response('vorübergehend',{status:502});};
+  await assert.rejects(fetchRecipePage('https://example.com/rezept',{allowPublic:true,retryDelayMs:80},controller.signal),{name:'AbortError'});
+  assert.equal(calls,1);
 });

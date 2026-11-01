@@ -1,6 +1,12 @@
-# Sattplan – Version 2.86
+# Sattplan – Version 2.87
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.87: eindeutige Importfreigabe und Laden abbrechen
+
+**Öffentliche Hilfsdienste erlauben** verwendet überall denselben Wert. Ohne gespeicherte Wahl ist der Haken an; ausdrücklich ausgeschaltet bleibt er aus. Änderungen im Importfenster werden sofort gespeichert und mit den Einstellungen abgeglichen. Ein erster Abruf braucht kein Aus-/Einschalten.
+
+Während des Ladens zeigt der graue Knopf **Rezept wird geladen … · Zum Abbrechen gedrückt halten**. Etwa eine Sekunde Halten bricht ab; kurzes Tippen oder Wischen nicht. Der Knopf zeigt beim Halten den Fortschritt. Danach kann unmittelbar erneut geladen werden. Schließen bricht ebenfalls ab. Abgebrochene Anfragen starten keine Wiederholungen, und verspätete Antworten öffnen keinen Editor oder verändern einen neu gestarteten Import. Bei Texterkennung steht entsprechend **Text wird erkannt …**. Offline-Paket **einkauf-shell-v99**.
 
 ## Neu in Version 2.86: Produktgruppen, Wünsche und klare mobile Bedienung
 
