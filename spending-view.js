@@ -64,7 +64,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   function refresh() {
     if (getScope() !== scope) {
       scope = getScope(); person = 'all'; range = null; setMonth(monthOf(today())); resetMemberForm();
-      membersDialog.close(); rangeDialog.close(); $('purchase-dialog').close(); $('finish-dialog').close(); $('budget-dialog').close(); $('spending-details').open = false;
+      membersDialog.close(); rangeDialog.close(); $('purchase-dialog').close(); $('finish-dialog').close(); $('budget-dialog').close(); $('spending-details').open = false; $('purchase-details').open = true;
     }
     for (const id of ['purchase-form', 'finish-form']) {
       const form = $(id); if (form.closest('dialog').open) {
@@ -130,7 +130,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     $('month-today').hidden = Boolean(month && month === now);
     renderPeopleFilters(family); renderPeople(family);
     const none = !allRows.length; $('spending-empty').hidden = !none;
-    for (const id of ['spending-summary', 'purchase-list', 'spending-details']) $(id).hidden = none;
+    for (const id of ['spending-summary', 'purchase-details', 'spending-details']) $(id).hidden = none;
     $('spending-budget').hidden = person !== 'all' || !month;
     if (person === 'all' && month) onBudget(current.total);
     const summary = $('spending-summary'); summary.replaceChildren();
@@ -144,7 +144,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
         else { const diff = compareTotals(current.total, previous.total); summary.append(node('small', diff.diff ? `${euros(Math.abs(diff.diff))} ${diff.diff > 0 ? 'mehr' : 'weniger'} als im ${monthName(before)}` : `Genau so viel wie im ${monthName(before)}`)); }
       }
     }
-    const count = $('purchase-count'); count.textContent = current.count ? plural(current.count, 'Eintrag', 'Einträge') : '';
+    const count = $('purchase-count'); count.textContent = plural(current.count, 'Eintrag', 'Einträge');
     renderChart(allRows, month); renderStores(current); renderStores(current,'notes',current.byNote);
     $('spending-breakdown').textContent = `${euros(current.gross)} Einkäufe − ${euros(current.refunds)} Rückerstattungen = ${euros(current.total)}. ${current.purchaseCount ? `Ø ${euros(current.average)} pro Einkauf.` : ''}`;
     const list = $('purchase-list'); list.replaceChildren();

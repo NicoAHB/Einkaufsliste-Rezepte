@@ -1,6 +1,15 @@
-# Sattplan – Version 2.87
+# Sattplan – Version 2.88
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.88: klare Entwurfsaktionen und einfacheres Planen
+
+- **Eingelesenes Rezept verwerfen** steht unter **Rezept speichern**. Beide Knöpfe bleiben unten erreichbar. Verwerfen entfernt den ungespeicherten Import einschließlich lokalem Entwurf und Foto, ohne andere Rezepte oder Entwürfe zu ändern.
+- Die **Einträge** unter Ausgaben lassen sich über ihre Anzahl zu- und aufklappen. Pfeil, Anzahl und Filter bleiben aktuell; Summen und **Nach Personen** stehen weiter sichtbar darüber. Ein neuer App-Aufbau startet aufgeklappt.
+- Im Wochenplan hebt ein zweiter Tipp auf das gewählte Rezept die Auswahl auf. Beide Speicherknöpfe sind dann deaktiviert. **Portionen** ändern sich ausschließlich über große Pfeile rechts im Feld, in Einerschritten ab 1, ohne Tastatur.
+- Beim Entfernen eines Gerichts benennt der untere Knopf bereits entfernte Zutaten zutreffend. Teilweise noch vorhandene Zutaten behalten die bisherigen Aktionen.
+
+Offline-Paket **einkauf-shell-v100**. Genaue Code-Stellen, Entscheidungen und kurze Klick-Testliste: [Umsetzungsbericht 2.88](docs/Umsetzungsbericht-2.88.md). Die Importkorrekturen aus Version 2.87 sind enthalten.
 
 ## Neu in Version 2.87: eindeutige Importfreigabe und Laden abbrechen
 

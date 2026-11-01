@@ -51,7 +51,7 @@ let itemBaseline = null;
 let wishBaseline = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null, deferredAdd = null;
 let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
-let pendingPhoto = null, photoRemoved = false, previewUrl = '';
+let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
 const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
 const portions = new Map(), openRecipes = new Set();
@@ -1008,6 +1008,7 @@ function offerRecipeDraft() {
   const actions = element('div', undefined, 'draft-actions');
   actions.append(button('Entwurf zurückholen', () => {
       applyRecipeDraft(stored.state); note.hidden = true;
+      if(slot==='import') $('#discard-imported-recipe').hidden=false;
       if (slot !== recipeDraftKey) { const all = readDrafts(); delete all[slot]; writeDrafts(all); }
       saveRecipeDraft();
     }, 'small'),
@@ -1017,6 +1018,7 @@ function offerRecipeDraft() {
 }
 // `draft` stammt aus dem Import: Das Formular zeigt dann einen Vorschlag, gespeichert wird erst nach dem Prüfen.
 function editRecipe(id = '', draft = null) {
+  const editorVersion=++photoEditVersion;
   const form = $('#recipe-form'); form.reset();
   recipeBaseline = id ? clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt)) : null;
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
@@ -1024,6 +1026,7 @@ function editRecipe(id = '', draft = null) {
   ingredientBaseline = id ? clone(active(state.ingredients).filter(row => row.recipeId === id)) : [];
   form.elements.id.value = id;
   $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : draft ? 'Importiertes Rezept prüfen' : 'Neues Rezept';
+  $('#discard-imported-recipe').hidden=!draft;
   if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'notes', 'tags', 'sourceUrl']) {
     form.elements[field].value = field === 'tags' ? recipeBaseline.tags.join(', ') : recipeBaseline[field] ?? '';
   }
@@ -1036,7 +1039,7 @@ function editRecipe(id = '', draft = null) {
   (draft ? draft.ingredients : ingredientBaseline.length ? ingredientBaseline : [{}]).forEach(ingredientRow);
   if (draft && !draft.ingredients.length) ingredientRow();
   pendingPhoto = null; photoRemoved = false; showPhotoPreview('');
-  if (recipeBaseline?.photoId) ensurePhoto(recipeBaseline.photoId).then(url => { if (url && !pendingPhoto && !photoRemoved && $('#recipe-dialog').open) showPhotoPreview(url, false); });
+  if (recipeBaseline?.photoId) ensurePhoto(recipeBaseline.photoId).then(url => { if (editorVersion===photoEditVersion && url && !pendingPhoto && !photoRemoved && $('#recipe-dialog').open) showPhotoPreview(url, false); });
   const note = $('#recipe-import-note'); note.replaceChildren(); note.hidden = !draft;
   if (draft) {
     note.append(element('p', draft.via === 'schema' ? 'Das Rezept wurde aus den Daten der Seite übernommen. Bitte kurz prüfen.' : 'Das Rezept wurde aus Text geschätzt. Bitte alles prüfen und korrigieren.'));
@@ -1048,6 +1051,18 @@ function editRecipe(id = '', draft = null) {
   if (draft) saveRecipeDraft(); else offerRecipeDraft();
   if (draft) { $('#recipe-draft-note').replaceChildren(); $('#recipe-draft-note').hidden = true; }
   $('#recipe-dialog').showModal();
+}
+function discardImportedRecipe() {
+  if($('#discard-imported-recipe').hidden || recipeBaseline) return;
+  dropRecipeDraft();++photoEditVersion;
+  pendingPhoto=null;photoRemoved=false;showPhotoPreview('');
+  const form=$('#recipe-form');form.reset();form.elements.id.value='';
+  $('#ingredient-editor').replaceChildren();
+  for(const id of ['recipe-import-note','recipe-draft-note']) { $('#'+id).replaceChildren();$('#'+id).hidden=true; }
+  $('#recipe-raw-text').textContent='';$('#recipe-raw').open=false;$('#recipe-raw').hidden=true;
+  recipeBaseline=null;ingredientBaseline=[];recipeOpenState=null;
+  $('#discard-imported-recipe').hidden=true;
+  $('#recipe-dialog').close();
 }
 // Nur gegenüber dem Öffnungsstand geänderte Felder speichern. So überschreibt
 // ein unverändertes Eingabefeld keine inzwischen angekommenen Partner-Änderungen.
@@ -1338,8 +1353,11 @@ function syncMealForm(changedRecipe) {
   form.querySelector('[data-custom]').hidden = choice !== '__custom';
   const recipe = active(state.recipes).find(row => row.id === choice);
   if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
+  $('#meal-save').disabled=!ready || (!recipe && choice!=='__custom');
   $('#meal-save-shopping').disabled = !recipe || !ready || form.elements.date.value < isoDate();
   const hint=$('#meal-save-shopping small');
+  hint.hidden=!recipe;
+  $('#meal-portions-down').disabled=Number(form.elements.servings.value.replace(',','.'))<=1;
   if(recipe){
     const stock=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size;
     const servings=Number(form.elements.servings.value.replace(',','.'))||recipe.servings;
@@ -1455,7 +1473,7 @@ function renderPlanAdjustment() {
   $('#plan-adjust-intro').textContent=removing?'Möchtest du auch die Zutaten dieses Rezepts vom Einkaufszettel entfernen? Manuelle Zusatzmengen und das gespeicherte Rezept bleiben erhalten.':'Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.';
   $('#plan-adjust-apply').textContent=removing?'Ja, Zutaten dieses Rezepts entfernen':byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
   $('#plan-adjust-apply').disabled=removing&&!byItem.size;
-  $('#plan-adjust-keep').textContent=removing?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':'Einkaufsliste unverändert lassen';
+  $('#plan-adjust-keep').textContent=removing?(byItem.size?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':legacy?'Nur das Gericht entfernen – Einkaufsliste unverändert lassen':'Gericht entfernen – Zutaten sind bereits vom Einkaufszettel entfernt'):'Einkaufsliste unverändert lassen';
   $('#plan-adjust-error').hidden=true;
 }
 function finishPlanAdjustment(adjust) {
@@ -2653,7 +2671,7 @@ function setRecipeChoice(value) {
   $('#recipe-pick').querySelectorAll('.pick-row').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.value === value)));
   syncPickHint();
 }
-let pickOpenedAt = 0, pickHeld = false;   // pickHeld: Der Finger liegt nach dem langen Drücken noch auf der Zeile; sein Loslassen wählt nichts
+let pickOpenedAt = 0, pickHeld = false, pickOrigin = null;   // Loslassen nach Halten oder Verschieben ändert keine Auswahl
 function openPickedSheet(node) {
   const id = node.dataset.value;
   if (!id || id === '__custom') return;
@@ -2661,14 +2679,18 @@ function openPickedSheet(node) {
   pickOpenedAt = Date.now(); pickHeld = true; navigator.vibrate?.(15);
   guard(() => openSheet(id, shown));
 }
-$('#recipe-pick').addEventListener('pointerdown', () => { pickHeld = false; }, true);
+$('#recipe-pick').addEventListener('pointerdown', event => { pickHeld = false; pickOrigin = { x:event.clientX, y:event.clientY }; }, true);
+$('#recipe-pick').addEventListener('pointermove', event => {
+  if(pickOrigin && Math.hypot(event.clientX-pickOrigin.x,event.clientY-pickOrigin.y)>10) pickHeld=true;
+});
+for(const type of ['pointerup','pointercancel']) $('#recipe-pick').addEventListener(type,()=>{pickOrigin=null;},true);
 $('#recipe-pick').addEventListener('keydown', () => { pickHeld = false; }, true);
 holdOn($('#recipe-pick'), '.pick-row', HOLD_ITEM_MS, openPickedSheet);
 $('#recipe-pick').addEventListener('click', event => {
   const node = event.target.closest('.pick-row');
   if (!node) return;
   if (pickHeld) { pickHeld = false; event.preventDefault(); return; }
-  setRecipeChoice(node.dataset.value); syncMealForm(true);
+  setRecipeChoice($('#meal-form').elements.recipeId.value===node.dataset.value?'':node.dataset.value); syncMealForm(true);
 });
 // Mit der rechten Maustaste, dem Menü-Knopf der Tastatur oder (Android) langem Drücken meldet der Browser ein Kontextmenü: Das öffnet ebenfalls das Blatt.
 $('#recipe-pick').addEventListener('contextmenu', event => {
@@ -3436,6 +3458,7 @@ $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
 $('#import-recipe').addEventListener('click', () => guard(() => openImport()));
 $('#add-ingredient').addEventListener('click', () => ingredientRow());
 $('#recipe-form').addEventListener('submit', saveRecipe);
+$('#discard-imported-recipe').addEventListener('click',()=>guard(discardImportedRecipe));
 $('#recipe-form').addEventListener('input', scheduleRecipeDraft);
 $('#recipe-form').addEventListener('click', scheduleRecipeDraft);   // Zutat hinzufügen oder entfernen
 $('#recipe-dialog').addEventListener('close', () => { saveRecipeDraft(); recipeDraftKey = null; });   // Schließen mit X oder Esc behält den Entwurf; nach dem Speichern ist er schon weg
@@ -3450,6 +3473,12 @@ $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
 $('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
 $('#meal-form').addEventListener('submit', saveMeal);
+for(const [id,delta] of [['meal-portions-down',-1],['meal-portions-up',1]]) $('#'+id).addEventListener('click',()=>guard(()=>{
+  const input=$('#meal-form').elements.servings;
+  input.value=plain(Math.max(1,positive(input.value)+delta));syncMealForm(false);
+}));
+$('#meal-servings').addEventListener('pointerdown',event=>event.preventDefault());
+$('#meal-servings').addEventListener('focus',event=>event.target.blur());
 for(const field of ['servings','date'])$('#meal-form').elements[field].addEventListener('input',()=>syncMealForm(false));
 $('#plan-adjust-apply').addEventListener('click',()=>finishPlanAdjustment(true));
 $('#plan-adjust-keep').addEventListener('click',()=>finishPlanAdjustment(false));
@@ -3472,12 +3501,14 @@ $('#week-form').addEventListener('submit', event => { event.preventDefault(); gu
 $('#recipe-form').elements.photo.addEventListener('change', event => guard(async () => {
   const file = event.target.files[0]; event.target.value = '';
   if (!file) return;
+  const editorVersion=photoEditVersion;
   const blob = await resizePhoto(file);
+  if(editorVersion!==photoEditVersion || !$('#recipe-dialog').open) return;
   pendingPhoto = { id: uid(), blob }; photoRemoved = false;
   showPhotoPreview(URL.createObjectURL(blob));
 }));
-$('#photo-remove').addEventListener('click', () => { pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
-$('#recipe-dialog').addEventListener('close', () => { pendingPhoto = null; showPhotoPreview(''); });
+$('#photo-remove').addEventListener('click', () => { ++photoEditVersion;pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
+$('#recipe-dialog').addEventListener('close', () => { ++photoEditVersion;pendingPhoto = null; showPhotoPreview(''); });
 $('#transfer-form').elements.servings.addEventListener('change', () => guard(updateTransfer));
 // Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });

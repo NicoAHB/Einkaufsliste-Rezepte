@@ -4445,3 +4445,22 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 #import-run.is-loading>small { max-width:100%; font-size:.82rem; font-weight:500; line-height:1.4; white-space:normal }
 :root[data-theme=dark] #import-run.is-loading { background:#354039; color:#dce4de; border-color:#63756a }
 @media(prefers-color-scheme:dark) { :root:not([data-theme=light]) #import-run.is-loading { background:#354039; color:#dce4de; border-color:#63756a } }
+
+/* Importentwürfe lassen sich ausdrücklich verwerfen; beide Aktionen bleiben unten erreichbar. */
+#recipe-form>.sheet-actions { display:grid; gap:14px }
+#discard-imported-recipe { min-height:48px; padding:12px 14px; line-height:1.4; white-space:normal; background:var(--card); color:var(--danger); border:1px solid var(--danger); box-shadow:none }
+/* Nur die Einzelliste klappt ein; Summen und Personenauswertung bleiben stehen. */
+.purchase-details { margin:0 0 24px }
+.purchase-details>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:8px 0; list-style:none; color:var(--muted); font-weight:600; cursor:pointer; border-radius:10px }
+.purchase-details>summary::-webkit-details-marker { display:none }
+.purchase-details>summary>.icon { flex:none; width:20px; height:20px; color:var(--accent); transition:transform .18s ease }
+.purchase-details[open]>summary>.icon { transform:rotate(180deg) }
+#purchase-details>#purchase-list { margin:8px 0 0 }
+/* Ausschließlich im Planungsdialog: unveränderter Startwert, große Pfeile, keine Tastatur. */
+.meal-portions-field { display:grid; gap:6px }
+.meal-portions-field>label { margin:0 }
+.meal-portions-control { display:grid; grid-template-columns:minmax(0,1fr) 48px 48px; min-height:54px; border:1px solid var(--line-strong); border-radius:12px; overflow:hidden; background:var(--card) }
+#meal-servings { min-width:0; width:100%; height:54px; margin:0; border:0; border-radius:0; background:transparent; box-shadow:none; caret-color:transparent; cursor:default }
+.meal-portions-control>button { display:grid; place-items:center; width:48px; min-height:54px; padding:0; border:0; border-left:1px solid var(--line); border-radius:0; background:var(--accent-soft); color:var(--accent); touch-action:manipulation }
+.meal-portions-control>button>.icon { width:22px; height:22px }
+.meal-portions-control>button:disabled { opacity:.4 }
