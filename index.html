@@ -59,6 +59,11 @@
     <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
     <symbol id="i-pot" viewBox="0 0 24 24"><path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3zM2 12h3m14 0h3M4 10h16M9 7V4m6 3V3M8 10h8"/></symbol>
     <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v11l-9 4-9-4zM3 7l9 4 9-4M12 11v11M7.5 5l9 4"/></symbol>
+    <symbol id="i-pharmacy" viewBox="0 0 32 32"><rect x="4" y="8" width="24" height="22" rx="5" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="4" y="8" width="24" height="22" rx="5" fill="#daf2e6" stroke="#225f47" stroke-width="1.4"/><path d="M11 8V5a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v3" fill="none" stroke="#fff" stroke-width="4"/><path d="M11 8V5a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v3" fill="none" stroke="#225f47" stroke-width="1.8"/><path d="M13 13h6v4h4v6h-4v4h-6v-4H9v-6h4z" fill="#21764f"/></symbol>
+    <symbol id="i-travel" viewBox="0 0 32 32"><rect x="5" y="7" width="22" height="22" rx="5" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="5" y="7" width="22" height="22" rx="5" fill="#cee6f2" stroke="#24526a" stroke-width="1.4"/><path d="M12 7V4h8v3M10 11v14m12-14v14" fill="none" stroke="#24526a" stroke-width="1.8"/><path d="m11 19 4-1 4-6 2 1-2 6 4 3-1 2-5-2-4 2-1-2 3-2z" fill="#276a7b"/><circle cx="10" cy="29" r="2" fill="#24526a"/><circle cx="22" cy="29" r="2" fill="#24526a"/></symbol>
+    <symbol id="i-home" viewBox="0 0 32 32"><path d="M3 14 16 3l13 11-3 3v12H6V17z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M6 14v15h20V14L16 6z" fill="#f4e7cd" stroke="#52664a" stroke-width="1.4"/><path d="m3 14 13-11 13 11-3 3L16 8 6 17z" fill="#72a48a" stroke="#345d48" stroke-width="1.2"/><path d="M13 29V18h7v11" fill="#b2d7c2" stroke="#345d48" stroke-width="1.2"/><rect x="9" y="15" width="4" height="4" rx=".7" fill="#fff"/></symbol>
+    <symbol id="i-checklist" viewBox="0 0 32 32"><rect x="5" y="4" width="22" height="26" rx="4" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="5" y="4" width="22" height="26" rx="4" fill="#eee4f4" stroke="#655074" stroke-width="1.4"/><rect x="11" y="2" width="10" height="5" rx="2" fill="#c2a9d3" stroke="#655074" stroke-width="1.2"/><path d="m9 13 2 2 3-4m-5 12 2 2 3-4" fill="none" stroke="#327552" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 13h6m-6 10h6" stroke="#655074" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-pets" viewBox="0 0 32 32"><g fill="#c9ad83" stroke="#fff" stroke-width="2.5"><ellipse cx="6" cy="13" rx="4" ry="5" transform="rotate(-25 6 13)"/><ellipse cx="13" cy="7" rx="4" ry="5"/><ellipse cx="22" cy="8" rx="4" ry="5" transform="rotate(18 22 8)"/><ellipse cx="28" cy="15" rx="3" ry="4" transform="rotate(25 28 15)"/><path d="M8 24c1-6 6-11 9-10 4 0 8 6 8 11 0 5-5 5-9 3-4 2-9 1-8-4z"/></g><path d="M9 24c1-5 5-9 8-9 3 0 7 6 7 10 0 4-4 4-8 2-4 2-8 1-7-3z" fill="#d7bf98" stroke="#6e573b" stroke-width="1.2"/></symbol>
   </svg>
 
 
@@ -94,8 +99,15 @@
           <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.</p>
         </details>
       </form>
-      <div class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
+      <div id="shared-list-actions" class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button><button id="clear-checked" class="text-button" type="button">Erledigte entfernen</button></div>
       <ul id="items" class="item-list"></ul>
+      <section id="private-list-panel" hidden aria-labelledby="private-list-title">
+        <div class="card private-list-intro"><h2 id="private-list-title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Geheime Liste</h2><p>Nur auf diesem Gerät. Deine Familie kann diese Einträge nicht sehen.</p><p id="private-list-count" class="hint" role="status"></p></div>
+        <form id="private-add-form" class="card private-add" novalidate><label for="private-item-name">Privater Eintrag<input id="private-item-name" name="name" required maxlength="120" autocomplete="off" placeholder="Was möchtest du notieren?"></label><button id="private-add" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Privat hinzufügen</button></form>
+        <p id="private-list-empty" class="empty"></p><ul id="private-items" class="item-list private-items"></ul>
+        <details id="private-done" class="card private-done" hidden><summary id="private-done-count"></summary><ul id="private-done-items" class="private-items"></ul></details>
+        <p class="hint private-list-note">Wird nicht mit GitHub abgeglichen und nicht in gemeinsame Sicherungen übernommen. Beim Löschen der Browserdaten geht diese Liste verloren. Ausschalten blendet sie nur aus.</p>
+      </section>
       </div>
       <div id="shop-view" hidden>
         <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div><button id="shop-back" class="chip-button" type="button" aria-label="Zurück zu Planen">Planen</button></div>
@@ -168,7 +180,7 @@
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
       <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan</p><h2 id="settings-title">Einstellungen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
-      <div class="card stack"><h3>Geschäfte & Listen</h3><button id="settings-stores" class="secondary" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte verwalten</button><label class="wish-option"><input id="settings-wishes" type="checkbox"><span><svg class="icon"><use href="#i-gift"/></svg><strong>Wünsche</strong><small>Eine eigene Liste für Geschenke und Ideen – ohne Geschäft. Ausschalten blendet sie nur aus.</small></span></label></div>
+      <div class="card stack"><h3>Geschäfte & Listen</h3><button id="settings-stores" class="secondary" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte verwalten</button><label class="wish-option"><input id="settings-wishes" type="checkbox"><span><svg class="icon"><use href="#i-gift"/></svg><strong>Wünsche</strong><small>Eine eigene Liste für Geschenke und Ideen – ohne Geschäft. Ausschalten blendet sie nur aus.</small></span></label><label class="wish-option private-option"><input id="settings-private-list" type="checkbox"><span><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><strong>Geheime Liste</strong><small>Nur auf diesem Gerät sichtbar. Kein GitHub-Abgleich, keine gemeinsame Sicherung. Ausschalten behält die Einträge.</small></span></label></div>
       <form id="settings-form" class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
@@ -248,7 +260,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.89 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.90 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -295,12 +307,13 @@
     <p id="pantry-buy-name" class="pantry-buy-name"></p><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" maxlength="16" required></label><label>Einheit<input name="unit" list="units" maxlength="30" required autocomplete="off"></label></div><label>Geschäft<select name="storeId"></select></label>
     <p id="pantry-buy-hint" class="hint">Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.</p><p id="pantry-buy-error" class="dialog-error" role="alert" hidden></p><button id="pantry-buy-add" type="submit">Auf die Einkaufsliste</button>
   </form></dialog>
-  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><label class="wish-option"><input id="stores-wishes" type="checkbox"><span><svg class="icon"><use href="#i-gift"/></svg><strong>Wünsche</strong><small>Eine eigene Liste für Geschenke und Ideen – ohne Geschäft. Ausschalten blendet sie nur aus.</small></span></label><div id="store-editor"></div>
-    <form id="store-form" class="stack store-new"><h3>Neues Geschäft</h3>
-      <button id="choose-store" type="button" class="secondary">Supermarkt oder Drogerie auswählen</button>
+  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><label class="wish-option"><input id="stores-wishes" type="checkbox"><span><svg class="icon"><use href="#i-gift"/></svg><strong>Wünsche</strong><small>Eine eigene Liste für Geschenke und Ideen – ohne Geschäft. Ausschalten blendet sie nur aus.</small></span></label><label class="wish-option private-option"><input id="stores-private-list" type="checkbox"><span><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><strong>Geheime Liste</strong><small>Nur auf diesem Gerät sichtbar. Kein GitHub-Abgleich, keine gemeinsame Sicherung. Ausschalten behält die Einträge.</small></span></label><div id="store-editor"></div>
+    <form id="store-form" class="stack store-new"><h3 id="store-new-title">Neues Geschäft</h3>
+      <label class="checkbox-label"><input name="separate" type="checkbox">Eigene Liste ohne Supermarktverknüpfung</label>
+      <button id="choose-store" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>Supermarkt oder Drogerie auswählen</button>
       <div id="store-template" class="store-template" hidden></div><input name="chainKey" type="hidden" value="">
-      <p class="hint">Oder einen eigenen Namen eintragen, z. B. Baumarkt, Technik oder Sonstiges.</p>
-      <label>Name<input name="name" required maxlength="80" placeholder="z. B. Mein Baumarkt"></label><label>Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button type="submit">Geschäft hinzufügen</button>
+      <p id="store-new-hint" class="hint">Oder einen eigenen Namen eintragen, z. B. Baumarkt, Technik oder Sonstiges.</p>
+      <label>Name<input name="name" required maxlength="80" placeholder="z. B. Mein Baumarkt"></label><label id="store-new-offers">Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button id="store-add" type="submit" disabled><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span id="store-add-label">Geschäft hinzufügen</span></button>
     </form>
   </dialog>
   <dialog id="store-catalog-dialog" aria-labelledby="store-catalog-title">
@@ -328,6 +341,7 @@
     <button id="delete-item" type="button" class="danger">Artikel löschen</button>
     <div class="sheet-actions"><button type="submit">Artikel speichern</button></div>
   </form></dialog>
+  <dialog id="private-item-dialog" aria-labelledby="private-item-title"><form id="private-item-form" class="stack" novalidate><div class="sheet-head"><h2 id="private-item-title">Privaten Eintrag bearbeiten</h2><button type="button" data-close="private-item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Nur auf diesem Gerät sichtbar.</p><label>Name<input name="name" required maxlength="120" autocomplete="off"></label><label>Private Notiz<textarea name="note" rows="4" maxlength="1000" placeholder="Nur für dich"></textarea></label><button id="private-item-delete" type="button" class="danger">Privaten Eintrag löschen</button><div class="sheet-actions"><button type="submit">Privat speichern</button></div></form></dialog>
   <dialog id="wish-dialog" aria-labelledby="wish-title"><form id="wish-form" class="stack" novalidate>
     <div class="sheet-head"><h2 id="wish-title">Wunschdetails</h2><button type="button" data-close="wish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="id" type="hidden">

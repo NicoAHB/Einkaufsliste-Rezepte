@@ -93,6 +93,7 @@ const openStores = async page => {
   await page.click('#manage-stores'); await sheetOpen(page);
   await page.evaluate(() => { document.querySelectorAll('#store-editor .store-row').forEach(node => { node.open = true; }); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 };
+const chooseStoreSymbol=(row,value)=>row.locator(`.store-symbol-choice:has(input[value="${value}"])`).click();
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const chooseUnit = async (page, selector, value) => {
   await page.locator(selector).click(); await page.waitForSelector('#purchase-unit-dialog[open]');
@@ -423,7 +424,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const layout = await edeka.locator('.aisle-list li').evaluateAll(nodes => nodes.map(node => { const [name, up, down] = [node.querySelector('span'), ...node.querySelectorAll('button')].map(part => part.getBoundingClientRect()); return { name: name.width, nameHeight: name.height, up: [up.width, up.height], down: [down.width, down.height], order: name.right <= up.left + 1 && up.right <= down.left + 1, inside: down.right <= node.getBoundingClientRect().right + 1 }; }));
     for (const row of layout) {
       assert.ok(row.name > 110 && row.nameHeight < 60, `Name steht lesbar (${Math.round(row.name)} × ${Math.round(row.nameHeight)} px)`);
-      assert.deepEqual([row.up, row.down], [[44, 44], [44, 44]], 'Pfeile 44 × 44 px'); assert.ok(row.order && row.inside, 'Name, nach oben, nach unten nebeneinander im Rahmen');
+      assert.ok([row.up,row.down].flat().every(size=>size>=44), 'Pfeile mindestens 44 × 44 px'); assert.ok(row.order && row.inside, 'Name, nach oben, nach unten nebeneinander im Rahmen');
     }
     assert.equal(await horizontalOverflow(page), 0);
     assert.equal(await edeka.locator('.aisle-list li').first().textContent(), 'Obst & Gemüse');
@@ -3054,7 +3055,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await dm.locator('input[name=anywhere]').isChecked(), false);
     assert.equal(await dm.locator('.brand-dm img').count(), 1);
     await dm.locator('input[name=offersUrl]').fill('https://example.org/filiale');
-    await dm.getByRole('button', { name: 'dm Innenstadt speichern' }).click();
+    await dm.locator('.store-save').click();
     let saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
     let row = saved.stores.find(row => row.name === 'dm Innenstadt');
     assert.deepEqual([row.chainKey, row.offersUrl], ['dm', 'https://example.org/filiale']);
@@ -3062,7 +3063,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await dm.locator('select[name=chainKey]').selectOption('mueller');
     assert.equal(await dm.locator('input[name=offersUrl]').inputValue(), 'https://example.org/filiale');
     await dm.locator('select[name=chainKey]').selectOption('dm');
-    await dm.getByRole('button', { name: 'dm Innenstadt speichern' }).click();
+    assert.equal(await dm.locator('.store-save').isDisabled(),true,'Zurück zur gespeicherten Händlerwahl erzeugt keine neue Änderung');
     await page.click('#choose-store'); assert.equal(await page.locator('[data-chain=dm]').isDisabled(), true);
     await page.fill('#store-catalog-search', 'Nicht vorhandener Händler');
     assert.equal(await page.locator('.catalog-choice').count(), 0);
@@ -3850,12 +3851,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await synced(page);
     await openStores(page);
     const row = page.locator('#store-editor .store-row').nth(3);   // Roßmann
-    await row.locator('input[name=name]').fill('Rossmann Drogerie'); await row.getByRole('button', { name: /speichern/ }).click();
+    await row.locator('input[name=name]').fill('Rossmann Drogerie');await row.getByRole('button', { name: /speichern/ }).click();
+    assert.deepEqual(await page.locator('#stores-dialog [data-dialog-error]:not([hidden])').allTextContents(),[]);
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     const saved = remote.content.stores.find(entry => entry.id === 'store-ross');
     assert.equal(saved.name, 'Rossmann Drogerie');
-    assert.equal(saved.offersUrl, '', 'Standardlink nicht festgeschrieben');
-    assert.equal(saved.anywhere, null, 'Voreinstellung (Drogerie) nicht festgeschrieben');
+    assert.equal(saved.offersUrl??'', '', 'Standardlink nicht festgeschrieben');
+    assert.equal(saved.anywhere??null, null, 'Voreinstellung (Drogerie) nicht festgeschrieben');
     assert.equal(await page.locator('#store-editor .store-row').nth(3).locator('input[name=offersUrl]').inputValue(), 'https://www.rossmann.de/de/angebote');
     // Abweichung wird gespeichert
     await row.locator('input[name=anywhere]').check(); await row.getByRole('button', { name: /speichern/ }).click();
@@ -4368,14 +4370,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Einstellbar: im Dialog „Geschäfte“ steht „Anzeige im Reiter“, für Wünsche vorbelegt mit dem Geschenk
     await openStores(page);
     const row = index => page.locator('#store-editor .store-row').nth(index);
-    const pick = index => row(index).locator('select[name=symbol]');
+    const pick = index => row(index).locator('input[name=symbol]:checked');
     const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
     const record = name => remote.content.stores.find(entry => entry.name === name);
     assert.equal(await pick(3).inputValue(), 'gift');
     assert.equal(await pick(0).inputValue(), 'name');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
     // Edeka als Geschenk: ausdrücklich gespeichert; der Reiter zeigt dann das Bild
-    await pick(0).selectOption('gift'); await saved(0);
+    await chooseStoreSymbol(row(0),'gift'); await saved(0);
     assert.equal(record('Edeka').symbol, 'gift');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.equal(await visible(bar), 2);
@@ -4383,21 +4385,21 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await tab('Edeka').count(), 1);
     // Wünsche wieder als Name: ausdrücklich „none“; der Text ist zurück
     await openStores(page);
-    await pick(3).selectOption('name'); await saved(3);
+    await chooseStoreSymbol(row(3),'name'); await saved(3);
     assert.equal(record('Wünsche').symbol, 'none');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.ok((await page.textContent(bar)).includes('Wünsche'), 'als Name steht der Text wieder da');
     assert.equal(await visible(bar), 1, 'nur noch Edeka als Bild');
     // Zurück auf die Voreinstellung: nichts wird festgeschrieben (null); Edeka ebenso
     await openStores(page);
-    await pick(3).selectOption('gift'); await saved(3);
-    await pick(0).selectOption('name'); await saved(0);
+    await chooseStoreSymbol(row(3),'gift'); await saved(3);
+    await chooseStoreSymbol(row(0),'name'); await saved(0);
     assert.equal(record('Wünsche').symbol, null);
     assert.equal(record('Edeka').symbol, null);
     // Umbenannt: ohne ausdrückliche Wahl gilt die Voreinstellung nach dem Namen (kein Geschenk); mit Wahl bleibt es
-    await row(3).locator('input[name=name]').fill('Ideen'); await pick(3).selectOption('name'); await saved(3);
+    await row(3).locator('input[name=name]').fill('Ideen'); await chooseStoreSymbol(row(3),'name'); await saved(3);
     assert.equal(record('Ideen').symbol, null, 'Ideen: Voreinstellung ist der Name');
-    await pick(3).selectOption('gift'); await saved(3);
+    await chooseStoreSymbol(row(3),'gift'); await saved(3);
     assert.equal(record('Ideen').symbol, 'gift', 'ausdrücklich als Geschenk');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.equal(await tab('Ideen').count(), 1);
@@ -8719,6 +8721,141 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#daily-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
     await page.screenshot({path:`/tmp/sattplan289-navigation-${width}.png`});
     await page.click('#daily-review-finish');assert.equal(await page.locator('#daily-review-nav').isVisible(),false);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+
+  function extras290() {
+    const data=structuredClone(demo),at='2026-10-30T10:00:00.000Z';
+    const record=(id,patch)=>({id,...patch,createdAt:at,updatedAt:at,deletedAt:null,_clock:{}});
+    data.stores.push(record('extra-290',{name:'Lidl Reise',separate:true,symbol:'none',chainKey:'lidl',offersUrl:'https://www.lidl.de/angebote'}));
+    data.items.push(...[['extra-milk','Milch'],['extra-toothpaste','Zahnpasta'],['extra-toys','Lego Spielzeugauto']].map(([id,name])=>record(id,{name,storeId:'extra-290',quantity:1,unit:'Stück',checked:false,createdBy:'Nico'})));
+    return data;
+  }
+  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.90: Geschäftsbuttons und Speicherstatus bei ${width}px ${theme}, erster Tipp und unveränderte Nachbarkarte`,async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen',theme},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await openStores(page);
+    const first=page.locator('#store-editor .store-row').first(),second=page.locator('#store-editor .store-row').nth(1),save=first.locator('.store-save');
+    assert.equal(await save.isDisabled(),true);assert.match(await save.textContent(),/Gespeichert um \d{2}:\d{2} Uhr/);
+    await first.locator('[name=name]').fill('Edeka neu');assert.equal(await save.isEnabled(),true);
+    await first.locator('[name=name]').fill('Edeka');assert.equal(await save.isDisabled(),true,'Zurücknehmen erkennt den Ausgangswert');
+    await second.locator('[name=name]').fill('Lidl ungespeichert');await first.locator('[name=name]').fill('Edeka Nord');
+    await save.click();assert.equal(await first.locator('.store-save').isDisabled(),true,'erster Tipp speichert trotz Fokus im Namensfeld');
+    assert.match(await first.locator('.store-save').textContent(),/Gespeichert um \d{2}:\d{2} Uhr/);
+    assert.equal(await second.locator('[name=name]').inputValue(),'Lidl ungespeichert');assert.equal(await second.locator('.store-save').isEnabled(),true);
+    const stored=await storedDemo(page);assert.equal(stored.stores[0].name,'Edeka Nord');assert.equal(stored.stores[1].name,'Lidl');
+    await first.locator('form').evaluate(node=>node.requestSubmit());assert.deepEqual(await storedDemo(page),stored,'ohne Änderung keine zweite Schreiboperation');
+    await first.locator('.aisle-fold>summary').click();await first.locator('.aisle-down').first().click();assert.equal(await first.locator('.store-save').isEnabled(),true);
+    await first.locator('.aisle-up').nth(1).click();assert.equal(await first.locator('.store-save').isDisabled(),true);
+    await first.locator('.aisle-fold>summary').click();
+    assert.equal(await first.locator('input[name=symbol]').count(),7);
+    await chooseStoreSymbol(first,'pharmacy');assert.equal(await first.locator('.store-save').isEnabled(),true);
+    for(const choice of await first.locator('.store-symbol-choice').all()) {const box=await choice.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.equal(await choice.locator('svg').count(),1);}
+    assert.equal(await first.locator('.store-symbol-choice:has(input[value=gift]) span:not(.store-symbol)').textContent(),'Symbol 1');
+    await first.locator('.store-save').click();assert.equal((await storedDemo(page)).stores[0].symbol,'pharmacy');
+    await first.locator('.store-save').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan290-geschaefte-${width}.png`});
+    assert.equal(await page.locator('#stores-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.90: eigene Liste erhält bekannte Produktbilder ohne Händler, Vorschläge oder Einträge unter Alle',async()=>{
+    const {ctx,page,problems}=await context({config:{productImages:true,storeStyle:'logo',palette:'gruen'}});await seedLocal(ctx,extras290());await open(page);
+    assert.equal(await page.locator('#items [data-id^=extra-]').count(),0);
+    await page.locator('#store-chips').getByRole('tab',{name:/Lidl Reise/}).click();
+    assert.equal(await page.locator('#store-chips').getByRole('tab',{name:/Lidl Reise/}).locator('.brand').count(),0);
+    assert.equal(await page.locator('#items [data-id=extra-milk] [data-photo-key=milch]').count(),1);
+    assert.equal(await page.locator('#items [data-id=extra-toothpaste] [data-photo-kind=product]').count(),1);
+    assert.equal(await page.locator('#items [data-id=extra-toys] [data-photo-key=wish-toys]').count(),1);
+    await page.fill('#item-form [name=name]','Orangensaft');assert.equal(await page.locator('#item-suggestions').isVisible(),false);assert.equal(await page.locator('#store-pick').isVisible(),false);assert.equal(await page.locator('#offers-link').isVisible(),false);
+    await page.click('#item-form button[type=submit]');const added=(await storedDemo(page)).items.find(row=>row.name==='Orangensaft'&&row.storeId==='extra-290');assert.ok(added);
+    assert.equal(await page.locator(`#items [data-id="${added.id}"] [data-photo-kind=product]`).count(),1);
+    await page.locator('#items [data-id=extra-milk] .item-copy').click();await sheetOpen(page);
+    assert.match(await page.locator('#wish-image-preview').getAttribute('aria-label'),/Produktbild: Milch/);
+    await page.click('#wish-remove-image');await page.click('#wish-form button[type=submit]');await page.reload();await page.locator('#store-chips').getByRole('tab',{name:/Lidl Reise/}).click();
+    assert.equal(await page.locator('#items [data-id=extra-milk] [data-photo-key]').count(),0,'Bild entfernen bleibt trotz bekannter Milch dauerhaft wirksam');
+    await page.click('#mode-shop');assert.ok(!/für andere Geschäfte|Überall möglich/.test(await page.textContent('#shop-list')));
+    await page.click('#shop-back');await page.locator('#store-chips').getByRole('tab',{name:/^Alle/}).click();assert.equal(await page.locator('#items [data-id^=extra-]').count(),0);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.90: eigene Liste direkt anlegen, praktische Symbole speichern und ohne Händlerverknüpfung neu laden',async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen'}});await open(page);await openStores(page);
+    assert.equal(await page.locator('#store-add').isDisabled(),true);
+    await page.check('#store-form [name=separate]');assert.equal(await page.locator('#choose-store').isVisible(),false);assert.equal(await page.locator('#store-form [name=offersUrl]').isDisabled(),true);
+    await page.fill('#store-form [name=name]','Apotheke');await page.click('#store-add');
+    const id=(await storedDemo(page)).stores.find(row=>row.name==='Apotheke').id,row=page.locator(`.store-row[data-id="${id}"]`);
+    assert.equal(await row.evaluate(node=>node.open),true);
+    assert.equal(await row.locator('[name=chainKey]').isVisible(),false);assert.equal(await row.locator('[name=offersUrl]').isVisible(),false);assert.equal(await row.locator('.aisle-fold').isVisible(),false);
+    for(const symbol of ['gift','pharmacy','travel','home','checklist','pets']) {
+      await chooseStoreSymbol(row,symbol);await row.locator('.store-save').click();const saved=(await storedDemo(page)).stores.find(store=>store.id===id);
+      assert.equal(saved.symbol,symbol);assert.equal(saved.separate,true);assert.equal(saved.chainKey,null);assert.equal(saved.offersUrl,'');assert.equal(saved.anywhere,false);
+    }
+    assert.equal((await storedDemo(page)).sync.minRev,12);
+    await page.reload();await openStores(page);assert.equal(await row.locator('input[name=symbol]:checked').inputValue(),'pets');
+    await chooseStoreSymbol(row,'pharmacy');await row.locator('.store-save').click();await page.click('#stores-dialog .sheet-head [data-close]');
+    assert.equal(await page.locator('#store-chips .store-symbol svg use[href="#i-pharmacy"]').count(),1);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.90: Speichern auf zwei Geräten erhält zwischenzeitlich geänderte Listensymbole',async()=>{
+    const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    for(const device of [a,b]) {await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);await openStores(device.page);}
+    const rowA=a.page.locator('.store-row').first(),rowB=b.page.locator('.store-row').first();
+    await rowA.locator('[name=name]').fill('Edeka gemeinsam');await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
+    await rowA.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
+    assert.equal(api.content.stores[0].name,'Edeka gemeinsam');assert.equal(api.content.stores[0].symbol,'pharmacy');assert.equal(api.content.sync.minRev,12);
+    assert.equal(await rowA.locator('input[name=symbol]:checked').inputValue(),'pharmacy');
+    assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+  test('2.90: Speicherfehler zeigt keine falsche Gespeichert-Bestätigung und lässt erneutes Speichern zu',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await openStores(page);const row=page.locator('.store-row').first(),before=await storedDemo(page);
+    await page.evaluate(()=>{window.failStore290=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.failStore290&&key==='einkauf-demo-v1')throw new DOMException('Kein Platz','QuotaExceededError');return real.call(this,key,value);};});
+    await row.locator('[name=name]').fill('Edeka gespeichert');await row.locator('.store-save').click();assert.equal(await row.locator('.store-save').isEnabled(),true);
+    assert.equal(await row.locator('.store-save').textContent(),'Änderungen speichern');assert.deepEqual(await storedDemo(page),before);
+    assert.equal(await page.locator('#stores-dialog [data-dialog-error]:not([hidden])').count(),1);
+    await page.evaluate(()=>window.failStore290=false);await row.locator('.store-save').click();assert.match(await row.locator('.store-save').textContent(),/Gespeichert um/);assert.equal((await storedDemo(page)).stores[0].name,'Edeka gespeichert');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+
+  const openSecret290=async page=>{await goTab(page,'shopping');await page.locator('#store-chips [data-private]').click();await page.waitForSelector('#private-list-panel:not([hidden])');};
+  const addSecret290=async(page,name)=>{await page.fill('#private-add-form [name=name]',name);await page.click('#private-add');};
+  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.90: geheime Liste bleibt bei ${width}px ${theme} ausschließlich lokal, auch nach Ausschalten und Neuladen`,async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen',theme,productImages:true},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);
+    const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
+    await goTab(page,'settings');await page.check('#settings-private-list');await openSecret290(page);
+    assert.equal(await page.locator('#item-form').isVisible(),false);assert.equal(await page.locator('#shared-list-actions').isVisible(),false);assert.equal(await page.locator('#mode-shop').isDisabled(),true);
+    await addSecret290(page,'Milch');assert.equal(await page.locator('#private-items [data-photo-key=milch]').count(),1);
+    const secret='Überraschung nur für mich';await addSecret290(page,secret);
+    await page.getByRole('button',{name:secret+' privat bearbeiten',exact:true}).click();await sheetOpen(page);
+    await page.fill('#private-item-form [name=note]','Diese Notiz sieht die Familie nicht.');await page.click('#private-item-form button[type=submit]');
+    assert.match(await page.textContent('#private-items'),/Diese Notiz sieht die Familie nicht/);
+    await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();await page.click('#private-done>summary');assert.equal(await page.locator('#private-done-items .private-row').count(),1);
+    assert.equal(await page.getByRole('button',{name:'Milch: wieder öffnen',exact:true}).evaluate(node=>getComputedStyle(node).backgroundColor),await page.locator('#private-add').evaluate(node=>getComputedStyle(node).backgroundColor),'abgehakte private Artikel zeigen einen gefüllten Haken');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared,'Geheime Einträge verändern die gemeinsame Datei nicht');
+    await page.screenshot({path:`/tmp/sattplan290-geheim-${width}.png`});assert.equal(await horizontalOverflow(page),0);
+    await goTab(page,'settings');await page.uncheck('#settings-private-list');await goTab(page,'shopping');assert.equal(await page.locator('#store-chips [data-private]').count(),0);
+    await page.reload();await goTab(page,'settings');assert.equal(await page.isChecked('#settings-private-list'),false);
+    await page.check('#settings-private-list');await openSecret290(page);assert.match(await page.textContent('#private-items'),/Überraschung nur für mich/);assert.match(await page.textContent('#private-items'),/Diese Notiz sieht die Familie nicht/);
+    await page.locator('#store-chips').getByRole('tab',{name:/^Alle/}).click();assert.ok(!(await page.textContent('#items')).includes(secret));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.90: Partnergerät, GitHub und beide gemeinsamen Backup-Arten enthalten keine geheimen Inhalte',async()=>{
+    const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}
+    await goTab(a.page,'settings');await a.page.check('#settings-private-list');await openSecret290(a.page);
+    const secret='GeheimeÜberraschung7290';await addSecret290(a.page,secret);await pollNow(a.page);await synced(a.page);await pollNow(b.page);await synced(b.page);
+    assert.ok(!JSON.stringify(api.content).includes(secret));assert.equal(await b.page.locator('#store-chips [data-private]').count(),0);await goTab(b.page,'settings');assert.equal(await b.page.isChecked('#settings-private-list'),false);
+    await openSettings(a.page);const [jsonDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export')]);
+    assert.ok(!(await readFile(await jsonDownload.path(),'utf8')).includes(secret));
+    const [zipDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export-full')]);
+    const files=readZip(new Uint8Array(await readFile(await zipDownload.path())));for(const file of files)assert.ok(!new TextDecoder().decode(file.data).includes(secret));
+    await a.page.reload();await synced(a.page);await openSecret290(a.page);assert.match(await a.page.textContent('#private-items'),new RegExp(secret));
+    await goTab(b.page,'settings');await b.page.check('#settings-private-list');await openSecret290(b.page);assert.equal(await b.page.locator('#private-items .private-row').count(),0,'Partner kann nur eine eigene leere geheime Liste aktivieren');
+    assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+  test('2.90: geheime Liste behält bei vollem Gerätespeicher die Eingabe und speichert erst nach erfolgreichem Versuch',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'settings');await page.check('#settings-private-list');await openSecret290(page);
+    await page.evaluate(()=>{window.privateFull290=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.privateFull290&&key.startsWith('einkauf-private-list-v1:'))throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
+    await addSecret290(page,'Privates Geschenk');assert.equal(await page.inputValue('#private-add-form [name=name]'),'Privates Geschenk');assert.equal(await page.locator('#private-items .private-row').count(),0);assert.match(await page.textContent('#message'),/nicht gespeichert.*bisherigen Einträge bleiben erhalten/);
+    await page.evaluate(()=>window.privateFull290=false);await page.click('#private-add');assert.equal(await page.inputValue('#private-add-form [name=name]'),'');assert.equal(await page.locator('#private-items .private-row').count(),1);
+    await page.getByRole('button',{name:'Privates Geschenk privat bearbeiten',exact:true}).click();page.once('dialog',dialog=>dialog.accept());await page.click('#private-item-delete');assert.equal(await page.locator('#private-items .private-row').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
 

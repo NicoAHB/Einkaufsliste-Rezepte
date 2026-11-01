@@ -78,6 +78,24 @@ test('Wunschbilder: lokale Gruppen, Wortteile/Umlaute, unbekannte Wünsche und d
   assert.equal(wishGroup('Überraschung für uns').name,'Sonstiges');
   assert.equal(wishImage(JSON.parse(JSON.stringify({name:'PlayStation',wishImageHidden:true}))),null);
 });
+test('Eigene Listen übernehmen bekannte Produktbilder, behalten freie Namen und respektieren Bild entfernen',()=>{
+  for(const name of ['Milch','Zahnpasta','Orangensaft','Shampoo']) {
+    const row={name};const before=JSON.stringify(row),known=imageForProduct(row);
+    assert.equal(known.kind,'product');assert.deepEqual(wishImage(row),known);
+    assert.deepEqual(wishGroup(name).image,known);assert.equal(JSON.stringify(row),before);
+    assert.equal(wishImage({...row,wishImageHidden:true}),null);
+  }
+  assert.match(wishGroup('Schöner Roman für den Urlaub').image.url,/^assets\/wishes\//);
+});
+test('Neue Listensymbole erhalten den Aktualisierungsschutz und parallele Listenänderungen',()=>{
+  const baseline=merge(emptyData(),[operation('stores','extra',{name:'Apotheke',separate:true,symbol:'gift'},'Nico',at)]);
+  assert.ok((baseline.sync.minRev||1)<12);
+  const icon=operation('stores','extra',{symbol:'pharmacy'},'Nico','2026-11-01T10:00:01.000Z');
+  const name=operation('stores','extra',{name:'Hausapotheke'},'Anna','2026-11-01T10:00:02.000Z');
+  for(const ops of [[icon,name],[name,icon]]) {
+    const next=merge(baseline,ops);assert.equal(next.sync.minRev,12);assert.equal(next.stores[0].symbol,'pharmacy');assert.equal(next.stores[0].name,'Hausapotheke');assert.equal(next.stores[0].separate,true);
+  }
+});
 
 test('Import: zehn Lidl-Aufrufe nach transienten Fehlern, fünf Versuche, nur freigegebene Routen und ruhiger Fortschritt',async()=>{
   const html='<html>'+('x'.repeat(250))+'</html>';

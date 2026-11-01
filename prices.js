@@ -69,6 +69,7 @@ export function offerUrl(value) {
 // Standardlink einer bekannten Kette oder ''.
 export const defaultOfferUrl = store => chainForStore(store)?.offers || '';
 export function storeOfferUrl(store) {
+  if(store?.separate===true)return '';
   if (!store) return '';
   // Ein leeres Feld heißt „Standardlink der Kette“ (falls bekannt), sonst keiner. So bekommt auch ein früher ohne Link angelegtes Geschäft den Standard.
   if (store.offersUrl) return offerUrl(store.offersUrl);

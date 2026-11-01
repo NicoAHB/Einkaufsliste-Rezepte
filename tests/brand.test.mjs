@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { brandOf, chainOf, defaultSymbol, symbolOf } from '../brand.js';
+import { brandOf, chainOf, chainForStore, defaultSymbol, symbolOf } from '../brand.js';
+import { LIST_SYMBOLS } from '../list-symbols.js';
 import { defaultOfferUrl, storeOfferUrl } from '../prices.js';
 import { takesAnywhere } from '../shop.js';
+
+test('Eigene Listen bekommen weder Händler noch Angebotslink, auch bei bekannten Namen und alten Verweisen',()=>{
+  const own={name:'Lidl Reise',separate:true,chainKey:'lidl',offersUrl:'https://www.lidl.de/angebote'};
+  assert.equal(chainForStore(own),null);assert.equal(defaultOfferUrl(own),'');assert.equal(storeOfferUrl(own),'');assert.equal(takesAnywhere(own),false);
+  for(const {id} of LIST_SYMBOLS)assert.equal(symbolOf({...own,symbol:id}),id);
+});
 
 test('bekannte Ketten werden am Namen erkannt, unbekannte nicht', () => {
   const known = { Edeka: 'edeka', 'EDEKA Müller': 'edeka', Lidl: 'lidl', Rewe: 'rewe', 'REWE Center': 'rewe', Rossmann: 'rossmann', Roßmann: 'rossmann', 'ROẞMANN': 'rossmann',

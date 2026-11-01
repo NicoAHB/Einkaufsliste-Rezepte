@@ -7,6 +7,7 @@ import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
 import { validMemberId } from './family.js';
+import { LIST_SYMBOL_IDS } from './list-symbols.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
@@ -49,7 +50,7 @@ export function validateRow(key, row) {
   // `separate` (Version 2.30): eigene Liste, nur sichtbar, wenn das Geschäft gewählt ist; fehlt oder null = normales Geschäft.
   if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
   // `symbol` (Version 2.31): Geschäft als Bild statt Name anzeigen ('gift') oder ausdrücklich nicht ('none'); fehlt oder null = Voreinstellung nach dem Namen (siehe brand.js).
-  if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && !['gift', 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
+  if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && ![...LIST_SYMBOL_IDS, 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
   // `chainKey` (2.61): freiwilliger Katalog-Verweis; auch künftige Kennungen bleiben erhalten. Fehlt/null = Erkennung am Namen.
   if (key === 'stores' && row.chainKey !== undefined && row.chainKey !== null &&
       (typeof row.chainKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(row.chainKey))) throw new Error('Ungültige Händlerzuordnung.');
@@ -160,7 +161,8 @@ export function validateRow(key, row) {
 // Revision 9 (2.74): manuelle Einzelmengen getrennt von Summen/Rezepten merken.
 // Revision 10 (2.76): Quellenbezogene Wochenplan-Korrekturen und Mengen-Reset.
 // Revision 11 (2.86): Produktgruppen sowie ausgeblendete Wunschlisten und entfernte Wunschbilder.
-export const SCHEMA_REV = 11;
+// Revision 12 (2.90): zusätzliche Listensymbole; ältere Apps kennen nur Geschenk/Name.
+export const SCHEMA_REV = 12;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -306,6 +308,7 @@ export function merge(data, operations) {
   next.sync.applied = [...applied];
   if (collections.some(key => next[key]?.some(row=>row.productOriginalName))) next.sync.minRev = Math.max(Number(next.sync.minRev)||1,11);
   if(next.items.some(row=>row.wishImageHidden!==undefined) || next.stores.some(row=>row.wishlistEnabled!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,11);
+  if(next.stores.some(row=>LIST_SYMBOL_IDS.includes(row.symbol)&&row.symbol!=='gift'))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,12);
   if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
   if (next.pantry.some(row => row.available === false)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 5);
   if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);

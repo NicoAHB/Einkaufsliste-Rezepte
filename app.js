@@ -3,6 +3,9 @@ import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey,
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
+import { LIST_SYMBOLS } from './list-symbols.js';
+import { PRIVATE_VIEW } from './private-list.js';
+import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
 import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
 import { GROCERY_PRODUCTS, favoriteId } from './product-catalog.js';
@@ -45,7 +48,7 @@ const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
-let productPicker = null, pantryBuyer = null, spendingView = null;
+let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null;
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let wishBaseline = null;
@@ -236,13 +239,20 @@ const storeName = id => active(state.stores).find(store => store.id === id)?.nam
 // Welches Geschäft ein neuer Artikel bekommt: das der gewählten Ansicht, sonst keines.
 const defaultStore = () => viewStore()?.id || '';
 function showView(next) {
+  if(next===PRIVATE_VIEW&&!privateList?.enabled)return;
+  if(next===PRIVATE_VIEW&&selecting)setSelecting(false);
   view = next;
   const form = $('#item-form');
   // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
   // In „Alle“ bleibt die letzte Auswahl stehen (außer eine eigene Liste wie „Wünsche“: dort verschwänden neue Artikel unbemerkt); „Ohne Geschäft“ wählt keines.
   if (viewStore()) form.elements.storeId.value = view;
   else if (view === 'none' || (view === 'all' && isSeparate(active(state.stores).find(store => store.id === form.elements.storeId.value)))) form.elements.storeId.value = '';
-  renderStorePick(); storeChanged(); renderStoreChips(); renderItems();
+  renderStorePick(); storeChanged(); renderStoreChips(); renderItems();syncPrivateView();
+}
+function syncPrivateView() {
+  const own=view===PRIVATE_VIEW&&privateList?.enabled;
+  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own);$('#items').hidden=Boolean(own);
+  $('#shared-list-actions').hidden=Boolean(own);$('#mode-shop').disabled=Boolean(own);
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
@@ -288,10 +298,11 @@ function storeChanged() {
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
 function render() {
+  privateList?.refresh();
   renderWishOptions();
   if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
   $('#identity').textContent = config.actor || '';
-  if (view !== 'all' && view !== 'none' && !viewStore()) view = 'all';
+  if (view !== 'all' && view !== 'none' && !viewStore() && !(view===PRIVATE_VIEW&&privateList?.enabled)) view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
@@ -329,6 +340,7 @@ function renderStoreChips() {
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
   for (const store of active(state.stores).filter(visibleStore)) add(store.id, store.name, open(store.id), true);
+  if(privateList?.enabled){add(PRIVATE_VIEW,'Geheim',privateList.count);box.lastElementChild.dataset.private='';box.lastElementChild.prepend(icon('lock'));}
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
@@ -394,6 +406,7 @@ function chainLogo(chain, name = chain.name) {
 function storeLabel(name) {
   const store = active(state.stores).find(store => store.name === name) || { name }, symbol = symbolOf(store);
   if (symbol) return symbolNode(symbol, name);
+  if (isSeparate(store)) return document.createTextNode(name);
   const chain = config.storeStyle === 'logo' ? chainForStore(store) : null;
   if (typeof chain?.logo === 'string') {
     const label = chainLogo(chain, name);
@@ -708,7 +721,7 @@ function renderWishImage() {
   const form=$('#wish-form'),group=wishGroup(form.elements.name.value),hidden=form.dataset.imageHidden==='true',preview=$('#wish-image-preview');
   preview.replaceChildren();preview.className='';preview.removeAttribute('style');delete preview.dataset.photoKey;delete preview.dataset.photoKind;
   if(hidden) preview.append(icon('box')); else paintProductImage(preview,group.image);
-  preview.setAttribute('aria-label',hidden?'Kein Bild':`Gruppenbild: ${group.name}`);
+  preview.setAttribute('aria-label',hidden?'Kein Bild':`${group.image.kind==='product'?'Produktbild':'Gruppenbild'}: ${group.name}`);
   $('#wish-image-group').textContent=hidden?'':group.name;
   $('#wish-remove-image').hidden=hidden; $('#wish-image-removed').hidden=!hidden;
 }
@@ -747,6 +760,7 @@ function renderStoreCatalog() {
 }
 function renderStoreTemplate() {
   const chain = catalogByKey($('#store-form').elements.chainKey.value), preview = $('#store-template'); preview.replaceChildren(); preview.hidden = !chain;
+  updateNewStoreSave();
   if (!chain) return;
   preview.append(chainLogo(chain), element('span', `Vorlage: ${chain.name}`), button('Auswahl aufheben', () => {
     const form = $('#store-form'); form.reset(); form.elements.chainKey.value = ''; renderStoreTemplate(); form.elements.name.focus();
@@ -756,10 +770,29 @@ function renderStores() {
   renderWishOptions();
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of active(state.stores)) {
+    const row=storeEditorRow(store);editor.append(row);
+    if(store.id===storeFresh){row.classList.add('fresh');row.scrollIntoView({block:'nearest'});}
+  }
+}
+function storeSymbolPicker(value) {
+  const field=element('fieldset',undefined,'store-symbol-picker');field.append(element('legend','Anzeige im Reiter'));
+  const choices=element('div',undefined,'store-symbol-choices');
+  for(const choice of [{id:'name',label:'Name',name:'Listen- oder Geschäftsname'},...LIST_SYMBOLS]) {
+    const label=element('label',undefined,'store-symbol-choice'),input=element('input');
+    input.type='radio';input.name='symbol';input.value=choice.id;input.checked=choice.id===(value||'name');
+    input.setAttribute('aria-label',`${choice.label} – ${choice.name}`);
+    const image=choice.id==='name'?icon('text'):symbolNode(choice.id,choice.name);image.setAttribute('aria-hidden','true');
+    label.append(input,element('span',choice.label),image,element('small',choice.name));choices.append(label);
+  }
+  field.append(choices);return field;
+}
+function storeEditorRow(store) {
+    let updateSave=()=>{};
+    const wishList=wishStores().some(wish=>wish.id===store.id);
     const row = element('details', undefined, 'store-row'), summary = element('summary', undefined, 'store-summary'), body = element('div', undefined, 'store-body');
     row.open = storesOpen.has(store.id); row.dataset.id = store.id;
     row.addEventListener('toggle', () => { if (row.open) storesOpen.add(store.id); else storesOpen.delete(store.id); });
-    const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name)); summary.append(title);
+    const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name));if(symbolOf(store))title.append(element('span',store.name));summary.append(title);
     if (isSeparate(store)) summary.append(element('span', 'Eigene Liste', 'store-pill'));
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
@@ -767,7 +800,7 @@ function renderStores() {
     const linkLabel = element('label', 'Angebotslink (optional)'), link = element('input');
     link.name = 'offersUrl'; link.type = 'url'; link.inputMode = 'url'; link.value = storeOfferUrl(store); link.maxLength = 2000; link.placeholder = 'https://…';
     linkLabel.append(link);
-    const save = element('button', 'Speichern', 'secondary'); save.setAttribute('aria-label', `${store.name} speichern`);
+    const save = element('button', 'Speichern', 'store-save');save.type='submit';
     const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
     const chainLabel = element('label', 'Händler / Logo'), chainPick = element('select'); chainPick.name = 'chainKey';
     chainPick.append(new Option('Automatisch am Namen erkennen', ''));
@@ -788,20 +821,19 @@ function renderStores() {
     // Eigene Liste (z. B. „Wünsche“): Die Artikel erscheinen nirgends, nur wenn dieses Geschäft gewählt ist. Dann gibt es keine Artikel ohne Geschäft dazu.
     const separateLabel = element('label', undefined, 'checkbox-label'), separate = element('input');
     separate.type = 'checkbox'; separate.name = 'separate'; separate.checked = isSeparate(store); anywhereLabel.hidden = separate.checked;
-    separate.addEventListener('change', () => { anywhereLabel.hidden = separate.checked; });
+    separate.addEventListener('change', () => syncStoreKind());
     separateLabel.append(separate, ' Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist');
-    // Anzeige im Reiter: der Name oder ein kleines Bild (Voreinstellung nach dem Namen, siehe brand.js)
-    const symbolLabel = element('label', 'Anzeige im Reiter'), symbolPick = element('select');
-    symbolPick.name = 'symbol'; symbolPick.append(new Option('Name', 'name'), new Option('Geschenk-Symbol (kleines Bild)', 'gift')); symbolPick.value = symbolOf(store) || 'name'; symbolLabel.append(symbolPick);
+    const symbolPick=storeSymbolPicker(symbolOf(store));
+    const chosenSymbol=()=>symbolPick.querySelector('input:checked')?.value||'name';
     // Reihenfolge der Gänge: Standard ist der typische Weg durch den Laden; hier lässt sie sich für dieses Geschäft ändern (gilt unter „Planen“ und „Im Laden“, gespeichert mit „Speichern“).
     const aisleFold = element('details', undefined, 'aisle-fold'), aisleList = element('ol', undefined, 'aisle-list');
     let aisles = orderCategories(store.aisles).map(category => category.id);
-    const aisleReset = button('Standardreihenfolge', () => { aisles = CATEGORIES.map(category => category.id); drawAisles(); }, 'text-button');
+    const aisleReset = button('Standardreihenfolge', () => { aisles = CATEGORIES.map(category => category.id); drawAisles();updateSave(); }, 'secondary aisle-reset');
     const drawAisles = () => {
       aisleList.replaceChildren();
       aisles.forEach((id, index) => {
-        const item = element('li'), up = button('', () => { [aisles[index - 1], aisles[index]] = [aisles[index], aisles[index - 1]]; drawAisles(); aisleList.children[index - 1].querySelector('.aisle-up').focus(); }, 'icon-button aisle-up'),
-          down = button('', () => { [aisles[index + 1], aisles[index]] = [aisles[index], aisles[index + 1]]; drawAisles(); aisleList.children[index + 1].querySelector('.aisle-down').focus(); }, 'icon-button aisle-down');
+        const item = element('li'), up = button('', () => { [aisles[index - 1], aisles[index]] = [aisles[index], aisles[index - 1]]; drawAisles();updateSave(); aisleList.children[index - 1].querySelector('.aisle-up').focus(); }, 'icon-button aisle-up'),
+          down = button('', () => { [aisles[index + 1], aisles[index]] = [aisles[index], aisles[index + 1]]; drawAisles();updateSave(); aisleList.children[index + 1].querySelector('.aisle-down').focus(); }, 'icon-button aisle-down');
         up.append(icon('up')); down.append(icon('down'));
         up.setAttribute('aria-label', `${categoryLabel(id)} nach oben`); down.setAttribute('aria-label', `${categoryLabel(id)} nach unten`);
         up.disabled = index === 0; down.disabled = index === aisles.length - 1;
@@ -809,31 +841,71 @@ function renderStores() {
       });
       aisleReset.hidden = aisles.every((id, index) => id === CATEGORIES[index].id);
     };
-    aisleFold.append(element('summary', 'Reihenfolge der Gänge'), aisleList, aisleReset); drawAisles();
-    if(wishStores().some(wish=>wish.id===store.id)) {
-      nameLabel.firstChild.textContent='Listenname'; input.setAttribute('aria-label','Listenname');
-      for(const field of [chainLabel,linkLabel,separateLabel,anywhereLabel,aisleFold]) field.hidden=true;
-      separate.checked=true;
+    const aisleSummary=element('summary');aisleSummary.append(icon('grid'),element('span','Reihenfolge der Gänge'),icon('down'));
+    aisleFold.append(aisleSummary, aisleList, aisleReset); drawAisles();
+    function syncStoreKind() {
+      if(wishList)separate.checked=true;
+      nameLabel.firstChild.textContent=separate.checked?'Listenname':'Geschäftsname';
+      input.setAttribute('aria-label',separate.checked?'Listenname':'Geschäftsname');
+      for(const field of [chainLabel,linkLabel,anywhereLabel,aisleFold])field.hidden=separate.checked;
+      chainPick.disabled=link.disabled=anywhere.disabled=separate.checked;
+      separateLabel.hidden=wishList;
     }
-    form.append(nameLabel, chainLabel, linkLabel, symbolLabel, separateLabel, anywhereLabel, aisleFold, save);
+    syncStoreKind();
+    form.append(nameLabel, chainLabel, linkLabel, separateLabel, symbolPick, anywhereLabel, aisleFold, save);
+    const storePatch=()=>{
+      const name=input.value.trim(),apart=separate.checked,chainKey=apart?null:chainPick.value||null,identity={name,chainKey};
+      const typed=apart?'':offerUrl(link.value),symbol=chosenSymbol()==='name'?'':chosenSymbol();
+      return {name,chainKey,offersUrl:typed===defaultOfferUrl(identity)?'':typed,
+        anywhere:apart?false:anywhere.checked===takesAnywhere(identity)?null:anywhere.checked,separate:apart||null,
+        symbol:symbol===defaultSymbol(name)?null:symbol||'none',aisles:apart||aisles.every((id,index)=>id===CATEGORIES[index].id)?null:[...aisles]};
+    };
+    // Vergleich der sichtbaren Werte: auch „zurück auf den Ausgangswert“ wird erkannt.
+    const initial=storePatch();
+    const dirty=()=>JSON.stringify(storePatch())!==JSON.stringify(initial);
+    updateSave=()=>{
+      let modified=true;try{modified=dirty();}catch{/* unfertiger Link bleibt bearbeitbar */}
+      save.disabled=!modified;save.classList.toggle('is-saved',!modified);
+      const time=new Date(store.updatedAt),label=modified?'Änderungen speichern':Number.isFinite(time.getTime())?`Gespeichert um ${time.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr`:'Gespeichert';
+      // Ein unveränderter Text bleibt im DOM: Fokuswechsel vor dem ersten Tipp
+      // darf dessen Ziel nicht zwischen pointerdown und click austauschen.
+      if(save.textContent!==label) {
+        const caption=element('span',label);
+        if(!modified && label.startsWith('Gespeichert um '))caption.replaceChildren(document.createTextNode('Gespeichert '),element('span',label.slice('Gespeichert '.length),'store-saved-time'));
+        save.replaceChildren(icon('check'),caption);
+      }
+      save.setAttribute('aria-label',modified?`${input.value.trim()||store.name} speichern`:`${store.name}: ${label}`);
+    };
+    form.addEventListener('input',updateSave);form.addEventListener('change',updateSave);updateSave();
     form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
-      currentStore(store.id); const typed = offerUrl(link.value);
-      // Der Standardlink der Kette und die Voreinstellung nach dem Namen werden nicht festgeschrieben, damit spätere Änderungen daran wirken.
-      const chainKey = chainPick.value || null, identity = { name, chainKey };
-      commit([nextOp('stores', store.id, { name, ...(wishStores().some(wish=>wish.id===store.id)?{wishlist:true}:{}), chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed, anywhere: anywhere.checked === takesAnywhere(identity) ? null : anywhere.checked, separate: separate.checked || null,
-        symbol: (symbolPick.value === 'gift' ? 'gift' : '') === defaultSymbol(name) ? null : symbolPick.value === 'gift' ? 'gift' : 'none',
-        aisles: aisles.every((id, index) => id === CATEGORIES[index].id) ? null : [...aisles] })]); renderStores();
+      currentStore(store.id);if(!dirty())return;
+      const patch=storePatch(),delta=changed(patch,initial);
+      if(wishList)delta.wishlist=true;
+      if(patch.separate)Object.assign(delta,{chainKey:null,offersUrl:'',anywhere:false,aisles:null});
+      commit([nextOp('stores',store.id,delta)]);
+      const replacement=storeEditorRow(active(state.stores).find(entry=>entry.id===store.id)),scroll=$('#stores-dialog').scrollTop;
+      replacement.open=row.open;replacement.querySelector('.aisle-fold').open=aisleFold.open;
+      row.replaceWith(replacement);$('#stores-dialog').scrollTop=scroll;
     }); });
-    const remove = button('Geschäft löschen', () => {
+    const remove = button(isSeparate(store)?'Liste löschen':'Geschäft löschen', () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
-      if (!confirm(`„${store.name}“ löschen? Die Artikel werden ausgeblendet. Du kannst das Löschen rückgängig machen.`)) return;
+      if (!confirm(`„${store.name}“ löschen? Die zugehörigen Artikel werden ausgeblendet.`)) return;
       removeRows('stores', [store.id]); renderStores();
-    }, 'danger');
-    remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form, remove); row.append(summary, body); editor.append(row);
-    if (store.id === storeFresh) { row.classList.add('fresh'); row.scrollIntoView({ block: 'nearest' }); }
-  }
+    }, 'danger store-delete');
+    remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form, remove); row.append(summary, body);
+    return row;
 }
+function syncNewStoreForm() {
+  const form=$('#store-form'),apart=form.elements.separate.checked;
+  if(apart){form.elements.chainKey.value='';form.elements.offersUrl.value='';}
+  $('#store-new-title').textContent=apart?'Neue eigene Liste':'Neues Geschäft';
+  $('#choose-store').hidden=apart;$('#store-new-offers').hidden=apart;form.elements.offersUrl.disabled=apart;
+  $('#store-new-hint').textContent=apart?'Für Reisen, Apotheke, Aufgaben und mehr. Artikel bleiben ausschließlich in dieser Liste sichtbar.':'Oder einen eigenen Namen eintragen, z. B. Baumarkt, Technik oder Sonstiges.';
+  $('#store-add-label').textContent=apart?'Liste hinzufügen':'Geschäft hinzufügen';
+  renderStoreTemplate();
+}
+function updateNewStoreSave() { $('#store-add').disabled=!$('#store-form').elements.name.value.trim(); }
 
 function chip(text, pressed, action) {
   const node = element('button', text, 'chip'); node.type = 'button'; node.setAttribute('aria-pressed', String(pressed));
@@ -2307,7 +2379,7 @@ function applyMode() {
   $('#plan-view').hidden = on; $('#shop-view').hidden = !on; $('#mode-row').hidden = on;
   $('#mode-plan').setAttribute('aria-selected', String(!on)); $('#mode-shop').setAttribute('aria-selected', String(on));
   if (on) renderShop();
-  syncChrome(); syncShopLock();
+  syncChrome(); syncShopLock();syncPrivateView();
 }
 // Im Laden steht ganz oben die Geschäftsauswahl: Kopfzeile und Umschalter verschwinden, solange diese Ansicht offen ist.
 function syncChrome() {
@@ -3497,15 +3569,17 @@ $('#choose-store').addEventListener('click', () => {
 });
 $('#store-catalog-search').addEventListener('input', renderStoreCatalog);
 $('#store-catalog-type').addEventListener('change', renderStoreCatalog);
+$('#store-form').elements.separate.addEventListener('change',syncNewStoreForm);
+$('#store-form').addEventListener('input',updateNewStoreSave);
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, name = form.elements.name.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
   if (active(state.stores).some(store => store.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))) throw new Error('Dieses Geschäft gibt es bereits.');
-  const chainKey = form.elements.chainKey.value || null;
+  const apart=form.elements.separate.checked,chainKey = apart?null:form.elements.chainKey.value || null;
   if (chainKey && !catalogByKey(chainKey)) throw new Error('Bitte den Händler erneut auswählen.');
   if (chainKey && active(state.stores).some(store => !isSeparate(store) && chainForStore(store)?.key === chainKey)) throw new Error('Dieser Händler ist bereits hinzugefügt. Für eine weitere Filiale kannst du einen eigenen Namen eintragen.');
-  const identity = { name, chainKey }, typed = offerUrl(form.elements.offersUrl.value);
+  const identity = { name, chainKey, separate:apart }, typed = apart?'':offerUrl(form.elements.offersUrl.value);
   const id = uid();
-  commit([nextOp('stores', id, { name, chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed })]); form.reset(); form.elements.chainKey.value = ''; renderStoreTemplate(); storeFresh = id; renderStores();
+  commit([nextOp('stores', id, { name, chainKey, offersUrl: typed === defaultOfferUrl(identity) ? '' : typed,...(apart?{separate:true,anywhere:false}:{}) })]); form.reset(); form.elements.chainKey.value = '';syncNewStoreForm();storeFresh = id;if(apart)storesOpen.add(id);renderStores();
 }); });
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#add-recipe').addEventListener('click', () => guard(() => editRecipe()));
@@ -3627,7 +3701,7 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
 // Gilt sofort, ohne Neuladen: Aus = keine Kacheln, die Zeile sieht aus wie früher.
-$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry(); }));
+$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry();privateList?.refresh(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#glass-on').addEventListener('change', () => guard(() => { saveConfig({ ...config, glass: $('#glass-on').checked }); applyTheme(); }));
@@ -3758,6 +3832,11 @@ function freshStart() {
 async function start() {
   try {
     config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+    privateList=mountPrivateList({
+      getScope:namespace,makeId:uid,makeIcon:icon,imagesOn,onError:message,
+      onChange:()=>{if(view===PRIVATE_VIEW&&!privateList.enabled)view='all';render();},
+      makeThumb:item=>{const box=element('span',undefined,'item-thumb');box.setAttribute('aria-hidden','true');const image=wishImage(item);if(image)box.append(paintProductImage(element('span'),image));return box;}
+    });
     if (freshStart() && (config.shopMode === true || config.shopLocked === true)) saveConfig({ ...config, shopMode: false, shopLocked: false });
     fillSettings();
     const adding = incomingAdd(), incoming = incomingLink();

@@ -1,5 +1,5 @@
 /* Kostenlose, lokale Gruppenmotive. Keine Suche, Fremdbilder oder Bilddienste. */
-import { groupImage } from './product-images.js';
+import { groupImage, imageForProduct } from './product-images.js';
 const normal = value => String(value || '').toLocaleLowerCase('de').normalize('NFKD').replace(/\p{M}/gu,'').replace(/ß/g,'ss').replace(/ae/g,'a').replace(/oe/g,'o').replace(/ue/g,'u');
 const drawing = (id,label) => ({kind:'illustration',key:`wish-${id}`,label,url:`assets/wishes/${id}.svg`});
 const GROUPS = [
@@ -15,8 +15,10 @@ const GROUPS = [
   ['Haushalt & Wohnen', /haushalt|wohnen|sofa|sessel|mobel|stuhl|tisch|regal|schrank|lampe|leuchte|kerze|kissen|decke|bett|vase|deko|tasse|geschirr|topf|pfanne|mixer|kaffeemaschine|wasserkocher|staubsauger|airfryer|heissluftfritteuse|kuche/, 'kitchenware']
 ];
 const drawings = new Set(['toys','books','jewelry','travel']);
-export function wishGroup(name) {
+export function wishGroup(name, imageKey) {
+  const known=imageForProduct({name,imageKey});
+  if(known.kind==='product')return {name:known.label,image:known};
   const found=GROUPS.find(([,pattern])=>pattern.test(normal(name)));
   return found ? {name:found[0],image:drawings.has(found[2]) ? drawing(found[2],found[0]) : groupImage(found[2])} : {name:'Sonstiges',image:groupImage('miscellaneous')};
 }
-export const wishImage = row => row.wishImageHidden===true ? null : wishGroup(row.name).image;
+export const wishImage = row => row.wishImageHidden===true ? null : wishGroup(row.name,row.imageKey).image;
