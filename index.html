@@ -218,8 +218,9 @@
       </div><p class="settings-section-title">Daten sichern</p><div id="backup-card" class="card stack"><details id="backup-details" class="fold"><summary><h3>Datensicherung</h3></summary><div class="stack"><button id="export" class="secondary" type="button">Datensicherung erstellen (JSON)</button>
         <button id="export-full" class="secondary" type="button">Mit Fotos sichern (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
+        <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.100 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.101 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -354,8 +355,20 @@
     <button id="delete-wish" type="button" class="danger">Wunsch löschen</button>
     <div class="sheet-actions"><button type="submit">Wunschdetails speichern</button></div>
   </form></dialog>
+  <dialog id="restore-dialog" aria-labelledby="restore-title"><form id="restore-form" class="stack">
+    <div class="sheet-head"><h2 id="restore-title">Datensicherung wiederherstellen</h2><button type="button" data-close="restore-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <label>JSON- oder ZIP-Sicherung auswählen<input id="restore-file" type="file" accept=".json,.zip,application/json,application/zip"></label>
+    <p id="restore-status" class="hint" role="status" hidden></p>
+    <div id="restore-preview" class="stack" hidden><p id="restore-source" class="hint"></p><p>Ziel: <strong id="restore-target"></strong></p>
+      <p class="hint">Aktueller Stand → Stand der Sicherung</p><ul id="restore-counts" class="restore-counts"></ul><p id="restore-photos" class="hint"></p>
+      <p>Der gemeinsame Datenstand wird ersetzt. Bei einer verbundenen Liste gilt das nach dem Abgleich für alle Geräte. Der bisherige Stand wird vorher auf diesem Gerät gesichert und kann hier zurückgeholt werden.</p>
+      <p class="hint">Verbindung, Token, Einstellungen und geheime Listen bleiben auf diesem Gerät. Rezeptentwürfe gehören nicht zur Sicherung. Bitte vorab alle Geräte aktualisieren und offene Änderungen abgleichen.</p>
+      <p id="restore-missing-text" class="dialog-error" role="alert" hidden></p><label id="restore-missing-label" class="checkbox-label" hidden><input id="restore-missing-ok" type="checkbox">Ohne fehlende Fotos fortfahren</label>
+      <label class="checkbox-label"><input id="restore-confirm" type="checkbox">Den aktuellen Stand durch diese Sicherung ersetzen</label>
+    </div><p id="restore-error" class="dialog-error" role="alert" hidden></p><div class="sheet-actions"><button id="restore-apply" type="submit" disabled>Diesen Stand wiederherstellen</button></div>
+  </form></dialog>
   <dialog id="recipe-dialog"><form id="recipe-form" data-explicit-save class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <div id="recipe-draft-note" class="import-note" hidden></div>
+    <p id="recipe-draft-error" class="dialog-error" role="alert" hidden></p><div id="recipe-draft-note" class="import-note" hidden></div>
     <div id="recipe-import-note" class="import-note" hidden></div>
     <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
     <div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" value="2" required></label><label>Tags (Komma)<input name="tags" placeholder="z. B. schnell" maxlength="300"></label></div>

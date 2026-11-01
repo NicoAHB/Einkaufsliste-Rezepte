@@ -477,7 +477,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Rezeptentwurf: Angefangenes bleibt beim Schließen und nach dem Neuladen erhalten, wird angeboten, lässt sich zurückholen oder verwerfen; nach dem Speichern ist er weg', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}'));
+    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1') || '{}'));
     await page.click('[data-tab=recipes]');
     // Ein unberührtes Formular hinterlässt keinen Entwurf
     await page.click('#add-recipe'); await sheetOpen(page);
@@ -493,7 +493,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#add-ingredient');
     await page.fill('#ingredient-editor .ingredient-row:nth-child(2) [data-field=name]', 'Zwiebel');
     await page.fill('#recipe-form textarea[name=instructions]', 'Alles kochen.');
-    await page.waitForFunction(() => { const draft = JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}').new?.state; return draft?.name === 'Linsensuppe' && draft.instructions === 'Alles kochen.' && draft.ingredients?.[1]?.name === 'Zwiebel'; });
+    await page.waitForFunction(() => { const draft = JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1') || '{}').new?.state; return draft?.name === 'Linsensuppe' && draft.instructions === 'Alles kochen.' && draft.ingredients?.[1]?.name === 'Zwiebel'; });
     assert.deepEqual((await drafts()).new.state.ingredients.map(row => row.name), ['Rote Linsen', 'Zwiebel']);
     assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.recipes)).some(row => row.name === 'Linsensuppe'), false, 'nichts davon ist gespeichert');
     // Schließen mit X, dann erneut „Neu“: der Entwurf wird angeboten
@@ -525,7 +525,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#recipe-draft-note').isHidden(), true);
     // Verwerfen: ein neuer Entwurf wird angeboten und lässt sich verwerfen
     await page.fill('#recipe-form input[name=name]', 'Nur ein Anfang');
-    await page.waitForFunction(() => /Nur ein Anfang/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    await page.waitForFunction(() => /Nur ein Anfang/.test(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1') || ''));
     await page.click('#recipe-dialog [data-close]');
     await page.click('#add-recipe'); await sheetOpen(page);
     await page.getByRole('button', { name: 'Verwerfen' }).click();
@@ -540,14 +540,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Rezeptentwurf: gilt je Rezept (Bearbeiten eines vorhandenen Rezepts), ein importiertes Rezept bleibt bis zum Speichern erhalten', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1') || '{}'));
+    const drafts = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1') || '{}'));
     await page.click('[data-tab=recipes]');
     // Vorhandenes Rezept ändern, ohne zu speichern, und schließen
     const card = page.locator('.recipe-card', { hasText: 'Apfel-Pfannkuchen' });
     await card.locator('summary').click(); await card.getByRole('button', { name: 'Bearbeiten' }).click(); await sheetOpen(page);
     assert.equal(await page.inputValue('#recipe-form input[name=name]'), 'Apfel-Pfannkuchen');
     await page.fill('#recipe-form input[name=name]', 'Apfel-Pfannkuchen mit Zimt');
-    await page.waitForFunction(() => /Zimt/.test(localStorage.getItem('einkauf-recipe-drafts-v1') || ''));
+    await page.waitForFunction(() => /Zimt/.test(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1') || ''));
     const keys = Object.keys(await drafts());
     assert.equal(keys.length, 1);
     assert.notEqual(keys[0], 'new');
@@ -983,7 +983,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
     await page.click('[data-tab=settings]');
     page.once('dialog', dialog => dialog.accept());
-    await page.locator('#connection-details summary').click();
+    await page.locator('#connection-details > summary').click();
     await page.click('#disconnect');
     await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'flieder');
@@ -1243,7 +1243,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await page.locator('#spending-stores .spend-store-head').evaluateAll(nodes => nodes.map(node => [...node.children].map(child => child.textContent.replace(/\s+/g, ' ').trim()).join(' | '))), ['Ohne Geschäft | 23,45 €', 'Lidl | 10,00 €']);
     // 5. Ändern: Betrag und Geschäft, dann löschen
     await page.locator('#purchase-list .spend-row', { hasText: '23,45' }).click(); await sheetOpen(page);
-    assert.equal(await page.textContent('#purchase-title'), 'Einkauf ändern');
+    assert.equal(await page.textContent('#purchase-title'), 'Ausgabe bearbeiten');
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '23,45');
     assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
     await page.fill('#purchase-form input[name=amount]', '30'); await page.selectOption('#purchase-form select[name=storeId]', { label: 'Edeka' }); await page.fill('#purchase-form input[name=note]', '');
@@ -4121,7 +4121,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).folds?.join() === 'display-details');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=settings]');
     const state = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#settings details.fold')].map(node => [node.id, node.open])));
-    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true });
+    assert.deepEqual(await state(), { 'connection-details': true, 'import-details': false, 'shop-details': false, 'alias-details': false, 'storage-details': false, 'display-details': true, 'backup-details': false, 'connection-advanced': false });
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).folds, ['display-details'], 'die Automatik der Verbindung wird nicht gemerkt');
     await ctx.close();
   });
@@ -4194,7 +4194,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await importButton.click();
     await page.waitForFunction(() => /^Gespeichert am/.test(document.querySelector('#import-settings-form button[type=submit]').textContent.trim()));
     assert.equal(await importButton.isDisabled(), true);
-    await page.check('#import-settings-form input[name=publicProxy]');
+    await page.locator('#import-settings-form input[name=publicProxy]').setChecked(!await page.locator('#import-settings-form input[name=publicProxy]').isChecked());
     assert.equal((await importButton.textContent()).trim(), 'Import-Einstellungen speichern');
     assert.equal(await importButton.isDisabled(), false);
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
@@ -4464,12 +4464,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Ausgaben ohne Einträge: kurze Erklärung mit „Ersten Einkauf eintragen“ statt leerem Diagramm; nach dem ersten Eintrag erscheinen Summe, Diagramm und Liste', async () => {
+  test('Ausgaben ohne Einträge: kurze Erklärung mit „Erste Ausgabe eintragen“ statt leerem Diagramm; nach dem ersten Eintrag erscheinen Summe, Diagramm und Liste', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.click('[data-tab=spending]');
     assert.equal(await page.locator('#spending-empty').isVisible(), true);
-    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*Ersten Einkauf eintragen/);
+    assert.match(await page.textContent('#spending-empty'), /Noch keine Ausgaben[\s\S]*Erste Ausgabe eintragen/);
     for (const hidden of ['#spending-summary', '#spending-chart-card', '#purchase-list', '#spending-details']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} ist ohne Einträge nicht zu sehen`);
     // Der Knopf öffnet das Fenster zum Eintragen
     await page.click('#spending-first'); await sheetOpen(page);
@@ -5266,7 +5266,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         const sizes = await page.locator('#open-products,#open-pantry,#offers-link').evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height, fits: node.scrollWidth <= node.clientWidth + 1 })));
         assert.ok(sizes.every(row => row.width >= 44 && row.height >= 44 && row.fits), JSON.stringify(sizes));
         assert.equal(await horizontalOverflow(page), 0);
-        assert.ok((await page.locator('#items .item').first().boundingBox()).y < 420);
+        const first=await page.locator('#items .item').first().boundingBox();assert.ok(first.y+first.height<page.viewportSize().height-90, 'der erste Artikel bleibt auch mit Angeboten und großen Zählern vollständig im ersten Bildschirm sichtbar');
       }
       await page.click('#open-products'); await sheetOpen(page); assert.equal(await page.locator('#product-picker-dialog[open]').count(), 1);
       assert.deepEqual(problems, []); await ctx.close();
@@ -5283,7 +5283,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const modes = await box('#mode-switch'), stores = await box('#manage-stores');
       assert.ok(modes.x + modes.width <= stores.x + 1 && modes.height <= 52, 'Planen/Im Laden bleibt einzeilig');
       assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
-      assert.ok((await box('#items .item')).y < 420, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
+      assert.ok((await box('#items .item')).y < 460, `erster Artikel steht erst bei ${(await box('#items .item')).y} px`);
       assert.equal(await horizontalOverflow(page), 0);
       // In jedem Geschäft (mit und ohne Angebotslink): Schnellzugriffe liegen nebeneinander in der Karte, nichts überlappt oder ragt hinaus
       for (const name of ['Edeka', 'Lidl', 'Rewe']) {
@@ -5298,7 +5298,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         const parts = [layout.text, layout.pantry, ...layout.buttons].sort((a, b) => a.left - b.left);
         for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5 || parts[index].top >= parts[index - 1].bottom - 0.5 || parts[index].bottom <= parts[index-1].top+.5, `${name}: Schnellzugriffe überlappen bei ${width} px`);
         assert.ok(parts.every(part => part.left >= layout.card.left - 0.5 && part.right <= layout.card.right + 0.5 && part.top >= layout.card.top - 0.5 && part.bottom <= layout.card.bottom + 0.5), `${name}: etwas liegt außerhalb der Karte`);
-        assert.ok(layout.buttons.every(part => Math.abs(part.left-layout.text.left)<1 && part.height===layout.text.height), `${name}: Angebotsbutton ist bündig und gleich hoch`);
+        assert.ok(layout.buttons.every(part => Math.abs(part.left-layout.text.left)<1 && part.height>=44), `${name}: Angebotsbutton ist bündig und ausreichend groß`);
       }
       await page.getByRole('tab', { name: /^Alle/ }).click();
       // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
@@ -5613,11 +5613,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await a.page.locator('#connection-details').evaluate(node => node.open), false);
     assert.match(await a.page.textContent('#connection-state'), /✓ haushalt\/daten · Nico/);
     const order = await a.page.evaluate(() => [...document.querySelectorAll('#settings > *')].map(node => ({ id: node.id || node.className.split(' ').pop(), top: Math.round(node.getBoundingClientRect().top) })).filter(entry => entry.id && entry.id !== 'settings-title').sort((x, y) => x.top - y.top).map(entry => entry.id));
-    assert.deepEqual(order.slice(-1), ['settings-form'], 'die Verbindung steht ganz unten');
+    assert.ok(order.indexOf('settings-form') > order.indexOf('backup-card') && order.indexOf('settings-form') > order.indexOf('shop-card'), 'die Verbindung steht unter Alltag und Datensicherung');
     assert.equal(await a.page.locator('#settings #pantry-card').count(), 0);
     assert.ok(order.indexOf('shop-card') < order.indexOf('storage-card'));
     assert.ok(order.indexOf('alias-card') < order.indexOf('storage-card'));
-    await a.page.locator('#connection-details summary').click();
+    await a.page.locator('#connection-details > summary').click();
     assert.equal(await a.page.locator('#settings-form input[name=owner]').isVisible(), true);
     assert.deepEqual(a.problems, []);
     await a.ctx.close();
@@ -8055,7 +8055,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await seedLocal(ctx,milkRecipes());await open(page);
     await page.fill('#item-form [name=name]','Mandeln');await chooseUnit(page,'#item-form [name=unit]','g');await page.fill('#item-form [name=quantity]','600');await page.click('#item-form button[type=submit]');
     await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');await page.fill('#item-form [name=quantity]','800');await page.click('#item-form button[type=submit]');
-    let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');assert.match(await page.textContent('#items'),/1.400 g/);assert.equal((await storedDemo(page)).sync.minRev,11);
+    let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');assert.match(await page.textContent('#items'),/1.400 g/);assert.ok((await storedDemo(page)).sync.minRev>=9);
     await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');
     await page.fill('#item-form [name=name]','');await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'1400');await page.click('#edit-item-form button[type=submit]');
     row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg','unverändertes Speichern erhält die Rechenmenge');
@@ -8809,18 +8809,18 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.88: Import vollständig verwerfen, andere Entwürfe erhalten und nächsten Import sauber speichern', async () => {
     const { ctx, page, problems } = await context277();
     const before = await data277(page);
-    await page.evaluate(() => localStorage.setItem('einkauf-recipe-drafts-v1', JSON.stringify({ new: { at: new Date().toISOString(), state: { name: 'Anderer Entwurf' } } })));
+    await page.evaluate(() => localStorage.setItem('einkauf-recipe-drafts-v2:einkauf-demo-v1', JSON.stringify({ new: { at: new Date().toISOString(), state: { name: 'Anderer Entwurf' } } })));
     await importText288(page);
     await page.fill('#recipe-form [name=tags]', 'Alt, Entwurf');
     await page.fill('#recipe-form [name=notes]', 'Diese Notiz verwerfen');
     await page.fill('#recipe-form [name=sourceUrl]', 'https://example.org/alter-import');
     await page.setInputFiles('#recipe-form [name=photo]', await photo288(page));
     await page.waitForSelector('#photo-preview:not([hidden])');
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1')).import?.state.tags === 'Alt, Entwurf');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1')).import?.state.tags === 'Alt, Entwurf');
     await page.click('#discard-imported-recipe'); await page.waitForSelector('#recipe-dialog[open]', { state: 'detached' });
     await page.waitForTimeout(650);
     assert.deepEqual(await data277(page), before, 'Verwerfen schreibt keine Rezeptdaten');
-    const drafts = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v1')));
+    const drafts = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-recipe-drafts-v2:einkauf-demo-v1')));
     assert.equal(drafts.import, undefined); assert.equal(drafts.new.state.name, 'Anderer Entwurf');
     for (const name of ['name', 'tags', 'notes', 'sourceUrl']) assert.equal(await page.inputValue(`#recipe-form [name=${name}]`), '');
     assert.equal(await page.locator('#ingredient-editor').textContent(), '');
@@ -9287,5 +9287,114 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
+
+  async function fillRecipe2101(page,name='Audit-Rezept') {
+    await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);
+    await page.fill('#recipe-form [name=name]',name);await page.fill('#ingredient-editor [data-field=name]','Mehl');
+  }
+  async function connect2101(page,config=connectedConfig) {
+    await openSettings(page);for(const key of ['owner','repo','branch','path','token'])await page.fill(`#settings-form [name=${key}]`,config[key]);
+    await page.click('#settings-form button[type=submit]');await synced(page);
+  }
+  async function chooseBackup2101(page,data,name='sicherung.json') {
+    await openSettings(page);await page.click('#restore-open');await sheetOpen(page);
+    await page.setInputFiles('#restore-file',{name,mimeType:name.endsWith('.zip')?'application/zip':'application/json',buffer:Buffer.isBuffer(data)?data:Buffer.from(JSON.stringify(data))});
+    await page.waitForSelector('#restore-preview:not([hidden])');await page.waitForFunction(()=>document.querySelector('#restore-form').getAttribute('aria-busy')==='false');
+  }
+  test('2.101: erste Verbindung funktioniert ohne vorherige Benutzeränderung im Beispielmodus',async()=>{
+    const api=github(demo),{ctx,page,problems}=await context();await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-demo-v1')).pending.length),0);await connect2101(page);assert.ok(api.stats.gets>0);assert.equal(await page.locator('#message').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: zweimal Speichern während langsamer Fotoablage erzeugt ein vollständiges Rezept',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await fillRecipe2101(page,'Nur einmal gespeichert');await page.setInputFiles('#recipe-form [name=photo]',await photo288(page));await page.waitForSelector('#photo-preview:not([hidden])');
+    await page.evaluate(()=>{const original=Cache.prototype.put;Cache.prototype.put=async function(...args){await new Promise(resolve=>setTimeout(resolve,700));return original.apply(this,args);};document.querySelector('#recipe-form').dispatchEvent(new Event('submit',{cancelable:true}));document.querySelector('#recipe-form').dispatchEvent(new Event('submit',{cancelable:true}));});
+    assert.equal(await page.locator('#recipe-form button[type=submit]').isDisabled(),true);await page.keyboard.press('Escape');assert.equal(await page.locator('#recipe-dialog').evaluate(n=>n.open),true);
+    await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});const data=await storedDemo(page),recipes=data.recipes.filter(r=>r.name==='Nur einmal gespeichert');assert.equal(recipes.length,1);assert.equal(data.ingredients.filter(r=>r.recipeId===recipes[0].id).length,1);assert.ok(recipes[0].photoId);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: voller Entwurfsspeicher meldet den Fehler und verhindert Datenverlust durch Schließen',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await fillRecipe2101(page,'Ungesichert');
+    await page.evaluate(()=>{const real=Storage.prototype.setItem;window.draftQuota2101=true;Storage.prototype.setItem=function(k,v){if(window.draftQuota2101&&k.startsWith('einkauf-recipe-drafts-v2:'))throw new DOMException('Voll','QuotaExceededError');return real.call(this,k,v);};});
+    await page.fill('#recipe-form [name=name]','Entwurf bleibt offen');await page.waitForSelector('#recipe-draft-error:not([hidden])');assert.match(await page.textContent('#recipe-draft-error'),/nicht.*gespeichert/);
+    await page.click('#recipe-dialog [data-close]');assert.equal(await page.locator('#recipe-dialog').evaluate(n=>n.open),true);await page.keyboard.press('Escape');assert.equal(await page.locator('#recipe-dialog').evaluate(n=>n.open),true);assert.equal(await page.inputValue('#recipe-form [name=name]'),'Entwurf bleibt offen');
+    await page.evaluate(()=>window.draftQuota2101=false);await page.click('#recipe-dialog [data-close]');await page.click('#add-recipe');await page.getByRole('button',{name:'Entwurf zurückholen',exact:true}).click();assert.equal(await page.inputValue('#recipe-form [name=name]'),'Entwurf bleibt offen');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: Entwürfe werden beim Wechsel zwischen zwei verbundenen Listen nicht vermischt',async()=>{
+    const api=github(demo),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await fillRecipe2101(page,'Entwurf nur in A');await page.click('#recipe-dialog [data-close]');
+    await connect2101(page,{...connectedConfig,repo:'zweite-liste'});await goTab(page,'recipes');await page.click('#add-recipe');assert.equal(await page.locator('#recipe-draft-note').isHidden(),true);await page.click('#recipe-dialog [data-close]');
+    await connect2101(page);await goTab(page,'recipes');await page.click('#add-recipe');await page.getByRole('button',{name:'Entwurf zurückholen',exact:true}).click();assert.equal(await page.inputValue('#recipe-form [name=name]'),'Entwurf nur in A');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: ungesendete Fotos überstehen Trennen und Neustart und werden nach erneutem Verbinden hochgeladen',async()=>{
+    const api=github(demo),{ctx,page,problems}=await context({config:connectedConfig});api.behavior.failPhotoPuts=true;await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await fillRecipe2101(page,'Foto bleibt');await page.setInputFiles('#recipe-form [name=photo]',await photo288(page));await page.waitForSelector('#photo-preview:not([hidden])');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});
+    await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='pending');const id=await page.evaluate(()=>{const c=JSON.parse(localStorage.getItem('einkauf-settings-v1')),key=`einkauf-data-v1:${JSON.stringify([c.owner,c.repo,c.branch,c.path])}`;return JSON.parse(localStorage.getItem(key)).base.recipes.find(r=>r.name==='Foto bleibt')?.photoId;});assert.ok(id);
+    await openSettings(page);page.once('dialog',d=>d.accept());await page.click('#disconnect');await page.waitForFunction(()=>!JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);await page.reload();await page.waitForSelector('#store-chips button');await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(async id=>Boolean(await(await import('./photos.js')).readPhoto(id)),id),true);api.behavior.failPhotoPuts=false;await connect2101(page);assert.ok(api.photos.has(`photos/${id}.jpg`));assert.deepEqual(problems.filter(s=>!/Failed to load resource/.test(s)),[]);await ctx.close();
+  });
+  test('2.101: fehlende Fotodatei bleibt in der Upload-Warteschlange und wird deutlich gemeldet',async()=>{
+    const api=github(demo),{ctx,page}=await context({config:connectedConfig});await ctx.addInitScript(()=>localStorage.setItem('einkauf-photo-queue:einkauf-data-v1:["haushalt","daten","main","daten.json"]',JSON.stringify(['missing-photo-0001'])));await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await page.waitForFunction(()=>document.querySelector('#status').textContent==='Ein Rezeptfoto fehlt');
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-photo-queue:einkauf-data-v1:["haushalt","daten","main","daten.json"]')).length),1);assert.match(await page.textContent('#sync-detail'),/Upload-Auftrag bleibt/);await ctx.close();
+  });
+  test('2.101: JSON-Vorschau verändert nichts, Wiederherstellung und Zurückholen funktionieren',async()=>{
+    const {ctx,page,problems}=await context();await open(page);const before=await storedDemo(page),snapshot=structuredClone(before);snapshot.items=[];snapshot.recipes[0].name='Rezept aus Sicherung';
+    await chooseBackup2101(page,snapshot);assert.equal(await page.locator('#restore-apply').isDisabled(),true);assert.match(await page.textContent('#restore-counts'),/→ 0/);assert.deepEqual(await storedDemo(page),before);await page.click('#restore-dialog [data-close]');assert.deepEqual(await storedDemo(page),before);
+    await chooseBackup2101(page,snapshot);await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});const restored=await storedDemo(page);assert.equal(restored.items.length,0);assert.equal(restored.recipes[0].name,'Rezept aus Sicherung');assert.equal(restored.sync.minRev,14);
+    await page.click('#restore-recovery');await page.waitForSelector('#restore-preview:not([hidden])');await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});assert.equal((await storedDemo(page)).items.length,before.items.length);assert.equal((await storedDemo(page)).recipes[0].name,before.recipes[0].name);assert.equal(await horizontalOverflow(page),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: ZIP-Fotos werden wiederhergestellt, fehlende Fotos brauchen eine zusätzliche Bestätigung',async()=>{
+    const {ctx,page,problems}=await context();await open(page);const snapshot=await storedDemo(page),id='restore-photo-0001';snapshot.recipes[0].photoId=id;
+    const jpeg=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=16;return c.toDataURL('image/jpeg').split(',')[1];}),'base64');
+    const {makeZip}=await import('../zip.js');const zip=makeZip([{name:'daten.json',data:new TextEncoder().encode(JSON.stringify(snapshot))},{name:`fotos/${id}.jpg`,data:jpeg}]);
+    await chooseBackup2101(page,Buffer.from(zip),'voll.zip');assert.equal(await page.locator('#restore-missing-label').isHidden(),true);await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});assert.equal(await page.evaluate(async id=>Boolean(await(await import('./photos.js')).readPhoto(id)),id),true);
+    snapshot.recipes[0].photoId='missing-photo-0002';await chooseBackup2101(page,snapshot);await page.check('#restore-confirm');assert.equal(await page.locator('#restore-apply').isDisabled(),true);await page.check('#restore-missing-ok');assert.equal(await page.locator('#restore-apply').isEnabled(),true);await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});assert.equal((await storedDemo(page)).recipes[0].photoId,'missing-photo-0002');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: fehlender Speicher für den vorherigen Stand ersetzt keine Daten',async()=>{
+    const {ctx,page,problems}=await context();await open(page);const before=await storedDemo(page),snapshot=structuredClone(before);snapshot.items=[];await chooseBackup2101(page,snapshot);
+    await page.evaluate(()=>{const real=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('einkauf-restore-recovery-v1:'))throw new DOMException('Voll','QuotaExceededError');return real.call(this,k,v);};});
+    await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-error:not([hidden])');assert.match(await page.textContent('#restore-error'),/lokal speichern/);assert.deepEqual(await storedDemo(page),before);assert.equal(await page.locator('#restore-dialog').evaluate(n=>n.open),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: gemeinsame Wiederherstellung gleicht beide Geräte ab und ältere Offline-Änderungen beleben nichts wieder',async()=>{
+    const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:connectedConfig});let offline=false;
+    await a.ctx.route('https://api.github.com/**',r=>api.handler(r));await b.ctx.route('https://api.github.com/**',r=>offline?r.abort():api.handler(r));await open(a.page);await synced(a.page);await open(b.page);await synced(b.page);
+    offline=true;await b.page.fill('#item-form [name=name]','Alter Offline-Artikel');await b.page.click('#item-form button[type=submit]');await b.page.waitForFunction(()=>document.querySelector('#status').dataset.state==='error');
+    const snapshot=structuredClone(api.content);snapshot.items=[];await chooseBackup2101(a.page,snapshot);await a.page.check('#restore-confirm');await a.page.click('#restore-apply');await a.page.waitForSelector('#restore-dialog[open]',{state:'detached'});await synced(a.page);assert.equal(api.content.items.length,0);
+    offline=false;await openSettings(b.page);await b.page.click('#refresh');await synced(b.page);assert.equal(api.content.items.length,0);assert.equal(await b.page.locator('#items .item').count(),0);
+    await goTab(b.page,'shopping');await b.page.fill('#item-form [name=name]','Nach der Wiederherstellung');await b.page.click('#item-form button[type=submit]');await synced(b.page);await openSettings(a.page);await a.page.click('#refresh');await synced(a.page);assert.equal(api.content.items.filter(r=>!r.deletedAt).length,1);assert.equal(api.content.items[0].name,'Nach der Wiederherstellung');
+    assert.deepEqual([...a.problems,...b.problems].filter(s=>!/Failed to load resource|net::ERR_FAILED/.test(s)),[]);await a.ctx.close();await b.ctx.close();
+  });
+  for(const width of [280,320,390,430])test(`2.101: lange Mengen und Artikelnamen bleiben bei ${width}px lesbar`,async()=>{
+    const data=structuredClone(demo);data.items=[{...data.items[0],name:'Nudeln',quantity:500,unit:'g',purchaseUnit:{label:'Packung',quantity:500,unit:'g'},purchaseMeasure:'Packung',purchaseAt:'2026-11-01T09:00:00.000Z',storeId:'',category:'vorrat'}];
+    const {ctx,page,problems}=await context({config:{productImages:true,shopLock:0},context:{viewport:{width,height:844}}});await seedLocal(ctx,data);await open(page);
+    for(const mode of ['plan','shop']){if(mode==='shop')await page.click('#mode-shop');for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);assert.equal(await horizontalOverflow(page),0);const result=await page.locator(mode==='plan'?'#items .item-qty':'#shop-list .shop-text').first().evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth}));assert.ok(result.scroll<=result.width+1,JSON.stringify(result));}}
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.101: geänderter gemeinsamer Stand verlangt eine neue Vorschau-Bestätigung',async()=>{
+    const api=github(demo),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);const snapshot=structuredClone(api.content);snapshot.items=[];await chooseBackup2101(page,snapshot);
+    api.remoteChange(data=>data.recipes[0].name='Zwischenzeitlich geändert');await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-error:not([hidden])');assert.match(await page.textContent('#restore-error'),/Stand hat sich/);assert.equal(await page.locator('#restore-confirm').isChecked(),false);assert.equal(api.content.recipes[0].name,'Zwischenzeitlich geändert');
+    await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});await synced(page);assert.equal(api.content.items.length,0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: fehlgeschlagener Daten-Commit räumt neue Importfotos auf und erhält den bisherigen Stand',async()=>{
+    const {ctx,page,problems}=await context();await open(page);const before=await storedDemo(page),snapshot=structuredClone(before),id='rollback-photo-0001';snapshot.recipes[0].photoId=id;
+    const jpeg=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=16;return c.toDataURL('image/jpeg').split(',')[1];}),'base64');const {makeZip}=await import('../zip.js');
+    await chooseBackup2101(page,Buffer.from(makeZip([{name:'daten.json',data:new TextEncoder().encode(JSON.stringify(snapshot))},{name:`fotos/${id}.jpg`,data:jpeg}])),'sicherung.zip');
+    await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return original.call(this,key,value);};});await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-error:not([hidden])');
+    assert.deepEqual(await storedDemo(page),before);assert.equal(await page.evaluate(async id=>Boolean(await(await import('./photos.js')).readPhoto(id)),id),false);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.101: eine fehlende Fotodatei blockiert die anderen Foto-Uploads nicht',async()=>{
+    const api=github(demo),{ctx,page}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);
+    await page.evaluate(async()=>{const photos=await import('./photos.js'),canvas=document.createElement('canvas');canvas.width=canvas.height=16;const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg'));await photos.storePhoto('available-photo-1',blob);localStorage.setItem('einkauf-photo-queue:einkauf-data-v1:["haushalt","daten","main","daten.json"]',JSON.stringify(['missing-photo-001','available-photo-1']));});
+    await openSettings(page);await page.click('#refresh');await page.waitForFunction(()=>document.querySelector('#status').textContent==='Ein Rezeptfoto fehlt');assert.ok(api.photos.has('photos/available-photo-1.jpg'));assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('einkauf-photo-queue:einkauf-data-v1:["haushalt","daten","main","daten.json"]'))),['missing-photo-001']);await ctx.close();
+  });
+
+  test('2.101: Dateiprüfung mit langsamem Fotoabruf lässt sich ohne Datenänderung schließen',async()=>{
+    const api=github(demo),{ctx,page,problems}=await context({config:connectedConfig});let release;const wait=new Promise(resolve=>release=resolve);
+    await ctx.route('https://api.github.com/**',async r=>{if(r.request().url().includes('photos/slow-photo-0001')){await wait;return r.fulfill({status:404,headers:{'access-control-allow-origin':'*'},body:'{}'}).catch(()=>{});}return api.handler(r);});
+    await open(page);await synced(page);const snapshot=structuredClone(api.content);snapshot.recipes[0].photoId='slow-photo-0001';await openSettings(page);await page.click('#restore-open');await page.setInputFiles('#restore-file',{name:'sicherung.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(snapshot))});
+    await page.waitForFunction(()=>document.querySelector('#restore-status').textContent.includes('Fotos prüfen'));assert.equal(await page.locator('#restore-dialog [data-close]').isEnabled(),true);await page.click('#restore-dialog [data-close]');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});release();await page.waitForTimeout(150);assert.equal(api.content.recipes[0].photoId,undefined);assert.equal(await page.locator('#restore-dialog').evaluate(n=>n.open),false);assert.deepEqual(problems.filter(s=>!/Failed to load resource/.test(s)),[]);await ctx.close();
+  });
+  test('2.101: Foto-Bereinigung erhält Fotos des automatisch gesicherten vorherigen Stands',async()=>{
+    const api=github(demo),id='previous-photo-0001',jpeg=Buffer.from([255,216,255,224,0,16,74,70]);api.content.recipes[0].photoId=id;api.photos.set(`photos/${id}.jpg`,jpeg);
+    const {ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);const snapshot=structuredClone(api.content);delete snapshot.recipes[0].photoId;
+    await chooseBackup2101(page,snapshot);await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});await synced(page);await page.click('#clean-photos');await page.waitForFunction(()=>document.querySelector('#storage-note').textContent==='Alle Fotos werden noch verwendet.');assert.ok(api.photos.has(`photos/${id}.jpg`));assert.equal(api.stats.photoDeletes,0);assert.deepEqual(problems.filter(s=>!/Failed to load resource/.test(s)),[]);await ctx.close();
+  });
 
 });

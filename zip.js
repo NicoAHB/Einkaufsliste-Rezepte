@@ -55,24 +55,34 @@ export function makeZip(files, now = new Date()) {
   return result;
 }
 
-// Zum Prüfen: liest eine mit makeZip erzeugte (oder jede unkomprimierte) ZIP-Datei und prüft Prüfsummen. Gibt [{ name, data }] zurück.
+// Liest unkomprimierte Sicherungen mit Größen-, Pfad- und CRC-Prüfung.
 export function readZip(bytes) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), decoder = new TextDecoder();
+  const fail = () => { throw new Error('Die ZIP-Sicherung ist beschädigt oder unvollständig.'); };
+  if (!(bytes instanceof Uint8Array) || bytes.length < 22) throw new Error('Keine ZIP-Datei.');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), decoder = new TextDecoder('utf-8',{fatal:true});
+  const inside = (at,size,limit=bytes.length) => Number.isSafeInteger(at) && at>=0 && size>=0 && at+size<=limit;
   let end = bytes.length - 22;
-  while (end >= 0 && view.getUint32(end, true) !== 0x06054b50) end--;
-  if (end < 0) throw new Error('Keine ZIP-Datei.');
-  const count = view.getUint16(end + 10, true), result = [];
-  let at = view.getUint32(end + 16, true);
-  for (let i = 0; i < count; i++) {
-    if (view.getUint32(at, true) !== 0x02014b50) throw new Error('Beschädigtes Verzeichnis.');
-    const method = view.getUint16(at + 10, true), crc = view.getUint32(at + 16, true), size = view.getUint32(at + 24, true), nameLength = view.getUint16(at + 28, true), extra = view.getUint16(at + 30, true), comment = view.getUint16(at + 32, true), offset = view.getUint32(at + 42, true);
-    if (method !== 0) throw new Error('Nur unkomprimierte Einträge werden gelesen.');
-    const name = decoder.decode(bytes.subarray(at + 46, at + 46 + nameLength));
-    if (view.getUint32(offset, true) !== 0x04034b50) throw new Error('Beschädigter Eintrag.');
-    const start = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true), data = bytes.slice(start, start + size);
-    if (crc32(data) !== crc) throw new Error(`Prüfsumme stimmt nicht: ${name}`);
-    result.push({ name, data });
-    at += 46 + nameLength + extra + comment;
+  while (end >= Math.max(0,bytes.length-65557) && (view.getUint32(end,true)!==0x06054b50 || end+22+view.getUint16(end+20,true)!==bytes.length)) end--;
+  if (end < Math.max(0,bytes.length-65557)) fail();
+  if (view.getUint16(end+4,true) || view.getUint16(end+6,true)) fail();
+  const count=view.getUint16(end+10,true), size=view.getUint32(end+12,true), start=view.getUint32(end+16,true);
+  if (count!==view.getUint16(end+8,true) || !inside(start,size,end) || start+size!==end) fail();
+  const result=[],seen=new Set(); let at=start,lastEnd=0;
+  for(let i=0;i<count;i++) {
+    if(!inside(at,46,end)||view.getUint32(at,true)!==0x02014b50)fail();
+    const flags=view.getUint16(at+8,true), method=view.getUint16(at+10,true), crc=view.getUint32(at+16,true), packed=view.getUint32(at+20,true), length=view.getUint32(at+24,true), nameLength=view.getUint16(at+28,true), extra=view.getUint16(at+30,true), comment=view.getUint16(at+32,true), offset=view.getUint32(at+42,true);
+    if(method!==0)throw new Error('Bitte die unveränderte ZIP-Sicherung aus Sattplan wählen. Neu komprimierte ZIP-Dateien werden nicht unterstützt.');
+    if(flags & ~0x0800 || packed!==length || !inside(at,46+nameLength+extra+comment,end) || !inside(offset,30,start) || offset<lastEnd)fail();
+    const name=decoder.decode(bytes.subarray(at+46,at+46+nameLength));
+    if(!name || name.startsWith('/') || name.includes('\\') || name.includes('\0') || name.split('/').some(part=>part==='..'||part==='.') || seen.has(name))fail();
+    seen.add(name);
+    if(view.getUint32(offset,true)!==0x04034b50 || view.getUint16(offset+6,true)!==flags || view.getUint16(offset+8,true)!==method || view.getUint32(offset+14,true)!==crc || view.getUint32(offset+18,true)!==length || view.getUint32(offset+22,true)!==length)fail();
+    const localName=view.getUint16(offset+26,true),localExtra=view.getUint16(offset+28,true),dataStart=offset+30+localName+localExtra;
+    if(!inside(offset,30+localName+localExtra,start)||!inside(dataStart,length,start)||decoder.decode(bytes.subarray(offset+30,offset+30+localName))!==name)fail();
+    const data=bytes.slice(dataStart,dataStart+length);
+    if(crc32(data)!==crc)throw new Error(`Prüfsumme stimmt nicht: ${name}`);
+    result.push({name,data}); lastEnd=dataStart+length; at+=46+nameLength+extra+comment;
   }
+  if(at!==end)fail();
   return result;
 }

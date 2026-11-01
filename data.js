@@ -8,6 +8,7 @@ import { isCategory, learnCategories, rememberedCategory, suggestCategory, valid
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
 import { validMemberId } from './family.js';
 import { LIST_SYMBOL_IDS } from './list-symbols.js';
+import { restoredState, revisionKey } from './restore-state.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
@@ -164,11 +165,14 @@ export function validateRow(key, row) {
 // Revision 11 (2.86): Produktgruppen sowie ausgeblendete Wunschlisten und entfernte Wunschbilder.
 // Revision 12 (2.90): zusätzliche Listensymbole; ältere Apps kennen nur Geschenk/Name.
 // Revision 13 (2.91): Schloss-Symbol für eigene Listen; Geheimdaten bleiben rein lokal.
-export const SCHEMA_REV = 13;
+// Revision 14: Wiederherstellungen besitzen eine gemeinsame Grenze. Ältere
+// Offline-Änderungen dürfen den ausdrücklich zurückgesetzten Stand nicht ersetzen.
+export const SCHEMA_REV = 14;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
   if (data.sync?.minRev > SCHEMA_REV) throw new Error('Diese App-Version ist für die Daten zu alt. Bitte die App ganz schließen und neu öffnen (Aktualisierung), notfalls zweimal. Die Datei wird nicht verändert.');
+  if (data.sync?.restore && (typeof data.sync.restore.id !== 'string' || !data.sync.restore.id || !Number.isFinite(Date.parse(data.sync.restore.at)) || data.sync.minRev < 14)) throw new Error('Die Wiederherstellungsangaben sind beschädigt. Die Datei wird nicht verändert.');
   if (!data.sync || !Array.isArray(data.sync.applied) || data.sync.applied.some(id => typeof id !== 'string')) {
     throw new Error('Die Synchronisierungsdaten fehlen oder sind beschädigt. Bitte ein Backup prüfen.');
   }
@@ -235,12 +239,25 @@ export function foldOldAdds(row, cutoff) {
 }
 
 export function merge(data, operations) {
-  const next = clone(validate(data));
+  let next = clone(validate(data));
   next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= [];
-  const applied = new Set(next.sync.applied), created = [], touched = new Set();
+  const applied = new Set(next.sync.applied); let created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
+    if (op.collection === 'restore') {
+      if (typeof op.id !== 'string' || !Number.isFinite(Date.parse(op.at)) || !op.snapshot) throw new Error('Ungültige Wiederherstellung.');
+      validate(op.snapshot);
+      if (revisionKey(op) > revisionKey(next.sync.restore)) {
+        next = restoredState(next, op.snapshot, { at: op.at, id: op.id }, collections, merge);
+        next.sync.applied.forEach(id => applied.add(id));
+        // Die kombinierte ID-Liste hat eine neue Reihenfolge. Alte Aufräum-Marken
+        // beziehen sich auf Positionen der Sicherung und gelten hier nicht mehr.
+        delete next.sync.marks; created = []; touched = new Set();
+      }
+      applied.add(op.id); continue;
+    }
     if (!collections.includes(op.collection)) throw new Error('Unbekannte Änderungsart.');
+    if (revisionKey(op) <= revisionKey(next.sync.restore)) { applied.add(op.id); continue; }
     let row = next[op.collection].find(entry => entry.id === op.entityId);
     if (!row) {
       row = { id: op.entityId, createdAt: op.at, updatedAt: op.at, deletedAt: null, _clock: {} };

@@ -1,4 +1,6 @@
 import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion } from './ui-controls.js';
+import { createDraftStore } from './drafts.js';
+import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds } from './store-order.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
@@ -33,7 +35,7 @@ import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
 import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, filterOptions, pickRecipes } from './recipe-filter.js';
-import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
+import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, removePhoto, retainedPhotoIds, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
@@ -51,6 +53,7 @@ const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
+let restoring = false, restoreController = null;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null;
 const storeReorders = [];
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
@@ -77,6 +80,8 @@ const shortDate = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' })
 const connected = () => Boolean(config.owner && config.repo && config.token);
 const namespace = (value = config) => value.owner && value.repo ?
   `einkauf-data-v1:${JSON.stringify([value.owner.toLowerCase(), value.repo.toLowerCase(), value.branch, value.path])}` : 'einkauf-demo-v1';
+// Beim vollständigen Ersetzen zählt jede Änderung seit der Vorschau.
+const restoreSignature = () => JSON.stringify(state);
 // Wenn sich weder Zeitstempel noch Zahl der angewendeten Änderungen ändern, hat sich auch nichts Sichtbares geändert.
 const signature = () => `${state.updatedAt}|${state.sync.applied.length}|${state.items.length}`;
 // Gemerkte Namen, die wirken: bestätigte Schreibweisen und ausdrücklich behaltene Zuordnungen. Fragwürdige alte Zuordnungen (vom Kassenbon) wirken nie (siehe aliasKind in data.js).
@@ -174,6 +179,8 @@ function syncDetail() {
   const node = $('#sync-detail');
   if (!connected()) { node.textContent = 'Deine Änderungen sind lokal gespeichert.'; return; }
   if (pending.length) { node.textContent = `${pending.length} ${pending.length === 1 ? 'Änderung nur' : 'Änderungen nur'} auf diesem Gerät – ${pending.length === 1 ? 'wird' : 'werden'} später gesendet`; return; }
+  if (photoIssue?.scope === namespace()) { node.textContent = 'Ein Rezeptfoto fehlt auf diesem Gerät. Bitte aus einer ZIP-Sicherung wiederherstellen. Der Upload-Auftrag bleibt erhalten.'; return; }
+  if (queued(queueKey()).length) { node.textContent = 'Rezeptfotos warten noch auf den Upload. Vor dem Gerätewechsel bitte den Abgleich abschließen.'; return; }
   let at = 0; try { at = Number(localStorage.getItem(`einkauf-last-saved-v1:${namespace()}`)) || 0; } catch { /* status remains available */ }
   const date = new Date(at), today = new Date().toDateString() === date.toDateString();
   node.textContent = at ? `Auf GitHub gespeichert · zuletzt ${today ? '' : date.toLocaleDateString('de-DE') + ' '}um ${date.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr` : 'Warte auf den ersten erfolgreichen GitHub-Abgleich.';
@@ -182,6 +189,8 @@ function rememberSyncTime() { try { localStorage.setItem(`einkauf-last-saved-v1:
 function restingStatus() {
   if (!connected()) status('Nur auf diesem Gerät', 'local');
   else if (pending.length) status(`${pending.length} Änderung(en) warten`, 'pending');
+  else if (photoIssue?.scope === namespace()) status('Ein Rezeptfoto fehlt', 'error');
+  else if (queued(queueKey()).length) status('Rezeptfotos warten auf Upload', 'pending');
   else if (ready && tokenWarning() !== null) status(`Token ${tokenLabel(tokenWarning())} · neuen anlegen`, tokenWarning() < 0 ? 'error' : 'pending');
   else if (ready) status('Mit GitHub abgeglichen', 'ok');
   else status('Noch nicht verbunden', 'pending');
@@ -1190,21 +1199,10 @@ function ingredientRow(value = {}) {
 /* Entwürfe: Was im Rezeptfenster getippt ist, wird laufend auf diesem Gerät gesichert (nicht in der gemeinsamen Datei, ohne Foto). Schließt jemand das Fenster
    oder die App, bietet das nächste Öffnen den Entwurf an („Entwurf zurückholen“ oder „Verwerfen“). Je Rezept ein Entwurf, dazu „new“ (Neues Rezept) und „import“
    (Importiertes Rezept); gespeichert wird nur, was sich vom Öffnungsstand unterscheidet. Nach dem Speichern ist der Entwurf weg. */
-const DRAFT_KEY = 'einkauf-recipe-drafts-v1', DRAFT_DAYS = 30, DRAFT_MAX = 10;
-function readDrafts() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(DRAFT_KEY));
-    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
-    const cutoff = Date.now() - DRAFT_DAYS * 86400000;
-    return Object.fromEntries(Object.entries(stored).filter(([, entry]) => entry && typeof entry.at === 'string' && Date.parse(entry.at) > cutoff && entry.state && typeof entry.state === 'object'));
-  } catch { return {}; }
-}
-function writeDrafts(drafts) {
-  const keys = Object.keys(drafts).sort((a, b) => drafts[b].at.localeCompare(drafts[a].at)).slice(0, DRAFT_MAX);
-  try { if (keys.length) localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(keys.map(key => [key, drafts[key]])))); else localStorage.removeItem(DRAFT_KEY); }
-  catch { /* Speicher voll oder gesperrt: dann gibt es eben keinen Entwurf */ }
-}
-let recipeDraftKey = null, recipeOpenState = null, draftTimer = null;
+let draftStore, recipeDraftScope = null;
+const readDrafts = () => draftStore.read(recipeDraftScope || namespace());
+const writeDrafts = drafts => draftStore.write(recipeDraftScope || namespace(), drafts);
+let recipeDraftKey = null, recipeOpenState = null, draftTimer = null, recipeSaving = false;
 function recipeFormState() {
   const form = $('#recipe-form');
   return { name: form.elements.name.value, servings: form.elements.servings.value, tags: form.elements.tags.value, instructions: form.elements.instructions.value, notes: form.elements.notes.value, sourceUrl: form.elements.sourceUrl.value,
@@ -1212,15 +1210,22 @@ function recipeFormState() {
 }
 function saveRecipeDraft() {
   clearTimeout(draftTimer); draftTimer = null;
-  if (!recipeDraftKey) return;
+  if (!recipeDraftKey) return true;
+  try {
   const current = recipeFormState(), text = JSON.stringify(current), drafts = readDrafts();
   // Ein nur angebotener Entwurf wurde noch nicht ins Formular geladen. Das
   // unveränderte, leere Formular darf ihn beim Schließen nicht löschen.
-  if (!$('#recipe-draft-note').hidden && text === recipeOpenState) return;
+  if (!$('#recipe-draft-note').hidden && text === recipeOpenState) return true;
   const blank = !current.name.trim() && !current.instructions.trim() && !current.notes.trim() && !current.tags.trim() && !current.sourceUrl.trim() && current.ingredients.every(row => !row.name.trim());
   if (blank || text === recipeOpenState) delete drafts[recipeDraftKey];
   else drafts[recipeDraftKey] = { at: new Date().toISOString(), state: current };
   writeDrafts(drafts);
+  $('#recipe-draft-error').hidden = true;
+  return true;
+  } catch (error) {
+    $('#recipe-draft-error').textContent = error.message; $('#recipe-draft-error').hidden = false;
+    return false;
+  }
 }
 const scheduleRecipeDraft = () => { if (!recipeDraftKey) return; clearTimeout(draftTimer); draftTimer = setTimeout(saveRecipeDraft, 500); };
 function dropRecipeDraft() {
@@ -1253,7 +1258,9 @@ function offerRecipeDraft() {
 }
 // `draft` stammt aus dem Import: Das Formular zeigt dann einen Vorschlag, gespeichert wird erst nach dem Prüfen.
 function editRecipe(id = '', draft = null) {
+  if (recipeSaving) throw new Error('Das Rezept wird gerade gespeichert. Bitte kurz warten.');
   const editorVersion=++photoEditVersion;
+  recipeDraftScope = namespace(); $('#recipe-draft-error').hidden = true;
   const form = $('#recipe-form'); form.reset();
   recipeBaseline = id ? clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt)) : null;
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
@@ -1307,15 +1314,23 @@ function changed(patch, before) {
 }
 function saveRecipe(event) {
   event.preventDefault();
+  if (recipeSaving) return;
   const form = event.currentTarget;
+  recipeSaving = true; form.setAttribute('aria-busy', 'true');
+  const controls = [...form.querySelectorAll('input,textarea,select,button')].map(node => [node, node.disabled]);
+  controls.forEach(([node]) => { node.disabled = true; });
   guard(async () => {
+    try {
+    const scope = namespace(), editorVersion = photoEditVersion, uploadKey = queueKey();
+    const beforeRecipe = recipeBaseline && clone(recipeBaseline), beforeIngredients = clone(ingredientBaseline), removedPhoto = photoRemoved;
     const id = form.elements.id.value || uid();
-    if (recipeBaseline && !active(state.recipes).some(row => row.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte schließen und neu anlegen.');
+    form.elements.id.value = id;
+    if (beforeRecipe && !active(state.recipes).some(row => row.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte schließen und neu anlegen.');
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
     const patch = { name: form.elements.name.value.trim(), servings: positive(form.elements.servings.value),
       instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: [...new Set(form.elements.tags.value.split(',').map(tag => tag.trim()).filter(Boolean))] };
-    if (sourceUrl || recipeBaseline?.sourceUrl) patch.sourceUrl = sourceUrl;
+    if (sourceUrl || beforeRecipe?.sourceUrl) patch.sourceUrl = sourceUrl;
     if (patch.notes.length > 10000) throw new Error('Meine Notizen dürfen höchstens 10.000 Zeichen enthalten.');
     if (!patch.name) throw new Error('Bitte dem Rezept einen Namen geben.');
     const rows = [...$('#ingredient-editor').children].map(row => ({ id: row.dataset.id, recipeId: id,
@@ -1326,21 +1341,28 @@ function saveRecipe(event) {
     const photo = pendingPhoto;
     if (photo) {
       await storePhoto(photo.id, photo.blob); patch.photoId = photo.id;
-      if (connected()) queuePhoto(queueKey(), photo.id);
-    } else if (photoRemoved && recipeBaseline?.photoId) patch.photoId = null;
-    const ops = [], recipeChanges = changed(patch, recipeBaseline);
+      if (scope !== namespace() || editorVersion !== photoEditVersion) throw new Error('Die Liste oder das Rezeptfenster hat sich geändert. Bitte erneut öffnen.');
+      if (connected()) queuePhoto(uploadKey, photo.id);
+    } else if (removedPhoto && beforeRecipe?.photoId) patch.photoId = null;
+    const ops = [], recipeChanges = changed(patch, beforeRecipe);
     if (Object.keys(recipeChanges).length) ops.push(nextOp('recipes', id, recipeChanges));
     for (const { id: ingredientId, ...fields } of rows) {
-      const delta = changed(fields, ingredientBaseline.find(row => row.id === ingredientId));
+      const delta = changed(fields, beforeIngredients.find(row => row.id === ingredientId));
       if (Object.keys(delta).length) ops.push(nextOp('ingredients', ingredientId, delta));
     }
-    for (const row of ingredientBaseline.filter(row => !rows.some(candidate => candidate.id === row.id))) {
+    for (const row of beforeIngredients.filter(row => !rows.some(candidate => candidate.id === row.id))) {
       ops.push(nextOp('ingredients', row.id, { deletedAt: new Date().toISOString() }));
     }
     try { commit(ops); }
-    catch (error) { if (photo) unqueuePhoto(queueKey(), photo.id); throw error; }
-    dropRecipeDraft();
+    catch (error) { if (photo && !ops.every(op=>state.sync.applied.includes(op.id))) unqueuePhoto(uploadKey, photo.id); throw error; }
+    try { dropRecipeDraft(); }
+    catch { recipeDraftKey = null; showNotice('Rezept gespeichert. Der alte Entwurf konnte noch nicht entfernt werden. Bitte Gerätespeicher freigeben.'); }
+    recipeDraftScope = null;
     $('#recipe-dialog').close();
+    } finally {
+      recipeSaving = false; form.removeAttribute('aria-busy');
+      controls.forEach(([node, disabled]) => { node.disabled = disabled; });
+    }
   });
 }
 // `only`: Kennungen der Zutaten, die vorausgewählt sein sollen (z. B. nur das, was zum Kochen noch fehlt); sonst alles außer Vorrat und „nach Bedarf“.
@@ -1418,7 +1440,7 @@ function hydratePhotos() {
   });
 }
 // Hochladen als eigene Datei. Kennungen sind einmalig, deshalb ist „Datei existiert schon“ (422 wegen fehlender SHA) ein Erfolg.
-let photoRetryAt = 0;
+let photoRetryAt = 0, photoIssue = null;
 async function uploadPhotos(manual = false) {
   // Nach einem Fehler erst nach 20 Sekunden wieder versuchen, außer die Person löst den Abgleich selbst aus.
   if (!connected() || (!manual && Date.now() < photoRetryAt)) return;
@@ -1427,7 +1449,8 @@ async function uploadPhotos(manual = false) {
   for (const id of queued(key)) {
     try {
       const blob = await readPhoto(id);
-      if (!blob) { unqueuePhoto(key, id); continue; }
+      if (!blob) { photoIssue = { scope: namespace(), id }; later(); continue; }
+      if (photoIssue?.id === id && photoIssue.scope === namespace()) photoIssue = null;
       const body = JSON.stringify({ message: 'Sattplan: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
       const response = await timed(photoApi(id), { method: 'PUT', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body });
       if (response.ok) unqueuePhoto(key, id);
@@ -2353,7 +2376,7 @@ function encodeFile(data) {
 let retryAt = 0, compactRequested = false, lastSyncAt = 0;   // lastSyncAt: letzter geglückter Abgleich (die Foto-Bereinigung verlangt einen frischen)
 async function sync(manual = false) {
   if (!connected()) { restingStatus(); return; }
-  if (busy || (!manual && Date.now() < retryAt)) return;
+  if (restoring || busy || (!manual && Date.now() < retryAt)) return;
   busy = true; $('#refresh').disabled = true;
   if (pending.length || manual || !ready) status('Gleiche ab …', 'busy');
   try {
@@ -2417,7 +2440,11 @@ async function loadWorkspace() {
     if (!response.ok) throw new Error('Die Beispieldaten konnten nicht geladen werden. Bitte alle App-Dateien hochladen.');
     base = validate(await response.json()); saveLocal(base, []); ready = true;
   }
-  if(ready) { const ops=productGroupMigration(state); if(ops.length) saveLocal(base,[...pending,...ops]); }
+  if (ready) {
+    const ops = productGroupMigration(state), all = [...pending, ...ops];
+    if (namespace() === 'einkauf-demo-v1' && all.length) saveLocal(merge(base, all), []);
+    else if (ops.length) saveLocal(base, all);
+  }
   render(); restingStatus(); if (connected()) await sync(true);
 }
 function fillSettings() {
@@ -2511,7 +2538,7 @@ async function backup() {
   await deliverFile(new File([json], name, { type: 'application/json' }));
 }
 // Vollsicherung: eine ZIP-Datei mit den Daten (daten.json, wie die JSON-Sicherung) und allen Rezeptfotos (fotos/<Kennung>.jpg). Fotos kommen aus dem Gerätespeicher,
-// sonst aus dem Daten-Repository; was sich nicht holen lässt, wird gezählt und in „lies-mich.txt“ genannt. Die Wiederherstellung bleibt Handarbeit (siehe Anleitung).
+// sonst aus dem Daten-Repository; was sich nicht holen lässt, wird gezählt und in „lies-mich.txt“ genannt. Die Wiederherstellung läuft unter Einstellungen → Datensicherung.
 async function backupFull() {
   const note = $('#export-note'), button = $('#export-full');
   button.disabled = true;
@@ -2526,7 +2553,7 @@ async function backupFull() {
     }
     const lines = [`Vollsicherung von Sattplan vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
     if (missing.length) lines.push('', `Nicht gesichert (nicht auf diesem Gerät und nicht im Daten-Repository gefunden): ${missing.join(', ')}`);
-    lines.push('', 'Wiederherstellen ist Handarbeit: Die Dateien liegen im Daten-Repository (daten.json und der Ordner photos). Bitte vertraulich aufbewahren.');
+    lines.push('', 'Wiederherstellen: In Sattplan unter Einstellungen → Datensicherung → Datensicherung wiederherstellen diese ZIP-Datei auswählen. Vorschau prüfen und Ersetzen bestätigen. Bitte vertraulich aufbewahren.');
     files.push({ name: 'lies-mich.txt', data: encode(lines.join('\n')) });
     const zip = makeZip(files);
     await deliverFile(new File([zip], `sattplan-vollsicherung-${stamp}.zip`, { type: 'application/zip' }));
@@ -2534,6 +2561,53 @@ async function backupFull() {
     note.textContent = `Gesichert: Daten und ${plural(photos)}${missing.length ? `, ${plural(missing.length)} nicht gefunden` : ''}.`;
   } catch (error) { note.textContent = ''; throw error; }
   finally { button.disabled = false; }
+}
+
+/* ---------- Geführte, portable Wiederherstellung ---------- */
+async function restoreBackup(bundle, preview) {
+  if (!ready) throw new Error('Bitte die Liste zuerst öffnen oder verbinden.');
+  if (busy || restoring) throw new Error('Bitte den laufenden Abgleich kurz abwarten und erneut versuchen.');
+  if (namespace() !== preview.scope) throw new Error('Die Datenverbindung hat sich geändert. Bitte die Datei erneut auswählen.');
+  if (connected()) await freshSync();
+  if (namespace() !== preview.scope || restoreSignature() !== preview.signature) {
+    throw Object.assign(new Error('Der aktuelle Stand hat sich seit der Vorschau geändert. Bitte die aktualisierte Vorschau prüfen und erneut bestätigen.'),{changed:true});
+  }
+  const scope = namespace(), uploadKey = queueKey(), oldQueue = localStorage.getItem(uploadKey), staged = [];
+  restoring = true;
+  let committed = false, queueChanged = false, restoreOp;
+  try {
+    restoreOp = makeRestoreOperation(bundle.data,state,config.actor || 'Unbekannt');
+    const check = merge(state,[restoreOp]);
+    if (sizeOf(check) + 1 > LIMIT_BYTES) throw new Error('Der wiederhergestellte Stand wäre zu groß. Bitte zuerst eine kleinere Sicherung erstellen.');
+    // Falls schon das Sichern scheitert, bleibt der aktuelle Datenstand unberührt.
+    storageWrite(recoveryStorageKey(scope),{at:new Date().toISOString(),data:clone(state)});
+    for (const [id,bytes] of bundle.photos) {
+      const cached = await readPhoto(id), existing = cached ?? (connected() ? await downloadPhoto(id) : null);
+      if (existing) {
+        const previous = new Uint8Array(await existing.arrayBuffer());
+        if (previous.length!==bytes.length || !previous.every((value,i)=>value===bytes[i])) throw new Error('Ein Foto hat dieselbe Kennung, aber einen anderen Inhalt. Bitte eine unveränderte Sicherung verwenden.');
+      }
+      if (!cached) { await storePhoto(id,new Blob([bytes],{type:'image/jpeg'})); staged.push(id); }
+    }
+    if (namespace()!==scope) throw new Error('Die Datenverbindung hat sich geändert. Es wurde nichts ersetzt.');
+    if (connected()) {
+      const ids = new Set(queued(uploadKey));
+      for (const id of backupPhotoIds(bundle.data)) if (await readPhoto(id)) ids.add(id);
+      storageWrite(uploadKey,[...ids]); queueChanged = true;
+    }
+    commit([restoreOp]); committed = true;
+    photoIssue = null; photoRetryAt = 0; photoMiss.clear();
+  } catch (error) {
+    committed ||= Boolean(restoreOp && state.sync.applied.includes(restoreOp.id));
+    if (!committed) {
+      let queueRestored = true;
+      if (queueChanged) try { if(oldQueue===null)localStorage.removeItem(uploadKey);else localStorage.setItem(uploadKey,oldQueue); } catch { queueRestored=false; }
+      if(queueRestored) for(const id of staged) await removePhoto(id).catch(()=>{});
+      throw error;
+    }
+    // Persistierte Daten bleiben auch bei einem Fehler der nachfolgenden Anzeige erhalten.
+  } finally { restoring = false; }
+  restingStatus(); render(); if(connected())void sync(true);
 }
 
 /* ---------- Im Laden ---------- */
@@ -3309,6 +3383,7 @@ function noteCompaction(result) {
     `Aufgeräumt: ${entries(result.removed)} Einträge entfernt, ${kb(result.before - result.after)} gespart.`;
 }
 function renderStorage() {
+  restoreController?.refreshRecovery();
   if ($('#settings').hidden) return;
   const bytes = sizeOf(state), percent = Math.min(100, Math.round(bytes * 100 / LIMIT_BYTES));
   let result = null; try { result = compact(state); } catch { /* Anzeige ist optional */ }
@@ -3345,13 +3420,15 @@ async function photoIsOld(file) {
 }
 async function cleanPhotos() {
   if (!connected()) return;
-  if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
+  if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
   await freshSync();
   const note = $('#storage-note'); note.textContent = 'Prüfe Fotos …';
   const response = await timed(`${photosApi()}?ref=${encodeURIComponent(config.branch)}`, { headers: githubHeaders({ Accept: 'application/vnd.github+json' }) });
   if (response.status === 404) { note.textContent = 'Es gibt keine Fotos im Daten-Repository.'; return; }
   if (!response.ok) throw new Error(`GitHub meldet Fehler ${response.status}. Bitte später erneut versuchen.`);
-  const used = usedPhotos(), files = (await response.json()).filter(file => file.type === 'file' && /^[A-Za-z0-9-]{8,64}\.jpg$/.test(file.name));
+  const used = retainedPhotoIds(localStorage,usedPhotos());
+  if (!used) throw new Error('Ein gespeicherter Datenstand ist nicht lesbar. Die Foto-Bereinigung wurde zum Schutz der Sicherungen gestoppt.');
+  const files = (await response.json()).filter(file => file.type === 'file' && /^[A-Za-z0-9-]{8,64}\.jpg$/.test(file.name));
   const orphans = files.filter(file => !used.has(file.name.slice(0, -4)));
   if (!orphans.length) { note.textContent = 'Alle Fotos werden noch verwendet.'; return; }
   const old = [];
@@ -3362,7 +3439,8 @@ async function cleanPhotos() {
   if (!confirm(`${old.length} nicht mehr verwendete Fotos (${kb(size)}) endgültig löschen?${young ? `\n\n${young} neuere bleiben vorerst stehen.` : ''}\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`)) { note.textContent = ''; return; }
   // Nach der Rückfrage noch einmal abgleichen: Inzwischen kann ein Rezept auf eines der Fotos verweisen.
   await freshSync();
-  const stillUnused = usedPhotos();
+  const stillUnused = retainedPhotoIds(localStorage,usedPhotos());
+  if (!stillUnused) throw new Error('Die gespeicherten Daten konnten nicht geprüft werden. Es wurden keine Fotos gelöscht.');
   const doomed = old.filter(file => !stillUnused.has(file.name.slice(0, -4)));
   let deleted = 0, freed = 0;
   for (const file of doomed) {
@@ -3382,7 +3460,16 @@ fillCategorySelects();
 itemQuantity = mountQuantityControls($('#item-form'), { getHistory:itemHistory });
 editQuantity = mountQuantityControls($('#edit-item-form'), { getHistory:itemHistory });
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
-document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => $(`#${node.dataset.close}`).close()));
+function requestDialogClose(dialog) {
+  if (dialog.id === 'restore-dialog' && restoreController?.busy()) return;
+  if (dialog.id === 'recipe-dialog' && !canCloseRecipe()) return;
+  dialog.close();
+}
+function canCloseRecipe() {
+  if (recipeSaving) { message('Das Rezept wird gerade gespeichert. Bitte kurz warten.'); return false; }
+  return saveRecipeDraft();
+}
+document.querySelectorAll('[data-close]').forEach(node => node.addEventListener('click', () => requestDialogClose($(`#${node.dataset.close}`))));
 // Ein Tipp auf den Bereich außerhalb eines Fensters (oben, auf den abgedunkelten Hintergrund) schließt es wie das „×“. Das Drücken und das Loslassen müssen beide außerhalb liegen:
 // Wer in einem Feld Text markiert und außerhalb loslässt, schließt nichts. Das Willkommensfenster lässt sich nicht wegtippen (es braucht den Namen).
 let outsideDown = null;
@@ -3391,7 +3478,7 @@ const tapDialog = event => event.target instanceof HTMLDialogElement && event.ta
 document.addEventListener('pointerdown', event => { outsideDown = tapDialog(event); }, true);
 document.addEventListener('click', event => {
   const dialog = tapDialog(event), started = outsideDown; outsideDown = null;
-  if (dialog && dialog === started) dialog.close();
+  if (dialog && dialog === started) requestDialogClose(dialog);
 }, true);
 // iOS Safari meldet einen Tipp auf ein Element ohne eigenen Klick-Empfänger nicht als Klick: Der leere Empfänger macht den Hintergrund des Fensters „antippbar“.
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', () => {}));
@@ -3792,7 +3879,16 @@ $('#discard-imported-recipe').addEventListener('click',()=>guard(discardImported
 $('#delete-recipe').addEventListener('click',()=>guard(()=>deleteRecipe($('#recipe-form').elements.id.value)));
 $('#recipe-form').addEventListener('input', scheduleRecipeDraft);
 $('#recipe-form').addEventListener('click', scheduleRecipeDraft);   // Zutat hinzufügen oder entfernen
-$('#recipe-dialog').addEventListener('close', () => { saveRecipeDraft(); recipeDraftKey = null; });   // Schließen mit X oder Esc behält den Entwurf; nach dem Speichern ist er schon weg
+$('#recipe-dialog').addEventListener('cancel', event => { if (!canCloseRecipe()) event.preventDefault(); });
+// Sofort sichern, bevor mobile Browser Hintergrund-Timer pausieren.
+document.addEventListener('visibilitychange',()=>{if(document.hidden && recipeDraftKey && !recipeSaving)saveRecipeDraft();});
+window.addEventListener('beforeunload',event=>{
+  if(restoring || recipeSaving || (recipeDraftKey && !saveRecipeDraft())) { event.preventDefault(); event.returnValue=''; }
+});
+$('#recipe-dialog').addEventListener('close', () => {
+  if (recipeDraftKey && (recipeSaving || !saveRecipeDraft())) { $('#recipe-dialog').showModal(); return; }
+  recipeDraftKey = null; recipeDraftScope = null;
+});
 document.querySelectorAll('#import-form [data-source]').forEach(node => node.addEventListener('click', () => setImportSource(node.dataset.source)));
 $('#import-form').elements.publicProxy.addEventListener('change', () => guard(saveImportPermission));
 stopImportHold=holdToConfirm($('#import-run'),1000,()=>cancelImport(),'',()=>Boolean(importAbort));
@@ -3841,7 +3937,7 @@ $('#recipe-form').elements.photo.addEventListener('change', event => guard(async
   showPhotoPreview(URL.createObjectURL(blob));
 }));
 $('#photo-remove').addEventListener('click', () => { ++photoEditVersion;pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
-$('#recipe-dialog').addEventListener('close', () => { ++photoEditVersion;pendingPhoto = null; showPhotoPreview(''); });
+$('#recipe-dialog').addEventListener('close', () => { if ($('#recipe-dialog').open) return; ++photoEditVersion;pendingPhoto = null; showPhotoPreview(''); });
 $('#transfer-form').elements.servings.addEventListener('change', () => guard(updateTransfer));
 // Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
@@ -3863,14 +3959,14 @@ $('#transfer-form').addEventListener('submit', event => { event.preventDefault()
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });
 $('#settings-form').addEventListener('submit', event => { event.preventDefault(); guard(async () => {
-  if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
+  if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
   const form = event.currentTarget, next = { ...config };
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token']) next[key] = form.elements[key].value.trim();
   next.tokenExpires = form.elements.tokenExpires.value;
   if (next.token !== config.token && next.tokenExpires === (config.tokenExpires || '')) next.tokenExpires = '';   // neuer Token: das alte Datum gilt nicht mehr
   if (!/^[A-Za-z0-9-]+$/.test(next.owner) || !/^[A-Za-z0-9_.-]+$/.test(next.repo) ||
       !next.branch || !next.path.endsWith('.json') || next.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Bitte Benutzername, Repository, Branch und einen relativen JSON-Dateinamen prüfen (keine vollständige URL).');
-  if (!sameTarget(config, next) && pending.length) throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
+  if (!sameTarget(config, next) && pending.length && namespace() !== 'einkauf-demo-v1') throw new Error('Vor einem Repository-Wechsel bitte die ausstehenden Änderungen synchronisieren. Du kannst dafür den Token des bisherigen Repositorys ersetzen.');
   delete next.savedAt;
   if (next.actor !== config.actor) { delete next.memberId; delete next.memberScope; }
   saveConfig(next); retryAt = 0; message(); await loadWorkspace();
@@ -3897,7 +3993,7 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
   message(); status('Hilfsdienst funktioniert', 'ok'); setTimeout(restingStatus, 2500);
 }));
 $('#disconnect').addEventListener('click', () => guard(async () => {
-  if (busy) throw new Error('Bitte den laufenden Abgleich kurz abwarten.');
+  if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
   if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
   const { owner, repo, branch, path, token, tokenExpires, savedAt, ...kept } = config;   // alles andere (Name, Darstellung, Hilfsdienst …) bleibt auf diesem Gerät
   saveConfig(kept);
@@ -4035,6 +4131,12 @@ function freshStart() {
 async function start() {
   try {
     config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+    draftStore = createDraftStore(localStorage, namespace());
+    try { draftStore.migrateLegacy(); } catch (error) { showNotice(error.message); }
+    restoreController = mountBackupRestore({getData:()=>state,getScope:namespace,getSignature:restoreSignature,
+      getTarget:()=>connected()?`${config.owner}/${config.repo} · ${config.path}`:'Nur auf diesem Gerät',
+      resolvePhoto:async id=>{const local=await readPhoto(id);if(local)return local;const remote=connected()?await downloadPhoto(id):null;if(remote)await storePhoto(id,remote);return remote;},
+      onRestore:restoreBackup,onSuccess:()=>showNotice(connected()?'Stand auf diesem Gerät wiederhergestellt. Der gemeinsame Abgleich läuft.':'Stand auf diesem Gerät wiederhergestellt.')});
     privateList=mountPrivateList({
       getScope:namespace,makeId:uid,makeIcon:icon,imagesOn,onError:message,
       onChange:()=>{if(privateViewId(view)&&!privateList.has(privateViewId(view)))view='all';render();},

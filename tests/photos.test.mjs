@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { validPhotoId } from '../data.js';
-import { isJpeg, photoPath, queuePhoto, queued, toBase64, unqueuePhoto } from '../photos.js';
+import { isJpeg, photoPath, retainedPhotoIds, queuePhoto, queued, toBase64, unqueuePhoto } from '../photos.js';
 
 const memory = new Map();
 beforeEach(() => {
@@ -43,4 +43,19 @@ test('Upload-Warteschlange: ohne Doppelte, ohne Müll, übersteht kaputten Speic
   assert.deepEqual(queued('k'), []);
   memory.set('k', '{"a":1}');
   assert.deepEqual(queued('k'), []);
+});
+
+const storageOf = entries => { const data=new Map(entries);return {get length(){return data.size;},key:i=>[...data.keys()][i],getItem:key=>data.get(key)??null}; };
+test('Globale Foto-Bereinigung schützt alle Verbindungen, offene Uploads und den vorherigen Stand',()=>{
+ const ids=['photo-demo-0001','photo-conn-0001','photo-queue-001','photo-restore-1','photo-pending-1','photo-snapshot1'];
+ const storage=storageOf([
+ ['einkauf-demo-v1',JSON.stringify({base:{recipes:[{photoId:ids[0]}]},pending:[]})],
+ ['einkauf-data-v1:A',JSON.stringify({base:{recipes:[{photoId:ids[1]}]},pending:[{collection:'recipes',patch:{photoId:ids[4]}},{collection:'restore',snapshot:{recipes:[{photoId:ids[5]}]}}]})],
+ ['einkauf-photo-queue:A',JSON.stringify([ids[2]])],
+ ['einkauf-restore-recovery-v1:A',JSON.stringify({data:{recipes:[{photoId:ids[3]}]}})]
+ ]);assert.deepEqual([...retainedPhotoIds(storage)].sort(),ids.sort());
+});
+test('Unlesbarer gespeicherter Stand verhindert vorsorglich jede Foto-Löschung',()=>{
+ assert.equal(retainedPhotoIds(storageOf([['einkauf-data-v1:A','{kaputt']])),null);
+ assert.equal(retainedPhotoIds(storageOf([['einkauf-photo-queue:A','{}']])),null);
 });

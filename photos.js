@@ -69,9 +69,38 @@ export function toBase64(bytes) {
 // Verzeichnis der Fotos im Daten-Repository (neben der Datendatei).
 export const photosDir = dataPath => [...String(dataPath).split('/').slice(0, -1), 'photos'].join('/');
 
-// Lokal gespeicherte Fotos entfernen, auf die nichts mehr verweist (`keep`: Menge gültiger Kennungen).
-export async function prunePhotos(keep) {
+// Der Fotospeicher gehört allen Datenbereichen dieses Geräts. Auch getrennte
+// Verbindungen, offene Uploads und der Stand vor einer Wiederherstellung zählen.
+export function retainedPhotoIds(storage, current = []) {
+  const keep = new Set(current);
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key === 'einkauf-demo-v1' || key?.startsWith('einkauf-data-v1:')) {
+        const saved = JSON.parse(storage.getItem(key));
+        if (!saved?.base || !Array.isArray(saved.base.recipes) || !Array.isArray(saved.pending)) return null;
+        for (const row of saved.base.recipes) if (validPhotoId(row.photoId)) keep.add(row.photoId);
+        for (const op of saved.pending) {
+          if (op.collection === 'recipes' && validPhotoId(op.patch?.photoId)) keep.add(op.patch.photoId);
+          if (op.collection === 'restore') {
+            if (!Array.isArray(op.snapshot?.recipes)) return null;
+            for (const row of op.snapshot.recipes) if (validPhotoId(row.photoId)) keep.add(row.photoId);
+          }
+        }
+      } else if (key?.startsWith('einkauf-photo-queue:')) {
+        const ids = JSON.parse(storage.getItem(key)); if (!Array.isArray(ids)) return null;
+        ids.filter(validPhotoId).forEach(id => keep.add(id));
+      } else if (key?.startsWith('einkauf-restore-recovery-v1:')) {
+        const saved = JSON.parse(storage.getItem(key)); if (!Array.isArray(saved?.data?.recipes)) return null;
+        for (const row of saved.data.recipes) if (validPhotoId(row.photoId)) keep.add(row.photoId);
+      }
+    }
+  } catch { return null; } // Unlesbarer Speicher darf niemals Fotos kosten.
+  return keep;
+}
+export async function prunePhotos(keep, storage = localStorage) {
   if (!('caches' in window)) return;
+  keep = retainedPhotoIds(storage, keep); if (!keep) return;
   const cache = await caches.open(CACHE);
   for (const request of await cache.keys()) {
     const id = new URL(request.url).pathname.split('/').pop();
@@ -79,6 +108,12 @@ export async function prunePhotos(keep) {
     await cache.delete(request);
     if (urls.has(id)) { URL.revokeObjectURL(urls.get(id)); urls.delete(id); }
   }
+}
+
+export async function removePhoto(id) {
+  if (!validPhotoId(id) || !('caches' in window)) return;
+  await (await caches.open(CACHE)).delete(request(id));
+  if (urls.has(id)) { URL.revokeObjectURL(urls.get(id)); urls.delete(id); }
 }
 
 // Warteschlange der noch nicht hochgeladenen Fotos (je Datenspeicher), damit Offline-Fotos nicht verloren gehen.

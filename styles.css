@@ -1885,19 +1885,24 @@ body.in-store .tabs {
 }
 /* Name, Menge und Symbol: nur Anzeige (abgehakt wird über den Kreis links). Die Schrift ist so groß wie in der Einkaufsliste unter „Planen“. */
 .shop-text {
-  display:flex;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  column-gap:10px;
+  row-gap:2px;
   align-items:center;
   justify-content:flex-start;
   flex:1;
   min-width:0;
   min-height:68px;
-  gap:14px;
   padding:12px 6px 12px 0;
   color:var(--text);
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none
 }
+.shop-text .shop-name { grid-column:1; grid-row:1 }
+.shop-text .shop-qty { grid-column:1; grid-row:2; white-space:normal; overflow-wrap:anywhere }
+.shop-text .item-thumb { grid-column:2; grid-row:1 / span 2 }
 /* Das Produktsymbol ist dieselbe Kachel wie in der Einkaufsliste (.item-thumb); auf schmalen Bildschirmen bleibt sie, dafür rücken Kreis und Text enger zusammen */
 @media (max-width:340px) {
   .shop-tap {
@@ -3862,7 +3867,8 @@ html[data-landscape] .turn-hint {
 .item-qty {
   display:block;
   font-weight:500;
-  white-space:nowrap
+  white-space:normal;
+  overflow-wrap:anywhere
 }
 .item.checked .item-qty {
   color:var(--muted)
@@ -4590,6 +4596,9 @@ button.recipe-delete { color:var(--danger) }
 .order-list li { display:grid; grid-template-columns:minmax(0,1fr) 48px 48px; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:14px; background:var(--card) }
 .order-list li>span { overflow-wrap:anywhere }
 .order-list .order-arrow { min-height:48px; padding:0; font-size:1.3rem }
+:root #spending-chart button.text-button,:root[data-glass] #spending-chart button.text-button { min-width:0; min-height:0; padding:4px 0; border:0; border-radius:10px; background:transparent; color:var(--muted); box-shadow:none; font-size:.7rem; font-weight:600 }
+:root .spend-chart button[aria-current=true],:root[data-glass] .spend-chart button[aria-current=true] { background:var(--accent-soft); color:var(--accent) }
+.spend-chart .value { width:100%; text-align:center }
 @media(max-width:359px) {
   #spending>.section-head { align-items:stretch; flex-wrap:wrap }
   #spending>.section-head>#add-purchase { width:100%; white-space:normal }
@@ -4620,3 +4629,16 @@ button.recipe-delete { color:var(--danger) }
   .store-symbol-choice>span:not(.store-symbol) { font-size:.82rem; white-space:nowrap }
   .store-symbol-choice>.icon,.store-symbol-choice>.store-symbol,.store-symbol-choice .store-symbol>svg { width:28px; height:28px }
 }
+
+/* Wiederherstellung: Zahlen stehen unabhängig von langen Bereichsnamen. */
+.restore-counts{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.restore-counts li{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--line)}
+.restore-counts li span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}
+#restore-source{overflow-wrap:anywhere}
+
+:root .move-choices button.move-choice,:root[data-glass] .move-choices button.move-choice { min-height:52px }
+:root .discover button.secondary,:root[data-glass] .discover button.secondary { padding:8px 10px; line-height:1.2 }
+
+#restore-dialog .sheet-head { align-items:flex-start; gap:10px }
+#restore-dialog .sheet-head h2 { min-width:0; overflow-wrap:anywhere }
+#restore-dialog .sheet-head .icon-button { flex:none }
