@@ -360,62 +360,67 @@ function render() {
   $('#product-favorite-count').hidden = !favorites;
   $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
 }
+function describeStoreChip(chip, id, label, selected) {
+  chip.dataset.id = id; chip.setAttribute('aria-label', label);
+  chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(selected));
+  const menu = selected || id === 'all' || id === ALL_STORES, reorder = chip.hasAttribute('data-store-id');
+  if (menu) {
+    chip.setAttribute('aria-description', 'Lange drücken für die Auswahl aller Geschäfte und Listen.');
+    chip.setAttribute('aria-haspopup', 'dialog'); chip.setAttribute('aria-controls', 'store-quick-dialog');
+  } else if (reorder) chip.setAttribute('aria-description', 'Lange halten und ziehen, um die Geschäftsreihenfolge zu ändern.');
+  const shortcuts = [menu && 'Shift+F10', reorder && 'Alt+ArrowLeft Alt+ArrowRight'].filter(Boolean);
+  if (shortcuts.length) chip.setAttribute('aria-keyshortcuts', shortcuts.join(' '));
+}
 function renderStoreChips() {
   storeReorders.forEach(order => order.cancel());
   const box = $('#store-chips'); box.replaceChildren();
   const everything = visibleItems(true), items = visibleItems();   // `items`: ohne eigene Listen (für „Alle“ und „Ohne Geschäft“)
   const open = id => (id === 'all' ? items : id === 'none' ? items.filter(item => !item.storeId) : everything.filter(item => item.storeId === id)).filter(item => !item.checked).length;
   const add = (id, label, count, store = false) => {
-    const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button';
+    const privateId = privateViewId(id);
+    const chip = element('button', store || privateId ? undefined : label, 'chip'); chip.type = 'button';
     if (store) chip.append(storeLabel(label));
-    if (store) {
-      chip.dataset.storeId = id; chip.setAttribute('aria-label', label);
-      chip.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
-      chip.setAttribute('aria-description', 'Lange halten und ziehen, um die Geschäftsreihenfolge zu ändern.');
-    }
-    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(id === view));
+    if (privateId) { chip.dataset.private = privateId; chip.append(symbolNode('secret', label)); }
+    if (store) chip.dataset.storeId = id;
+    describeStoreChip(chip, id, label, id === view);
     if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => showView(id));
     box.append(chip);
   };
   add('all', 'Alle', open('all'));
-  box.lastElementChild.dataset.allStores = ''; box.lastElementChild.dataset.id = 'all';
-  box.lastElementChild.setAttribute('aria-description', 'Lange drücken für die Auswahl aller Geschäfte und Listen.');
-  box.lastElementChild.setAttribute('aria-haspopup', 'dialog'); box.lastElementChild.setAttribute('aria-controls', 'store-quick-dialog');
+  box.lastElementChild.dataset.allStores = '';
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
   for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, store.name, open(store.id), true);
-  for(const list of privateList?.lists||[])if(list.enabled){add(privateView(list.id),'',privateList.count(list.id));box.lastElementChild.dataset.private=list.id;box.lastElementChild.prepend(symbolNode('secret',list.name));}
+  for(const list of privateList?.lists||[])if(list.enabled)add(privateView(list.id),list.name,privateList.count(list.id));
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
 }
-function openStoreQuickMenu() {
+function openStoreQuickMenu(root) {
   const box = $('#store-quick-options'); box.replaceChildren();
-  const everything = visibleItems(true), ordinary = visibleItems();
-  const add = (id, label, count) => {
+  const inStore = root.id === 'shop-chips', scope = namespace();
+  for (const chip of root.querySelectorAll('.chip')) {
+    const id = chip.dataset.id, label = chip.getAttribute('aria-label'), count = chip.querySelector('.count');
     const choice = button('', () => {
-      if (id !== 'all' && id !== 'none' && !privateViewId(id) && !active(state.stores).some(store => store.id === id)) throw new Error('Diese Liste wurde inzwischen entfernt.');
-      $('#store-quick-dialog').close(); showView(id);
+      if (scope !== namespace() || ![...root.querySelectorAll('.chip')].some(node => node.dataset.id === id)) throw new Error('Die Listen haben sich geändert. Bitte die Auswahl erneut öffnen.');
+      if (inStore && isLocked()) return;
+      $('#store-quick-dialog').close();
+      if (inStore) { shopStore = id; renderShop(); } else showView(id);
+      root.querySelector('[aria-selected=true]')?.focus({ preventScroll: true });
     }, 'secondary store-quick-choice');
-    choice.dataset.view = id; choice.setAttribute('aria-label', label);
-    choice.setAttribute('aria-pressed', String(view === id));
+    choice.dataset.view = id === ALL_STORES ? 'all' : id; choice.setAttribute('aria-label', label);
+    choice.setAttribute('aria-pressed', chip.getAttribute('aria-selected'));
     const name = element('span', undefined, 'quick-label');
-    if (privateViewId(id)) name.append(symbolNode('secret', label));
-    else if (['all', 'none'].includes(id)) name.append(label);
-    else name.append(storeLabel(label));
+    for (const child of chip.childNodes) if (child !== count) name.append(child.cloneNode(true));
     choice.append(name);
-    if (count) choice.append(element('span', `(${count})`, 'quick-count'));
+    if (count) choice.append(element('span', `(${count.textContent})`, 'quick-count'));
     box.append(choice);
-  };
-  add('all', 'Alle', ordinary.filter(item => !item.checked).length);
-  if (ordinary.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', ordinary.filter(item => !item.storeId && !item.checked).length);
-  for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, store.name, everything.filter(item => item.storeId === store.id && !item.checked).length);
-  for (const list of privateList?.lists || []) if (list.enabled) add(privateView(list.id), list.name, privateList.count(list.id));
+  }
   $('#store-quick-dialog').showModal(); navigator.vibrate?.(15);
 }
-bindWishHold($('#store-chips'), '[data-all-stores]', () => guard(openStoreQuickMenu));
-$('#store-quick-open').addEventListener('click', () => guard(openStoreQuickMenu));
+for (const root of [$('#store-chips'), $('#shop-chips')]) bindWishHold(root, '[data-all-stores], .chip[aria-selected=true]',
+  () => guard(() => openStoreQuickMenu(root)), () => !ready || !root.getClientRects().length || isLocked());
 $('#store-order-open').addEventListener('click', () => openOrderControls({
   title: 'Geschäfte und Listen sortieren', scope: namespace(), getScope: namespace,
   getRows: () => orderedStores(state.stores).map(store => ({id:store.id,name:store.name})), onChange: saveStoreOrder
@@ -2727,17 +2732,14 @@ function renderShop() {
   // „Alle“ steht vor den Geschäften (wie unter „Planen“): alles Offene aus allen Geschäften und ohne Geschäft
   if (stores.length) {
     const all = element('button', 'Alle', 'chip'); all.type = 'button';
-    all.setAttribute('role', 'tab'); all.setAttribute('aria-selected', String(shopStore === ALL_STORES));
+    all.dataset.allStores = ''; describeStoreChip(all, ALL_STORES, 'Alle', shopStore === ALL_STORES);
     const open = visibleItems().filter(item => !item.checked).length; if (open) all.append(element('span', String(open), 'count'));
     all.addEventListener('click', () => { shopStore = ALL_STORES; renderShop(); });
     chips.append(all);
   }
   for (const store of stores) {
     const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
-    chip.dataset.storeId = store.id; chip.setAttribute('aria-label', store.name);
-    chip.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
-    chip.setAttribute('aria-description', 'Lange halten und ziehen, um die Geschäftsreihenfolge zu ändern.');
-    chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
+    chip.dataset.storeId = store.id; describeStoreChip(chip, store.id, store.name, store.id === shopStore);
     const count = shopCount(everything, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
     chips.append(chip);
@@ -3700,7 +3702,8 @@ for (const [selector, horizontal, itemSelector, handleSelector] of [
   const root = $(selector);
   storeReorders.push(mountStoreOrder(root, {
     horizontal, itemSelector, handleSelector,
-    enabled: () => ready && root.getClientRects().length > 0,
+    enabled: () => ready && root.getClientRects().length > 0 && !isLocked(),
+    canDrag: handle => !horizontal || handle.getAttribute('aria-selected') !== 'true',
     getVersion: () => JSON.stringify([namespace(), orderedStores(state.stores).map(store => store.id)]),
     onChange: saveStoreOrder,
     announce: text => { $(root.closest('dialog') ? '#store-order-status' : '#store-tabs-status').textContent = text; },

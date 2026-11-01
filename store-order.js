@@ -18,7 +18,7 @@ export function reorderedStoreIds(rows, visibleIds) {
 /* Erst langes Halten aktiviert die Geste. Normales Touch-Scrollen bleibt nativ.
    Abbruch stellt die ursprüngliche Reihenfolge wieder her; erst Loslassen speichert. */
 export function mountStoreOrder(root, { horizontal = false, itemSelector, handleSelector = itemSelector,
-  getVersion, onChange, announce, onError, enabled = () => true }) {
+  getVersion, onChange, announce, onError, enabled = () => true, canDrag = () => true }) {
   let press = null, frame = 0, swallowUntil = 0;
   const items = () => [...root.querySelectorAll(itemSelector)];
   const ids = () => items().map(node => node.dataset.storeId);
@@ -76,13 +76,13 @@ export function mountStoreOrder(root, { horizontal = false, itemSelector, handle
   function start(handle, point, touch) {
     finish(false); swallowUntil = 0;
     const item = handle.closest(itemSelector);
-    if (!item || !root.contains(item)) return;
+    if (!item || !root.contains(item) || !canDrag(handle)) return;
     const started = { item, handle, pointer: touch ? point.identifier : point.pointerId, touch,
       x: point.clientX, y: point.clientY, position: coordinate(point), order: ids(), scroll: scrollValue(),
       version: getVersion(), trailing: items().at(-1)?.nextElementSibling || null, active: false, moved: false };
     press = started;
     started.timer = setTimeout(() => {
-      if (press !== started || !enabled() || document.hidden || started.version !== getVersion()) { finish(false); return; }
+      if (press !== started || !enabled() || !canDrag(handle) || document.hidden || started.version !== getVersion()) { finish(false); return; }
       started.active = true; getSelection()?.removeAllRanges();
       root.classList.add('stores-reordering'); item.classList.add('moving-store');
       if (touch) root.addEventListener('touchmove', dragTouch, { passive: false });

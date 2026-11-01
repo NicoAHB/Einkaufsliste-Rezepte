@@ -133,6 +133,10 @@ const buyPantryProduct = async (page,name) => {
 const openSettings = async page => { await goTab(page, 'settings'); await page.evaluate(() => document.querySelectorAll('#settings details.fold').forEach(node => { node.open = true; })); };
 // Ein Geschäft als Bild („Wünsche“ ist ein Geschenk) trägt seinen Namen als Beschriftung des Bildes, nicht als Text.
 const storeButton = (page, box, name) => { const byText = page.locator(`${box} .chip, ${box} button`, { hasText: name }); return byText.or(page.locator(`${box} .chip, ${box} button`, { has: page.getByRole('img', { name, exact: true }) })).first(); };
+const listMenu = async (page, root = '#store-chips') => {
+  await page.locator(`${root} [aria-selected=true]`).focus(); await page.keyboard.press('Shift+F10');
+  await page.waitForSelector('#store-quick-dialog[open]');
+};
 const pickStore = async (page, name) => { await expandForm(page); await storeButton(page, '#store-pick', name).click(); };
 
 function github(initial) {
@@ -3139,11 +3143,75 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
   });
 
+  test('2.98: aktuelles Lidl per langem Touch öffnen, ohne Button, Filterwechsel oder Umordnen',async()=>{
+    const {ctx,page,problems}=await context();await open(page);
+    assert.equal(await page.locator('#store-quick-open').count(),0);
+    await page.locator('#store-chips [data-store-id=store-lidl]').click();const before=await storedDemo(page);
+    const current=page.locator('#store-chips [aria-selected=true]');await current.scrollIntoViewIfNeeded();const b=await current.boundingBox();
+    const cdp=await ctx.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2,id:1}]});
+    await page.waitForTimeout(600);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.waitForSelector('#store-quick-dialog[open]');
+    assert.equal(await page.locator('#store-quick-options [aria-pressed=true]').getAttribute('data-view'),'store-lidl');
+    assert.equal(await current.getAttribute('data-store-id'),'store-lidl');
+    assert.equal(await page.locator('#store-chips.stores-reordering').count(),0);
+    assert.deepEqual(await storedDemo(page),before);
+    await page.locator('#store-quick-options [data-view=store-rewe]').click();
+    assert.equal(await page.locator('#store-chips [aria-selected=true]').getAttribute('data-store-id'),'store-rewe');
+    assert.equal(await page.evaluate(()=>document.activeElement?.dataset.storeId),'store-rewe');
+    assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.98: aktuelles Ohne Geschäft, Wünsche und geheime Liste öffnen dasselbe Menü',async()=>{
+    const data=wishData();data.items.push({...demo.items[0],id:'without298',storeId:'',name:'Saft'});
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);
+    await ctx.addInitScript(()=>localStorage.setItem('einkauf-private-list-v1:einkauf-demo-v1',JSON.stringify({version:1,enabled:true,items:[{id:'private298',name:'Privat',note:'',checked:false,createdAt:'2026-11-01T10:00:00.000Z'}]})));
+    await open(page);const before=await storedDemo(page);
+    for(const selector of ['#store-chips [data-id=none]','#store-chips [data-store-id=store-wishes]','#store-chips [data-private]']){
+      await page.locator(selector).click();const current=page.locator('#store-chips [aria-selected=true]');const id=await current.getAttribute('data-id');
+      await current.scrollIntoViewIfNeeded();const b=await current.boundingBox();
+      await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.waitForTimeout(600);await page.mouse.up();
+      await page.waitForSelector('#store-quick-dialog[open]');
+      assert.equal(await page.locator('#store-quick-options [aria-pressed=true]').getAttribute('data-view'),id);
+      assert.equal(await page.locator('#store-quick-options [data-view=store-wishes] .store-symbol').count(),1);
+      assert.equal(await page.locator('#store-quick-options [data-view="@private:legacy-private"] .store-symbol').count(),1);
+      await page.locator('#store-quick-dialog [data-close]').click();
+      assert.equal(await page.locator('#store-chips [aria-selected=true]').getAttribute('data-id'),id);
+    }
+    assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.98: kurzer Tipp und Wischen öffnen kein Menü; andere Reiter bleiben per Touch sortierbar',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await page.locator('#store-chips [data-store-id=store-lidl]').click();const before=await storedDemo(page);
+    await page.locator('#store-chips [data-store-id=store-lidl]').click();assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);
+    const cdp=await ctx.newCDPSession(page),current=page.locator('#store-chips [aria-selected=true]');await current.scrollIntoViewIfNeeded();let b=await current.boundingBox();
+    const touch=(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:['touchEnd','touchCancel'].includes(type)?[]:[{x,y,id:1}]});
+    await touch('touchStart',b.x+b.width/2,b.y+b.height/2);await touch('touchMove',b.x+b.width/2-40,b.y+b.height/2);await page.waitForTimeout(600);await touch('touchEnd');
+    assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);assert.deepEqual(await storedDemo(page),before);
+    const other=page.locator('#store-chips [data-store-id=store-rewe]');await other.scrollIntoViewIfNeeded();b=await other.boundingBox();
+    await touch('touchStart',b.x+b.width/2,b.y+b.height/2);await page.waitForTimeout(600);
+    assert.equal(await page.locator('#store-chips.stores-reordering').count(),1);assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);
+    const first=await page.locator('#store-chips [data-store-id=store-edeka]').boundingBox();await touch('touchMove',first.x+2,b.y+b.height/2);await touch('touchEnd');
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row=>row.id),['store-rewe','store-edeka','store-lidl']);
+    await page.locator('#store-chips [aria-selected=true]').focus();await page.keyboard.press('Alt+ArrowLeft');
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row=>row.id),['store-rewe','store-lidl','store-edeka']);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.98: aktueller Reiter im Laden öffnet Menü; gesperrt bleiben Menü und Umordnen geschützt',async()=>{
+    const {ctx,page,problems}=await context({config:{shopLock:0}});await open(page);await page.click('#mode-shop');await page.locator('#shop-chips [data-store-id=store-lidl]').click();const before=await storedDemo(page);
+    const cdp=await ctx.newCDPSession(page),touch=async selector=>{const row=page.locator(selector);await row.scrollIntoViewIfNeeded();const b=await row.boundingBox();await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2,id:1}]});await page.waitForTimeout(650);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});};
+    await touch('#shop-chips [aria-selected=true]');await page.waitForSelector('#store-quick-dialog[open]');
+    assert.equal(await page.locator('#store-quick-options [aria-pressed=true]').getAttribute('data-view'),'store-lidl');
+    await page.locator('#store-quick-options [data-view=store-edeka]').click();assert.equal(await page.locator('#shop-chips [aria-selected=true]').getAttribute('data-store-id'),'store-edeka');
+    assert.equal(await page.locator('body.in-store').count(),1);await page.click('#shop-lock');
+    await touch('#shop-chips [aria-selected=true]');assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);assert.equal(await page.locator('#shop-chips.stores-reordering').count(),0);
+    await touch('#shop-chips [data-store-id=store-lidl]');assert.equal(await page.locator('#shop-chips [aria-selected=true]').getAttribute('data-store-id'),'store-lidl');
+    assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
   test('2.95: Auswahl zeigt lange Namen in breiten Zeilen und hält Artikelzahlen zusammen',async()=>{
     for(const width of [280,320,390]){
       const data=wishData();data.items=[];data.stores.push(...['Rossmann','Sonstige (Netto, Aldi, usw.)','Nadias Reise'].map((name,i)=>({...demo.stores[0],id:`quick295-${i}`,name,separate:i===2})));
       data.items=[{...demo.items[0],id:'q1',storeId:'',name:'Milch'},{...demo.items[0],id:'q2',storeId:'quick295-0',name:'Seife'},{...demo.items[0],id:'q3',storeId:'store-wishes',name:'Geschenk'}];
-      const {ctx,page,problems}=await context({context:{viewport:{width,height:844}},config:{palette:'gruen'}});await seedLocal(ctx,data);await open(page);await page.click('#store-quick-open');await sheetOpen(page);
+      const {ctx,page,problems}=await context({context:{viewport:{width,height:844}},config:{palette:'gruen'}});await seedLocal(ctx,data);await open(page);await listMenu(page);await sheetOpen(page);
       const bounds=await page.locator('#store-quick-options button').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),count=n.querySelector('.quick-count'),range=document.createRange();if(count)range.selectNodeContents(count);return {x:r.x,y:r.y,w:r.width,right:r.right,over:n.scrollWidth-n.clientWidth,countLines:count?range.getClientRects().length:0};}));
       assert.ok(bounds.every((b,i)=>b.over<=1&&b.countLines<=1&&(!i||b.y>bounds[i-1].y)),JSON.stringify(bounds));
       assert.ok(bounds.every(b=>Math.abs(b.w-bounds[0].w)<1));assert.equal(await page.locator('#store-quick-options [data-view=quick295-1] .quick-label').textContent(),'Sonstige (Netto, Aldi, usw.)');
@@ -3179,9 +3247,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
-  test('2.95: sichtbare Listenauswahl und Pfeile sortieren Geschäfte und Vorratsreiter dauerhaft',async()=>{
+  test('2.95: Listenauswahl und Pfeile sortieren Geschäfte und Vorratsreiter dauerhaft',async()=>{
     const {ctx,page,problems}=await context();await open(page);
-    await page.click('#store-quick-open');await sheetOpen(page);await page.locator('#store-quick-options [data-view=store-lidl]').click();
+    await listMenu(page);await sheetOpen(page);await page.locator('#store-quick-options [data-view=store-lidl]').click();
     assert.equal(await page.locator('#store-chips [data-store-id=store-lidl]').getAttribute('aria-selected'),'true');
     await page.click('#manage-stores');await sheetOpen(page);await page.click('#store-order-open');await sheetOpen(page);
     await page.getByRole('button',{name:'Rewe nach oben',exact:true}).click();

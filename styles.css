@@ -2221,7 +2221,7 @@ body.in-store .tabs {
 .store-row[open]>summary {
   border-bottom:1px solid var(--line)
 }
-.store-summary, #store-chips [data-store-id], #shop-chips [data-store-id] {
+.store-summary, #store-chips .chip, #shop-chips .chip {
   -webkit-touch-callout:none;
   touch-action:pan-x pan-y;
   user-select:none;
@@ -4600,7 +4600,6 @@ button.recipe-delete { color:var(--danger) }
 :root button:focus-visible,:root a.button:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
 :root button:disabled { cursor:default; box-shadow:none }
 .head-actions,.spend-toolbar,.list-head { flex-wrap:wrap; gap:8px }
-.list-menu-open { width:100%; margin:0 0 10px }
 #store-order-open { width:100%; margin:0 0 12px; white-space:normal }
 #product-tabs-order { width:100%; margin:0 0 10px; white-space:normal }
 :root .product-card .pantry-quick-buy { display:flex; justify-content:center; width:calc(100% - 12px); margin:0 6px 7px; padding:8px; min-height:44px; font-size:.85rem }

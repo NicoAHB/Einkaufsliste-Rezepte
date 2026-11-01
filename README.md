@@ -1,6 +1,14 @@
-# Sattplan – Version 2.97
+# Sattplan – Version 2.98
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.98: Listenauswahl am aktuellen Reiter
+
+Der zusätzliche Button **Geschäft oder Liste wählen** entfällt. **Den aktuell ausgewählten Reiter lange drücken** öffnet die Listenauswahl – etwa Lidl, Ohne Geschäft, Wünsche oder eine geheime Liste. Der bisherige lange Druck auf Alle bleibt ebenfalls möglich. Ein kurzer Tipp wählt weiterhin den Reiter; Wischen öffnet kein Menü. Auf der Tastatur geht **Umschalt + F10** am aktuellen Reiter.
+
+Dasselbe Menü ist in der **entsperrten Ladenansicht** über den aktuellen Reiter erreichbar und zeigt dort die passenden Geschäfte und Zähler. Die Sperre bleibt wirksam. Menüauswahl und Umordnen überlagern sich nicht: Andere Geschäftsreiter bleiben per Halten und Ziehen verschiebbar, und unter **Geschäfte** stehen weiterhin alle Sortiermöglichkeiten bereit. **Alt + Pfeil links/rechts** ordnet auch den aktiven Geschäftsreiter um.
+
+Offline-Paket **einkauf-shell-v110**.
 
 ## Neu in Version 2.97: Produkte dezenter darstellen
 
