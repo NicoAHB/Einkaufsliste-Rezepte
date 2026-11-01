@@ -5923,7 +5923,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.ctx.close(); await b.ctx.close();
   });
 
-  test('Nach der Übernahme geändert: Rezept geändert, Rezept gelöscht, Gericht gelöscht – Plan und Wochen-Einkauf sagen, was auf der Einkaufsliste zu prüfen ist; die Liste selbst bleibt unverändert', async () => {
+  test('Nach der Übernahme geändert: nur noch geplante Rezepte zeigen aufklappbare aktuelle Hinweise; bestätigte Entfernungen bleiben erledigt', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await planPasta(page, '2'); await planPasta(page, '2', 'Kichererbsen-Curry'); await planPasta(page, '2', 'Apfel-Pfannkuchen');
@@ -5946,12 +5946,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(planText.length, 1, planText.join(' | '));
     assert.match(planText[0], /Rezept seitdem geändert \(neu: 50 g Parmesan, Nudeln: 200 g → 300 g\): Liste prüfen/);
     await page.click('#plan-shopping'); await sheetOpen(page);
-    const notes = (await page.textContent('#week-changes')).replace(/\s+/g, ' ');
-    assert.match(notes, /^Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: /);
-    assert.match(notes, /Tomaten-Pasta: Das Rezept wurde seit der Übernahme geändert \(neu: 50 g Parmesan, Nudeln: 200 g → 300 g\)\./);
-    assert.match(notes, /Kichererbsen-Curry: Das Rezept wurde gelöscht, die Zutaten stehen noch auf der Liste\./);
-    assert.match(notes, /Apfel-Pfannkuchen wurde aus dem Plan entfernt, die Zutaten stehen noch auf der Liste\./);
-    assert.equal(await page.locator('#week-changes.warn').count(), 1);
+    assert.equal(await page.locator('#week-changes').evaluate(node=>node.open),false);
+    assert.equal(await page.locator('#week-changes.warn').count(),0);
+    await page.click('#week-changes>summary');
+    const notes=(await page.textContent('#week-change-list')).replace(/\s+/g,' ');
+    assert.match(notes,/Tomaten-Pasta.*Rezept seit der Übernahme geändert.*neu: 50 g Parmesan.*Nudeln: 200 g → 300 g/);
+    assert.match(notes,/Kichererbsen-Curry.*Rezept ist nicht mehr verfügbar/);
+    assert.ok(!notes.includes('Apfel-Pfannkuchen'),'entferntes Gericht wird nicht erneut gemeldet');
+    assert.ok(!notes.includes('stehen noch auf der Liste'),'keine pauschale Behauptung über vorhandene Zutaten');
     // Es wird nichts von selbst auf die Liste gesetzt oder geändert
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt && row.name === 'Nudeln').map(row => `${row.quantity} ${row.unit}`).sort()), ['500 g']);
     await page.click('#week-dialog [data-close]');
@@ -8237,7 +8239,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for(const width of [280,320,390])test(`2.77: Einkauf-Untertitel und beide Speichern-Aktionen bleiben bei ${width} px bedienbar`,async()=>{
     const {ctx,page,problems}=await context277({context:{viewport:{width,height:740}}});await goTab(page,'plan');
-    assert.match(await page.locator('#plan-shopping small').textContent(),/Zutaten dem Einkaufszettel hinzufügen/);assert.equal(await horizontalOverflow(page),0);
+    assert.equal(await page.locator('#plan-shopping small').textContent(),'Zutaten dieser Woche hinzufügen');assert.equal(await horizontalOverflow(page),0);
     await pick277(page,'Kichererbsen-Curry','4');await page.screenshot({path:`/tmp/sattplan277-plan-${width}.png`});
     for(const selector of ['#meal-save','#meal-save-shopping']){const button=page.locator(selector);assert.equal(await button.isVisible(),true);const box=await button.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.ok(box.y+box.height<=741);}
     assert.equal(await page.locator('#meal-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.deepEqual(problems,[]);await ctx.close();
@@ -9421,6 +9423,45 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.reload();await goTab(page,'plan');await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();await sheetOpen(page);
     assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),names.toSorted());assert.equal(await page.locator('#plan-adjust-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
     await page.locator('#plan-adjust-removed').scrollIntoViewIfNeeded();assert.equal(await page.locator('#plan-adjust-removed').isVisible(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.103: bestätigtes Entfernen aller restlichen Zutaten erzeugt keine neue Wochenwarnung',async()=>{
+    const {ctx,page,problems}=await context277();await pick277(page);await page.click('#meal-save-shopping');
+    await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));saved.base.items[0].deletedAt=new Date().toISOString();localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await goTab(page,'plan');await page.getByRole('button',{name:'Tomaten-Pasta aus dem Plan entfernen',exact:true}).click();await page.click('#plan-adjust-apply');
+    const removed=await storedDemo(page);assert.equal(removed.items.filter(row=>!row.deletedAt&&!row._planEmpty).length,0);
+    await pick277(page,'Kichererbsen-Curry');await page.click('#meal-save');const before=await storedDemo(page);await page.click('#plan-shopping');await sheetOpen(page);
+    assert.equal(await page.locator('#week-changes').isHidden(),true);assert.ok(!(await page.textContent('#week-dialog')).includes('Zutaten stehen noch'));assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.103: alte mehrfach entfernte Planeinträge bleiben auch nach Neustart ohne falsche Warnung',async()=>{
+    const {ctx,page,problems}=await countContext289(5);
+    await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key)),meal=saved.base.meals[0];saved.base.meals=[{...meal,id:'noch-geplant'},...[1,2,3,4,5].map(n=>({...meal,id:'alt-entfernt-'+n,deletedAt:new Date().toISOString(),listedParts:null}))];saved.base.items=[];localStorage.setItem(key,JSON.stringify(saved));});
+    for(let repeat=0;repeat<2;repeat++){
+      await page.reload();await goTab(page,'plan');const before=await storedDemo(page);await page.click('#plan-shopping');await sheetOpen(page);
+      assert.equal(await page.locator('#week-changes').isHidden(),true);assert.equal(await page.locator('#week-change-list li').count(),0);assert.ok(!(await page.textContent('#week-dialog')).includes('wurde aus dem Plan entfernt'));assert.deepEqual(await storedDemo(page),before);
+    }
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.103: echte Rezeptänderungen werden zusammengefasst; vergangene und gekochte Gerichte erscheinen nicht',async()=>{
+    const {ctx,page,problems}=await countContext289(0);
+    await page.evaluate(async()=>{const {addDays,isoDate}=await import('./plan.js'),key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key)),meal=saved.base.meals[0],today=isoDate();saved.base.meals=[{...meal,id:'aktuell-a',date:today},{...meal,id:'aktuell-b',date:today},{...meal,id:'vergangen',date:addDays(today,-1)},{...meal,id:'gekocht',date:today,done:true}];saved.base.ingredients[0].quantity=250;localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.equal(await page.locator('#week-changes').evaluate(n=>n.open),false);assert.equal(await page.locator('#week-change-list li').count(),1);
+    await page.click('#week-changes>summary');assert.match(await page.textContent('#week-change-list'),/Zählergericht.*Brokkoli: 100 g → 250 g/);assert.equal(await horizontalOverflow(page),0);await page.click('#week-dialog [data-close]');await page.click('#plan-shopping');assert.equal(await page.locator('#week-changes').evaluate(n=>n.open),false);
+    await page.click('#week-dialog [data-close]');await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));saved.base.meals.forEach(row=>{if(row.id.startsWith('aktuell'))row.done=true;});localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await goTab(page,'plan');await page.click('#plan-shopping');assert.equal(await page.locator('#week-changes').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.103: aktuelle Hinweise verschwinden im offenen Fenster nach dem Abgleich einer Entfernung',async()=>{
+    const seed=await countContext289(0),data=await storedDemo(seed.page);await seed.ctx.close();data.ingredients[0].quantity=250;
+    const api=github(data),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.equal(await page.locator('#week-changes').isVisible(),true);await page.click('#week-changes>summary');
+    const items=structuredClone(api.content.items);api.remoteChange(current=>current.meals.forEach(meal=>meal.deletedAt=new Date().toISOString()));await pollNow(page);
+    await page.waitForFunction(()=>document.querySelector('#week-changes').hidden);assert.equal(await page.locator('#week-change-list li').count(),0);assert.deepEqual(api.content.items,items);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.103: Wochenbutton nennt diese Woche und zeigt nur Zutaten der gerade angezeigten Woche',async()=>{
+    const {ctx,page,problems}=await context277();await pick277(page,'Tomaten-Pasta');await page.click('#meal-save');await page.click('#week-next');
+    await page.locator('.day-head .icon-button').first().click();await page.locator('#recipe-pick .pick-row',{hasText:'Kichererbsen-Curry'}).click();await setMealPortions(page,'2');await page.click('#meal-save');assert.equal(await page.locator('#plan-shopping small').textContent(),'Zutaten dieser Woche hinzufügen');
+    await page.click('#plan-shopping');await sheetOpen(page);let text=await page.textContent('#week-ingredients');assert.match(text,/Reis/);assert.ok(!text.includes('Nudeln'));await page.click('#week-dialog [data-close]');await page.click('#week-prev');
+    await page.click('#plan-shopping');await sheetOpen(page);text=await page.textContent('#week-ingredients');assert.match(text,/Nudeln/);assert.ok(!text.includes('Reis'));assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });

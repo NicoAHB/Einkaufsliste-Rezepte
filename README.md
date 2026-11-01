@@ -1,6 +1,14 @@
-# Sattplan – Version 2.102
+# Sattplan – Version 2.103
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.103: klare Wochenhinweise
+
+Die frühere rote Sammelmeldung im Wochen-Einkauf berücksichtigte auch gelöschte Planeinträge und behauptete ohne Prüfung, deren Zutaten stünden noch auf der Liste. Bestätigt entfernte Gerichte erscheinen dort nicht mehr. Vergangene und bereits gekochte Gerichte werden ebenfalls nicht erneut als offene Aufgabe gemeldet.
+
+Für noch geplante Gerichte ab heute bleiben echte Rezeptänderungen unter **Aktuelle Rezeptänderungen** aufklappbar. Gleiche Hinweise werden zusammengefasst. Ein gelöschtes Rezept wird als nicht mehr verfügbar bezeichnet; die App behauptet nicht pauschal, dass Zutaten noch vorhanden seien. Die Korrektur verändert keine Mengen oder Einkaufsartikel. Offline-Paket **einkauf-shell-v115**.
+
+Der Button **Einkauf** im Wochenplan erklärt seinen Umfang mit **Zutaten dieser Woche hinzufügen**. Gemeint ist die gerade angezeigte Woche; für eine andere Woche zuerst mit dem Wochenpfeil wechseln.
 
 ## Neu in Version 2.102: bereits entfernte Zutaten beim Namen nennen
 

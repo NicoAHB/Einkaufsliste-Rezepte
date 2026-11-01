@@ -1815,7 +1815,7 @@ function weekPlan() {
   const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.date>=isoDate() && meal.recipeId && known.has(meal.recipeId) && !(form.elements.skipDone.checked && meal.done))
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
   const basket = {...weekBasket(meals, !form.elements.skipListed.checked),again:!form.elements.skipListed.checked};
-  const plan={ meals, basket, rows: aggregateIngredients(basket.use, recipes, active(state.ingredients)) };
+  const plan={ meals, basket, rows: aggregateIngredients(basket.use, recipes, active(state.ingredients)), changes: weekChangeLines() };
   plan.deficits=weekShoppingNeeds(plan);return plan;
 }
 // Der Hinweis über den Zutaten: was schon auf der Liste steht (und bleibt draußen) oder, mit abgewähltem Haken, was doppelt aufgenommen würde.
@@ -1842,19 +1842,23 @@ function mealChanges(meal) {
 const amountText = row => `${format(row.quantity)} ${row.unit}`;
 const changeText = changes => [...changes.added.map(row => `neu: ${amountText(row)} ${row.name}`), ...changes.removed.map(row => `entfällt: ${row.name}`),
   ...changes.changed.map(entry => `${entry.name}: ${amountText(entry.from)} → ${amountText(entry.to)}`)].join(', ');
-// Hinweise zur Woche nach der Übernahme: Rezept geändert, Gericht gelöscht, Rezept gelöscht. Sie zeigen, was auf der Einkaufsliste noch zu prüfen ist.
+// Nur noch geplante, nicht gekochte Gerichte ab heute brauchen einen Hinweis.
+// Gelöschte Planeinträge sind bestätigte Entscheidungen, keine offenen Aufgaben.
 function weekChangeLines() {
-  const days = weekDays(planWeek), recipes = new Map(state.recipes.map(recipe => [recipe.id, recipe])), lines = [];
-  for (const meal of state.meals.filter(row => days.includes(row.date) && row.recipeId && Number(row.listedServings) > 0).sort((a, b) => a.date.localeCompare(b.date))) {
-    const name = recipes.get(meal.recipeId)?.name || 'Rezept', label = `${dayName(meal.date)}: ${name}`;
-    if (meal.deletedAt) lines.push(`${label} wurde aus dem Plan entfernt, die Zutaten stehen noch auf der Liste.`);
-    else if (!recipes.get(meal.recipeId) || recipes.get(meal.recipeId).deletedAt) lines.push(`${label}: Das Rezept wurde gelöscht, die Zutaten stehen noch auf der Liste.`);
-    else { const changes = mealChanges(meal); if (changes) lines.push(`${label}: Das Rezept wurde seit der Übernahme geändert (${changeText(changes)}).`); }
+  const days = weekDays(planWeek), recipes = new Map(state.recipes.map(recipe => [recipe.id, recipe])), groups = new Map(), today = isoDate();
+  for (const meal of active(state.meals).filter(row => !row.done && row.date >= today && days.includes(row.date) && row.recipeId && Number(row.listedServings) > 0).sort((a, b) => a.date.localeCompare(b.date))) {
+    const recipe = recipes.get(meal.recipeId), name = recipe?.name || 'Rezept';
+    let note;
+    if (!recipe || recipe.deletedAt) note = 'Das Rezept ist nicht mehr verfügbar. Zugehörige Artikel bei Bedarf im Einkaufszettel prüfen.';
+    else { const changes = mealChanges(meal); if (changes) note = `Rezept seit der Übernahme geändert (${changeText(changes)}).`; }
+    if (!note) continue;
+    const key = JSON.stringify([meal.recipeId, note]), entry = groups.get(key) || { name, note, days: new Set() };
+    entry.days.add(dayName(meal.date)); groups.set(key, entry);
   }
-  return lines;
+  return [...groups.values()].map(entry => `${entry.name} · ${[...entry.days].join(', ')}: ${entry.note}`);
 }
 // Woran man erkennt, dass sich die Vorschau überholt hat: welche Gerichte mit wie vielen Portionen aufgenommen werden und welche Zutaten daraus werden.
-const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit]), (plan.deficits||[]).map(row=>[row.name,row.quantity,row.unit]), weekChangeLines()]);
+const weekSignature = plan => JSON.stringify([plan.basket.use.map(meal => [meal.id, meal.servings]), plan.rows.map(row => [row.name, row.quantity, row.unit]), (plan.deficits||[]).map(row=>[row.name,row.quantity,row.unit]), plan.changes || []]);
 // Die Vorschau neu aufbauen, ohne abgewählte Zutaten wieder anzuhaken (Schlüssel: Name und Einheit).
 function refreshWeekRows() {
   const unchecked = new Set([...$('#week-ingredients').children].filter(label => label._row && !label.querySelector('input').checked).map(label => `${productKey(label._row.name)}|${label._row.unit}`));
@@ -1865,7 +1869,9 @@ function renderWeekRows() {
   const box = $('#week-ingredients'); box.replaceChildren();
   const plan = weekPlan(), rows = plan.rows, keys = pantryKeys(state.pantry), deficits=weekShoppingNeeds(plan);
   $('#week-form')._plan = plan; weekListedNote(plan);
-  const lines = weekChangeLines(), changes = $('#week-changes'); changes.textContent = lines.length ? `Seit der Übernahme geändert, bitte die Einkaufsliste prüfen: ${lines.join(' ')}` : ''; changes.hidden = !lines.length;
+  const lines = plan.changes, changes = $('#week-changes'), changeList = $('#week-change-list');
+  changeList.replaceChildren(...lines.map(line => element('li', line))); changes.hidden = !lines.length;
+  if (!lines.length) changes.open = false;
   if (!rows.length) {
     const allListed = plan.basket.listed.length > 0 && $('#week-form').elements.skipListed.checked;
     box.append(element('p', allListed ? 'Alles aus dieser Woche ist schon übernommen. Ohne diesen Haken werden die fehlenden Mengen erneut geprüft; vorhandene Einkaufsartikel zählen mit.'
@@ -1890,7 +1896,7 @@ $('#week-ingredients').addEventListener('change',syncWeekSubmit);
 function openWeekShopping() {
   const form = $('#week-form'); storeOptions(form.elements.storeId, defaultStore(), true);
   $('#week-intro').textContent = `${weekLabel(planWeek)}: Nur heute und künftige Tage: fehlende Zutaten nach Abgleich mit Vorrat und offenen Einkaufsartikeln.`;
-  form.elements.rememberPantry.checked = false; form.elements.skipListed.checked = true; renderWeekRows(); $('#week-dialog').showModal();
+  form.elements.rememberPantry.checked = false; form.elements.skipListed.checked = true; $('#week-changes').open = false; renderWeekRows(); $('#week-dialog').showModal();
 }
 
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
