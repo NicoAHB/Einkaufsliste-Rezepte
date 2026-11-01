@@ -38,6 +38,7 @@ export function validateRow(key, row) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
+  if (key === 'stores' && row.sortOrder != null && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) throw new Error('Ungültige Geschäftsreihenfolge.');
   if (key === 'members' && (!validMemberId(row.id) || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 30 ||
       (row.archived !== undefined && typeof row.archived !== 'boolean'))) throw new Error('Ungültige Person.');
   // Produktfavoriten (2.62): jeder Stern ist ein eigener Datensatz, keine gemeinsam überschriebene Liste.
@@ -454,7 +455,15 @@ export const listRow = (row, factor = 1) => {
   return { name: row.name, quantity: rounded > 0 ? rounded : quantity, unit: row.unit };
 };
 export function ingredientItems(ingredients, recipeId, storeId, factor, actor, at, items = []) {
-  return newItems(active(ingredients).filter(row => row.recipeId === recipeId).map(row => listRow(row, factor)), storeId, actor, at, items);
+  return newItems(active(ingredients).filter(row => row.recipeId === recipeId && !isCookingWater(row.name)).map(row => listRow(row, factor)), storeId, actor, at, items);
+}
+
+// Leitungswasser zum Kochen ist immer vorhanden. Getränke wie Mineralwasser,
+// Kokoswasser und Rosenwasser bleiben eigenständige Einkaufsprodukte.
+export function isCookingWater(name) {
+  const text = productKey(name).replace(/\([^)]*\)/g, ' ').replace(/[,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const temperature = '(?:kalt|kühl|warm|lauwarm|heiß|heiss|kochend|frisch)(?:e[smnr]?)?';
+  return new RegExp(`^(?:${temperature} )?(?:wasser|leitungswasser|trinkwasser)(?: (?:${temperature}|zum kochen))?$`, 'u').test(text);
 }
 
 /* Vorrat: Zutaten, die man immer zu Hause hat. Ein Name wie „Salz, Pfeffer“ oder „Salz und Pfeffer“ besteht aus mehreren Teilen
@@ -473,11 +482,11 @@ export function pantryRows(rows = []) {
   return [...byName.values()];
 }
 export const pantryKeys = rows => new Set(pantryRows(rows || []).filter(row => row.available !== false).map(row => pantryKey(row.name)));
-export const inPantry = (keys, name) => { const parts = nameParts(name); return keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => keys.has(pantryKey(part)))); };
+export const inPantry = (keys, name) => { const parts = nameParts(name); return isCookingWater(name) || keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => isCookingWater(part) || keys.has(pantryKey(part)))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
 export function pantryAdditions(names, keys) {
   const found = new Map();
-  for (const name of names) for (const part of nameParts(name)) { const key = pantryKey(part); if (!keys.has(key) && !found.has(key)) found.set(key, part); }
+  for (const name of names) for (const part of nameParts(name)) { const key = pantryKey(part); if (!isCookingWater(name) && !isCookingWater(part) && !keys.has(key) && !found.has(key)) found.set(key, part); }
   return [...found.values()];
 }
 

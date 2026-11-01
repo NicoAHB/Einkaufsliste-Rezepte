@@ -1,7 +1,7 @@
 /* Was kann ich kochen? Reine Logik ohne DOM: ordnet die Rezepte danach, wie viele Zutaten schon da sind.
    „Da“ ist ausschließlich der aktuelle Vorrat. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
    Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Zutaten „nach Bedarf“ (Salz, Pfeffer) und Wasser zählen nicht mit. */
-import { pantryRows, spellingStem } from './data.js';
+import { isCookingWater, pantryRows, spellingStem } from './data.js';
 import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
@@ -12,10 +12,14 @@ const SAME = [['öl', 'olivenöl', 'rapsöl', 'sonnenblumenöl', 'speiseöl', 'p
 const stemOf = word => spellingStem(word);
 const group = new Map(SAME.flatMap((names, index) => names.map(name => [stemOf(name), `g${index}`])));
 const ALWAYS = new Set(['wasser', 'leitungswasser', 'salz', 'pfeffer'].map(stemOf));
+const ingredientName = name => {
+  const canonical = canonicalProductName(name);
+  return canonical === 'Wasser' && !isCookingWater(name) ? name : canonical;
+};
 
 // Namensteile ohne Klammerzusatz („Salz, Pfeffer“, „Tomaten und Zwiebeln“ sind mehrere Zutaten); jeder Teil als Menge von Wortstämmen.
 const parts = name => String(name ?? '').replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i)
-  .map(part => [...new Set(stemOf(canonicalProductName(part)).split(' ').filter(Boolean).map(word => group.get(word) || word))]).filter(tokens => tokens.length);
+  .map(part => [...new Set(stemOf(ingredientName(part)).split(' ').filter(Boolean).map(word => group.get(word) || word))]).filter(tokens => tokens.length);
 const within = (small, big) => small.every(token => big.includes(token));
 // Passt ein Zutatenteil zu einem Namen? Gleiche Wörter (Einzahl/Mehrzahl egal), auch wenn einer mehr Wörter hat („rote Zwiebel“ zu „Zwiebeln“).
 const same = (a, b) => within(a, b) || within(b, a);
@@ -27,6 +31,7 @@ export function indexNames({ have = [], soon = [] }) {
   return { have: tokens(have), soon: tokens(soon) };
 }
 export function availability(name, index) {
+  if (isCookingWater(name)) return 'have';
   const wanted = parts(name);
   if (!wanted.length) return 'have';
   let worst = 'have';
@@ -38,7 +43,7 @@ export function availability(name, index) {
   return worst;
 }
 // Muss die Zutat vorhanden sein? „Nach Bedarf“ (Salz, Pfeffer) und Wasser nicht.
-export const required = row => row.unit !== NO_AMOUNT && parts(row.name).some(part => !part.every(token => ALWAYS.has(token)));
+export const required = row => !isCookingWater(row.name) && row.unit !== NO_AMOUNT && parts(row.name).some(part => !part.every(token => ALWAYS.has(token)));
 
 /* Rezepte ordnen. `recipes`: aktive Rezepte; `ingredientsOf(recipe)`: deren Zutaten (mit id, name, unit); `names`: { have, soon }.
    Ergebnis: [{ recipe, total, have: [Namen], soon: [Namen], missing: [{ id, name }], tier }] mit tier 0 = alles da, 1 = alles da, sobald

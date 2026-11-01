@@ -1,4 +1,5 @@
-import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { mountStoreOrder, orderedStores, reorderedStoreIds } from './store-order.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
@@ -47,8 +48,10 @@ let config = {}, base = emptyData(), pending = [], state = emptyData();
 const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
+let wishesPreview = false;
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null;
+const storeReorders = [];
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let wishBaseline = null;
@@ -217,7 +220,7 @@ function tab(name) {
 function storeOptions(select, preferred = select.value, allowNone = false) {
   select.replaceChildren();
   if (allowNone) select.add(new Option('Kein Geschäft', ''));
-  for (const store of active(state.stores)) select.add(new Option(store.name, store.id));
+  for (const store of orderedStores(state.stores)) select.add(new Option(store.name, store.id));
   select.value = [...select.options].some(option => option.value === preferred) ? preferred : allowNone ? '' : select.options[0]?.value ?? '';
 }
 function currentStore(id) {
@@ -229,8 +232,8 @@ function currentStore(id) {
    Artikel eines gelöschten Geschäfts bleiben überall verborgen; Artikel ohne Geschäft (storeId '') gehören zu keinem Geschäft. */
 // Artikel einer eigenen Liste (Geschäft mit „separate“, z. B. „Wünsche“) fehlen hier, außer `including` ist dieses Geschäft; `true` nimmt alle mit (für die Zähler an den Geschäften).
 const visibleItems = (including = '') => {
-  const live = new Set(active(state.stores).map(store => store.id)), rows = active(state.items).filter(item => !item.storeId || live.has(item.storeId));
-  return including === true ? rows : withoutSeparate(rows, active(state.stores), including);
+  const live = new Set(orderedStores(state.stores).map(store => store.id)), rows = active(state.items).filter(item => !item.storeId || live.has(item.storeId));
+  return including === true ? rows : withoutSeparate(rows, orderedStores(state.stores), including);
 };
 // „Alle“ zeigt eine eigene Liste nicht mit; sie erscheint nur unter ihrem Geschäft.
 const inView = item => view === 'all' ? !state.stores.some(store => store.id === item.storeId && !store.deletedAt && isSeparate(store)) : view === 'none' ? !item.storeId : item.storeId === view;
@@ -242,7 +245,8 @@ function showView(next) {
   const privateId=privateViewId(next);
   if(privateId&&!privateList?.has(privateId))return;
   if(privateId){if(selecting)setSelecting(false);privateList.select(privateId);}
-  view = next;
+  view = next; wishesPreview = next === 'wishes-preview' || wishStores().some(store => store.id === next);
+  renderWishOptions();
   const form = $('#item-form');
   // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
   // In „Alle“ bleibt die letzte Auswahl stehen (außer eine eigene Liste wie „Wünsche“: dort verschwänden neue Artikel unbemerkt); „Ohne Geschäft“ wählt keines.
@@ -252,24 +256,28 @@ function showView(next) {
 }
 function syncPrivateView() {
   const own=privateViewId(view)&&privateList?.has(privateViewId(view));
-  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own);$('#items').hidden=Boolean(own);
-  $('#shared-list-actions').hidden=Boolean(own);$('#mode-shop').disabled=Boolean(own);
+  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own)||view==='wishes-preview';$('#items').hidden=Boolean(own)||view==='wishes-preview';
+  $('#shared-list-actions').hidden=Boolean(own)||view==='wishes-preview';$('#mode-shop').disabled=Boolean(own);
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
 // Die Wunschliste wird gemeinsam aktiviert. Ausschalten löscht weder Liste noch Einträge.
-const wishStores = () => active(state.stores).filter(store=>store.wishlist===true || (isSeparate(store) && defaultSymbol(store.name)==='gift'));
-const wishesEnabled = () => wishStores().some(store=>store.wishlistEnabled!==false);
+const wishStores = () => orderedStores(state.stores).filter(store=>store.wishlist===true || (isSeparate(store) && defaultSymbol(store.name)==='gift'));
 const visibleStore = store => !wishStores().some(wish=>wish.id===store.id) || store.wishlistEnabled!==false;
 function renderWishOptions() {
-  for(const id of ['settings-wishes','welcome-wishes']) { if(id==='welcome-wishes' && $('#welcome').open) continue; $('#'+id).checked=wishesEnabled(); }
+  const store = wishStores().find(store => store.id === view), shown = Boolean(store) || view === 'wishes-preview';
+  $('#wishlist-controls').hidden = !shown;
+  const enabled = Boolean(store && store.wishlistEnabled !== false);
+  $('#wishlist-enabled').checked = enabled;
+  $('#wishlist-state').textContent = enabled ? 'Eingeblendet' : 'Ausgeblendet';
 }
 function setWishesEnabled(enabled) {
-  $('#welcome-wishes').checked=enabled;
-  const stores=wishStores(),ops=stores.length ? stores.map(store=>nextOp('stores',store.id,{wishlistEnabled:enabled,separate:true,wishlist:true,symbol:'gift'})) :
-    enabled ? [nextOp('stores','wishlist-default',{name:'Wünsche',separate:true,wishlist:true,wishlistEnabled:true,symbol:'gift'})] : [];
-  if(ops.length) commit(ops,enabled?'Wünsche aktiviert':'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
+  const store = wishStores().find(store => store.id === view);
+  const ops = store ? (store.wishlistEnabled !== false) === enabled ? [] : [nextOp('stores', store.id, { wishlistEnabled: enabled })] :
+    enabled ? [nextOp('stores', 'wishlist-default', { name: 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true, symbol: 'gift' })] : [];
+  if (ops.length) commit(ops, enabled ? 'Wünsche eingeblendet' : 'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
   else renderWishOptions();
+  if (enabled && view === 'wishes-preview') showView('wishlist-default');
 }
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
@@ -288,7 +296,7 @@ function renderStorePick() {
     box.append(chip);
   };
   add('', 'Kein Geschäft');
-  for (const store of active(state.stores).filter(store=>!isSeparate(store))) add(store.id, store.name, true);
+  for (const store of orderedStores(state.stores).filter(store=>!isSeparate(store))) add(store.id, store.name, true);
   $('#open-products').hidden = isSeparate(viewStore()) || isSeparate(active(state.stores).find(store => store.id === current));
   $('#open-pantry').hidden = $('#open-products').hidden;
 }
@@ -301,9 +309,9 @@ function storeChanged() {
 function render() {
   privateList?.refresh();
   renderWishOptions();
-  if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
+  if(viewStore() && !visibleStore(viewStore()) && !wishesPreview) { view='all'; $('#item-form').elements.storeId.value=''; }
   $('#identity').textContent = config.actor || '';
-  if (view !== 'all' && view !== 'none' && !viewStore() && !privateList?.has(privateViewId(view))) view = 'all';
+  if (view !== 'all' && view !== 'none' && !viewStore() && !privateList?.has(privateViewId(view)) && view !== 'wishes-preview') view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
@@ -326,26 +334,66 @@ function render() {
   $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
 }
 function renderStoreChips() {
+  storeReorders.forEach(order => order.cancel());
   const box = $('#store-chips'); box.replaceChildren();
   const everything = visibleItems(true), items = visibleItems();   // `items`: ohne eigene Listen (für „Alle“ und „Ohne Geschäft“)
   const open = id => (id === 'all' ? items : id === 'none' ? items.filter(item => !item.storeId) : everything.filter(item => item.storeId === id)).filter(item => !item.checked).length;
   const add = (id, label, count, store = false) => {
     const chip = element('button', store ? undefined : label, 'chip'); chip.type = 'button';
     if (store) chip.append(storeLabel(label));
+    if (store) {
+      chip.dataset.storeId = id; chip.setAttribute('aria-label', label);
+      chip.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
+      chip.setAttribute('aria-description', 'Lange halten und ziehen, um die Geschäftsreihenfolge zu ändern.');
+    }
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(id === view));
     if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => showView(id));
     box.append(chip);
   };
   add('all', 'Alle', open('all'));
+  box.lastElementChild.dataset.allStores = ''; box.lastElementChild.dataset.id = 'all';
+  box.lastElementChild.setAttribute('aria-description', 'Lange drücken für die Auswahl aller Geschäfte und Listen.');
+  box.lastElementChild.setAttribute('aria-haspopup', 'dialog'); box.lastElementChild.setAttribute('aria-controls', 'store-quick-dialog');
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
-  for (const store of active(state.stores).filter(visibleStore)) add(store.id, store.name, open(store.id), true);
+  for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, store.name, open(store.id), true);
   for(const list of privateList?.lists||[])if(list.enabled){add(privateView(list.id),'',privateList.count(list.id));box.lastElementChild.dataset.private=list.id;box.lastElementChild.prepend(symbolNode('secret',list.name));}
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
   if (selected) box.scrollLeft = Math.max(0, selected.offsetLeft - (box.clientWidth - selected.offsetWidth) / 2);
 }
+function openStoreQuickMenu() {
+  const box = $('#store-quick-options'); box.replaceChildren();
+  const everything = visibleItems(true), ordinary = visibleItems();
+  const add = (id, label, count, hiddenWish = false) => {
+    const choice = button('', () => {
+      if (id !== 'all' && id !== 'none' && id !== 'wishes-preview' && !privateViewId(id) && !active(state.stores).some(store => store.id === id)) throw new Error('Diese Liste wurde inzwischen entfernt.');
+      $('#store-quick-dialog').close(); showView(id);
+      if (hiddenWish) $('#wishlist-enabled').focus({ preventScroll: true });
+    }, 'secondary store-quick-choice');
+    choice.dataset.view = id; choice.setAttribute('aria-label', label);
+    choice.setAttribute('aria-pressed', String(view === id));
+    if (id === 'wishes-preview') choice.append(symbolNode('gift', label));
+    else if (privateViewId(id)) choice.append(symbolNode('secret', label));
+    else if (['all', 'none'].includes(id)) choice.append(element('span', label));
+    else choice.append(storeLabel(label));
+    if (count) choice.append(element('span', `(${count})`, 'quick-count'));
+    box.append(choice);
+  };
+  add('all', 'Alle', ordinary.filter(item => !item.checked).length);
+  if (ordinary.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', ordinary.filter(item => !item.storeId && !item.checked).length);
+  for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, store.name, everything.filter(item => item.storeId === store.id && !item.checked).length);
+  for (const list of privateList?.lists || []) if (list.enabled) add(privateView(list.id), list.name, privateList.count(list.id));
+  const hidden = wishStores().filter(store => !visibleStore(store));
+  if (hidden.length || !wishStores().length) {
+    box.append(element('p', 'Ausgeblendete Wünsche', 'hint quick-hidden-label'));
+    if (!wishStores().length) add('wishes-preview', 'Wünsche öffnen', 0, true);
+    for (const store of hidden) add(store.id, store.name, everything.filter(item => item.storeId === store.id && !item.checked).length, true);
+  }
+  $('#store-quick-dialog').showModal(); navigator.vibrate?.(15);
+}
+bindWishHold($('#store-chips'), '[data-all-stores]', () => guard(openStoreQuickMenu));
 const byName = (a, b) => a.name.localeCompare(b.name, 'de');
 /* „Neu von …“: Artikel, die andere angelegt (oder in der Menge erhöht) haben, stehen oben, bis man sie übernimmt. Welche man schon gesehen hat,
    merkt sich nur dieses Gerät. Beim ersten Start (und auf einem neuen Gerät nach dem ersten Abgleich) gilt alles Vorhandene als gesehen. */
@@ -521,7 +569,7 @@ function renderItems() {
   };
   if (view === 'all') {
     // Gesamtliste: erst, was noch keinem Geschäft zugeordnet ist, dann ein Abschnitt je Geschäft.
-    const sections = [{ id: '', label: 'Ohne Geschäft' }, ...active(state.stores).map(store => ({ id: store.id, label: store.name }))];
+    const sections = [{ id: '', label: 'Ohne Geschäft' }, ...orderedStores(state.stores).map(store => ({ id: store.id, label: store.name }))];
     for (const section of sections) {
       const items = open.filter(item => (item.storeId || '') === section.id);
       if (!items.length) continue;
@@ -594,11 +642,14 @@ function renderQuickPick() {
   }
 }
 function renderShoppingInfo() {
-  const store = viewStore(), url = storeOfferUrl(store);
-  $('#offers-link').hidden = !url; $('#set-offers').hidden = Boolean(url) || !store;
-  if (url) { $('#offers-link').href = url; $('#offers-link').setAttribute('aria-label', `${store.name}: Angebote ansehen`); }
-  else $('#offers-link').removeAttribute('href');
-  $('.shop-tools').hidden = !store || isSeparate(store);
+  const store = viewStore(), url = store && !isSeparate(store) ? storeOfferUrl(store) : '';
+  $('#offers-link').hidden = !url;
+  if (url) {
+    $('#offers-link').href = url;
+    $('#offers-link .label').textContent = `Angebote bei ${store.name} ansehen`;
+    $('#offers-link').setAttribute('aria-label', `Angebote bei ${store.name} ansehen – öffnet extern`);
+  } else $('#offers-link').removeAttribute('href');
+  $('.shop-tools').hidden = !url;
   $('#open-templates').hidden=isSeparate(store);
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
@@ -746,7 +797,7 @@ function openStoresDialog(openId = '') {
 function renderStoreCatalog() {
   const list = $('#store-catalog-list'); list.replaceChildren();
   const chains = searchCatalog($('#store-catalog-search').value, $('#store-catalog-type').value);
-  const existing = new Set(active(state.stores).filter(store => !isSeparate(store)).map(store => chainForStore(store)?.key));
+  const existing = new Set(orderedStores(state.stores).filter(store => !isSeparate(store)).map(store => chainForStore(store)?.key));
   for (const chain of chains) {
     const used = existing.has(chain.key), choice = button('', () => {
       const form = $('#store-form');
@@ -770,9 +821,10 @@ function renderStoreTemplate() {
   }, 'text-button small'));
 }
 function renderStores() {
+  storeReorders.forEach(order => order.cancel());
   renderWishOptions();
   const editor = $('#store-editor'); editor.replaceChildren();
-  for (const store of active(state.stores)) {
+  for (const store of orderedStores(state.stores)) {
     const row=storeEditorRow(store);editor.append(row);
     if(store.id===storeFresh){row.classList.add('fresh');row.scrollIntoView({block:'nearest'});}
   }
@@ -850,7 +902,10 @@ function storeEditorRow(store) {
     let updateSave=()=>{};
     const wishList=wishStores().some(wish=>wish.id===store.id);
     const row = element('details', undefined, 'store-row'), summary = element('summary', undefined, 'store-summary'), body = element('div', undefined, 'store-body');
-    row.open = storesOpen.has(store.id); row.dataset.id = store.id;
+    row.open = storesOpen.has(store.id); row.dataset.id = store.id; row.dataset.storeId = store.id;
+    summary.setAttribute('aria-label', store.name);
+    summary.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
+    summary.setAttribute('aria-description', 'Lange halten und nach oben oder unten ziehen. Mit der Tastatur: Alt und Pfeil oben oder unten.');
     row.addEventListener('toggle', () => { if (row.open) storesOpen.add(store.id); else storesOpen.delete(store.id); });
     const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name));if(isSeparate(store)&&symbolOf(store))title.append(element('span',store.name));summary.append(title);
     if (isSeparate(store)) summary.append(element('span', 'Eigene Liste', 'store-pill'));
@@ -1267,9 +1322,9 @@ function openTransfer(id, servings, only = null, mealId = null) {
   storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren(); form.elements.rememberPantry.checked = false;
   const keys = pantryKeys(state.pantry);
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
-    const label = element('label', undefined, 'transfer-row'), check = element('input'), stocked = inPantry(keys, row.name);
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), water = isCookingWater(row.name), stocked = inPantry(keys, row.name);
     // Salz, Pfeffer und Co. („nach Bedarf“) und der Vorrat: hat man meist da, nicht vorausgewählt.
-    check.type = 'checkbox'; check.checked = only ? only.has(row.id) : row.unit !== NO_AMOUNT && !stocked; check.value = row.id;
+    check.type = 'checkbox'; check.checked = !water && (only ? only.has(row.id) : row.unit !== NO_AMOUNT && !stocked); check.disabled = water; check.value = row.id;
     // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
     label._ingredient = clone(row); label.append(check, element('span')); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
     $('#transfer-ingredients').append(label);
@@ -1756,6 +1811,7 @@ function renderWeekRows() {
     const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(missing||row));
     const stocked = inPantry(keys, row.name);
     check.type = 'checkbox'; check.checked = required(row) && !stocked && Boolean(missing);
+    check.disabled = isCookingWater(row.name);
     label._row = row;
     if (row.sources.length) text.append(element('small', row.sources.join(', '), 'hint'));
     label.append(check, text); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));else if(!missing&&row.unit!==NO_AMOUNT)label.append(element('small','Bereits auf dem Einkaufszettel','pantry-badge'));
@@ -2153,7 +2209,7 @@ $('#daily-review-finish').addEventListener('click', () => { dailyReview = null; 
 /* ---------- Was kann ich kochen? ---------- */
 const cookableMode = () => config.cookableMode === 'shopping' ? 'shopping' : 'pantry';
 function cookableNames(mode = cookableMode()) {
-  const stores=active(state.stores),live=new Set(stores.map(store=>store.id));
+  const stores=orderedStores(state.stores),live=new Set(stores.map(store=>store.id));
   return namesFrom({pantry:state.pantry||[],items:withoutSeparate(state.items.filter(item=>!item.storeId||live.has(item.storeId)),stores),mode});
 }
 function cookableMissing(rows) {
@@ -2621,7 +2677,8 @@ function shopNewsRow(entry) {
   return row;
 }
 function renderShop() {
-  const stores = active(state.stores).filter(visibleStore), everything = visibleItems(true);
+  storeReorders.forEach(order => order.cancel());
+  const stores = orderedStores(state.stores).filter(visibleStore), everything = visibleItems(true);
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = ALL_STORES;
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
   const chips = $('#shop-chips'); chips.replaceChildren();
@@ -2635,6 +2692,9 @@ function renderShop() {
   }
   for (const store of stores) {
     const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
+    chip.dataset.storeId = store.id; chip.setAttribute('aria-label', store.name);
+    chip.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
+    chip.setAttribute('aria-description', 'Lange halten und ziehen, um die Geschäftsreihenfolge zu ändern.');
     chip.setAttribute('role', 'tab'); chip.setAttribute('aria-selected', String(store.id === shopStore));
     const count = shopCount(everything, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
@@ -2702,7 +2762,7 @@ function openFinish() {
   spendingView.fillBuyer($('#finish-form').elements.buyerId, spendingView.defaultBuyer());
   const expenseStores=$('#finish-form').elements.expenseStoreId;
   expenseStores.replaceChildren(new Option('Ohne Zuordnung',''));
-  for(const store of active(state.stores).filter(row=>!isSeparate(row)))expenseStores.add(new Option(store.name,store.id));
+  for(const store of orderedStores(state.stores).filter(row=>!isSeparate(row)))expenseStores.add(new Option(store.name,store.id));
   $('#finish-store-field').hidden=shopStore!==ALL_STORES;
   $('#finish-dialog').showModal();
 }
@@ -3070,7 +3130,7 @@ async function readPurchasePhoto(files) {
     purchaseSource = 'bon';
     form.elements.amount.value = formatAmount(found.cents);
     if (parsed.date) form.elements.date.value = parsed.date;
-    const chainStore = storeForChain(parsed.chain, active(state.stores));
+    const chainStore = storeForChain(parsed.chain, orderedStores(state.stores));
     if (chainStore) form.elements.storeId.value = chainStore;
     purchaseStatus(found.how === 'bon' ? `Erkannt: Summe ${euros(found.cents)}. Bitte mit dem Kassenbon vergleichen.` :
       `Keine Summe gefunden. Die erkannten Zeilen ergeben ${euros(found.cents)} (vielleicht fehlen Zeilen). Bitte prüfen und korrigieren.`);
@@ -3088,7 +3148,7 @@ function duplicateWarning(fields, ignoreId, how) {
   const key = `${fields.date}|${fields.cents}|${fields.storeId || ''}|${fields.kind || 'purchase'}`;
   if (duplicateWarned === key) { duplicateWarned = ''; return; }
   duplicateWarned = key;
-  const store = storeNameOf(twin, active(state.stores));
+  const store = storeNameOf(twin, orderedStores(state.stores));
   throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.buyerId ? ` (von ${buyerNameOf(twin, state.members)})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
 }
 function savePurchase() {
@@ -3169,7 +3229,7 @@ function renderTemplates() {
 function useTemplate(id) {
   const row = active(state.templates || []).find(entry => entry.id === id);
   if (!row) throw new Error('Diese Vorlage wurde inzwischen gelöscht.');
-  const stores = new Set(active(state.stores).map(store => store.id)), groups = new Map();
+  const stores = new Set(orderedStores(state.stores).map(store => store.id)), groups = new Map();
   for (const item of row.items) {
     const key = item.storeId && stores.has(item.storeId) ? item.storeId : '';
     if (!groups.has(key)) groups.set(key, []);
@@ -3359,7 +3419,6 @@ document.addEventListener('pointerup', event => {
 }, true);
 for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
 for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
-$('#set-offers').addEventListener('click', () => openStoresDialog(view));   // das Geschäft, dessen Link fehlt, ist gleich aufgeklappt
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
 // `take`: Kennung einer Wochenübernahme (siehe weekTakeId in plan.js); Zeilen mit `key` bekommen dann feste Kennungen, damit dieselbe Übernahme von zwei Geräten nur einmal zählt.
@@ -3423,7 +3482,7 @@ const moveBar = {
       const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
     };
     add('', document.createTextNode('Ohne Geschäft'));
-    for (const store of active(state.stores)) add(store.id, storeLabel(store.name));
+    for (const store of orderedStores(state.stores)) add(store.id, storeLabel(store.name));
     bar.hidden = false;
     return bar.getBoundingClientRect().bottom;
   },
@@ -3523,7 +3582,7 @@ function moveSelected(storeId) {
 }
 function fillMoveChoices(choice) {
   choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
-  for (const store of active(state.stores)) choice(store.id, storeLabel(store.name), store.name);
+  for (const store of orderedStores(state.stores)) choice(store.id, storeLabel(store.name), store.name);
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
@@ -3578,13 +3637,37 @@ $('#select-delete').addEventListener('click', () => guard(() => {
   if (!confirm(`${rows.length} Artikel löschen?`)) return;
   removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
 }));
-$('#settings-stores').addEventListener('click',()=>openStoresDialog());
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
-$('#settings-wishes').addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
+$('#wishlist-enabled').addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
+function saveStoreOrder(visibleIds) {
+  const order = reorderedStoreIds(state.stores, visibleIds);
+  if (JSON.stringify(order) === JSON.stringify(orderedStores(state.stores).map(store => store.id))) return;
+  commit(order.map((id, sortOrder) => nextOp('stores', id, { sortOrder })), 'Geschäftsreihenfolge gespeichert');
+  // Offene Bearbeitungsfelder samt noch nicht gespeicherten Eingaben erhalten.
+  const editor = $('#store-editor'), rows = [...editor.children];
+  const trailing = editor.querySelector('.private-store-row');
+  for (const row of order.map(id => rows.find(row => row.dataset.storeId === id)).filter(Boolean)) editor.insertBefore(row, trailing);
+}
+for (const [selector, horizontal, itemSelector, handleSelector] of [
+  ['#store-editor', false, '.store-row[data-store-id]', '.store-summary'],
+  ['#store-chips', true, '[data-store-id]', '[data-store-id]'],
+  ['#shop-chips', true, '[data-store-id]', '[data-store-id]']
+]) {
+  const root = $(selector);
+  storeReorders.push(mountStoreOrder(root, {
+    horizontal, itemSelector, handleSelector,
+    enabled: () => ready && root.getClientRects().length > 0,
+    getVersion: () => JSON.stringify([namespace(), orderedStores(state.stores).map(store => store.id)]),
+    onChange: saveStoreOrder,
+    announce: text => { $(root.closest('dialog') ? '#store-order-status' : '#store-tabs-status').textContent = text; },
+    onError: error => showNotice(error.message)
+  }));
+}
+
 productPicker = mountProductPicker({
   getScope: namespace,
-  getStores: () => active(state.stores).filter(store => !isSeparate(store)),
+  getStores: () => orderedStores(state.stores).filter(store => !isSeparate(store)),
   getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
@@ -3602,7 +3685,7 @@ productPicker = mountProductPicker({
   }
 });
 pantryBuyer = mountPantryBuy({
-  getScope:namespace,getStores:()=>active(state.stores).filter(store=>!isSeparate(store)),
+  getScope:namespace,getStores:()=>orderedStores(state.stores).filter(store=>!isSeparate(store)),
   getPreferredStore:()=>$('#open-products').hidden?'':$('#item-form').elements.storeId.value,
   getHistory:itemHistory,onBuy:(rows,storeId)=>addRows(rows,currentStore(storeId))
 });
@@ -3718,7 +3801,7 @@ $('#transfer-form').elements.servings.addEventListener('change', () => guard(upd
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
 $('#transfer-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget; let selected = [...$('#transfer-ingredients').children]
-    .filter(label => label.querySelector('input').checked).map(label => label._ingredient);
+    .filter(label => label.querySelector('input').checked && !isCookingWater(label._ingredient.name)).map(label => label._ingredient);
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
   if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
   if(form._cookableMissing){selected=cookableMissing(selected);if(!selected.length){$('#transfer-dialog').close();showNotice('Die Zutaten stehen bereits im Vorrat oder offen auf der Einkaufsliste.');return;}}
@@ -3864,9 +3947,8 @@ $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
 $('#welcome-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const actor = event.currentTarget.elements.actor.value.trim(); if (!actor) throw new Error('Bitte einen Namen eingeben.');
-  const enableWishes=$('#welcome-wishes').checked;
   const next = { ...config, actor }; if (actor !== config.actor) { delete next.memberId; delete next.memberScope; }
-  saveConfig(next); fillSettings(); setWishesEnabled(enableWishes); render(); $('#welcome').close();
+  saveConfig(next); fillSettings(); render(); $('#welcome').close();
   if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
   if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => addFromLink(pending)); }
 }); });

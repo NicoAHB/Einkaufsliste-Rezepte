@@ -9,6 +9,8 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { planGenerated } from '../recipe-maker.js';
 import { readZip } from '../zip.js';
+import { orderedStores } from '../store-order.js';
+import { isoDate } from '../plan.js';
 
 let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
@@ -3134,6 +3136,173 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
   });
 
+  test('2.92 PDF: Tagesempfehlung hat eigenes Symbol und Einstellungen enthalten keine Geschäfts- oder Wünsche-Karte', async () => {
+    const {ctx,page,problems}=await context(); await open(page); await goTab(page,'recipes');
+    assert.equal(await page.locator('#daily-open use').getAttribute('href'),'#i-sparkles');
+    assert.equal(await page.locator('#settings-stores,#settings-wishes,#welcome-wishes').count(),0);
+    await goTab(page,'settings'); assert.ok(!(await page.textContent('#settings')).includes('Geschäfte & Listen'));
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.92 PDF: Wünsche mit einem Tipp schalten, Zustand sichtbar, nach Neuladen über Alle wieder einblenden',async()=>{
+    const {ctx,page,problems}=await localWishes();const before=(await storedDemo(page)).items;
+    assert.equal(await page.locator('#wishlist-controls').isVisible(),true);assert.equal(await page.isChecked('#wishlist-enabled'),true);
+    await page.locator('.wish-toggle').click();assert.equal(await page.isChecked('#wishlist-enabled'),false);assert.equal(await page.textContent('#wishlist-state'),'Ausgeblendet');
+    assert.match(await page.textContent('#notice-text'),/Wünsche ausgeblendet/);assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),0);
+    assert.deepEqual((await storedDemo(page)).items,before);assert.equal(await page.locator('#wishlist-enabled').isVisible(),true);
+    const off=await storedDemo(page);await page.dispatchEvent('#wishlist-enabled','change');assert.deepEqual(await storedDemo(page),off,'kein erneutes Speichern ohne Zustandswechsel');
+    await page.reload();await page.waitForSelector('#store-chips [data-all-stores]');
+    await page.locator('#store-chips [data-all-stores]').focus();await page.keyboard.press('Shift+F10');await sheetOpen(page);
+    const choice=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await choice.locator('.store-symbol').count(),1);await choice.click();
+    assert.equal(await page.isChecked('#wishlist-enabled'),false);await page.locator('.wish-toggle').click();
+    assert.equal(await page.isChecked('#wishlist-enabled'),true);assert.equal(await page.textContent('#wishlist-state'),'Eingeblendet');assert.match(await page.textContent('#notice-text'),/Wünsche eingeblendet/);
+    assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),1);assert.deepEqual((await storedDemo(page)).items,before);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.92 PDF: langer Touch auf Alle öffnet Schnellmenü in Reiterreihenfolge mit Zählern und ohne Filterwechsel',async()=>{
+    const {ctx,page,problems}=await localWishes();const before=await storedDemo(page);
+    const cdp=await ctx.newCDPSession(page);const all=page.locator('#store-chips [data-all-stores]');await all.scrollIntoViewIfNeeded();const b=await all.boundingBox();
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2,id:1}]});await page.waitForTimeout(600);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sheetOpen(page);
+    const choices=page.locator('#store-quick-options button');
+    assert.deepEqual(await choices.evaluateAll(nodes=>nodes.map(node=>node.dataset.view)),['all','store-edeka','store-lidl','store-rewe','store-wishes']);
+    const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.getAttribute('aria-pressed'),'true');assert.equal(await wish.textContent(),'(1)');
+    assert.deepEqual(await storedDemo(page),before,'Öffnen ändert keine Daten');
+    await page.locator('#store-quick-options [data-view=store-lidl]').click();assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);
+    assert.equal(await page.locator('#store-chips [data-store-id=store-lidl]').getAttribute('aria-selected'),'true');
+    await all.click();assert.equal(await all.getAttribute('aria-selected'),'true');assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.92 PDF: Angebote nur mit Link, beschriftet und bündig mit Produkte bei kleinen und großen iPhones',async()=>{
+    for(const width of [320,390]){
+      const data=wishData();data.stores.push({...demo.stores[0],id:'other292',name:'Sonstige (Netto, Aldi, usw.)',offersUrl:''});
+      const {ctx,page,problems}=await context({context:{viewport:{width,height:844}},config:{theme:width===320?'dark':'light'}});await seedLocal(ctx,data);await open(page);
+      for(const id of ['other292','store-wishes']) {await page.locator(`#store-chips [data-store-id=${id}]`).click();assert.equal(await page.locator('.shop-tools').isVisible(),false);}
+      await page.locator('#store-chips [data-store-id=store-edeka]').click();assert.equal(await page.locator('#offers-link').isVisible(),true);
+      assert.equal(await page.textContent('#offers-link .label'),'Angebote bei Edeka ansehen');assert.equal(await page.locator('#offers-link use').getAttribute('href'),'#i-external');
+      assert.equal(await page.getAttribute('#offers-link','target'),'_blank');assert.equal(await page.locator('#offers-hint').isVisible(),true);
+      const product=await page.locator('#open-products').boundingBox(),offers=await page.locator('#offers-link').boundingBox();
+      assert.ok(Math.abs(product.x-offers.x)<1);assert.equal(product.height,offers.height);assert.equal(await horizontalOverflow(page),0);
+      await page.locator('#store-chips [data-all-stores]').click();assert.equal(await page.locator('.shop-tools').isVisible(),false);
+      assert.deepEqual(problems,[]);await ctx.close();
+    }
+  });
+
+  test('2.92: Geschäfte per Touch verschieben, erst beim Loslassen speichern und dieselbe Reihenfolge im Vorrat und Im Laden behalten', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.click('#manage-stores'); await sheetOpen(page);
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: ['touchEnd', 'touchCancel'].includes(type) ? [] : [{ x, y, id: 1 }] });
+    const rows = page.locator('#store-editor .store-row');
+    const a = await rows.first().locator('> summary').boundingBox(), b = await rows.last().locator('> summary').boundingBox();
+    const x = a.x + a.width / 2, y = a.y + a.height / 2, end = b.y + b.height - 5;
+    await touch('touchStart', x, y); await page.waitForTimeout(600);
+    assert.equal(await page.locator('#store-editor.stores-reordering').count(), 1);
+    for (let i = 1; i <= 8; i++) await touch('touchMove', x, y + (end - y) * i / 8);
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row => row.name), ['Edeka', 'Lidl', 'Rewe'], 'noch nicht gespeichert');
+    await touch('touchEnd');
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row => row.name), ['Lidl', 'Rewe', 'Edeka']);
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [false, false, false], 'Loslassen öffnet keinen Editor');
+    await page.click('#stores-dialog [data-close]'); await page.reload(); await page.waitForSelector('#store-chips [data-store-id]');
+    assert.deepEqual(await page.locator('#store-chips [data-store-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Lidl', 'Rewe', 'Edeka']);
+    await openPantry(page); await addPantryProduct(page, 'Mein Vorrat'); await closePantry(page);
+    await buyPantryProduct(page, 'Mein Vorrat');
+    assert.deepEqual(await page.locator('#pantry-buy-form [name=storeId] option').allTextContents(), ['Kein Geschäft', 'Lidl', 'Rewe', 'Edeka']);
+    await page.click('#pantry-buy-dialog [data-close]'); await closePantry(page); await page.click('#mode-shop');
+    assert.deepEqual(await page.locator('#shop-chips [data-store-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Lidl', 'Rewe', 'Edeka']);
+    await page.locator('#shop-chips [data-store-id]').last().scrollIntoViewIfNeeded();
+    const chips = await page.locator('#shop-chips').boundingBox(), last = await page.locator('#shop-chips [data-store-id]').last().boundingBox();
+    await touch('touchStart', last.x + last.width / 2, last.y + last.height / 2); await page.waitForTimeout(600);
+    assert.equal(await page.locator('#shop-chips.stores-reordering').count(), 1, JSON.stringify({chips,last}));
+    await touch('touchMove', chips.x + 3, last.y + last.height / 2); await page.waitForTimeout(400); await touch('touchEnd');
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row => row.name), ['Edeka', 'Lidl', 'Rewe']);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.92: kurzes Tippen und Wischen speichern keine Reihenfolge; Touch-Abbruch und Escape verwerfen das Ziehen', async () => {
+    const { ctx, page, problems } = await context(); await open(page); await page.click('#manage-stores'); await sheetOpen(page);
+    const original = (await storedDemo(page)).stores, cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: ['touchEnd', 'touchCancel'].includes(type) ? [] : [{ x, y, id: 1 }] });
+    const first = page.locator('#store-editor .store-row').first();
+    await first.locator('> summary').click(); assert.equal(await first.evaluate(node => node.open), true);
+    await first.locator('> summary').click(); assert.equal(await first.evaluate(node => node.open), false);
+    let a = await first.boundingBox(); const x = a.x + 60, y = a.y + 20;
+    await touch('touchStart', x, y); await touch('touchMove', x, y - 40); await page.waitForTimeout(600); await touch('touchEnd');
+    assert.deepEqual((await storedDemo(page)).stores, original);
+    await page.locator('#stores-dialog').evaluate(node => { node.scrollTop = 0; });
+    a = await first.boundingBox();
+    const target = await page.locator('#store-editor .store-row').last().boundingBox();
+    await touch('touchStart', a.x + 60, a.y + 20); await page.waitForTimeout(600);
+    await touch('touchMove', a.x + 60, target.y + target.height - 2); await touch('touchCancel');
+    assert.deepEqual((await storedDemo(page)).stores, original);
+    assert.deepEqual(await page.locator('#store-editor .store-row').evaluateAll(nodes => nodes.map(node => node.dataset.id)), original.map(row => row.id));
+    await page.waitForTimeout(850);
+    await page.mouse.move(a.x + 60, a.y + 20); await page.mouse.down(); await page.waitForTimeout(600);
+    await page.mouse.move(a.x + 60, target.y + target.height - 2); await page.keyboard.press('Escape'); await page.mouse.up();
+    assert.equal(await page.locator('#stores-dialog').isVisible(), true);
+    assert.deepEqual((await storedDemo(page)).stores, original);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.92: Geschäftsreihenfolge erreicht zweites Gerät und erhält ungespeicherte Bearbeitungsfelder', async () => {
+    const api = github(demo), a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', api.handler); await open(device.page); await synced(device.page); }
+    await a.page.click('#manage-stores'); await sheetOpen(a.page);
+    const edeka = a.page.locator('#store-editor [data-id=store-edeka]');
+    await edeka.locator('> summary').click(); await edeka.locator('[name=name]').fill('Entwurf bleibt');
+    await a.page.locator('#store-editor [data-id=store-rewe] > summary').focus(); await a.page.keyboard.press('Alt+ArrowUp');
+    assert.equal(await edeka.locator('[name=name]').inputValue(), 'Entwurf bleibt');
+    await synced(a.page); await pollNow(b.page);
+    await b.page.waitForFunction(() => [...document.querySelectorAll('#store-chips [data-store-id]')].map(node => node.dataset.storeId).join() === 'store-edeka,store-rewe,store-lidl');
+    assert.deepEqual(orderedStores(api.content.stores).map(row => row.name), ['Edeka', 'Rewe', 'Lidl']);
+    assert.deepEqual(a.problems, []); assert.deepEqual(b.problems, []); await a.ctx.close(); await b.ctx.close();
+  });
+
+  function waterData287() {
+    const data = structuredClone(demo); data.items = []; data.pantry = []; data.meals = [];
+    data.recipes = [{ ...demo.recipes[0], id: 'r287', name: 'Teig mit Wasser', servings: 4, tags: [] }];
+    data.ingredients = ['Wasser', 'lauwarmes Leitungswasser', 'Mineralwasser', 'Mehl'].map((name, i) => ({ ...demo.ingredients[0], id: `water287-${i}`, recipeId: 'r287', name, quantity: 300, unit: i === 3 ? 'g' : 'ml' }));
+    return data;
+  }
+  test('2.92: Rezeptwasser bleibt immer Vorrat, auch bei nachträglich gesetztem Haken; Mineralwasser wird übernommen', async () => {
+    const { ctx, page, problems } = await context(); await seedLocal(ctx, waterData287()); await open(page); await goTab(page, 'recipes');
+    await page.locator('[data-recipe-id=r287]').getByRole('button', { name: 'Einkaufen', exact: true }).click(); await sheetOpen(page);
+    for (const id of ['water287-0', 'water287-1']) {
+      const row = page.locator('#transfer-ingredients label').filter({ has: page.locator(`input[value=${id}]`) });
+      assert.equal(await row.locator('input').isChecked(), false); assert.equal(await row.locator('input').isDisabled(), true);
+      assert.equal(await row.locator('.pantry-badge').textContent(), 'Vorrat');
+      await row.locator('input').evaluate(node => { node.checked = true; });
+    }
+    await page.click('#transfer-form button[type=submit]'); await page.waitForSelector('#transfer-dialog[open]', { state: 'detached' });
+    assert.deepEqual((await storedDemo(page)).items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Mehl', 'Mineralwasser']);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.92: Wochen-Einkauf und Speichern mit Zutaten fügen niemals Rezeptwasser hinzu', async () => {
+    for (const mode of ['week', 'combo']) {
+      const data = waterData287(), { ctx, page, problems } = await context();
+      if (mode === 'week') data.meals = [{ id: 'meal287', name: 'Teig', recipeId: 'r287', date: isoDate(), servings: 4, done: false, createdAt: demo.updatedAt, updatedAt: demo.updatedAt, deletedAt: null }];
+      await seedLocal(ctx, data); await open(page); await goTab(page, 'plan');
+      if (mode === 'week') {
+        await page.click('#plan-shopping'); await sheetOpen(page);
+        for (const name of ['Wasser', 'lauwarmes Leitungswasser']) {
+          // Quellen stehen unter dem Namen; die Einträge über ihre gespeicherte Zeile finden.
+          const status = await page.locator('#week-ingredients label').evaluateAll((nodes, name) => {
+            const node = nodes.find(node => node._row?.name === name);
+            return { disabled: node.querySelector('input').disabled, checked: node.querySelector('input').checked, badge: node.querySelector('.pantry-badge')?.textContent };
+          }, name);
+          assert.deepEqual(status, { disabled: true, checked: false, badge: 'Vorrat' });
+        }
+        await page.click('#week-form button[type=submit]');
+      } else {
+        await page.locator('.day.today .day-head .icon-button').click(); await sheetOpen(page);
+        await page.locator('#recipe-pick [data-value=r287]').click(); await page.click('#meal-save-shopping');
+      }
+      const saved = await storedDemo(page);
+      assert.deepEqual(saved.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Mehl', 'Mineralwasser']);
+      assert.ok(saved.meals.some(meal => meal.listedServings));
+      assert.deepEqual(problems, []); await ctx.close();
+    }
+  });
+
   test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt; Plus am Ende öffnet das Anlegen; ein neues Geschäft erscheint zugeklappt', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
     await open(page);
@@ -3182,7 +3351,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // „Angebotslink festlegen“ öffnet das Fenster mit genau diesem Geschäft aufgeklappt
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     await page.getByRole('tab', { name: /^Aldi/ }).click();
-    await page.click('#set-offers'); await sheetOpen(page);
+    await page.click('#manage-stores'); await sheetOpen(page); await rows.last().locator('> summary').click();
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [false, false, false, true], 'nur Aldi ist aufgeklappt');
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
@@ -4924,7 +5093,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         const parts = [layout.text, layout.pantry, ...layout.buttons].sort((a, b) => a.left - b.left);
         for (let index = 1; index < parts.length; index++) assert.ok(parts[index].left >= parts[index - 1].right - 0.5 || parts[index].top >= parts[index - 1].bottom - 0.5 || parts[index].bottom <= parts[index-1].top+.5, `${name}: Schnellzugriffe überlappen bei ${width} px`);
         assert.ok(parts.every(part => part.left >= layout.card.left - 0.5 && part.right <= layout.card.right + 0.5 && part.top >= layout.card.top - 0.5 && part.bottom <= layout.card.bottom + 0.5), `${name}: etwas liegt außerhalb der Karte`);
-        assert.ok(layout.card.height <= 110, `${name}: Schnellzugriff ist ${layout.card.height} px hoch`);
+        assert.ok(layout.buttons.every(part => Math.abs(part.left-layout.text.left)<1 && part.height===layout.text.height), `${name}: Angebotsbutton ist bündig und gleich hoch`);
       }
       await page.getByRole('tab', { name: /^Alle/ }).click();
       // Im Laden: ganz oben nur die Geschäfte, gleich darunter die Artikel; Kopfzeile und Umschalter sind weg
@@ -8288,8 +8457,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await holdWish(page);assert.equal(await page.locator('#wish-form [name=storeId]').count(),0);await page.click('#wish-remove-image');assert.equal(await page.locator('#wish-image-preview').evaluate(node=>getComputedStyle(node).backgroundImage),'none');await page.click('#wish-form button[type=submit]');
     assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);await page.reload();await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
     await page.click('#select-mode');await page.locator('[data-id=wish-rope] .item-copy').click();assert.equal(await page.locator('#select-move').isVisible(),false);assert.equal(await page.locator('#select-all').count(),0);await page.click('#select-done');assert.equal(await page.locator('#select-bar').isVisible(),false);
-    await goTab(page,'settings');assert.equal(await page.isChecked('#settings-wishes'),true);await page.uncheck('#settings-wishes');await goTab(page,'shopping');assert.equal(await page.locator('#store-chips [aria-label="Wünsche"]').count(),0);
-    await goTab(page,'settings');await page.check('#settings-wishes');await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope]').count(),1);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
+    assert.equal(await page.isChecked('#wishlist-enabled'),true);await page.uncheck('#wishlist-enabled');assert.equal(await page.locator('#store-chips [aria-label="Wünsche"]').count(),0);
+    await page.check('#wishlist-enabled');await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope]').count(),1);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -8313,8 +8482,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('Arbeitsanweisung 2.86: Ersteinrichtung und Ausgaben sind bei 320 und 390 Pixeln klar und bedienbar',async()=>{
     const fresh=await context({seed:false});await open(fresh.page);await fresh.page.waitForSelector('#welcome[open]');
-    await fresh.page.fill('#welcome-form [name=actor]','Mia');await fresh.page.check('#welcome-wishes');await fresh.page.click('#welcome-stores');await sheetOpen(fresh.page);await fresh.page.click('#stores-dialog [data-close]');
-    assert.equal(await fresh.page.isChecked('#welcome-wishes'),true);await fresh.page.getByRole('button',{name:'Los geht’s',exact:true}).click();
+    await fresh.page.fill('#welcome-form [name=actor]','Mia');await fresh.page.click('#welcome-stores');await sheetOpen(fresh.page);await fresh.page.click('#stores-dialog [data-close]');
+    assert.equal(await fresh.page.locator('#welcome-wishes').count(),0);await fresh.page.getByRole('button',{name:'Los geht’s',exact:true}).click();
+    await fresh.page.locator('#store-chips [data-all-stores]').focus();await fresh.page.keyboard.press('Shift+F10');await fresh.page.locator('#store-quick-options [data-view=wishes-preview]').click();await fresh.page.check('#wishlist-enabled');
     await openWishlist(fresh.page);assert.equal(await fresh.page.locator('#store-pick').isVisible(),false);assert.deepEqual(fresh.problems,[]);await fresh.ctx.close();
     for(const width of [320,390]) {
       const data=structuredClone(demo),month=new Date().toISOString().slice(0,7),stamp=new Date().toISOString();

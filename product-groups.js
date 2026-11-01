@@ -112,8 +112,18 @@ export function productGroupMigration(data) {
     const variants=stock.get(group.id) || new Map(); variants.set(groupNameKey(row.productOriginalName || row.name),row); stock.set(group.id,variants);
   }
   for(const collection of ['items','pantry','ingredients','productFavorites']) for(const row of data[collection] || []) {
+    // Im Rezept ist Mineralwasser eine andere Zutat als Leitungswasser. Eine
+    // frühere automatische Zusammenfassung lässt sich am Originalnamen erkennen.
+    if(collection==='ingredients' && row.name==='Wasser' && row.productOriginalName &&
+      row._clock?.name?.id?.startsWith('product-groups-v1:ingredients:') && productGroup(row.productOriginalName)?.id==='wasser') {
+      ops.push({id:`recipe-water-v1:${row.id}:${row._clock.name.id}`,collection,entityId:row.id,
+        patch:{name:row.productOriginalName,productGroupVersion:1},
+        at:new Date(Date.parse(row.updatedAt)+1).toISOString(),actor:'Rezeptzutaten'});
+      continue;
+    }
     if(migratedName(row)) continue;
     const group = !(collection==='items' && wishStores.has(row.storeId)) && productGroup(row.name);
+    if(collection==='ingredients' && group?.id==='wasser') continue;
     const patch = {productGroupVersion:1};
     if(group && group.name !== row.name) Object.assign(patch,{name:group.name,productOriginalName:row.productOriginalName || row.name});
     const variants=collection==='pantry' && group && stock.get(group.id);
