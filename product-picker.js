@@ -144,7 +144,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         if (target === 'list') pick.append(node('small', amount, 'product-amount'));
         pick.append(check);
         const inList = exactOnList.get(productKey(product.name));
-        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird hinzugefügt'):'Vorhanden','product-on-list'));
+        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird dem Vorrat hinzugefügt'):'Vorhanden','product-on-list'));
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
         if(mode==='recent')pick.append(node('small',purchaseLabel(product.shopBoughtAt),'product-on-list'));
