@@ -5280,7 +5280,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Favoriten, „Heute gekocht“ und „Lange nicht gekocht“', async () => {
+  test('Favoriten, Kochabschluss und „Lange nicht gekocht“', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.click('[data-tab=recipes]');
@@ -5293,7 +5293,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await titles(), ['Tomaten-Pasta']);
     await page.getByRole('button', { name: '★ Favoriten' }).click();
     const curry = page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' });
-    await curry.locator('summary').click(); await curry.getByRole('button', { name: 'Heute gekocht' }).click();
+    await curry.locator('summary').click(); await curry.getByRole('button', { name: 'Kochen', exact:true }).click();
+    await page.click('#cook-done');
     assert.match(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-meta').textContent(), /gekocht heute/);
     assert.equal(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-details').evaluate(node => node.open), true, 'Rezept bleibt nach dem Eintragen aufgeklappt');
     await page.getByRole('button', { name: 'Lange nicht gekocht' }).click();
@@ -8522,6 +8523,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('button', { name: 'Tomaten-Pasta aus dem Plan entfernen', exact: true }).click();
     await page.waitForSelector('#plan-adjust-dialog[open]');
     assert.equal(await page.locator('#plan-adjust-apply').isDisabled(), remaining === 'none');
+    assert.equal(await page.locator('#plan-adjust-apply').isVisible(), remaining !== 'none');
     assert.match(await page.textContent('#plan-adjust-keep'), remaining === 'none' ? /Gericht entfernen.*bereits vom Einkaufszettel entfernt/ : /Zutaten bleiben auf dem Einkaufszettel/);
     await page.click('#plan-adjust-keep'); const after = await data277(page);
     assert.equal(after.meals.filter(row => !row.deletedAt).length, 0); assert.deepEqual(after.items, before.items);
@@ -8557,5 +8559,168 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.screenshot({ path: `/tmp/sattplan288-import-${width}.png` });
     assert.deepEqual(problems, []); await ctx.close();
   });
+
+  async function pastContext289(options={}) {
+    const made=await context({config:{palette:'gruen'},...options}),data=structuredClone(demo),at='2026-10-25T10:00:00.000Z';
+    const meal=(id,date,recipeId,done=false)=>({id,date,recipeId,done,servings:2,createdAt:at,updatedAt:at,deletedAt:null,_clock:{}});
+    data.meals=[meal('past-mon','2026-10-26','recipe-pfannkuchen'),meal('past-thu','2026-10-29','recipe-curry',true),meal('present','2026-10-30','recipe-pasta'),meal('future','2026-10-31','recipe-pasta')];
+    data.pantry=[];
+    const item=data.items.find(row=>!row.deletedAt);
+    Object.assign(data.meals[0],{listedServings:2,listedAt:at,listedParts:[{itemId:item.id,sourceId:item.id,at:item.createdAt,name:item.name,storeId:item.storeId,quantity:100,unit:item.unit,remaining:100}]});
+    await made.page.clock.setFixedTime(new Date('2026-10-30T12:00:00Z'));
+    await seedLocal(made.ctx,data);await open(made.page);await goTab(made.page,'plan');return made;
+  }
+  async function holdPast289(page,id='past-mon') {
+    const row=page.locator(`[data-past-id=${id}] .meal-copy .link-button`);
+    await row.scrollIntoViewIfNeeded();const box=await row.boundingBox();
+    await page.mouse.move(box.x+20,box.y+box.height/2);await page.mouse.down();
+    await page.waitForSelector('#past-meal-dialog[open]',{timeout:3000});await page.mouse.up();await sheetOpen(page);
+  }
+  for(const choice of ['no','yes'])test(`2.89: vergangenes Gericht per Halten entfernen – ${choice} betrifft ausschließlich den Planeintrag`,async()=>{
+    const {ctx,page,problems}=await pastContext289();const before=await storedDemo(page);
+    const row=page.locator('[data-past-id=past-mon]');
+    assert.equal(await row.evaluate(node=>getComputedStyle(node.closest('.day')).opacity),'.62'.replace(/^\./,'0.'));
+    assert.equal(await row.locator('.check').isDisabled(),true);assert.equal(await row.getAttribute('data-id'),null);
+    await row.locator('.link-button').click();await page.waitForSelector('#plan-recipe-dialog[open]');
+    await page.click('#plan-recipe-dialog .sheet-actions button');
+    await holdPast289(page);
+    assert.equal(await page.textContent('#past-meal-title'),'Gericht aus der Übersicht entfernen, da nicht gekocht?');
+    assert.equal(await page.textContent('#past-meal-detail'),'Apfel-Pfannkuchen · Montag 26.10.');
+    assert.equal(await page.locator('#plan-recipe-dialog[open]').count(),0,'Loslassen öffnet nicht zusätzlich das Rezept');
+    const yes=await page.locator('#past-meal-yes').boundingBox(),no=await page.locator('#past-meal-no').boundingBox();
+    assert.equal(yes.width,no.width);assert.equal(yes.height,no.height);assert.ok(yes.height>=48);
+    if(choice==='yes')await page.screenshot({path:'/tmp/sattplan289-vergangen.png'});
+    await page.click('#past-meal-'+choice);await page.waitForSelector('#past-meal-dialog[open]',{state:'detached'});
+    const after=await storedDemo(page);
+    if(choice==='no')assert.deepEqual(after,before);
+    else {
+      assert.ok(after.meals.find(row=>row.id==='past-mon').deletedAt);
+      assert.equal(await page.locator('.day[data-day="2026-10-26"] .meal').count(),0);
+      assert.deepEqual(after.recipes,before.recipes);assert.deepEqual(after.items,before.items);assert.deepEqual(after.pantry,before.pantry);
+      assert.deepEqual(after.meals.filter(row=>row.id!=='past-mon'),before.meals.filter(row=>row.id!=='past-mon'));
+      assert.equal(await page.locator('#plan-adjust-dialog[open]').count(),0);
+    }
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.89: Bewegung, Abbruch, Scrollen und zweiter Finger verhindern die Frage für vergangene Gerichte',async()=>{
+    const {ctx,page,problems}=await pastContext289();const row=page.locator('[data-past-id=past-thu]');
+    const start=()=>row.dispatchEvent('pointerdown',{isPrimary:true,pointerId:1,pointerType:'touch',clientX:100,clientY:400});
+    for(const cancel of ['move','cancel','scroll','second']) {
+      await start();
+      if(cancel==='move')await page.dispatchEvent('body','pointermove',{isPrimary:true,pointerId:1,pointerType:'touch',clientX:125,clientY:430});
+      if(cancel==='cancel')await page.dispatchEvent('body','pointercancel',{isPrimary:true,pointerId:1,pointerType:'touch'});
+      if(cancel==='scroll')await page.evaluate(()=>document.dispatchEvent(new Event('scroll')));
+      if(cancel==='second')await page.dispatchEvent('body','pointerdown',{isPrimary:false,pointerId:2,pointerType:'touch'});
+      await page.waitForTimeout(650);assert.equal(await page.locator('#past-meal-dialog[open]').count(),0,cancel);
+      await page.dispatchEvent('body','pointerup',{isPrimary:true,pointerId:1,pointerType:'touch'});
+    }
+    assert.equal(await row.evaluate(node=>{const e=new MouseEvent('contextmenu',{bubbles:true,cancelable:true});node.dispatchEvent(e);return e.defaultPrevented;}),true);
+    assert.equal(await row.evaluate(node=>getComputedStyle(node).userSelect),'none');
+    const today=page.locator('.day.today .meal .meal-copy');await today.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));await page.waitForTimeout(80);const box=await today.boundingBox();
+    await page.mouse.move(box.x+20,box.y+box.height/2);await page.mouse.down();await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#past-meal-dialog[open]').count(),0);await page.mouse.up();
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.89: echtes Touch-Halten auf vergangenem Gericht zeigt die Frage ohne Textmarkierung oder anschließenden Tipp',async()=>{
+    const {ctx,page,problems}=await pastContext289();const row=page.locator('[data-past-id=past-thu] .link-button');
+    await row.scrollIntoViewIfNeeded();const box=await row.boundingBox(),cdp=await ctx.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+30,y:box.y+box.height/2,id:1}]});
+    await page.waitForSelector('#past-meal-dialog[open]',{timeout:3000});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    assert.equal(await page.locator('#past-meal-dialog[open]').count(),1);assert.equal(await page.locator('#plan-recipe-dialog[open]').count(),0);
+    assert.equal(await page.evaluate(()=>getSelection().toString()),'');assert.match(await page.textContent('#past-meal-detail'),/Kichererbsen-Curry · Donnerstag 29.10./);
+    await page.click('#past-meal-yes');assert.ok((await storedDemo(page)).meals.find(row=>row.id==='past-thu').deletedAt);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  async function countContext289(removed) {
+    const made=await context(),data=structuredClone(demo),at='2026-10-25T10:00:00.000Z';
+    data.items=[];data.pantry=[];data.meals=[];
+    data.recipes=[{id:'count-recipe',name:'Zählergericht',servings:2,tags:[],instructions:'Alles kochen.',createdAt:at,updatedAt:at,deletedAt:null,_clock:{}}];
+    data.ingredients=['Brokkoli','Karotten','Reis','Milch','Parmesan'].map((name,index)=>({id:'count-ingredient-'+index,recipeId:'count-recipe',name,quantity:100,unit:'g',createdAt:at,updatedAt:at,deletedAt:null,_clock:{}}));
+    await seedLocal(made.ctx,data);await open(made.page);await pick277(made.page,'Zählergericht');await made.page.click('#meal-save-shopping');
+    await made.page.evaluate(async removed=>{
+      const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));
+      saved.base.items.forEach((row,index)=>{if(index<removed)row.deletedAt=new Date().toISOString();});localStorage.setItem(key,JSON.stringify(saved));
+    },removed);
+    await made.page.reload();await goTab(made.page,'plan');return made;
+  }
+  for(const removed of [0,2,4,5])test(`2.89: Zutatenabfrage bei ${removed} von 5 schon entfernten Zutaten`,async()=>{
+    const {ctx,page,problems}=await countContext289(removed),before=await storedDemo(page);
+    await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();await page.waitForSelector('#plan-adjust-dialog[open]');
+    const remaining=5-removed,apply=page.locator('#plan-adjust-apply');
+    assert.equal(await apply.isVisible(),remaining>0);
+    if(removed===0) { assert.equal(await apply.textContent(),'Ja, Zutaten dieses Rezepts entfernen');assert.equal(await page.locator('#plan-adjust-remaining').isVisible(),false); }
+    else {
+      assert.equal(await page.textContent('#plan-adjust-remaining'),remaining?`${removed} von 5 Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle Zutaten sind schon vom Einkaufszettel entfernt.');
+      if(remaining)assert.equal(await apply.textContent(),remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${remaining} Zutaten auch vom Einkaufszettel entfernen`);
+    }
+    await page.click(remaining?'#plan-adjust-apply':'#plan-adjust-keep');const after=await storedDemo(page);
+    assert.deepEqual(after.recipes,before.recipes);assert.equal(after.meals.filter(row=>!row.deletedAt).length,0);
+    if(!remaining)assert.deepEqual(after.items,before.items);
+    else assert.equal(after.items.filter(row=>!row.deletedAt&&!row._planEmpty).length,0);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.89: Zutatenzähler und Bestätigung schützen gekaufte, verschobene und manuell neu gesetzte Mengen',async()=>{
+    const {ctx,page,problems}=await countContext289(0);
+    await page.evaluate(async()=>{
+      const {merge,operation}=await import('./data.js'),key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key)),at=new Date(Date.now()+10000).toISOString();
+      const patches=[{checked:true},{storeId:'store-lidl'},{quantity:900,unit:'g'}];
+      saved.base=merge(saved.base,patches.map((patch,index)=>operation('items',saved.base.items[index].id,patch,'Anna',at)));
+      localStorage.setItem(key,JSON.stringify(saved));
+    });
+    await page.reload();await goTab(page,'plan');const before=await storedDemo(page);
+    await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
+    assert.equal(await page.textContent('#plan-adjust-apply'),'Ja, restliche 2 Zutaten auch vom Einkaufszettel entfernen');
+    assert.equal(await page.textContent('#plan-adjust-remaining'),'3 von 5 Zutaten hast du schon vom Einkaufszettel entfernt.');
+    assert.match(await page.textContent('#plan-adjust-note'),/gekaufte.*verschobene.*manuell neu gesetzte/);
+    await page.click('#plan-adjust-apply');const after=await storedDemo(page);
+    assert.deepEqual(after.items.slice(0,3),before.items.slice(0,3));assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.89: Rezeptaktionen und dauerhafter Löschknopf bei ${width}px ${theme}`,async()=>{
+    const {ctx,page,problems}=await context277({config:{theme,palette:'gruen'},context:{viewport:{width,height:844},colorScheme:theme}});
+    await pick277(page);await page.click('#meal-save-shopping');const before=await storedDemo(page);
+    await page.locator('.day.today .meal-copy .link-button').click();await sheetOpen(page);
+    const card=page.locator('#plan-recipe-content .recipe-card'),edit=card.getByRole('button',{name:'Bearbeiten',exact:true}),del=card.getByRole('button',{name:'Rezept dauerhaft aus dem Rezeptbuch löschen',exact:true});
+    const deleteAppearance=node=>{const s=getComputedStyle(node);return [s.backgroundColor,s.backgroundImage,s.color,s.borderTopColor,s.borderRadius,s.fontSize];};
+    const cardDeleteAppearance=await del.evaluate(deleteAppearance);
+    assert.equal(await card.getByRole('button',{name:'Heute gekocht',exact:true}).count(),0);
+    await edit.scrollIntoViewIfNeeded();const eb=await edit.boundingBox(),db=await del.boundingBox();
+    assert.equal(eb.width,db.width);assert.equal(eb.height,db.height);assert.ok(eb.height>=48);
+    for(const selector of ['.recipe-outline','.recipe-manage-button']) {
+      for(const button of await card.locator(selector).all())assert.equal(await button.evaluate(node=>{const s=getComputedStyle(node);return parseFloat(s.borderTopWidth)>=1&&s.borderTopColor!=='rgba(0, 0, 0, 0)';}),true);
+    }
+    const surface=node=>{const s=getComputedStyle(node);return [s.backgroundColor,s.borderTopColor,s.borderTopWidth];};
+    const cookSurface=await card.locator('.recipe-cook').evaluate(surface);
+    for(const button of await card.locator('.recipe-outline').all())assert.deepEqual(await button.evaluate(surface),cookSurface,'Einplanen und Rezeptblatt sind auch im Glas-Design wie Kochen umrahmt');
+    await page.locator('#plan-recipe-dialog').evaluate(node=>{node.scrollTop=node.scrollHeight;});
+    await page.screenshot({path:`/tmp/sattplan289-rezept-${width}.png`});
+    await edit.click();await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.locator('#delete-recipe').textContent(),'Rezept dauerhaft aus dem Rezeptbuch löschen');
+    assert.deepEqual(await page.locator('#delete-recipe').evaluate(deleteAppearance),cardDeleteAppearance,'Der Löschknopf hat im Editor dasselbe Aussehen wie in der Rezeptansicht');
+    let prompt='';page.once('dialog',dialog=>{prompt=dialog.message();dialog.dismiss();});await page.click('#delete-recipe');
+    assert.match(prompt,/Rezept „Tomaten-Pasta“ dauerhaft aus dem Rezeptbuch löschen\?/);assert.deepEqual(await storedDemo(page),before);
+    page.once('dialog',dialog=>dialog.accept());await page.click('#delete-recipe');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});
+    const after=await storedDemo(page);assert.ok(after.recipes.find(row=>row.id==='recipe-pasta').deletedAt);assert.deepEqual(after.meals,before.meals);assert.deepEqual(after.items,before.items);
+    await page.click('#plan-recipe-dialog .sheet-actions button');await goTab(page,'recipes');
+    const library=page.locator('.recipe-card',{hasText:'Kichererbsen-Curry'});await library.locator('summary').click();
+    assert.equal(await library.getByRole('button',{name:'Rezept dauerhaft aus dem Rezeptbuch löschen',exact:true}).count(),1);
+    await page.click('#add-recipe');await sheetOpen(page);assert.equal(await page.locator('#delete-recipe').isVisible(),false);
+    assert.equal(await horizontalOverflow(page),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const width of [320,390])test(`2.89: Zurück, Weiter und Zur Übersicht zurück bleiben bei ${width}px klar erkennbar und gleich hoch`,async()=>{
+    const {ctx,page,problems}=await context({config:{palette:'gruen'},context:{viewport:{width,height:844}}});await open(page);await finishDailyForReview(page);
+    await page.click('#daily-review-today');await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.equal(await page.locator('#daily-review-finish').textContent(),'Zur Übersicht zurück');
+    assert.equal(await page.locator('#daily-review-prev').isDisabled(),true);
+    const prev=await page.locator('#daily-review-prev').boundingBox(),next=await page.locator('#daily-review-next').boundingBox(),overview=await page.locator('#daily-review-finish').boundingBox();
+    assert.equal(prev.width,next.width);assert.equal(prev.height,next.height);assert.ok(prev.height>=48);assert.ok(overview.y>=prev.y+prev.height+10);
+    for(const id of ['daily-review-prev','daily-review-next','daily-review-finish'])assert.equal(await page.locator('#'+id+' svg').count(),1);
+    await page.click('#daily-review-next');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.locator('#daily-review-prev').isEnabled(),true);
+    await page.focus('#daily-review-next');await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.locator('#daily-review-prev').evaluate(node=>node===document.activeElement&&getComputedStyle(node).outlineStyle==='solid'),true);
+    assert.equal(await page.locator('#daily-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+    await page.screenshot({path:`/tmp/sattplan289-navigation-${width}.png`});
+    await page.click('#daily-review-finish');assert.equal(await page.locator('#daily-review-nav').isVisible(),false);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
 
 });

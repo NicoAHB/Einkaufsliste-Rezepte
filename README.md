@@ -1,6 +1,15 @@
-# Sattplan – Version 2.88
+# Sattplan – Version 2.89
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.89: vergangene Gerichte und eindeutigere Aktionen
+
+- Vergangene Tage bleiben grau. Ein Gericht **600 ms lang drücken** öffnet **„Gericht aus der Übersicht entfernen, da nicht gekocht?“** mit Name, Tag und gleich großen **Ja/Nein**-Knöpfen. **Ja** entfernt ausschließlich den Planeintrag, ohne Zutatenabfrage; Rezeptbuch und Einkaufszettel bleiben erhalten. Bewegen, Scrollen und ein zweiter Finger brechen das Halten ab. Kurzes Antippen und heutige/künftige Tage behalten ihr Verhalten.
+- Rezeptdetails zeigen gleich große, umrandete Knöpfe **Bearbeiten** und **Rezept dauerhaft aus dem Rezeptbuch löschen**. Der eindeutige Löschtext samt Sicherheitsabfrage gilt auch im Bearbeitungsfenster. Der separate Detailknopf **Heute gekocht** entfällt; der tatsächliche Kochabschluss und die Wochenplan-Haken bleiben erhalten. **Einplanen** und **Rezeptblatt** erhalten sichtbare Rahmen.
+- Die Zutatenabfrage nennt teilweise noch vorhandene zugeordnete Zutaten, beispielsweise **Ja, restliche 3 Zutaten auch vom Einkaufszettel entfernen**. Eine Info nennt den bereits entfernten Teil. Sind keine zugeordneten offenen Mengen mehr da, verschwindet die obere Aktion. Die bestehenden Schutzregeln für gekaufte, verschobene und manuell neu gesetzte Mengen bleiben erhalten.
+- **Weiter**, **Zurück** und **Zur Übersicht zurück** im Tagesrückblick haben deutliche Buttonflächen und passende Symbole, große Berührungsflächen und einen sichtbaren Tastaturfokus. Reihenfolge, Fortschritt und Freigaben bleiben erhalten.
+
+Offline-Paket **einkauf-shell-v101**. Code-Stellen, Annahmen und Klick-Testliste: [Umsetzungsbericht 2.89](docs/Umsetzungsbericht-2.89.md).
 
 ## Neu in Version 2.88: klare Entwurfsaktionen und einfacheres Planen
 

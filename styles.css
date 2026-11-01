@@ -4464,3 +4464,24 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 .meal-portions-control>button { display:grid; place-items:center; width:48px; min-height:54px; padding:0; border:0; border-left:1px solid var(--line); border-radius:0; background:var(--accent-soft); color:var(--accent); touch-action:manipulation }
 .meal-portions-control>button>.icon { width:22px; height:22px }
 .meal-portions-control>button:disabled { opacity:.4 }
+
+/* Vergangene Tage behalten ihre Darstellung; Halten ersetzt keine Scrollgeste. */
+.day.past .meal,.day.past .meal * { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none }
+.past-meal-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+.past-meal-actions>button { min-height:48px; width:100% }
+#past-meal-no { background:var(--card); border:1px solid var(--accent); color:var(--accent) }
+#past-meal-title { overflow-wrap:anywhere }
+/* Rezeptverwaltung: gleiche Flächen, lesbare Umbrüche und ein eindeutiges Löschziel. */
+.recipe-card .detail-actions { display:grid; grid-template-columns:minmax(0,1fr); grid-auto-rows:1fr; gap:10px }
+button.recipe-manage-button { width:100%; min-height:48px; padding:12px 14px; border:1px solid var(--line-strong); border-radius:22px; background:var(--card); color:var(--accent); box-shadow:none; font-size:1rem; line-height:1.4; white-space:normal; text-align:center }
+button.recipe-delete { color:var(--danger) }
+.recipe-actions>button.recipe-outline { background:var(--accent-soft); color:var(--accent); border:1px solid var(--line-strong) }
+/* Dieselben Zurück-/Weiter-Aktionen, jetzt mit klaren Flächen und Symbolen. */
+.daily-review-arrows { gap:10px; margin:10px 0 }
+.daily-review-arrows>button { min-width:0; min-height:48px; padding:10px 12px; border-radius:14px }
+#daily-review-prev { background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent) }
+#daily-review-next { background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 84%,#000)); color:var(--on-accent); box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 22%,transparent) }
+#daily-review-finish { width:100%; min-height:48px; margin:0 0 6px; padding:10px 12px; white-space:normal; background:var(--card); border:1px solid var(--line-strong); color:var(--accent) }
+#daily-review-nav button:active:not(:disabled) { filter:brightness(.92); transform:scale(.97) }
+#daily-review-nav button:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+#daily-review-nav button:disabled { opacity:.4; filter:grayscale(1); box-shadow:none }

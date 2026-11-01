@@ -248,7 +248,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.88 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.89 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -354,6 +354,7 @@
     <label>Meine Notizen<textarea name="notes" rows="4" maxlength="10000" placeholder="Eigene Tipps, Änderungen oder Ideen für das nächste Mal"></textarea></label>
     <label>Quelle (Link, optional)<input name="sourceUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off" autocomplete="off"></label>
     <details id="recipe-raw" hidden><summary>Erkannten Rohtext anzeigen</summary><pre id="recipe-raw-text"></pre></details>
+    <button id="delete-recipe" class="recipe-manage-button recipe-delete danger" type="button" hidden>Rezept dauerhaft aus dem Rezeptbuch löschen</button>
     <div class="sheet-actions"><button type="submit">Rezept speichern</button><button id="discard-imported-recipe" class="secondary" type="button" hidden>Eingelesenes Rezept verwerfen</button></div></form></dialog>
   <dialog id="template-dialog"><div class="stack"><div class="sheet-head"><h2>Vorlagen</h2><button type="button" data-close="template-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p class="hint">Eine Vorlage ist eine gespeicherte Liste, z. B. „Wocheneinkauf“. „Auf die Liste“ trägt alle Artikel ein; was schon offen auf der Liste steht, wird zusammengezählt. Vorlagen sehen beide Personen.</p>
@@ -362,7 +363,7 @@
       <p id="template-hint" class="hint"></p><button type="submit">Als Vorlage speichern</button></form></div></dialog>
   <dialog id="daily-dialog"><div class="stack"><div class="sheet-head"><h2>Rezepte des Tages</h2><button type="button" data-close="daily-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="daily-progress" class="hint" role="status"></p>
-    <div id="daily-review-nav" hidden><div class="daily-review-arrows"><button id="daily-review-prev" type="button" class="secondary">Zurück</button><button id="daily-review-next" type="button" class="secondary">Weiter</button></div><button id="daily-review-finish" type="button" class="text-button">Zur Übersicht</button></div>
+    <div id="daily-review-nav" hidden><div class="daily-review-arrows"><button id="daily-review-prev" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg>Zurück</button><button id="daily-review-next" type="button"><span>Weiter</span><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button></div><button id="daily-review-finish" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Zur Übersicht zurück</button></div>
     <div id="daily-card" class="daily-card" aria-live="polite"></div>
     <div id="daily-review-choices" class="stack daily-review-choices" hidden><button id="daily-review-yesterday" type="button" class="secondary">Rezepte von gestern erneut anschauen</button><button id="daily-review-today" type="button" class="secondary">Rezepte von heute erneut anschauen</button><p id="daily-review-unavailable" class="hint" hidden>Von gestern ist auf diesem Gerät noch keine Auswahl gespeichert.</p></div>
 
@@ -489,7 +490,8 @@
   <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
   <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
   <!-- Nur im Querformat auf Handys sichtbar (siehe syncTurned in app.js): die App steht immer hochkant -->
-  <dialog id="plan-adjust-dialog" aria-labelledby="plan-adjust-title"><div class="stack"><div class="sheet-head"><h2 id="plan-adjust-title">Einkaufsliste anpassen?</h2><button type="button" data-close="plan-adjust-dialog" class="icon-button round" aria-label="Abbrechen">×</button></div><p id="plan-adjust-intro">Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.</p><ul id="plan-adjust-list" class="adjust-list"></ul><p id="plan-adjust-note" class="hint"></p><button id="plan-adjust-apply" type="button">Einkaufsliste anpassen</button><button id="plan-adjust-keep" type="button" class="secondary">Einkaufsliste unverändert lassen</button><button id="plan-adjust-cancel" type="button" class="secondary" data-close="plan-adjust-dialog">Abbrechen</button><p id="plan-adjust-error" role="alert" class="dialog-error" hidden></p></div></dialog>
+  <dialog id="plan-adjust-dialog" aria-labelledby="plan-adjust-title"><div class="stack"><div class="sheet-head"><h2 id="plan-adjust-title">Einkaufsliste anpassen?</h2><button type="button" data-close="plan-adjust-dialog" class="icon-button round" aria-label="Abbrechen">×</button></div><p id="plan-adjust-intro">Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.</p><ul id="plan-adjust-list" class="adjust-list"></ul><p id="plan-adjust-note" class="hint"></p><p id="plan-adjust-remaining" class="hint" role="status" hidden></p><button id="plan-adjust-apply" type="button">Einkaufsliste anpassen</button><button id="plan-adjust-keep" type="button" class="secondary">Einkaufsliste unverändert lassen</button><button id="plan-adjust-cancel" type="button" class="secondary" data-close="plan-adjust-dialog">Abbrechen</button><p id="plan-adjust-error" role="alert" class="dialog-error" hidden></p></div></dialog>
+  <dialog id="past-meal-dialog" aria-labelledby="past-meal-title" aria-describedby="past-meal-detail"><div class="stack"><h2 id="past-meal-title">Gericht aus der Übersicht entfernen, da nicht gekocht?</h2><p id="past-meal-detail" class="hint"></p><div class="past-meal-actions"><button id="past-meal-yes" type="button">Ja</button><button id="past-meal-no" class="secondary" type="button" data-close="past-meal-dialog">Nein</button></div><p id="past-meal-error" class="dialog-error" role="alert" hidden></p></div></dialog>
   <div id="turn-hint" class="turn-hint" role="status"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><p>Bitte das Handy hochkant halten</p></div>
 </body>
 </html>

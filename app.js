@@ -23,7 +23,7 @@ import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, l
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
 import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
-import { planReduction } from './plan-list.js';
+import { planReduction, planRemovalCounts } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
@@ -921,11 +921,8 @@ function recipeCard(recipe, ingredients, options = {}) {
     details.append(link);
   }
   const more = element('div', undefined, 'detail-actions');
-  more.append(button('Heute gekocht', () => commit([nextOp('recipes', recipe.id, { lastCookedAt: isoDate() })]), 'secondary small'),
-    button('Bearbeiten', () => editRecipe(recipe.id), 'secondary small'),
-    button('Löschen', () => {
-      if (confirm(`Rezept „${recipe.name}“ löschen?`)) removeRows('recipes', [recipe.id]);
-    }, 'danger small'));
+  more.append(button('Bearbeiten', () => editRecipe(recipe.id), 'recipe-manage-button recipe-edit'),
+    button(RECIPE_DELETE_LABEL, () => deleteRecipe(recipe.id), 'recipe-manage-button recipe-delete danger'));
   details.append(more);
   card.append(details);
   const actions = element('div', undefined, 'actions recipe-actions');
@@ -934,10 +931,18 @@ function recipeCard(recipe, ingredients, options = {}) {
   };
   actions.append(action('cart','Einkaufen',`${recipe.name}: Zutaten auf die Einkaufsliste`, () => openTransfer(recipe.id,positive(servingInput.value),null,options.mealId),'primary-action'),
     action('pot','Kochen',`${recipe.name} kochen`, () => openCook(recipe.id,positive(servingInput.value)),'recipe-cook'),
-    action('calendar','Einplanen',`${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({recipeId:recipe.id,servings}); }),
-    action('text','Rezeptblatt',`${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id,positive(servingInput.value))));
+    action('calendar','Einplanen',`${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({recipeId:recipe.id,servings}); },'recipe-outline'),
+    action('text','Rezeptblatt',`${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id,positive(servingInput.value)),'recipe-outline'));
   card.append(actions);
   return card;
+}
+const RECIPE_DELETE_LABEL = 'Rezept dauerhaft aus dem Rezeptbuch löschen';
+function deleteRecipe(id) {
+  const recipe=active(state.recipes).find(row=>row.id===id);
+  if(!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
+  if(!confirm(`Rezept „${recipe.name}“ dauerhaft aus dem Rezeptbuch löschen?`)) return;
+  removeRows('recipes',[id]);
+  if($('#recipe-dialog').open && $('#recipe-form').elements.id.value===id) { dropRecipeDraft();$('#recipe-dialog').close(); }
 }
 function ingredientRow(value = {}) {
   const row = element('div', undefined, 'ingredient-row'); row.dataset.id = value.id || uid();
@@ -1027,6 +1032,7 @@ function editRecipe(id = '', draft = null) {
   form.elements.id.value = id;
   $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : draft ? 'Importiertes Rezept prüfen' : 'Neues Rezept';
   $('#discard-imported-recipe').hidden=!draft;
+  $('#delete-recipe').hidden=!id;
   if (recipeBaseline) for (const field of ['name', 'servings', 'instructions', 'notes', 'tags', 'sourceUrl']) {
     form.elements[field].value = field === 'tags' ? recipeBaseline.tags.join(', ') : recipeBaseline[field] ?? '';
   }
@@ -1217,7 +1223,7 @@ function renderPlan() {
   const recipes = new Map(active(state.recipes).map(recipe => [recipe.id, recipe]));
   const box = $('#plan-days'); box.replaceChildren();
   for (const day of days) {
-    const past = day < today;   // vergangene Tage sind nur zu sehen (Version 2.55): nicht planen, ändern, löschen oder verschieben
+    const past = day < today;   // vergangene Tage bleiben grau; nur langes Drücken darf ihren Planeintrag entfernen
     const card = element('article', undefined, `day${day === today ? ' today' : ''}${past ? ' past' : ''}`); card.dataset.day = day;
     const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
     title.append(element('small', dayMonthLabel(day)));
@@ -1231,7 +1237,8 @@ function renderPlan() {
 function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);
   const name = meal.recipeId ? recipe?.name || 'Gelöschtes Rezept' : meal.title;
-  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`); if (!past) row.dataset.id = meal.id;   // ohne Kennung lässt sich das Gericht nicht ziehen
+  const row = element('div', undefined, `meal${meal.done ? ' done' : ''}`);
+  if (past) row.dataset.pastId=meal.id; else row.dataset.id=meal.id;   // vergangene Gerichte bleiben vom Ziehen ausgeschlossen
   const check = button('', () => toggleMeal(meal.id), 'check'); check.disabled = past;
   if (meal.done) check.append(icon('check'));
   check.setAttribute('aria-label', `${name}: ${meal.done ? 'als nicht gekocht markieren' : 'als gekocht markieren'}`);
@@ -1280,6 +1287,48 @@ $('#swap-yes').addEventListener('click', () => guard(() => {
 $('#swap-no').addEventListener('click', () => { swapPending = null; $('#swap-dialog').close(); });
 $('#swap-dialog').addEventListener('close', () => { swapPending = null; });
 dragDelete($('#plan-days'), null, () => {}, '.meal[data-id]', { target: dayTarget, noZone: true });
+// Vergangene Gerichte: Halten öffnet ausschließlich die Frage „nicht gekocht“.
+// Das anschließende Loslassen darf weder den Rezeptlink noch den Dialog bedienen.
+let pastMealPending=null,pastMealHeld=false,pastMealOrigin=null;
+document.addEventListener('pointerdown',event=>{
+  pastMealHeld=false;stopPastMealHold();
+  pastMealOrigin=event.target.closest?.('.day.past .meal')?{x:event.clientX,y:event.clientY}:null;
+},true);
+document.addEventListener('pointermove',event=>{
+  if(pastMealOrigin && Math.hypot(event.clientX-pastMealOrigin.x,event.clientY-pastMealOrigin.y)>10)stopPastMealHold();
+},true);
+for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>{pastMealOrigin=null;stopPastMealHold();},true);
+document.addEventListener('keydown',()=>{pastMealHeld=false;},true);
+document.addEventListener('click',event=>{
+  if(!pastMealHeld)return;
+  pastMealHeld=false;event.preventDefault();event.stopImmediatePropagation();
+},true);
+const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{
+  const meal=active(state.meals).find(row=>row.id===node.dataset.pastId);
+  if(!node.isConnected || !meal || meal.date>=isoDate() || !ready)return;
+  pastMealHeld=true;getSelection()?.removeAllRanges();
+  pastMealPending={id:meal.id,date:meal.date,signature:JSON.stringify(meal),scope:namespace()};
+  $('#past-meal-detail').textContent=`${mealName(meal)} · ${dayName(meal.date)} ${dayMonthLabel(meal.date)}`;
+  $('#past-meal-error').hidden=true;
+  $('#past-meal-dialog').showModal();navigator.vibrate?.(15);
+}));
+document.addEventListener('scroll',stopPastMealHold,true);
+document.addEventListener('visibilitychange',stopPastMealHold);
+window.addEventListener('blur',stopPastMealHold);
+$('#plan-days').addEventListener('contextmenu',event=>{if(event.target.closest('.day.past .meal'))event.preventDefault();});
+$('#past-meal-yes').addEventListener('click',()=>{
+  const pending=pastMealPending;if(!pending)return;
+  try {
+    if(pending.scope!==namespace())throw new Error('Die Datenverbindung hat sich geändert. Bitte den Dialog schließen und neu beginnen.');
+    const meal=active(state.meals).find(row=>row.id===pending.id);
+    if(!meal)throw new Error('Dieses Gericht wurde inzwischen entfernt.');
+    if(meal.date!==pending.date || meal.date>=isoDate())throw new Error('Der Tag dieses Gerichts hat sich geändert. Bitte den Wochenplan erneut prüfen.');
+    if(JSON.stringify(meal)!==pending.signature)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Dialog schließen und den Wochenplan erneut prüfen.');
+    commit([nextOp('meals',meal.id,{deletedAt:new Date().toISOString()})],'Gericht aus dem Wochenplan entfernt');
+    $('#past-meal-dialog').close();
+  } catch(error) { $('#past-meal-error').textContent=error.message;$('#past-meal-error').hidden=false; }
+});
+$('#past-meal-dialog').addEventListener('close',()=>{pastMealPending=null;});
 // „Gekocht“ merkt sich auch am Rezept, wann es zuletzt auf dem Tisch stand.
 function toggleMeal(id) {
   const meal = state.meals.find(row => row.id === id && !row.deletedAt);
@@ -1469,9 +1518,13 @@ function renderPlanAdjustment() {
   const {legacy,partial,skipped}=request.reduction;
   $('#plan-adjust-note').textContent=legacy?'Für diese frühere Übernahme fehlt eine genaue Zuordnung. Die Einkaufsliste bleibt unverändert; bitte die Mengen selbst prüfen.':partial?'Ein Teil stammt aus einer früheren Übernahme ohne genaue Zuordnung. Nur die zugeordneten Anteile werden angepasst; bitte die übrigen Mengen selbst prüfen.':skipped.length?'Bereits gekaufte, entfernte, verschobene oder manuell neu gesetzte Zutaten bleiben unverändert. Bitte diese Mengen bei Bedarf selbst prüfen.':byItem.size?'Nur die hier aufgeführten Wochenplan-Anteile werden entfernt.':'Es gibt keine zugehörigen offenen Mengen mehr. Deine Einkaufsliste bleibt unverändert.';
   const removing=!request.next;
+  const counts=planRemovalCounts(request.reduction),info=$('#plan-adjust-remaining'),counted=!legacy&&!partial;
+  info.hidden=!removing || (!counts.removed && counts.remaining>0) || !counted;
+  info.textContent=counts.remaining?`${counts.removed} von ${counts.total} Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle Zutaten sind schon vom Einkaufszettel entfernt.';
   $('#plan-adjust-title').textContent=removing?`Gericht vom ${dayName(meal.date)} entfernen?`:'Einkaufsliste anpassen?';
   $('#plan-adjust-intro').textContent=removing?'Möchtest du auch die Zutaten dieses Rezepts vom Einkaufszettel entfernen? Manuelle Zusatzmengen und das gespeicherte Rezept bleiben erhalten.':'Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.';
-  $('#plan-adjust-apply').textContent=removing?'Ja, Zutaten dieses Rezepts entfernen':byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  $('#plan-adjust-apply').textContent=removing?(counted&&counts.removed&&counts.remaining?(counts.remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${counts.remaining} Zutaten auch vom Einkaufszettel entfernen`):'Ja, Zutaten dieses Rezepts entfernen'):byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  $('#plan-adjust-apply').hidden=removing&&!byItem.size;
   $('#plan-adjust-apply').disabled=removing&&!byItem.size;
   $('#plan-adjust-keep').textContent=removing?(byItem.size?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':legacy?'Nur das Gericht entfernen – Einkaufsliste unverändert lassen':'Gericht entfernen – Zutaten sind bereits vom Einkaufszettel entfernt'):'Einkaufsliste unverändert lassen';
   $('#plan-adjust-error').hidden=true;
@@ -2553,6 +2606,7 @@ function holdOn(root, selector, ms, handler) {
   });
   root.addEventListener('pointermove', event => { if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) stop(); });
   for (const type of ['pointerup', 'pointercancel', 'scroll']) root.addEventListener(type, stop, true);
+  return stop;
 }
 // Das Foto eines Rezepts als JPEG-Bytes (lokal, sonst aus dem Daten-Repository), oder null
 async function photoForPdf(id) {
@@ -3459,6 +3513,7 @@ $('#import-recipe').addEventListener('click', () => guard(() => openImport()));
 $('#add-ingredient').addEventListener('click', () => ingredientRow());
 $('#recipe-form').addEventListener('submit', saveRecipe);
 $('#discard-imported-recipe').addEventListener('click',()=>guard(discardImportedRecipe));
+$('#delete-recipe').addEventListener('click',()=>guard(()=>deleteRecipe($('#recipe-form').elements.id.value)));
 $('#recipe-form').addEventListener('input', scheduleRecipeDraft);
 $('#recipe-form').addEventListener('click', scheduleRecipeDraft);   // Zutat hinzufügen oder entfernen
 $('#recipe-dialog').addEventListener('close', () => { saveRecipeDraft(); recipeDraftKey = null; });   // Schließen mit X oder Esc behält den Entwurf; nach dem Speichern ist er schon weg

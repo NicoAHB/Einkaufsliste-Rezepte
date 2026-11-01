@@ -162,7 +162,7 @@ test('Schlüssel der Zeilen: Name und Einheit (Schreibweisen gleich), kommt ders
 
 // Quellenbezogene Rücknahmen: manuelle Mengen und gleichzeitige Geräte erhalten.
 import { emptyData, merge, addToList, operation, active } from '../data.js';
-import { planReduction } from '../plan-list.js';
+import { planReduction, planRemovalCounts } from '../plan-list.js';
 import { compact } from '../compact.js';
 const planAt = n => `2026-10-31T10:00:${String(n).padStart(2,'0')}.000Z`;
 function plannedFixture(manual = 100, fresh = false) {
@@ -190,6 +190,26 @@ test('Plan-Korrektur: reine Rezeptzutat verschwindet; ein späterer manueller Zu
   const {data,meal,item}=plannedFixture(0,true);let out=correction(data,meal,null).data;
   assert.equal(active(out.items).length,0);assert.equal(out.items[0].quantity,0);
   out=merge(out,[operation('items',item.id,{add:{quantity:50,unit:'g'}},'Anna',planAt(5))]);assert.equal(active(out.items)[0].quantity,50);
+});
+test('Plan-Entfernungszähler: vorhandene, entfernte und mehrfach übernommene Zutaten zählen je Einkaufszeile',()=>{
+  const {data,meal,item}=plannedFixture();
+  assert.deepEqual(planRemovalCounts(planReduction(meal,null,data.items)),{total:1,remaining:1,removed:0});
+  assert.deepEqual(planRemovalCounts(planReduction(meal,null,[{...item,deletedAt:planAt(5)}])),{total:1,remaining:0,removed:1});
+  const again=addToList([{name:'Reis',quantity:200,unit:'g',key:'reis'}],'','Nico',planAt(3),data.items,data.items,'zweite-uebernahme');
+  const projected=merge(data,again.ops),source=again.ops[0],amount=source.patch.add||source.patch;
+  const part={...meal.listedParts[0],sourceId:source.id,at:source.at,quantity:amount.quantity,remaining:amount.quantity};
+  const doubled={...meal,listedParts:[...meal.listedParts,part]};
+  assert.deepEqual(planRemovalCounts(planReduction(doubled,null,projected.items)),{total:1,remaining:1,removed:0});
+});
+test('Plan-Entfernungszähler: gekaufte, verschobene und manuell neu gesetzte Quellen bleiben geschützt',()=>{
+  const {data,meal,item}=plannedFixture();
+  for(const patch of [{checked:true},{storeId:'anderes-geschaeft'},{quantity:700,unit:'g'}]) {
+    const changed=merge(data,[operation('items',item.id,patch,'Anna',planAt(5))]);
+    const reduction=planReduction(meal,null,changed.items);
+    assert.equal(reduction.changes.length,0);
+    assert.deepEqual(planRemovalCounts(reduction),{total:1,remaining:0,removed:1});
+  }
+  assert.deepEqual(planRemovalCounts(planReduction({...meal,listedParts:undefined},null,data.items)),{total:0,remaining:0,removed:0});
 });
 test('Plan-Korrektur: unterschiedliche Bestätigungen zweier Geräte ziehen denselben Anteil nur einmal ab',()=>{
   const {data,meal}=plannedFixture();const a=correction(data,meal,2,3).ops,b=correction(data,meal,2,4).ops;

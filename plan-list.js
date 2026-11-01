@@ -28,6 +28,13 @@ export function planReduction(meal, next, items) {
   }
   return { parts, changes, skipped, target, partial: Boolean(meal.listedUntracked), legacy: listed > 0 && !meal.listedParts?.length };
 }
+// Mehrere Übernahmen derselben Einkaufszeile zählen als eine Zutat. Grundlage
+// sind genau die zugeordneten Anteile, die auch die Mengenprüfung verwendet.
+export function planRemovalCounts(reduction) {
+  const remaining = new Set(reduction.changes.map(change => change.item.id));
+  const total = new Set([...remaining, ...reduction.skipped.map(part => part.itemId)]);
+  return { total: total.size, remaining: remaining.size, removed: total.size - remaining.size };
+}
 export function applyPlanCuts(item) {
   const spec = unitSpec(item.unit);
   let total = item.quantity * spec.factor;
