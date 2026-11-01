@@ -1,5 +1,7 @@
 # Sattplan: Bedienprüfung und nächste Verbesserungen
 
+Aktualisierung mit Version 2.94: Der Wünsche-Schalter steht ausschließlich unter **Geschäfte**. Aktivierung und Einstellhinweise auf der Einkaufsseite wurden entfernt. Der Rückbutton im Laden steht kompakter unter der Geschäftsleiste, damit diese die volle Breite nutzen kann.
+
 Geprüft wurden die fünf Hauptbereiche Einkauf, Rezepte, Plan, Ausgaben und Einstellungen sowie Produktauswahl, Vorrat, Im Laden, Wünsche, geheime Listen, Rezeptimport und die zugehörigen Dialoge. Die Bewertung berücksichtigt die sichtbaren Beschriftungen, die Darstellung im Glas-Design, die Auswahl- und Speicherabläufe sowie die Bedienung auf schmalen Bildschirmen.
 
 ## In Version 2.93 umgesetzt

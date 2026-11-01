@@ -3136,31 +3136,32 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
   });
 
-  test('2.93: ausgeblendete Wünsche auf Einkauf und unter Geschäfte sichtbar öffnen und ohne Datenverlust einblenden',async()=>{
+  test('2.94: Wünsche ausschließlich unter Geschäfte aktivieren, ausblenden und ohne Datenverlust wieder einblenden',async()=>{
     const data=wishData();data.stores.find(row=>row.id==='store-wishes').wishlistEnabled=false;
-    const {ctx,page,problems}=await context({config:{palette:'gruen',glass:true,glassLevel:100}});await seedLocal(ctx,data);await open(page);
-    const before=(await storedDemo(page)).items;
-    assert.equal(await page.locator('#open-wishlist').isVisible(),true);assert.equal(await page.textContent('#wishlist-access-state'),'Ausgeblendet');
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=(await storedDemo(page)).items;
+    assert.equal(await page.locator('#shopping #wishlist-controls,#shopping #wishlist-enabled,#open-wishlist,#wishlist-access').count(),0);
     assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),0);
-    await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.locator('#stores-open-wishlist').isVisible(),true);
-    assert.match(await page.locator('#store-editor [data-id=store-wishes] > summary').textContent(),/Ausgeblendet/);
-    await page.click('#stores-open-wishlist');assert.equal(await page.locator('#stores-dialog').isVisible(),false);assert.equal(await page.locator('#wishlist-enabled').isChecked(),false);
-    assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);await page.check('#wishlist-enabled');
-    assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),1);assert.equal(await page.locator('#wishlist-access').isVisible(),false);
-    let saved=await storedDemo(page);assert.equal(saved.stores.filter(row=>row.name==='Wünsche'&&!row.deletedAt).length,1);assert.deepEqual(saved.items,before);
-    await page.reload();await openWishlist(page);await page.uncheck('#wishlist-enabled');await page.locator('#store-chips [data-all-stores]').click();
-    assert.equal(await page.locator('#open-wishlist').isVisible(),true);await page.click('#open-wishlist');assert.equal(await page.locator('#wishlist-enabled').isVisible(),true);
-    assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
+    await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.locator('#stores-dialog #wishlist-enabled').isVisible(),true);
+    assert.equal(await page.isChecked('#wishlist-enabled'),false);await page.check('#wishlist-enabled');assert.equal(await page.textContent('#wishlist-state'),'Eingeblendet');
+    assert.equal(await page.locator('#store-editor [data-id=store-wishes] .store-wishes-open').isEnabled(),true);
+    await page.click('#stores-dialog .sheet-head [data-close]');await openWishlist(page);assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);
+    assert.equal(await page.locator('#wishlist-enabled').isVisible(),false);assert.deepEqual((await storedDemo(page)).items,before);
+    await page.click('#manage-stores');await sheetOpen(page);await page.uncheck('#wishlist-enabled');assert.equal(await page.textContent('#wishlist-state'),'Ausgeblendet');
+    assert.equal(await page.locator('#store-editor [data-id=store-wishes] .store-wishes-open').isDisabled(),true);
+    await page.click('#stores-dialog .sheet-head [data-close]');assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),0);
+    await page.locator('#store-chips [data-all-stores]').focus();await page.keyboard.press('Shift+F10');assert.equal(await page.locator('#store-quick-options [data-view=store-wishes]').count(),0);await page.click('#store-quick-dialog [data-close]');
+    await page.reload();await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.isChecked('#wishlist-enabled'),false);await page.check('#wishlist-enabled');
+    const saved=await storedDemo(page);assert.equal(saved.stores.filter(row=>row.name==='Wünsche'&&!row.deletedAt).length,1);assert.deepEqual(saved.items,before);assert.deepEqual(problems,[]);await ctx.close();
   });
-  for(const removed of [false,true])test(`2.93: Wünsche ${removed?'nach entfernter Liste mit bisherigen Einträgen zurückholen':'auch ohne bisherige Liste sichtbar einrichten'}`,async()=>{
+  for(const removed of [false,true])test(`2.94: Wünsche unter Geschäfte ${removed?'mit bisherigen Einträgen zurückholen':'auch ohne bisherige Liste einrichten'}`,async()=>{
     const data=wishData(),wish=data.stores.find(row=>row.id==='store-wishes');
     if(removed)wish.deletedAt='2026-11-01T12:00:00.000Z';else{data.stores=data.stores.filter(row=>row!==wish);data.items=data.items.filter(row=>row.id!=='wish-rope');}
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=(await storedDemo(page)).items;
-    await page.click('#open-wishlist');assert.equal(await page.locator('#wishlist-enabled').isChecked(),false);await page.check('#wishlist-enabled');
+    await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.isChecked('#wishlist-enabled'),false);await page.check('#wishlist-enabled');
     const saved=await storedDemo(page),stores=saved.stores.filter(row=>!row.deletedAt&&row.name==='Wünsche');assert.equal(stores.length,1);assert.equal(stores[0].wishlistEnabled,true);
-    if(removed){assert.equal(stores[0].id,'store-wishes');assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);}
-    assert.deepEqual(saved.items,before);assert.equal(await page.locator('#store-chips [data-store-id]').filter({has:page.getByRole('img',{name:'Wünsche',exact:true})}).count(),1);
-    await page.reload();assert.equal(await page.locator('#open-wishlist').isVisible(),false);assert.deepEqual(problems,[]);await ctx.close();
+    if(removed)assert.equal(stores[0].id,'store-wishes');assert.deepEqual(saved.items,before);
+    await page.click('#stores-dialog .sheet-head [data-close]');await openWishlist(page);if(removed)assert.equal(await page.locator('#items [data-id=wish-rope]').count(),1);
+    await page.reload();await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.isChecked('#wishlist-enabled'),true);assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('2.92 PDF: Tagesempfehlung hat eigenes Symbol und Einstellungen enthalten keine Geschäfts- oder Wünsche-Karte', async () => {
@@ -3170,20 +3171,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await goTab(page,'settings'); assert.ok(!(await page.textContent('#settings')).includes('Geschäfte & Listen'));
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.92 PDF: Wünsche mit einem Tipp schalten, Zustand sichtbar, nach Neuladen über Alle wieder einblenden',async()=>{
+  test('2.94: Wünsche-Schalter schaltet mit einem Tipp und meldet nur tatsächliche Zustandsänderungen',async()=>{
     const {ctx,page,problems}=await localWishes();const before=(await storedDemo(page)).items;
-    assert.equal(await page.locator('#wishlist-controls').isVisible(),true);assert.equal(await page.isChecked('#wishlist-enabled'),true);
-    await page.locator('.wish-toggle').click();assert.equal(await page.isChecked('#wishlist-enabled'),false);assert.equal(await page.textContent('#wishlist-state'),'Ausgeblendet');
-    assert.match(await page.textContent('#notice-text'),/Wünsche ausgeblendet/);assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),0);
-    assert.deepEqual((await storedDemo(page)).items,before);assert.equal(await page.locator('#wishlist-enabled').isVisible(),true);
-    const off=await storedDemo(page);await page.dispatchEvent('#wishlist-enabled','change');assert.deepEqual(await storedDemo(page),off,'kein erneutes Speichern ohne Zustandswechsel');
-    await page.reload();await page.waitForSelector('#store-chips [data-all-stores]');
-    await page.locator('#store-chips [data-all-stores]').focus();await page.keyboard.press('Shift+F10');await sheetOpen(page);
-    const choice=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await choice.locator('.store-symbol').count(),1);await choice.click();
-    assert.equal(await page.isChecked('#wishlist-enabled'),false);await page.locator('.wish-toggle').click();
-    assert.equal(await page.isChecked('#wishlist-enabled'),true);assert.equal(await page.textContent('#wishlist-state'),'Eingeblendet');assert.match(await page.textContent('#notice-text'),/Wünsche eingeblendet/);
-    assert.equal(await page.locator('#store-chips [data-store-id=store-wishes]').count(),1);assert.deepEqual((await storedDemo(page)).items,before);
-    assert.deepEqual(problems,[]);await ctx.close();
+    assert.equal(await page.locator('#wishlist-controls').isVisible(),false);await page.click('#manage-stores');await sheetOpen(page);
+    assert.equal(await page.isChecked('#wishlist-enabled'),true);await page.locator('.wish-toggle').click();assert.equal(await page.isChecked('#wishlist-enabled'),false);
+    assert.equal(await page.textContent('#wishlist-state'),'Ausgeblendet');assert.match(await page.textContent('#notice-text'),/Wünsche ausgeblendet/);
+    const off=await storedDemo(page);await page.dispatchEvent('#wishlist-enabled','change');assert.deepEqual(await storedDemo(page),off);
+    await page.locator('.wish-toggle').click();assert.equal(await page.isChecked('#wishlist-enabled'),true);assert.equal(await page.textContent('#wishlist-state'),'Eingeblendet');
+    assert.match(await page.textContent('#notice-text'),/Wünsche eingeblendet/);assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.92 PDF: langer Touch auf Alle öffnet Schnellmenü in Reiterreihenfolge mit Zählern und ohne Filterwechsel',async()=>{
     const {ctx,page,problems}=await localWishes();const before=await storedDemo(page);
@@ -5133,7 +5128,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
       assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
       assert.equal(await horizontalOverflow(page), 0);
-      // Der Weg zurück steht neben den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da (im Laden ist die Leiste unten ausgeblendet: Reiterwechsel per Skript)
+      // Der Weg zurück steht unter den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da (im Laden ist die Leiste unten ausgeblendet: Reiterwechsel per Skript)
       await goTab(page, 'recipes');
       assert.equal(await page.locator('.topbar').isVisible(), false);
       await page.click('[data-tab=shopping]');
@@ -8484,8 +8479,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await holdWish(page);assert.equal(await page.locator('#wish-form [name=storeId]').count(),0);await page.click('#wish-remove-image');assert.equal(await page.locator('#wish-image-preview').evaluate(node=>getComputedStyle(node).backgroundImage),'none');await page.click('#wish-form button[type=submit]');
     assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);await page.reload();await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
     await page.click('#select-mode');await page.locator('[data-id=wish-rope] .item-copy').click();assert.equal(await page.locator('#select-move').isVisible(),false);assert.equal(await page.locator('#select-all').count(),0);await page.click('#select-done');assert.equal(await page.locator('#select-bar').isVisible(),false);
-    assert.equal(await page.isChecked('#wishlist-enabled'),true);await page.uncheck('#wishlist-enabled');assert.equal(await page.locator('#store-chips [aria-label="Wünsche"]').count(),0);
-    await page.check('#wishlist-enabled');await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope]').count(),1);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
+    await page.click('#manage-stores');await sheetOpen(page);assert.equal(await page.isChecked('#wishlist-enabled'),true);await page.uncheck('#wishlist-enabled');await page.click('#stores-dialog .sheet-head [data-close]');assert.equal(await page.locator('#store-chips [aria-label="Wünsche"]').count(),0);
+    await page.click('#manage-stores');await sheetOpen(page);await page.check('#wishlist-enabled');await page.click('#stores-dialog .sheet-head [data-close]');await openWishlist(page);assert.equal(await page.locator('[data-id=wish-rope]').count(),1);assert.equal(await page.locator('[data-id=wish-rope] [data-photo-key]').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -8511,7 +8506,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const fresh=await context({seed:false});await open(fresh.page);await fresh.page.waitForSelector('#welcome[open]');
     await fresh.page.fill('#welcome-form [name=actor]','Mia');await fresh.page.click('#welcome-stores');await sheetOpen(fresh.page);await fresh.page.click('#stores-dialog [data-close]');
     assert.equal(await fresh.page.locator('#welcome-wishes').count(),0);await fresh.page.getByRole('button',{name:'Los geht’s',exact:true}).click();
-    await fresh.page.locator('#store-chips [data-all-stores]').focus();await fresh.page.keyboard.press('Shift+F10');await fresh.page.locator('#store-quick-options [data-view=wishes-preview]').click();await fresh.page.check('#wishlist-enabled');
+    await fresh.page.click('#manage-stores');await sheetOpen(fresh.page);await fresh.page.check('#wishlist-enabled');await fresh.page.click('#stores-dialog .sheet-head [data-close]');
     await openWishlist(fresh.page);assert.equal(await fresh.page.locator('#store-pick').isVisible(),false);assert.deepEqual(fresh.problems,[]);await fresh.ctx.close();
     for(const width of [320,390]) {
       const data=structuredClone(demo),month=new Date().toISOString().slice(0,7),stamp=new Date().toISOString();

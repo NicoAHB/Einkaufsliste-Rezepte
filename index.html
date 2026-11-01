@@ -82,8 +82,6 @@
       </div>
       <div id="plan-view">
       <span id="store-tabs-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
-      <div id="wishlist-access" class="wishlist-access" hidden><button id="open-wishlist" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg><span>Wünsche öffnen</span><small id="wishlist-access-state">Ausgeblendet</small></button></div>
-      <div id="wishlist-controls" class="card wishlist-controls" hidden><label class="wish-toggle"><span><strong>Wünsche</strong><small id="wishlist-state">Ausgeblendet</small></span><input id="wishlist-enabled" type="checkbox" role="switch" aria-label="Wünsche anzeigen"></label><p class="hint">Ausgeblendete Wünsche erreichst du über „Wünsche öffnen“ auf der Einkaufsseite und unter „Geschäfte“. Alle Einträge bleiben erhalten.</p></div>
       <form id="item-form" class="card add-form">
         <div class="name-field wide"><input name="name" placeholder="Was brauchst du?" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden>×</button></div>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
@@ -115,8 +113,9 @@
       </section>
       </div>
       <div id="shop-view" hidden>
-        <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div><button id="shop-back" class="chip-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg><span>Zurück zu planen</span></button></div>
+        <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div></div>
         <div class="shop-statusrow"><p id="shop-status" class="shop-status" aria-live="polite"></p>
+          <button id="shop-back" class="chip-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg><span>Zurück zu planen</span></button>
           <button id="shop-lock" class="icon-button round" type="button" aria-label="Sperren" title="Sperren: Tippen bewirkt nichts, bis du entsperrst"><svg class="icon"><use href="#i-lock"/></svg></button></div>
         <ul id="shop-list" class="item-list shop-list"></ul>
         <label id="shop-awake-label" class="checkbox-label" hidden><input id="shop-awake" type="checkbox"> Bildschirm anlassen</label>
@@ -265,7 +264,7 @@
         <button id="export-full" class="secondary" type="button">Vollsicherung mit Fotos (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.93 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
+        <p class="hint">Version 2.94 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p></div></details>
       
       </div>
     </section>
@@ -313,7 +312,7 @@
     <p id="pantry-buy-hint" class="hint">Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.</p><p id="pantry-buy-error" class="dialog-error" role="alert" hidden></p><button id="pantry-buy-add" type="submit">Auf die Einkaufsliste</button>
   </form></dialog>
   <dialog id="store-quick-dialog" aria-labelledby="store-quick-title"><div class="sheet-head"><h2 id="store-quick-title">Geschäft oder Liste wählen</h2><button type="button" data-close="store-quick-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><div id="store-quick-options" class="store-quick-options"></div></dialog>
-  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Zum Verschieben lange halten, ziehen und loslassen. Die Reihenfolge gilt auch im Vorrat und unter „Im Laden“. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><div id="stores-wishlist-access" class="wishlist-access" hidden><button id="stores-open-wishlist" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-gift"/></svg><span>Wünsche öffnen</span></button><p class="hint">Die Wünsche-Liste ist ausgeblendet. Öffne sie, um den Schalter zum Einblenden zu nutzen. Alle Einträge bleiben erhalten.</p></div><span id="store-order-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-editor"></div>
+  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Tippe auf ein Geschäft zum Bearbeiten. Zum Verschieben lange halten, ziehen und loslassen. Die Reihenfolge gilt auch im Vorrat und unter „Im Laden“. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><div id="wishlist-controls" class="card wishlist-controls"><label class="wish-toggle"><span><strong>Wünsche</strong><small id="wishlist-state">Ausgeblendet</small></span><input id="wishlist-enabled" type="checkbox" role="switch" aria-label="Wünsche anzeigen"></label><p class="hint">Einblenden zeigt die Wünsche-Liste auf der Einkaufsseite. Ausschalten blendet sie nur aus; alle Einträge bleiben erhalten.</p></div><span id="store-order-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-editor"></div>
     <details id="store-create" class="store-create"><summary><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>Liste oder Geschäft hinzufügen</span></summary>
     <form id="store-form" class="stack store-new"><h3 id="store-new-title">Neues Geschäft</h3>
       <label class="checkbox-label"><input name="separate" type="checkbox">Eigene Liste ohne Supermarktverknüpfung</label>

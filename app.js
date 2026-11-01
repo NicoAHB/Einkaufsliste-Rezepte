@@ -48,7 +48,6 @@ let config = {}, base = emptyData(), pending = [], state = emptyData();
 const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
-let wishesPreview = false;
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null;
 const storeReorders = [];
@@ -245,7 +244,7 @@ function showView(next) {
   const privateId=privateViewId(next);
   if(privateId&&!privateList?.has(privateId))return;
   if(privateId){if(selecting)setSelecting(false);privateList.select(privateId);}
-  view = next; wishesPreview = next === 'wishes-preview' || wishStores().some(store => store.id === next);
+  view = next;
   renderWishOptions();
   const form = $('#item-form');
   // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
@@ -256,45 +255,47 @@ function showView(next) {
 }
 function syncPrivateView() {
   const own=privateViewId(view)&&privateList?.has(privateViewId(view));
-  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own)||view==='wishes-preview';$('#items').hidden=Boolean(own)||view==='wishes-preview';
-  $('#shared-list-actions').hidden=Boolean(own)||view==='wishes-preview';$('#mode-shop').disabled=Boolean(own);
+  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own);$('#items').hidden=Boolean(own);
+  $('#shared-list-actions').hidden=Boolean(own);$('#mode-shop').disabled=Boolean(own);
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
 // Die Wunschliste wird gemeinsam aktiviert. Ausschalten löscht weder Liste noch Einträge.
-const wishStores = () => orderedStores(state.stores).filter(store=>store.wishlist===true || (isSeparate(store) && defaultSymbol(store.name)==='gift'));
+const isWishStore = store => store.wishlist === true || (isSeparate(store) && defaultSymbol(store.name) === 'gift');
+const wishStores = () => orderedStores(state.stores).filter(isWishStore);
 const visibleStore = store => !wishStores().some(wish=>wish.id===store.id) || store.wishlistEnabled!==false;
 function renderWishOptions() {
-  const stores = wishStores(), store = stores.find(store => store.id === view), shown = Boolean(store) || view === 'wishes-preview';
-  $('#wishlist-controls').hidden = !shown;
-  const enabled = Boolean(store && store.wishlistEnabled !== false);
+  const stores = wishStores(), enabled = stores.some(store => store.wishlistEnabled !== false);
   $('#wishlist-enabled').checked = enabled;
+  $('#wishlist-enabled').disabled = !ready;
   $('#wishlist-state').textContent = enabled ? 'Eingeblendet' : 'Ausgeblendet';
-  const missing = !stores.some(store => store.wishlistEnabled !== false);
-  $('#wishlist-access').hidden = !missing || shown;
-  $('#stores-wishlist-access').hidden = !missing;
-  $('#wishlist-access-state').textContent = stores.length ? 'Ausgeblendet' : 'Noch nicht eingeblendet';
-  $('#open-wishlist').disabled = $('#stores-open-wishlist').disabled = !ready;
+  // Geöffnete Bearbeitungsfelder behalten ihre noch nicht gespeicherten Werte.
+  for (const row of $('#store-editor').children) {
+    const store = stores.find(store => store.id === row.dataset.id); if (!store) continue;
+    const badge = row.firstElementChild?.querySelector('.store-pill');
+    if (badge) badge.textContent = store.wishlistEnabled === false ? 'Ausgeblendet' : 'Eigene Liste';
+    const open = row.querySelector('.store-wishes-open'); if (open) open.disabled = store.wishlistEnabled === false;
+  }
 }
-function openWishlist(id = '') {
+function openWishlist(id) {
   if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
-  const store = wishStores().find(store => store.id === id) || wishStores()[0];
+  const store = wishStores().find(store => store.id === id && store.wishlistEnabled !== false);
+  if (!store) throw new Error('Bitte Wünsche zuerst unter Geschäfte einblenden.');
   $('#stores-dialog').close();
   if (shopOn()) setShopMode(false);
-  tab('shopping'); showView(store?.id || 'wishes-preview');
+  tab('shopping'); showView(store.id);
 }
 function setWishesEnabled(enabled) {
-  const store = wishStores().find(store => store.id === view);
-  // Beim bewussten Wiedereinblenden die bisherige Liste mit ihren Artikel-IDs
-  // zurückholen, statt neben einer früher entfernten Liste eine leere anzulegen.
-  const removed = !store && state.stores.filter(row => row.deletedAt && (row.wishlist === true || (isSeparate(row) && defaultSymbol(row.name) === 'gift')))
+  const stores = wishStores();
+  const removed = !stores.length && state.stores.filter(row => row.deletedAt && isWishStore(row))
     .sort((a,b) => b.deletedAt.localeCompare(a.deletedAt))[0];
-  const id = store?.id || removed?.id || 'wishlist-default';
-  const ops = store ? (store.wishlistEnabled !== false) === enabled ? [] : [nextOp('stores', store.id, { wishlistEnabled: enabled })] :
+  const id = removed?.id || 'wishlist-default';
+  const ops = stores.length ? stores.filter(store => (store.wishlistEnabled !== false) !== enabled)
+    .map(store => nextOp('stores', store.id, { wishlistEnabled: enabled })) :
     enabled ? [nextOp('stores', id, { name: removed?.name || 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true, symbol: removed?.symbol || 'gift', deletedAt: null })] : [];
   if (ops.length) commit(ops, enabled ? 'Wünsche eingeblendet' : 'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
   else renderWishOptions();
-  if (enabled && view === 'wishes-preview') showView(id);
+  if (enabled && !stores.length && $('#stores-dialog').open) renderStores();
 }
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
@@ -326,9 +327,9 @@ function storeChanged() {
 function render() {
   privateList?.refresh();
   renderWishOptions();
-  if(viewStore() && !visibleStore(viewStore()) && !wishesPreview) { view='all'; $('#item-form').elements.storeId.value=''; }
+  if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
   $('#identity').textContent = config.actor || '';
-  if (view !== 'all' && view !== 'none' && !viewStore() && !privateList?.has(privateViewId(view)) && view !== 'wishes-preview') view = 'all';
+  if (view !== 'all' && view !== 'none' && !viewStore() && !privateList?.has(privateViewId(view))) view = 'all';
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
@@ -383,16 +384,14 @@ function renderStoreChips() {
 function openStoreQuickMenu() {
   const box = $('#store-quick-options'); box.replaceChildren();
   const everything = visibleItems(true), ordinary = visibleItems();
-  const add = (id, label, count, hiddenWish = false) => {
+  const add = (id, label, count) => {
     const choice = button('', () => {
-      if (id !== 'all' && id !== 'none' && id !== 'wishes-preview' && !privateViewId(id) && !active(state.stores).some(store => store.id === id)) throw new Error('Diese Liste wurde inzwischen entfernt.');
+      if (id !== 'all' && id !== 'none' && !privateViewId(id) && !active(state.stores).some(store => store.id === id)) throw new Error('Diese Liste wurde inzwischen entfernt.');
       $('#store-quick-dialog').close(); showView(id);
-      if (hiddenWish) $('#wishlist-enabled').focus({ preventScroll: true });
     }, 'secondary store-quick-choice');
     choice.dataset.view = id; choice.setAttribute('aria-label', label);
     choice.setAttribute('aria-pressed', String(view === id));
-    if (id === 'wishes-preview') choice.append(symbolNode('gift', label));
-    else if (privateViewId(id)) choice.append(symbolNode('secret', label));
+    if (privateViewId(id)) choice.append(symbolNode('secret', label));
     else if (['all', 'none'].includes(id)) choice.append(element('span', label));
     else choice.append(storeLabel(label));
     if (count) choice.append(element('span', `(${count})`, 'quick-count'));
@@ -402,12 +401,6 @@ function openStoreQuickMenu() {
   if (ordinary.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', ordinary.filter(item => !item.storeId && !item.checked).length);
   for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, store.name, everything.filter(item => item.storeId === store.id && !item.checked).length);
   for (const list of privateList?.lists || []) if (list.enabled) add(privateView(list.id), list.name, privateList.count(list.id));
-  const hidden = wishStores().filter(store => !visibleStore(store));
-  if (hidden.length || !wishStores().length) {
-    box.append(element('p', 'Ausgeblendete Wünsche', 'hint quick-hidden-label'));
-    if (!wishStores().length) add('wishes-preview', 'Wünsche öffnen', 0, true);
-    for (const store of hidden) add(store.id, store.name, everything.filter(item => item.storeId === store.id && !item.checked).length, true);
-  }
   $('#store-quick-dialog').showModal(); navigator.vibrate?.(15);
 }
 bindWishHold($('#store-chips'), '[data-all-stores]', () => guard(openStoreQuickMenu));
@@ -1031,7 +1024,8 @@ function storeEditorRow(store) {
     }, 'danger store-delete');
     remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form);
     if (wishList) {
-      const open = button('Wünsche öffnen', () => openWishlist(store.id), 'secondary store-wishes-open'); open.prepend(icon('gift')); body.append(open);
+      const open = button('Wünsche öffnen', () => openWishlist(store.id), 'secondary store-wishes-open');
+      open.disabled = store.wishlistEnabled === false; open.prepend(icon('gift')); body.append(open);
     }
     body.append(remove); row.append(summary, body);
     return row;
@@ -3667,8 +3661,6 @@ $('#select-delete').addEventListener('click', () => guard(() => {
 }));
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
 $('#wishlist-enabled').addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
-$('#open-wishlist').addEventListener('click', () => guard(() => openWishlist()));
-$('#stores-open-wishlist').addEventListener('click', () => guard(() => openWishlist()));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
 function saveStoreOrder(visibleIds) {
   const order = reorderedStoreIds(state.stores, visibleIds);

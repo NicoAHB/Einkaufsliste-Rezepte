@@ -537,11 +537,7 @@ main {
 .store-quick-choice .store-symbol { width:36px; height:36px }
 .quick-hidden-label { grid-column:1/-1; margin:12px 0 0 }
 .wishlist-controls { margin:12px 0 }
-.wishlist-access { margin:8px 0 12px }
-:root :is(#wishlist-access button,#stores-wishlist-access button,#stores-dialog .store-wishes-open) { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; min-height:48px; padding:10px 12px; border:2px solid var(--accent); border-radius:14px; background:var(--accent-soft); color:var(--accent); font-weight:700; white-space:normal }
-.wishlist-access button .icon { flex:none }
-.wishlist-access button small { margin-left:auto; font-size:.73rem; font-weight:400; text-align:right }
-.wishlist-access .hint { margin:5px 0 0 }
+:root #stores-dialog .store-wishes-open { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; min-height:48px; padding:10px 12px; border:2px solid var(--accent); border-radius:14px; background:var(--accent-soft); color:var(--accent); font-weight:700; white-space:normal }
 .wish-toggle { display:flex; align-items:center; justify-content:space-between; gap:16px; cursor:pointer }
 .wish-toggle span { display:grid; gap:3px }
 .wish-toggle small { color:var(--muted) }
@@ -1820,12 +1816,6 @@ dialog.cook {
   padding:2px 22px 6px 16px;
   -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent);
   mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)
-}
-.shop-top .chip-button {
-  flex:none;
-  min-height:48px;
-  padding:0 14px;
-  margin-top:2px
 }
 .shop-chips .chip {
   min-height:48px;
@@ -4565,7 +4555,7 @@ button.recipe-delete { color:var(--danger) }
 :root #cookable-list .cookable-buy { grid-column:1/-1; background:var(--accent); color:var(--on-accent); box-shadow:0 2px 4px hsl(var(--h) 30% 15% / .12) }
 :root .mode-row .segmented button { min-height:44px; border:2px solid var(--line-strong); background:var(--card); color:var(--accent); font-weight:700 }
 :root #mode-row #mode-plan[aria-selected=true],:root #mode-row #mode-shop[aria-selected=true],:root #shop-back { background:var(--accent); border-color:var(--accent); color:var(--on-accent); box-shadow:0 2px 4px hsl(var(--h) 30% 15% / .12) }
-.shop-top #shop-back { max-width:50%; margin-top:2px; gap:6px; font-size:.9rem; white-space:normal }
+.shop-statusrow #shop-back { flex:none; max-width:45%; min-height:44px; margin:0; padding:8px 10px; gap:6px; font-size:.85rem; white-space:normal }
 #shop-back .icon { flex:none; width:18px; height:18px }
 #meal-save .meal-action-label { display:flex; align-items:center; justify-content:center; gap:8px }
 #meal-save small { color:inherit; opacity:.88 }
