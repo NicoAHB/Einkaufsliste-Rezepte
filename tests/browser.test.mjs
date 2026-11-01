@@ -9010,8 +9010,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#past-meal-yes');assert.ok((await storedDemo(page)).meals.find(row=>row.id==='past-thu').deletedAt);
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  async function countContext289(removed) {
-    const made=await context(),data=structuredClone(demo),at='2026-10-25T10:00:00.000Z';
+  async function countContext289(removed,options={}) {
+    const made=await context(options),data=structuredClone(demo),at='2026-10-25T10:00:00.000Z';
     data.items=[];data.pantry=[];data.meals=[];
     data.recipes=[{id:'count-recipe',name:'Zählergericht',servings:2,tags:[],instructions:'Alles kochen.',createdAt:at,updatedAt:at,deletedAt:null,_clock:{}}];
     data.ingredients=['Brokkoli','Karotten','Reis','Milch','Parmesan'].map((name,index)=>({id:'count-ingredient-'+index,recipeId:'count-recipe',name,quantity:100,unit:'g',createdAt:at,updatedAt:at,deletedAt:null,_clock:{}}));
@@ -9032,6 +9032,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.textContent('#plan-adjust-remaining'),remaining?`${removed} von 5 Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle Zutaten sind schon vom Einkaufszettel entfernt.');
       if(remaining)assert.equal(await apply.textContent(),remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${remaining} Zutaten auch vom Einkaufszettel entfernen`);
     }
+    assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),before.items.filter(row=>row.deletedAt).map(row=>row.name).toSorted());
+    assert.equal(await page.locator('#plan-adjust-removed').isHidden(),removed===0);
     await page.click(remaining?'#plan-adjust-apply':'#plan-adjust-keep');const after=await storedDemo(page);
     assert.deepEqual(after.recipes,before.recipes);assert.equal(after.meals.filter(row=>!row.deletedAt).length,0);
     if(!remaining)assert.deepEqual(after.items,before.items);
@@ -9049,7 +9051,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.reload();await goTab(page,'plan');const before=await storedDemo(page);
     await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
     assert.equal(await page.textContent('#plan-adjust-apply'),'Ja, restliche 2 Zutaten auch vom Einkaufszettel entfernen');
-    assert.equal(await page.textContent('#plan-adjust-remaining'),'3 von 5 Zutaten hast du schon vom Einkaufszettel entfernt.');
+    assert.equal(await page.textContent('#plan-adjust-remaining'),'3 von 5 Zutaten werden nicht mehr angepasst.');
+    assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),[`${before.items[0].name} · Bereits gekauft`,`${before.items[1].name} · In ein anderes Geschäft verschoben`,`${before.items[2].name} · Inzwischen geändert`].toSorted());
     assert.match(await page.textContent('#plan-adjust-note'),/gekaufte.*verschobene.*manuell neu gesetzte/);
     await page.click('#plan-adjust-apply');const after=await storedDemo(page);
     assert.deepEqual(after.items.slice(0,3),before.items.slice(0,3));assert.deepEqual(problems,[]);await ctx.close();
@@ -9395,6 +9398,29 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const api=github(demo),id='previous-photo-0001',jpeg=Buffer.from([255,216,255,224,0,16,74,70]);api.content.recipes[0].photoId=id;api.photos.set(`photos/${id}.jpg`,jpeg);
     const {ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);const snapshot=structuredClone(api.content);delete snapshot.recipes[0].photoId;
     await chooseBackup2101(page,snapshot);await page.check('#restore-confirm');await page.click('#restore-apply');await page.waitForSelector('#restore-dialog[open]',{state:'detached'});await synced(page);await page.click('#clean-photos');await page.waitForFunction(()=>document.querySelector('#storage-note').textContent==='Alle Fotos werden noch verwendet.');assert.ok(api.photos.has(`photos/${id}.jpg`));assert.equal(api.stats.photoDeletes,0);assert.deepEqual(problems.filter(s=>!/Failed to load resource/.test(s)),[]);await ctx.close();
+  });
+
+  test('2.102: aufgeräumte Einkaufszeilen werden mit ihrem ursprünglichen Zutatennamen aufgeführt',async()=>{
+    const {ctx,page,problems}=await countContext289(2),before=await storedDemo(page),names=before.items.filter(row=>row.deletedAt).map(row=>row.name);
+    await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));saved.base.items=saved.base.items.filter(row=>!row.deletedAt);localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await goTab(page,'plan');const current=await storedDemo(page);await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
+    assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),names.toSorted());await page.click('#plan-adjust-cancel');assert.deepEqual(await storedDemo(page),current);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.102: vollständig gekaufte Zutaten sind benannt und werden nicht als entfernt bezeichnet',async()=>{
+    const {ctx,page,problems}=await countContext289(0);await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));saved.base.items.forEach(row=>row.checked=true);localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await goTab(page,'plan');const before=await storedDemo(page);await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
+    assert.equal(await page.textContent('#plan-adjust-remaining'),'Diese Zutaten werden nicht mehr angepasst.');assert.equal(await page.locator('#plan-adjust-apply').isHidden(),true);
+    assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),before.items.map(row=>`${row.name} · Bereits gekauft`).toSorted());assert.match(await page.textContent('#plan-adjust-keep'),/Nur das Gericht entfernen.*Einkaufsliste unverändert/);
+    await page.click('#plan-adjust-keep');assert.deepEqual((await storedDemo(page)).items,before.items);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  for(const [width,theme] of [[280,'light'],[390,'dark']])test(`2.102: lange Namen bereits entfernter Zutaten passen bei ${width}px ${theme}`,async()=>{
+    const {ctx,page,problems}=await countContext289(2,{config:{theme,palette:'gruen'},context:{viewport:{width,height:844},colorScheme:theme}});
+    const names=['Fein geriebener Parmesan aus der großen Vorratspackung','Frische Petersilie und Schnittlauch für die Zubereitung'];
+    await page.evaluate(names=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key)),removed=saved.base.items.filter(row=>row.deletedAt);for(const meal of saved.base.meals)for(const part of meal.listedParts||[]){const index=removed.findIndex(row=>row.id===part.itemId);if(index>=0)part.name=names[index];}localStorage.setItem(key,JSON.stringify(saved));},names);
+    await page.reload();await goTab(page,'plan');await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();await sheetOpen(page);
+    assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),names.toSorted());assert.equal(await page.locator('#plan-adjust-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
+    await page.locator('#plan-adjust-removed').scrollIntoViewIfNeeded();assert.equal(await page.locator('#plan-adjust-removed').isVisible(),true);assert.deepEqual(problems,[]);await ctx.close();
   });
 
 });

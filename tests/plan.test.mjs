@@ -162,7 +162,7 @@ test('Schlüssel der Zeilen: Name und Einheit (Schreibweisen gleich), kommt ders
 
 // Quellenbezogene Rücknahmen: manuelle Mengen und gleichzeitige Geräte erhalten.
 import { emptyData, merge, addToList, operation, active } from '../data.js';
-import { planReduction, planRemovalCounts } from '../plan-list.js';
+import { planReduction, planRemovalCounts, planRemovalDetails } from '../plan-list.js';
 import { compact } from '../compact.js';
 const planAt = n => `2026-10-31T10:00:${String(n).padStart(2,'0')}.000Z`;
 function plannedFixture(manual = 100, fresh = false) {
@@ -210,6 +210,26 @@ test('Plan-Entfernungszähler: gekaufte, verschobene und manuell neu gesetzte Qu
     assert.deepEqual(planRemovalCounts(reduction),{total:1,remaining:0,removed:1});
   }
   assert.deepEqual(planRemovalCounts(planReduction({...meal,listedParts:undefined},null,data.items)),{total:0,remaining:0,removed:0});
+});
+test('Plan-Entfernungsdetails: ursprüngliche Namen bleiben nach Löschen und Aufräumen lesbar',()=>{
+  const {data,meal,item}=plannedFixture();
+  for(const items of [[{...item,deletedAt:planAt(5)}],[]]) {
+    assert.deepEqual(planRemovalDetails(planReduction(meal,null,items),items),[{itemId:item.id,name:'Reis',status:'removed'}]);
+  }
+  assert.deepEqual(planRemovalDetails(planReduction(meal,null,data.items),data.items),[]);
+});
+test('Plan-Entfernungsdetails: Kauf, Verschieben und geänderte Mengen werden nicht als entfernt bezeichnet',()=>{
+  const {data,meal,item}=plannedFixture();
+  for(const [patch,status] of [[{checked:true},'purchased'],[{storeId:'anderes-geschaeft'},'moved'],[{quantity:700,unit:'g'},'changed'],[{name:'Anderer Reis'},'changed']]) {
+    const changed=merge(data,[operation('items',item.id,patch,'Anna',planAt(5))]);
+    assert.deepEqual(planRemovalDetails(planReduction(meal,null,changed.items),changed.items),[{itemId:item.id,name:'Reis',status}]);
+  }
+});
+test('Plan-Entfernungsdetails: mehrere Anteile derselben Zeile werden einmal genannt und offene Zeilen bleiben in der Vorschau',()=>{
+  const {data,meal,item}=plannedFixture();const part=meal.listedParts[0];
+  const skipped={changes:[],skipped:[part,{...part,sourceId:'anderer-anteil'}]};
+  assert.deepEqual(planRemovalDetails(skipped,[]),[{itemId:item.id,name:'Reis',status:'removed'}]);
+  assert.deepEqual(planRemovalDetails({changes:[{item}],skipped:[part]},data.items),[]);
 });
 test('Plan-Korrektur: unterschiedliche Bestätigungen zweier Geräte ziehen denselben Anteil nur einmal ab',()=>{
   const {data,meal}=plannedFixture();const a=correction(data,meal,2,3).ops,b=correction(data,meal,2,4).ops;

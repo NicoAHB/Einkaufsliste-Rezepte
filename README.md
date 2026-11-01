@@ -1,6 +1,12 @@
-# Sattplan – Version 2.101
+# Sattplan – Version 2.102
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.102: bereits entfernte Zutaten beim Namen nennen
+
+Beim Entfernen eines Gerichts aus dem Wochenplan zeigt die Rückfrage unter dem bisherigen Zähler die Namen der bereits vom Einkaufszettel entfernten Zutaten. Die ursprüngliche Zuordnung bleibt auch dann lesbar, wenn die Einkaufszeile inzwischen aufgeräumt wurde. Mehrere Übernahmen derselben Einkaufszeile erscheinen einmal.
+
+Bereits gekaufte, verschobene oder geänderte Zutaten werden mit ihrem tatsächlichen Status aufgeführt und nicht als entfernt bezeichnet. Die bestehenden geschützten Mengen und die drei Entscheidungen bleiben erhalten. Offline-Paket **einkauf-shell-v114**.
 
 ## Neu in Version 2.101: zuverlässiger speichern und Sicherungen wiederherstellen
 

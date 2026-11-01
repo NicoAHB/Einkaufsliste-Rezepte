@@ -35,6 +35,18 @@ export function planRemovalCounts(reduction) {
   const total = new Set([...remaining, ...reduction.skipped.map(part => part.itemId)]);
   return { total: total.size, remaining: remaining.size, removed: total.size - remaining.size };
 }
+// Dieselben Einkaufszeilen wie im Zähler: Namen aus der ursprünglichen
+// Übernahme bleiben auch nach Löschen oder Aufräumen noch nachvollziehbar.
+export function planRemovalDetails(reduction, items) {
+  const remaining = new Set(reduction.changes.map(change => change.item.id)), details = new Map();
+  for (const part of reduction.skipped) {
+    if (remaining.has(part.itemId) || details.has(part.itemId)) continue;
+    const item = items.find(row => row.id === part.itemId);
+    const status = !item || item.deletedAt || item._planEmpty ? 'removed' : item.checked ? 'purchased' : item.storeId !== part.storeId ? 'moved' : 'changed';
+    details.set(part.itemId, { itemId: part.itemId, name: part.name, status });
+  }
+  return [...details.values()];
+}
 export function applyPlanCuts(item) {
   const spec = unitSpec(item.unit);
   let total = item.quantity * spec.factor;
