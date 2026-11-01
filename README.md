@@ -1,6 +1,16 @@
-# Sattplan – Version 2.90
+# Sattplan – Version 2.91
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.91: Listen gezielt anlegen und einzeln geheim halten
+
+- Unter **Geschäfte & Angebote** folgt erst nach der letzten vorhandenen Liste der Plus-Knopf **Liste oder Geschäft hinzufügen**. Das Anlegen öffnet sich ausschließlich beim Antippen; die beiden Aktivierungskarten für Wünsche und Geheim entfallen dort.
+- **Anzeige im Reiter** mit den zusätzlichen Symbolen steht ausschließlich bei **eigenen Listen ohne Supermarktverknüpfung**. Supermärkte zeigen weiterhin Namen oder Händlerlogo. Bereits hinterlegte Extrasymbole werden dort nicht mehr angezeigt.
+- Neu ist **Symbol 7 · Geheim** mit Schloss. Nur bei diesem Symbol erscheint der an- und abwählbare Haken **Diese Liste ist geheim**. Neue geheime Listen erhalten automatisch den Haken; mehrere benannte geheime Listen sind möglich. Name, Einträge, Notizen und Haken bleiben auf diesem Gerät und fehlen im GitHub-Abgleich sowie den gemeinsamen JSON-/ZIP-Sicherungen.
+- Eine geheime Liste wird erst nach **Speichern → ausdrücklicher Freigabebestätigung** gemeinsam sichtbar. Beim Umstellen einer bereits gemeinsamen Liste wird nach Rückfrage eine lokale geheime Kopie angelegt und die bisher gemeinsame Liste ausgeblendet. Frühere gemeinsame Daten und Sicherungen bleiben bestehen; sie werden dadurch nicht nachträglich geheim.
+- Die bisherige lokale Geheim-Liste bleibt mit ihren Einträgen erhalten und ist in der Verwaltung wieder zugänglich. Browserdaten löschen entfernt lokale geheime Listen dauerhaft.
+
+Offline-Paket **einkauf-shell-v103**. Das gemeinsame Schloss-Symbol ohne Geheim-Haken aktiviert Datenrevision 13; die rein lokalen Listen ändern die gemeinsame Datenrevision nicht. Details und Klick-Testliste: [Umsetzungsbericht 2.91](docs/Umsetzungsbericht-2.91.md).
 
 ## Neu in Version 2.90: klare Geschäftsaktionen und Bilder in eigenen Listen
 

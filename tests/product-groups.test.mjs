@@ -96,6 +96,10 @@ test('Neue Listensymbole erhalten den Aktualisierungsschutz und parallele Listen
     const next=merge(baseline,ops);assert.equal(next.sync.minRev,12);assert.equal(next.stores[0].symbol,'pharmacy');assert.equal(next.stores[0].name,'Hausapotheke');assert.equal(next.stores[0].separate,true);
   }
 });
+test('Das Schloss-Symbol einer geteilten eigenen Liste schützt vor älteren App-Versionen',()=>{
+  const data=merge(emptyData(),[operation('stores','schloss',{name:'Liste mit Schloss',separate:true,symbol:'secret'},'Nico',at)]);
+  assert.equal(data.sync.minRev,13);assert.equal(data.stores[0].symbol,'secret');
+});
 
 test('Import: zehn Lidl-Aufrufe nach transienten Fehlern, fünf Versuche, nur freigegebene Routen und ruhiger Fortschritt',async()=>{
   const html='<html>'+('x'.repeat(250))+'</html>';

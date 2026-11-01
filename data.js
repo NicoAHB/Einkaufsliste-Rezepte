@@ -162,7 +162,8 @@ export function validateRow(key, row) {
 // Revision 10 (2.76): Quellenbezogene Wochenplan-Korrekturen und Mengen-Reset.
 // Revision 11 (2.86): Produktgruppen sowie ausgeblendete Wunschlisten und entfernte Wunschbilder.
 // Revision 12 (2.90): zusätzliche Listensymbole; ältere Apps kennen nur Geschenk/Name.
-export const SCHEMA_REV = 12;
+// Revision 13 (2.91): Schloss-Symbol für eigene Listen; Geheimdaten bleiben rein lokal.
+export const SCHEMA_REV = 13;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -309,6 +310,7 @@ export function merge(data, operations) {
   if (collections.some(key => next[key]?.some(row=>row.productOriginalName))) next.sync.minRev = Math.max(Number(next.sync.minRev)||1,11);
   if(next.items.some(row=>row.wishImageHidden!==undefined) || next.stores.some(row=>row.wishlistEnabled!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,11);
   if(next.stores.some(row=>LIST_SYMBOL_IDS.includes(row.symbol)&&row.symbol!=='gift'))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,12);
+  if(next.stores.some(row=>row.symbol==='secret'))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,13);
   if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
   if (next.pantry.some(row => row.available === false)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 5);
   if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);

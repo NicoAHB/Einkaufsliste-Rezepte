@@ -2245,6 +2245,13 @@ body.in-store .tabs {
 .store-new h3 {
   margin:0
 }
+.store-create { margin-top:18px }
+.store-create>summary { display:flex; align-items:center; gap:12px; min-height:52px; padding:12px 16px; border:1px solid var(--line-strong); border-radius:16px; background:var(--accent-soft); color:var(--accent); font-weight:650; line-height:1.4; cursor:pointer; list-style:none }
+.store-create>summary::-webkit-details-marker { display:none }
+.store-create>summary>.icon { flex:none; transition:transform .18s ease }
+.store-create[open]>summary>.icon { transform:rotate(45deg) }
+.store-create>summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+.store-create>.store-new { margin-top:14px; padding-top:0; border-top:0 }
 @keyframes sheet {
   from {
     transform:translateY(28px);
@@ -4534,6 +4541,10 @@ button.recipe-delete { color:var(--danger) }
 .store-symbol-choice:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:3px }
 .store-symbol-choice:active { filter:brightness(.95) }
 #stores-dialog .store-name { gap:10px }
+#stores-dialog .store-private-open { min-height:48px; padding:12px; border:1px solid var(--line-strong); background:var(--accent-soft); color:var(--accent); border-radius:14px; line-height:1.4; white-space:normal }
+.list-privacy { margin:16px 0; padding:12px; border:1px solid var(--line-strong); border-radius:14px; background:var(--accent-soft) }
+.list-privacy>.checkbox-label { margin:0 }
+.list-privacy>.hint { margin:8px 0 0; line-height:1.5 }
 #store-add:disabled { background:var(--line); color:var(--muted); border-color:var(--line-strong); opacity:1; box-shadow:none }
 #store-catalog-dialog .catalog-custom { min-height:48px; padding:12px 14px; border:1px solid var(--line-strong); border-radius:14px; background:var(--accent-soft); color:var(--accent) }
 #stores-dialog .store-saved-time { display:inline-block; white-space:nowrap }

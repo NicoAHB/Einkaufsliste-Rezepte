@@ -94,6 +94,7 @@ const openStores = async page => {
   await page.evaluate(() => { document.querySelectorAll('#store-editor .store-row').forEach(node => { node.open = true; }); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 };
 const chooseStoreSymbol=(row,value)=>row.locator(`.store-symbol-choice:has(input[value="${value}"])`).click();
+const openStoreCreate=async page=>{if(!await page.locator('#store-create').evaluate(node=>node.open))await page.click('#store-create>summary');};
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const chooseUnit = async (page, selector, value) => {
   await page.locator(selector).click(); await page.waitForSelector('#purchase-unit-dialog[open]');
@@ -3029,7 +3030,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Händlerkatalog: suchen, filtern, abbrechen, Vorlage mit Filialname speichern und eigene Geschäfte anlegen', async () => {
     const { ctx, page, problems } = await context({ config: { storeStyle: 'logo' } });
     await open(page); await page.click('#manage-stores'); await sheetOpen(page);
-    await page.click('#choose-store'); await sheetOpen(page);
+    await openStoreCreate(page); await page.click('#choose-store'); await sheetOpen(page);
     assert.equal(await page.locator('.catalog-choice').count(), 30);
     assert.equal(await page.locator('[data-chain=edeka]').isDisabled(), true);
     assert.equal(await page.locator('[data-chain=dm]').isEnabled(), true);
@@ -3039,7 +3040,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#store-catalog-dialog [data-close].icon-button');
     assert.equal(await page.locator('#stores-dialog').isVisible(), true);
     assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1')), before, 'Abbrechen speichert nichts');
-    await page.click('#choose-store'); await page.selectOption('#store-catalog-type', 'drugstore');
+    await openStoreCreate(page); await page.click('#choose-store'); await page.selectOption('#store-catalog-type', 'drugstore');
     assert.equal(await page.locator('.catalog-choice').count(), 4);
     await page.fill('#store-catalog-search', 'mueller');
     assert.equal(await page.locator('.catalog-choice').count(), 1);
@@ -3064,7 +3065,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await dm.locator('input[name=offersUrl]').inputValue(), 'https://example.org/filiale');
     await dm.locator('select[name=chainKey]').selectOption('dm');
     assert.equal(await dm.locator('.store-save').isDisabled(),true,'Zurück zur gespeicherten Händlerwahl erzeugt keine neue Änderung');
-    await page.click('#choose-store'); assert.equal(await page.locator('[data-chain=dm]').isDisabled(), true);
+    await openStoreCreate(page); await page.click('#choose-store'); assert.equal(await page.locator('[data-chain=dm]').isDisabled(), true);
     await page.fill('#store-catalog-search', 'Nicht vorhandener Händler');
     assert.equal(await page.locator('.catalog-choice').count(), 0);
     assert.match(await page.textContent('#store-catalog-count'), /Kein Treffer/);
@@ -3084,7 +3085,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Händlerkatalog: Logos vollständig lokal, hell/dunkel und auf kleinen iPhones lesbar', async () => {
     const { ctx, page, problems } = await context();
     const external = []; await ctx.route('https://**', route => { external.push(route.request().url()); return route.abort(); });
-    await open(page); await page.click('#manage-stores'); await page.click('#choose-store'); await sheetOpen(page);
+    await open(page); await page.click('#manage-stores'); await openStoreCreate(page); await page.click('#choose-store'); await sheetOpen(page);
     await page.waitForFunction(() => [...document.querySelectorAll('#store-catalog-list img')].every(img => img.complete && img.naturalWidth > 0));
     for (const width of [280, 320, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
@@ -3114,7 +3115,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await nico.page.evaluate(() => navigator.serviceWorker.ready);
     await nico.page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     offline = true; await nico.ctx.setOffline(true); await nico.page.reload();
-    await nico.page.click('#manage-stores'); await nico.page.click('#choose-store'); await sheetOpen(nico.page);
+    await nico.page.click('#manage-stores'); await openStoreCreate(nico.page); await nico.page.click('#choose-store'); await sheetOpen(nico.page);
     await nico.page.waitForFunction(() => [...document.querySelectorAll('#store-catalog-list img')].every(img => img.complete && img.naturalWidth > 0));
     await nico.page.fill('#store-catalog-search', 'aldi sued'); await nico.page.click('[data-chain=aldi-sued]');
     await nico.page.click('#store-form [type=submit]');
@@ -3133,7 +3134,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
   });
 
-  test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt mit Pfeil, aufklappbar; „Neues Geschäft“ unten fest; ein neues Geschäft erscheint zugeklappt', async () => {
+  test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt; Plus am Ende öffnet das Anlegen; ein neues Geschäft erscheint zugeklappt', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
     await open(page);
     await page.click('#manage-stores'); await sheetOpen(page);
@@ -3145,9 +3146,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await rows.first().locator('input[name=name]').isVisible(), false, 'die Felder sind verborgen');
     const arrow = await rows.first().locator('> summary').evaluate(node => getComputedStyle(node, '::after').content);
     assert.notEqual(arrow, 'none', 'der Pfeil steht rechts');
-    // „Neues Geschäft“: fest, nicht klappbar, sichtbar
+    // Das neue Formular öffnet ausschließlich das Plus am Ende.
     const form = page.locator('#store-form');
-    assert.equal(await form.evaluate(node => node.closest('details') === null), true, 'nicht in einer klappbaren Karte');
+    assert.equal(await form.isVisible(),false);await openStoreCreate(page);
+    assert.equal(await form.evaluate(node => node.closest('details').id), 'store-create');
     assert.equal(await form.locator('input[name=name]').isVisible(), true);
     assert.equal(await form.locator('h3').textContent(), 'Neues Geschäft');
     // Aufklappen mit einem Tipp auf die Zeile; die anderen bleiben zu
@@ -4377,7 +4379,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await pick(0).inputValue(), 'name');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
     // Edeka als Geschenk: ausdrücklich gespeichert; der Reiter zeigt dann das Bild
-    await chooseStoreSymbol(row(0),'gift'); await saved(0);
+    await row(0).locator('[name=separate]').check();await chooseStoreSymbol(row(0),'gift'); await saved(0);
     assert.equal(record('Edeka').symbol, 'gift');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     assert.equal(await visible(bar), 2);
@@ -8747,7 +8749,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await first.locator('.aisle-fold>summary').click();await first.locator('.aisle-down').first().click();assert.equal(await first.locator('.store-save').isEnabled(),true);
     await first.locator('.aisle-up').nth(1).click();assert.equal(await first.locator('.store-save').isDisabled(),true);
     await first.locator('.aisle-fold>summary').click();
-    assert.equal(await first.locator('input[name=symbol]').count(),7);
+    assert.equal(await first.locator('.store-symbol-picker').isVisible(),false);await first.locator('[name=separate]').check();
+    assert.equal(await first.locator('input[name=symbol]').count(),8);
     await chooseStoreSymbol(first,'pharmacy');assert.equal(await first.locator('.store-save').isEnabled(),true);
     for(const choice of await first.locator('.store-symbol-choice').all()) {const box=await choice.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.equal(await choice.locator('svg').count(),1);}
     assert.equal(await first.locator('.store-symbol-choice:has(input[value=gift]) span:not(.store-symbol)').textContent(),'Symbol 1');
@@ -8778,6 +8781,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.90: eigene Liste direkt anlegen, praktische Symbole speichern und ohne Händlerverknüpfung neu laden',async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen'}});await open(page);await openStores(page);
     assert.equal(await page.locator('#store-add').isDisabled(),true);
+    await openStoreCreate(page);
     await page.check('#store-form [name=separate]');assert.equal(await page.locator('#choose-store').isVisible(),false);assert.equal(await page.locator('#store-form [name=offersUrl]').isDisabled(),true);
     await page.fill('#store-form [name=name]','Apotheke');await page.click('#store-add');
     const id=(await storedDemo(page)).stores.find(row=>row.name==='Apotheke').id,row=page.locator(`.store-row[data-id="${id}"]`);
@@ -8797,7 +8801,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
     for(const device of [a,b]) {await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);await openStores(device.page);}
     const rowA=a.page.locator('.store-row').first(),rowB=b.page.locator('.store-row').first();
-    await rowA.locator('[name=name]').fill('Edeka gemeinsam');await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
+    await rowA.locator('[name=name]').fill('Edeka gemeinsam');await rowB.locator('[name=separate]').check();await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
     await rowA.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
     assert.equal(api.content.stores[0].name,'Edeka gemeinsam');assert.equal(api.content.stores[0].symbol,'pharmacy');assert.equal(api.content.sync.minRev,12);
     assert.equal(await rowA.locator('input[name=symbol]:checked').inputValue(),'pharmacy');
@@ -8814,48 +8818,97 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
 
-  const openSecret290=async page=>{await goTab(page,'shopping');await page.locator('#store-chips [data-private]').click();await page.waitForSelector('#private-list-panel:not([hidden])');};
+  async function createSecret291(page,name='Geheime Liste') {
+    if(!await page.locator('#stores-dialog').evaluate(node=>node.open)){await goTab(page,'shopping');await page.click('#manage-stores');await sheetOpen(page);}
+    await openStoreCreate(page);await page.check('#store-form [name=separate]');await chooseStoreSymbol(page.locator('#store-form'),'secret');
+    assert.equal(await page.isChecked('#store-form [name=private]'),true);
+    await page.fill('#store-form [name=name]',name);await page.click('#store-add');
+    return page.locator('.private-store-row').filter({has:page.locator('.store-name',{hasText:name})}).last();
+  }
+  const openSecret290=async(page,name)=>{
+    await goTab(page,'shopping');
+    const button=name?page.locator('#store-chips [data-private]').filter({has:page.locator(`.store-symbol[aria-label="${name}"]`)}):page.locator('#store-chips [data-private]').first();
+    await button.click();await page.waitForSelector('#private-list-panel:not([hidden])');
+  };
   const addSecret290=async(page,name)=>{await page.fill('#private-add-form [name=name]',name);await page.click('#private-add');};
-  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.90: geheime Liste bleibt bei ${width}px ${theme} ausschließlich lokal, auch nach Ausschalten und Neuladen`,async()=>{
+  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.91: Plus öffnet das Anlegen; Symbole nur für eigene Listen und Geheim-Haken nur beim Schloss bei ${width}px ${theme}`,async()=>{
+    const data=structuredClone(demo);data.stores[0].symbol='pharmacy';
+    const {ctx,page,problems}=await context({config:{palette:'gruen',theme},context:{viewport:{width,height:844},colorScheme:theme}});await seedLocal(ctx,data);await open(page);
+    assert.equal(await page.locator('#store-chips .store-symbol').count(),0,'ältere Symbolwerte eines Supermarkts werden nicht dargestellt');
+    await page.click('#manage-stores');await sheetOpen(page);
+    assert.equal(await page.locator('#stores-dialog .wish-option').count(),0);assert.equal(await page.locator('#store-form').isVisible(),false);
+    assert.equal(await page.locator('#store-editor').evaluate(node=>node.nextElementSibling.id),'store-create');
+    await page.locator('.store-row').first().locator('>summary').click();assert.equal(await page.locator('.store-row').first().locator('.store-symbol-picker').isVisible(),false);
+    await page.locator('.store-row').first().locator('>summary').click();await page.screenshot({path:`/tmp/sattplan291-verwaltung-${width}.png`});
+    await openStoreCreate(page);assert.equal(await page.locator('#store-form').isVisible(),true);
+    assert.equal(await page.locator('#store-new-symbols').isVisible(),false);await page.check('#store-form [name=separate]');
+    assert.equal(await page.locator('#store-new-symbols').isVisible(),true);assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
+    await chooseStoreSymbol(page.locator('#store-form'),'pharmacy');assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
+    await chooseStoreSymbol(page.locator('#store-form'),'secret');assert.equal(await page.locator('#store-form [name=private]').isVisible(),true);assert.equal(await page.isChecked('#store-form [name=private]'),true);
+    await page.uncheck('#store-form [name=private]');assert.match(await page.textContent('#store-new-hint'),/mit der Familie geteilt/);
+    await chooseStoreSymbol(page.locator('#store-form'),'gift');assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
+    assert.equal(await page.locator('#stores-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
+    await page.click('#stores-dialog .sheet-head [data-close]');await page.click('#manage-stores');assert.equal(await page.locator('#store-form').isVisible(),false,'erneutes Öffnen zeigt wieder nur das Plus');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.91: geheime Liste mit Schloss und Haken bleibt bei ${width}px ${theme} lokal; abgebrochene Freigabe erhält sie`,async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen',theme,productImages:true},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);
     const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
-    await goTab(page,'settings');await page.check('#settings-private-list');await openSecret290(page);
-    assert.equal(await page.locator('#item-form').isVisible(),false);assert.equal(await page.locator('#shared-list-actions').isVisible(),false);assert.equal(await page.locator('#mode-shop').isDisabled(),true);
+    const row=await createSecret291(page);assert.equal(await row.locator('[name=private]').isChecked(),true);await row.locator('.list-privacy').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan291-geheim-haken-${width}.png`});
+    await page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(page);
     await addSecret290(page,'Milch');assert.equal(await page.locator('#private-items [data-photo-key=milch]').count(),1);
     const secret='Überraschung nur für mich';await addSecret290(page,secret);
-    await page.getByRole('button',{name:secret+' privat bearbeiten',exact:true}).click();await sheetOpen(page);
-    await page.fill('#private-item-form [name=note]','Diese Notiz sieht die Familie nicht.');await page.click('#private-item-form button[type=submit]');
-    assert.match(await page.textContent('#private-items'),/Diese Notiz sieht die Familie nicht/);
+    await page.getByRole('button',{name:secret+' privat bearbeiten',exact:true}).click();await sheetOpen(page);await page.fill('#private-item-form [name=note]','Diese Notiz bleibt privat.');await page.click('#private-item-form button[type=submit]');
     await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();await page.click('#private-done>summary');assert.equal(await page.locator('#private-done-items .private-row').count(),1);
-    assert.equal(await page.getByRole('button',{name:'Milch: wieder öffnen',exact:true}).evaluate(node=>getComputedStyle(node).backgroundColor),await page.locator('#private-add').evaluate(node=>getComputedStyle(node).backgroundColor),'abgehakte private Artikel zeigen einen gefüllten Haken');
-    assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared,'Geheime Einträge verändern die gemeinsame Datei nicht');
-    await page.screenshot({path:`/tmp/sattplan290-geheim-${width}.png`});assert.equal(await horizontalOverflow(page),0);
-    await goTab(page,'settings');await page.uncheck('#settings-private-list');await goTab(page,'shopping');assert.equal(await page.locator('#store-chips [data-private]').count(),0);
-    await page.reload();await goTab(page,'settings');assert.equal(await page.isChecked('#settings-private-list'),false);
-    await page.check('#settings-private-list');await openSecret290(page);assert.match(await page.textContent('#private-items'),/Überraschung nur für mich/);assert.match(await page.textContent('#private-items'),/Diese Notiz sieht die Familie nicht/);
-    await page.locator('#store-chips').getByRole('tab',{name:/^Alle/}).click();assert.ok(!(await page.textContent('#items')).includes(secret));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.equal(await horizontalOverflow(page),0);
+    await page.click('#manage-stores');await row.locator('summary').click();await row.locator('[name=private]').uncheck();
+    page.once('dialog',dialog=>dialog.dismiss());await row.locator('.store-save').click();assert.equal(await page.locator('#store-chips [data-private]').count(),1);
+    await page.click('#stores-dialog .sheet-head [data-close]');await page.reload();await openSecret290(page);assert.match(await page.textContent('#private-items'),/Diese Notiz bleibt privat/);
     assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.90: Partnergerät, GitHub und beide gemeinsamen Backup-Arten enthalten keine geheimen Inhalte',async()=>{
+  test('2.91: mehrere geheime Listen bleiben getrennt und erscheinen weder beim Partner noch in GitHub oder gemeinsamen Sicherungen',async()=>{
     const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
     for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}
-    await goTab(a.page,'settings');await a.page.check('#settings-private-list');await openSecret290(a.page);
-    const secret='GeheimeÜberraschung7290';await addSecret290(a.page,secret);await pollNow(a.page);await synced(a.page);await pollNow(b.page);await synced(b.page);
-    assert.ok(!JSON.stringify(api.content).includes(secret));assert.equal(await b.page.locator('#store-chips [data-private]').count(),0);await goTab(b.page,'settings');assert.equal(await b.page.isChecked('#settings-private-list'),false);
-    await openSettings(a.page);const [jsonDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export')]);
-    assert.ok(!(await readFile(await jsonDownload.path(),'utf8')).includes(secret));
-    const [zipDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export-full')]);
-    const files=readZip(new Uint8Array(await readFile(await zipDownload.path())));for(const file of files)assert.ok(!new TextDecoder().decode(file.data).includes(secret));
-    await a.page.reload();await synced(a.page);await openSecret290(a.page);assert.match(await a.page.textContent('#private-items'),new RegExp(secret));
-    await goTab(b.page,'settings');await b.page.check('#settings-private-list');await openSecret290(b.page);assert.equal(await b.page.locator('#private-items .private-row').count(),0,'Partner kann nur eine eigene leere geheime Liste aktivieren');
+    await createSecret291(a.page,'Geschenke privat');await a.page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(a.page,'Geschenke privat');await addSecret290(a.page,'Überraschung7291');
+    await createSecret291(a.page,'Reise privat');await a.page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(a.page,'Reise privat');await addSecret290(a.page,'GeheimerReisewunsch7291');
+    await openSecret290(a.page,'Geschenke privat');assert.match(await a.page.textContent('#private-items'),/Überraschung7291/);assert.ok(!(await a.page.textContent('#private-items')).includes('Reisewunsch'));
+    await pollNow(a.page);await synced(a.page);await pollNow(b.page);await synced(b.page);assert.ok(!/7291|Geschenke privat|Reise privat/.test(JSON.stringify(api.content)));assert.equal(await b.page.locator('#store-chips [data-private]').count(),0);
+    await openSettings(a.page);const [jsonDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export')]);assert.ok(!/7291|Geschenke privat/.test(await readFile(await jsonDownload.path(),'utf8')));
+    const [zipDownload]=await Promise.all([a.page.waitForEvent('download'),a.page.click('#export-full')]);for(const file of readZip(new Uint8Array(await readFile(await zipDownload.path()))))assert.ok(!/7291|Geschenke privat/.test(new TextDecoder().decode(file.data)));
+    await a.page.reload();await synced(a.page);assert.equal(await a.page.locator('#store-chips [data-private]').count(),2);await openSecret290(a.page,'Reise privat');assert.match(await a.page.textContent('#private-items'),/GeheimerReisewunsch7291/);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
-  test('2.90: geheime Liste behält bei vollem Gerätespeicher die Eingabe und speichert erst nach erfolgreichem Versuch',async()=>{
-    const {ctx,page,problems}=await context();await open(page);await goTab(page,'settings');await page.check('#settings-private-list');await openSecret290(page);
-    await page.evaluate(()=>{window.privateFull290=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.privateFull290&&key.startsWith('einkauf-private-list-v1:'))throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
-    await addSecret290(page,'Privates Geschenk');assert.equal(await page.inputValue('#private-add-form [name=name]'),'Privates Geschenk');assert.equal(await page.locator('#private-items .private-row').count(),0);assert.match(await page.textContent('#message'),/nicht gespeichert.*bisherigen Einträge bleiben erhalten/);
-    await page.evaluate(()=>window.privateFull290=false);await page.click('#private-add');assert.equal(await page.inputValue('#private-add-form [name=name]'),'');assert.equal(await page.locator('#private-items .private-row').count(),1);
-    await page.getByRole('button',{name:'Privates Geschenk privat bearbeiten',exact:true}).click();page.once('dialog',dialog=>dialog.accept());await page.click('#private-item-delete');assert.equal(await page.locator('#private-items .private-row').count(),0);
+  test('2.91: aus geteilter Liste wird nach Bestätigung eine private Kopie; Freigabe zurück erhält Mengen, Notizen und Haken',async()=>{
+    const data=extras290(),milk=data.items.find(row=>row.id==='extra-milk');milk.quantity=2;milk.unit='l';milk.checked=true;milk.wishNote='Bisher geteilte Notiz';milk.wishImageHidden=true;
+    const api=github(data),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}
+    await openStores(a.page);const shared=a.page.locator('.store-row[data-id=extra-290]');await shared.locator('[name=name]').fill('Nur mein Reiseplan');await chooseStoreSymbol(shared,'secret');
+    a.page.once('dialog',dialog=>dialog.dismiss());await shared.locator('.store-save').click();
+    assert.equal(api.content.stores.find(row=>row.id==='extra-290').deletedAt,null);assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);
+    a.page.once('dialog',dialog=>{assert.match(dialog.message(),/Frühere gemeinsame Daten/);dialog.accept();});await shared.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
+    assert.ok(api.content.stores.find(row=>row.id==='extra-290').deletedAt);assert.ok(!JSON.stringify(api.content).includes('Nur mein Reiseplan'));assert.equal(await b.page.locator('#store-chips [data-private]').count(),0);
+    await a.page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(a.page,'Nur mein Reiseplan');await addSecret290(a.page,'NurIch7291');
+    await a.page.getByRole('button',{name:'NurIch7291 privat bearbeiten',exact:true}).click();await a.page.fill('#private-item-form [name=note]','NochGeheimeNotiz7291');await a.page.click('#private-item-form button[type=submit]');
+    await pollNow(a.page);await synced(a.page);assert.ok(!/NurIch7291|NochGeheimeNotiz7291/.test(JSON.stringify(api.content)));
+    await openStores(a.page);const local=a.page.locator('.private-store-row');await local.locator('[name=private]').uncheck();a.page.once('dialog',dialog=>dialog.dismiss());await local.locator('.store-save').click();assert.ok(!JSON.stringify(api.content).includes('NurIch7291'));
+    a.page.once('dialog',dialog=>{assert.match(dialog.message(),/für die Familie freigeben/);dialog.accept();});await local.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
+    const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,13);
+    const rows=api.content.items.filter(row=>!row.deletedAt&&row.storeId===target.id);assert.equal(rows.length,4);const copied=rows.find(row=>row.name==='Milch');assert.deepEqual([copied.quantity,copied.unit,copied.checked,copied.wishNote,copied.wishImageHidden],[2,'l',true,'Bisher geteilte Notiz',true]);assert.equal(rows.find(row=>row.name==='NurIch7291').wishNote,'NochGeheimeNotiz7291');
+    assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]').count(),1);
+    assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+  });
+  test('2.91: bisherige geheime Geräteliste bleibt mit Einträgen und Notizen erhalten und ist über die Verwaltung erreichbar',async()=>{
+    const {ctx,page,problems}=await context();await ctx.addInitScript(()=>localStorage.setItem('einkauf-private-list-v1:einkauf-demo-v1',JSON.stringify({version:1,enabled:false,items:[{id:'legacy-item',name:'Bisheriges Geheimnis',note:'Notiz von vorher',checked:false,createdAt:'2026-11-01T10:00:00.000Z'}]})));
+    await open(page);assert.equal(await page.locator('#store-chips [data-private]').count(),0);await openStores(page);const row=page.locator('.private-store-row');assert.match(await row.textContent(),/ausgeblendet/);await row.getByRole('button',{name:'Liste öffnen',exact:true}).click();
+    assert.match(await page.textContent('#private-items'),/Bisheriges Geheimnis.*Notiz von vorher/);await addSecret290(page,'Neu in alter Liste');assert.equal(await page.locator('#private-items .private-row').count(),2);
+    assert.ok(!(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'))).includes('Bisheriges Geheimnis'));assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.91: fehlgeschlagene Freigabe erhält private Inhalte und erneuter Versuch erzeugt keine Duplikate',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await createSecret291(page,'Meine Liste');await page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(page);await addSecret290(page,'Geheimes Geschenk');
+    await openStores(page);const row=page.locator('.private-store-row');await row.locator('[name=private]').uncheck();
+    await page.evaluate(()=>{window.failShared291=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.failShared291&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
+    page.once('dialog',dialog=>dialog.accept());await row.locator('.store-save').click();assert.equal(await page.locator('#store-chips [data-private]').count(),1);assert.ok(!(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'))).includes('Geheimes Geschenk'));
+    await page.evaluate(()=>window.failShared291=false);page.once('dialog',dialog=>dialog.accept());await row.locator('.store-save').click();const state=await storedDemo(page),list=state.stores.find(row=>row.name==='Meine Liste');assert.ok(list);assert.equal(state.items.filter(row=>row.storeId===list.id).length,1);assert.equal(await page.locator('#store-chips [data-private]').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
