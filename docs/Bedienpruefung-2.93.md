@@ -1,5 +1,7 @@
 # Sattplan: Bedienprüfung und nächste Verbesserungen
 
+Aktualisierung mit Version 2.95: Einheitliche Buttonflächen, sichtbare Alternativen zu Haltegesten, **Ausgabe eintragen**, lokale Speicherbestätigungen und getrennte Einstellungsgruppen sind umgesetzt. Zusätzlich verwendet die Geschäftsauswahl breite Listenzeilen mit einer festen Zahlenplakette. Anleitung und Rezeptdetails öffnen jeweils nur einen Bereich und gleichen die Scrollposition aus. Die nachfolgende Tabelle hält die ursprüngliche Prüfung fest; die genannten vier Schwerpunkte sind keine offenen Aufgaben mehr. Weiter offen sind insbesondere die kompaktere Mengenanzeige im Laden, der vereinfachte Einstieg zum Rezeptimport und dauerhafte Freigabehinweise eigener Listen.
+
 Aktualisierung mit Version 2.94: Der Wünsche-Schalter steht ausschließlich unter **Geschäfte**. Aktivierung und Einstellhinweise auf der Einkaufsseite wurden entfernt. Der Rückbutton im Laden steht kompakter unter der Geschäftsleiste, damit diese die volle Breite nutzen kann.
 
 Geprüft wurden die fünf Hauptbereiche Einkauf, Rezepte, Plan, Ausgaben und Einstellungen sowie Produktauswahl, Vorrat, Im Laden, Wünsche, geheime Listen, Rezeptimport und die zugehörigen Dialoge. Die Bewertung berücksichtigt die sichtbaren Beschriftungen, die Darstellung im Glas-Design, die Auswahl- und Speicherabläufe sowie die Bedienung auf schmalen Bildschirmen.
@@ -14,7 +16,7 @@ Geprüft wurden die fünf Hauptbereiche Einkauf, Rezepte, Plan, Ausgaben und Ein
 
 Die deutlichere Darstellung dieser Buttons bleibt bei hoher Glas-Transparenz und im dunklen Modus erhalten. Die bestehenden Aktionen, Mengenberechnung und Speicherwege wurden beibehalten.
 
-## Weitere Empfehlungen – noch nicht umgesetzt
+## Ursprüngliche Empfehlungen – Stand der Prüfung 2.93
 
 | Priorität | Bereich | Beobachtung | Nächste Verbesserung |
 | --- | --- | --- | --- |
@@ -29,7 +31,7 @@ Die deutlichere Darstellung dieser Buttons bleibt bei hoher Glas-Transparenz und
 | Mittel | Einstellungen | Darstellung und Datensicherung stehen gemeinsam in einem langen Bereich. Technische Verbindungseinstellungen beanspruchen viel Aufmerksamkeit. | Darstellung, Sicherung und Verbindung deutlicher trennen; technische Angaben in einem eigenen erweiterten Abschnitt halten und die Ersteinrichtung Schritt für Schritt führen. |
 | Mittel | Wünsche und geheime Listen | Beide sehen wie eigene Listen aus, haben aber unterschiedliche Speicher- und Freigabeeigenschaften. | In der jeweils geöffneten Liste den Status dauerhaft und verständlich anzeigen: „Mit der Familie geteilt“ oder „Nur auf diesem Gerät“. Den Status nicht allein vom Symbol abhängig machen. |
 
-## Empfohlene Reihenfolge
+## Ursprünglich empfohlene Reihenfolge
 
 Als Nächstes bringen einheitliche Buttonvarianten und sichtbare Alternativen zu Haltegesten den größten Nutzen. Danach sollten Auswahl-/Speicherzustände vereinheitlicht und die Beschriftungen im Ausgabenbereich sowie die Gliederung der Einstellungen überarbeitet werden.
 

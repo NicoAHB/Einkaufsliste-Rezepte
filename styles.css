@@ -531,10 +531,15 @@ main {
 .list-shortcuts .shop-tools #offers-link { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:auto; max-width:100%; min-height:54px; padding:12px 8px; border:1.5px solid var(--accent); border-radius:16px; font-size:.95rem; font-weight:700; white-space:normal }
 .list-shortcuts .shop-tools #offers-link .label { display:inline }
 .list-shortcuts .shop-tools .hint { margin:0; font-size:.78rem }
-.store-quick-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
-.store-quick-choice { display:flex; align-items:center; justify-content:center; gap:8px; min-height:54px; overflow-wrap:anywhere }
+.store-quick-options { display:grid; grid-template-columns:minmax(0,1fr); gap:8px }
+.store-quick-choice { display:grid; grid-template-columns:minmax(0,1fr) max-content; align-items:center; gap:12px; min-height:52px; text-align:left }
 .store-quick-choice[aria-pressed=true] { border-color:var(--accent); background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent) }
 .store-quick-choice .store-symbol { width:36px; height:36px }
+.quick-label { min-width:0; white-space:normal; word-break:normal; overflow-wrap:break-word; hyphens:auto }
+.quick-count { justify-self:end; white-space:nowrap; word-break:normal; overflow-wrap:normal; min-width:2em; padding:3px 8px; border-radius:99px; background:var(--accent-soft); color:var(--accent); font-size:.85rem; font-variant-numeric:tabular-nums; text-align:center }
+.store-quick-choice[aria-pressed=true] .quick-count { background:var(--card) }
+#store-quick-dialog .store-quick-choice { display:grid; grid-template-columns:minmax(0,1fr) max-content; width:100%; justify-content:stretch; padding:10px 14px; white-space:normal }
+#store-quick-dialog .store-quick-choice[aria-pressed=true] { border-color:var(--accent); background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent) }
 .quick-hidden-label { grid-column:1/-1; margin:12px 0 0 }
 .wishlist-controls { margin:12px 0 }
 :root #stores-dialog .store-wishes-open { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; min-height:48px; padding:10px 12px; border:2px solid var(--accent); border-radius:14px; background:var(--accent-soft); color:var(--accent); font-weight:700; white-space:normal }
@@ -4583,6 +4588,54 @@ button.recipe-delete { color:var(--danger) }
 #stores-dialog .aisle-fold>summary>.icon:last-child { width:20px; height:20px; transition:transform .18s }
 #stores-dialog .aisle-fold[open]>summary>.icon:last-child { transform:rotate(180deg) }
 #stores-dialog .aisle-list .icon-button { width:48px; min-height:48px; height:48px; background:var(--accent-soft); border:1px solid var(--line-strong); border-radius:12px; color:var(--accent) }
+
+/* Gemeinsame Aktionsstile: deckende Flächen und sichtbare Konturen. */
+:root button.secondary,:root[data-glass] button.secondary,
+:root button.text-button:not(#product-picker-count),:root[data-glass] button.text-button:not(#product-picker-count),
+:root .chip-button,:root[data-glass] .chip-button,
+:root a.button.secondary,:root[data-glass] a.button.secondary {
+  min-height:44px; padding:10px 12px; border:2px solid var(--line-strong); border-radius:14px;
+  background:var(--card); color:var(--accent); font-weight:650; line-height:1.3;
+  box-shadow:0 1px 3px hsl(var(--h) 30% 15% / .1); -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+:root button[type=submit]:not(.secondary):not(.add-button),:root[data-glass] button[type=submit]:not(.secondary):not(.add-button),
+:root .primary-action,:root[data-glass] .primary-action {
+  min-height:48px; padding:11px 14px; border:2px solid var(--accent); border-radius:14px; color:var(--on-accent); background:var(--accent); line-height:1.3;
+}
+:root button.danger,:root[data-glass] button.danger { min-height:44px; padding:10px 12px; border:2px solid var(--danger); border-radius:14px; color:var(--danger); background:var(--danger-soft); box-shadow:none }
+:root .icon-button,:root[data-glass] .icon-button { border:2px solid var(--line-strong); background:var(--card); color:var(--accent); box-shadow:0 1px 3px hsl(var(--h) 30% 15% / .1) }
+:root button:focus-visible,:root a.button:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+:root button:disabled { cursor:default; box-shadow:none }
+.head-actions,.spend-toolbar,.list-head { flex-wrap:wrap; gap:8px }
+.list-menu-open { width:100%; margin:0 0 10px }
+#store-order-open { width:100%; margin:0 0 12px; white-space:normal }
+#product-tabs-order { width:100%; margin:0 0 10px; white-space:normal }
+:root .product-card .pantry-quick-buy { display:flex; justify-content:center; width:calc(100% - 12px); margin:0 6px 7px; padding:8px; min-height:44px; font-size:.85rem }
+#product-picker-dialog[data-target=pantry] .product-card { display:flex; flex-direction:column }
+#product-picker-dialog[data-target=pantry] .product-pick { height:auto; flex:1 }
+:root .chip:not([aria-selected=true]):not([aria-pressed=true]) { border-color:var(--line-strong); background:var(--card); color:var(--text) }
+:root .segmented button { border:2px solid var(--line-strong); min-height:44px }
+:root .segmented button:is([aria-selected=true],[aria-checked=true],[aria-pressed=true]) { border-color:var(--accent) }
+.item-edit-hint { display:block; width:max-content; max-width:100%; margin-top:3px; color:var(--accent); font-size:.75rem; font-weight:650; text-decoration:underline; text-underline-offset:3px }
+#pick-preview { width:100%; margin:8px 0 0; white-space:normal }
+#meal-change-day { width:100%; white-space:normal }
+.day.past .past-meal-remove { flex:none; font-size:.8rem; min-height:44px }
+.save-feedback { margin:6px 0 10px; color:var(--accent); font-size:.8rem; line-height:1.4 }
+.save-feedback::before { content:'✓ '; font-weight:700 }
+.form-feedback { margin:6px 0 0; font-size:.8rem; line-height:1.4; color:var(--muted); white-space:normal }
+.form-feedback[data-state=saved] { color:var(--accent) }
+.form-feedback[data-state=saved]::before { content:'✓ '; font-weight:700 }
+.sheet-actions>.form-feedback,.meal-actions>.form-feedback { grid-column:1/-1; text-align:left; font-weight:400 }
+.settings-section-title { margin:16px 0 4px; font-weight:700; color:var(--muted) }
+:root #settings>:is(#display-card,#shop-card,#backup-card,#settings-form,#import-settings-form,#alias-card,#storage-card) { order:0 }
+.order-list { list-style:none; margin:0; padding:0; display:grid; gap:8px }
+.order-list li { display:grid; grid-template-columns:minmax(0,1fr) 48px 48px; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:14px; background:var(--card) }
+.order-list li>span { overflow-wrap:anywhere }
+.order-list .order-arrow { min-height:48px; padding:0; font-size:1.3rem }
+@media(max-width:359px) {
+  #spending>.section-head { align-items:stretch; flex-wrap:wrap }
+  #spending>.section-head>#add-purchase { width:100%; white-space:normal }
+}
 #stores-dialog button:focus-visible,#stores-dialog summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
 #stores-dialog button:active:not(:disabled) { filter:brightness(.93) }
 .store-symbol-picker { min-width:0; margin:16px 0; padding:0; border:0 }

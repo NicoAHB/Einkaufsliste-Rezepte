@@ -1,3 +1,4 @@
+import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion } from './ui-controls.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds } from './store-order.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
@@ -43,6 +44,7 @@ import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, fo
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
+watchSaveForms();
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
 const imagesOn = () => config.productImages !== false;
@@ -60,6 +62,12 @@ let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion
 const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
 const portions = new Map(), openRecipes = new Set();
+singleOpenAccordion($('#help-body'), '.help-section');
+singleOpenAccordion($('#recipe-list'), '.recipe-details', () => {
+  openRecipes.clear();
+  const opened = $('#recipe-list .recipe-details[open]');
+  if (opened) openRecipes.add(opened.closest('[data-recipe-id]').dataset.recipeId);
+});
 const format = number => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(number);
 const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 // Für Eingabefelder: ohne Tausenderpunkt, sonst würde „1.000“ später als 1 gelesen.
@@ -152,7 +160,7 @@ function storageWrite(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Bitte Speicher freigeben und erneut versuchen. Diese Änderung wurde nicht übernommen.'); }
 }
-function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; }
+function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; confirmAutoSave(document.activeElement); }
 function saveLocal(nextBase, nextPending) {
   storageWrite(namespace(), { base: nextBase, pending: nextPending });
   base = nextBase; pending = nextPending; state = merge(base, pending);
@@ -198,7 +206,7 @@ function commit(ops, notice = '') {
   // Eine einzige atomare localStorage-Schreiboperation sichert Daten und Warteschlange.
   saveLocal(connected() ? base : nextState, connected() ? nextPending : []);
   if (notice) showNotice(notice);
-  message(); render(); restingStatus();
+  message(); render(); restingStatus(); confirmDataSave(ops);
   if (connected()) void sync();
 }
 
@@ -325,6 +333,7 @@ function storeChanged() {
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
 function render() {
+  resetSaveFeedback(namespace());
   privateList?.refresh();
   renderWishOptions();
   if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
@@ -391,9 +400,11 @@ function openStoreQuickMenu() {
     }, 'secondary store-quick-choice');
     choice.dataset.view = id; choice.setAttribute('aria-label', label);
     choice.setAttribute('aria-pressed', String(view === id));
-    if (privateViewId(id)) choice.append(symbolNode('secret', label));
-    else if (['all', 'none'].includes(id)) choice.append(element('span', label));
-    else choice.append(storeLabel(label));
+    const name = element('span', undefined, 'quick-label');
+    if (privateViewId(id)) name.append(symbolNode('secret', label));
+    else if (['all', 'none'].includes(id)) name.append(label);
+    else name.append(storeLabel(label));
+    choice.append(name);
     if (count) choice.append(element('span', `(${count})`, 'quick-count'));
     box.append(choice);
   };
@@ -404,6 +415,11 @@ function openStoreQuickMenu() {
   $('#store-quick-dialog').showModal(); navigator.vibrate?.(15);
 }
 bindWishHold($('#store-chips'), '[data-all-stores]', () => guard(openStoreQuickMenu));
+$('#store-quick-open').addEventListener('click', () => guard(openStoreQuickMenu));
+$('#store-order-open').addEventListener('click', () => openOrderControls({
+  title: 'Geschäfte und Listen sortieren', scope: namespace(), getScope: namespace,
+  getRows: () => orderedStores(state.stores).map(store => ({id:store.id,name:store.name})), onChange: saveStoreOrder
+}));
 const byName = (a, b) => a.name.localeCompare(b.name, 'de');
 /* „Neu von …“: Artikel, die andere angelegt (oder in der Menge erhöht) haben, stehen oben, bis man sie übernimmt. Welche man schon gesehen hat,
    merkt sich nur dieses Gerät. Beim ersten Start (und auf einem neuen Gerät nach dem ersten Abgleich) gilt alles Vorhandene als gesehen. */
@@ -524,6 +540,7 @@ function itemRow(item, withStore = false) {
   copy.append(element('strong', item.name), element('span', `${shoppingAmount(item)}`, 'item-qty'),
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
+  if (!selecting) copy.append(element('span', 'Bearbeiten', 'item-edit-hint'));
   row.append(pick || check, copy);
   if (imagesOn() || isWish(item)) row.append(thumbFor(item));
   return row;
@@ -1459,6 +1476,7 @@ function mealRow(meal, recipes, past = false) {
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
   row.append(check, copy);
+  if (past) row.append(button('Entfernen', () => askPastMeal(row, false), 'secondary past-meal-remove'));
   if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => changePlannedMeal(meal,{deletedAt:new Date().toISOString()},null)));
   return row;
 }
@@ -1512,15 +1530,15 @@ document.addEventListener('click',event=>{
   if(!pastMealHeld)return;
   pastMealHeld=false;event.preventDefault();event.stopImmediatePropagation();
 },true);
-const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{
+function askPastMeal(node, held = false) {
   const meal=active(state.meals).find(row=>row.id===node.dataset.pastId);
   if(!node.isConnected || !meal || meal.date>=isoDate() || !ready)return;
-  pastMealHeld=true;getSelection()?.removeAllRanges();
+  pastMealHeld=held;getSelection()?.removeAllRanges();
   pastMealPending={id:meal.id,date:meal.date,signature:JSON.stringify(meal),scope:namespace()};
   $('#past-meal-detail').textContent=`${mealName(meal)} · ${dayName(meal.date)} ${dayMonthLabel(meal.date)}`;
-  $('#past-meal-error').hidden=true;
-  $('#past-meal-dialog').showModal();navigator.vibrate?.(15);
-}));
+  $('#past-meal-error').hidden=true; $('#past-meal-dialog').showModal();
+}
+const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{askPastMeal(node,true);navigator.vibrate?.(15);}));
 document.addEventListener('scroll',stopPastMealHold,true);
 document.addEventListener('visibilitychange',stopPastMealHold);
 window.addEventListener('blur',stopPastMealHold);
@@ -1591,6 +1609,7 @@ function openMeal(options = {}) {
   // Kommt man von einem Tag (＋ am Tag, Bearbeiten), steht der Tag in der Überschrift und lässt sich hier nicht noch einmal wählen. Nur von der Rezeptkarte aus (noch kein Tag) gibt es die Tagesauswahl.
   const fixedDay = Boolean(meal || options.date), day = form.elements.date.value;
   form.querySelector('[data-day]').hidden = fixedDay;
+  $('#meal-change-day').hidden = !meal || meal.date < isoDate();
   const title = $('#meal-title'); title.textContent = meal ? 'Gericht ändern' : 'Gericht planen';
   if (fixedDay) title.append(' – ', element('span', `${dayName(day)} ${dayMonthLabel(day)}`));
   $('#meal-dialog').showModal();
@@ -1852,6 +1871,7 @@ function setImportBusy(busy) {
   for(const field of form.querySelectorAll('input,textarea,[data-source]')) field.disabled=busy;
   // Der Knopf bleibt bedienbar: grau bedeutet hier Laden, langes Halten bedeutet Abbrechen.
   run.disabled=false;run.type=busy?'button':'submit';
+  $('#import-cancel').hidden = !busy;
   run.classList.toggle('is-loading',busy);run.setAttribute('aria-busy',String(busy));
   run.replaceChildren();
   if(busy) run.append(element('span',importSource==='image'?'Text wird erkannt …':'Rezept wird geladen …'),element('small','Zum Abbrechen gedrückt halten'));
@@ -2544,27 +2564,27 @@ function syncShopAwake() {
 /* ---------- Schutz vor versehentlichen Berührungen ---------- */
 // Gedrückt halten statt Tippen: Der Knopf füllt sich, nach `ms` wird `action` ausgeführt. Ein kurzer Tipp tut nichts (nur ein Hinweis).
 // Tastatur und Bedienhilfen (kein Zeigerereignis, nur „click“) lösen die Aktion sofort aus.
-function holdToConfirm(node, ms, action, hint = '', enabled = () => true) {
-  let timer = null, startX = 0, startY = 0, pointer = false, reset = 0;
+function holdToConfirm(node, ms, action, hint = '', enabled = () => true, onTap = null) {
+  let timer = null, startX = 0, startY = 0, pointer = false, reset = 0, completed = false, cancelled = false;
   node.style.setProperty('--hold', `${ms}ms`);
   const stop = () => { clearTimeout(timer); timer = null; node.classList.remove('holding'); };
   const settle = () => { clearTimeout(reset); reset = setTimeout(() => { pointer = false; }, 800); };   // das „click“ nach dem Loslassen gehört noch zum Zeiger
   node.addEventListener('pointerdown', event => {
     if(!enabled()) { pointer=false;stop();return; }
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
-    pointer = true; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
+    pointer = true; completed = false; cancelled = false; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
     stop(); node.classList.add('holding');
-    timer = setTimeout(() => { stop(); settle(); if(!enabled())return;clearSelection(); navigator.vibrate?.(15); guard(action); }, ms);
+    timer = setTimeout(() => { stop(); settle(); if(!enabled())return;clearSelection(); completed = true; navigator.vibrate?.(15); guard(action); }, ms);
   });
-  node.addEventListener('pointermove', event => { if (timer !== null && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) stop(); });
-  node.addEventListener('pointerleave', stop);
+  node.addEventListener('pointermove', event => { if (pointer && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) { cancelled = true; stop(); } });
+  node.addEventListener('pointerleave', () => { cancelled = true; stop(); });
   for (const type of ['pointerup', 'pointercancel']) node.addEventListener(type, event => {
-    const early = timer !== null; stop(); settle();
-    if (early && type === 'pointerup' && hint && !isLocked()) showNotice(hint);
+    const early = timer !== null; if (type === 'pointercancel') cancelled = true; stop(); settle();
+    if (early && type === 'pointerup' && hint && !onTap && !isLocked()) showNotice(hint);
   });
   node.addEventListener('click', event => {
     if(!enabled()) { if(pointer && event.detail!==0) event.preventDefault();return; }
-    event.preventDefault();if(!pointer) guard(action);
+    event.preventDefault();if(!pointer) guard(action); else if (onTap && !completed && !cancelled) guard(onTap);
   });
   node.addEventListener('contextmenu', event => { if(enabled() || pointer) event.preventDefault(); });
   return stop;
@@ -2916,7 +2936,7 @@ function renderPick() {
     const node = element('button', undefined, `pick-row${custom ? ' custom' : ''}`); node.type = 'button'; node.dataset.value = value;
     node.setAttribute('aria-pressed', String(value === choice));
     node.append(element('strong', title)); if (meta) node.append(element('small', meta));
-    if (!custom) node.append(element('span','Lange drücken: Rezept als PDF anzeigen','pick-pdf-hint'));
+    if (!custom) node.append(element('span','Auch per langem Drücken als PDF ansehen','pick-pdf-hint'));
     list.append(node);
   };
   // Bei „Lange nicht gekocht“ steht dabei, wie lange es her ist.
@@ -2939,8 +2959,9 @@ function fillRecipePick(recipes) {
   select.value = ''; select.hidden = options.length < 2;
   renderPick();
 }
+$('#pick-preview').addEventListener('click', () => { const selected = $('#recipe-pick .pick-row[aria-pressed=true]:not(.custom)'); if (selected) openPickedSheet(selected); });
 $('#recipe-filter').addEventListener('change', () => { renderPick(); $('#recipe-pick').scrollTop = 0; });
-function syncPickHint() { $('#recipe-pick').nextElementSibling.hidden=Boolean($('#recipe-pick .pick-row[aria-pressed=true]:not(.custom)')); }
+function syncPickHint() { const selected = $('#recipe-pick .pick-row[aria-pressed=true]:not(.custom)'); $('#recipe-pick-help').hidden = Boolean(selected); $('#pick-preview').disabled = !selected; }
 function setRecipeChoice(value) {
   $('#meal-form').elements.recipeId.value = value;
   $('#recipe-pick').querySelectorAll('.pick-row').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.value === value)));
@@ -3118,7 +3139,7 @@ function openPurchase(id = '') {
   form.elements.date.value = row?.date || isoDate();
   // Neue Einträge beginnen mit „Wocheneinkauf“ (Vorschläge zum Austauschen erscheinen beim Tippen ins Feld); beim Ändern bleibt die Notiz, wie sie ist.
   form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
-  $('#purchase-title').textContent = row ? 'Einkauf ändern' : 'Einkauf eintragen';
+  $('#purchase-title').textContent = row ? 'Ausgabe bearbeiten' : 'Ausgabe eintragen';
   $('#purchase-delete').hidden = !row;
 
   $('#purchase-dialog').showModal();
@@ -3774,6 +3795,7 @@ $('#recipe-dialog').addEventListener('close', () => { saveRecipeDraft(); recipeD
 document.querySelectorAll('#import-form [data-source]').forEach(node => node.addEventListener('click', () => setImportSource(node.dataset.source)));
 $('#import-form').elements.publicProxy.addEventListener('change', () => guard(saveImportPermission));
 stopImportHold=holdToConfirm($('#import-run'),1000,()=>cancelImport(),'',()=>Boolean(importAbort));
+$('#import-cancel').addEventListener('click', () => cancelImport());
 $('#import-form').elements.images.addEventListener('change', event => showPreviews([...event.target.files]));
 $('#import-form').addEventListener('submit', event => { event.preventDefault(); guard(runImport); });
 $('#import-dialog').addEventListener('close', () => { cancelImport(true); releasePreviews(); importStatus(''); });
@@ -3782,6 +3804,7 @@ $('#week-next').addEventListener('click', () => { planWeek = addDays(planWeek, 7
 $('#week-today').addEventListener('click', () => { planWeek = weekStart(isoDate()); renderPlan(); });
 $('#plan-shopping').addEventListener('click', () => guard(openWeekShopping));
 $('#meal-form').addEventListener('submit', saveMeal);
+$('#meal-change-day').addEventListener('click', () => { const form = $('#meal-form'); form.querySelector('[data-day]').hidden = false; form.elements.date.min = isoDate(); form.elements.date.focus(); });
 for(const [id,delta] of [['meal-portions-down',-1],['meal-portions-up',1]]) $('#'+id).addEventListener('click',()=>guard(()=>{
   const input=$('#meal-form').elements.servings;
   input.value=plain(Math.max(1,positive(input.value)+delta));syncMealForm(false);
@@ -3852,7 +3875,7 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
   saveConfig(next); retryAt = 0; message(); await loadWorkspace();
   // „Gespeichert am …“ erst, wenn die Verbindung klappt; sonst bleibt der Knopf für einen neuen Versuch aktiv.
   connectFailed = $('#status').dataset.state === 'error';
-  if (!connectFailed) saveConfig({ ...config, savedAt: new Date().toISOString() });
+  if (!connectFailed) { saveConfig({ ...config, savedAt: new Date().toISOString() }); confirmFormSave(form, 'Verbindungseinstellungen gespeichert'); }
   updateSaveButtons();
 }); });
 $('#import-settings-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
@@ -3862,7 +3885,7 @@ $('#import-settings-form').addEventListener('submit', event => { event.preventDe
   if (dailyText && !dailyLink) throw new Error('Bitte bei „Rezepte des Tages“ einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
   saveConfig({ ...config, importProxy: proxy, publicProxy: form.elements.publicProxy.checked, dailySource: dailyLink, importSavedAt: new Date().toISOString() });
   form.elements.dailySource.value = dailyLink; renderDailyButton();
-  form.elements.importProxy.value = proxy; updateSaveButtons(); message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
+  form.elements.importProxy.value = proxy; updateSaveButtons(); confirmFormSave(form, 'Import-Einstellungen gespeichert'); message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
 }); });
 $('#test-proxy').addEventListener('click', () => guard(async () => {
   const proxy = workerHost($('#import-settings-form').elements.importProxy.value);
@@ -3910,7 +3933,7 @@ $('#mode-plan').addEventListener('click', () => guard(() => setShopMode(false)))
 $('#shop-back').addEventListener('click', () => guard(() => setShopMode(false)));
 $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
 $('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopScreenOn: event.target.checked }); syncShopAwake(); }));
-holdToConfirm($('#shop-finish'), HOLD_FINISH_MS, () => { if (!isLocked()) openFinish(); }, 'Zum Beenden gedrückt halten');
+holdToConfirm($('#shop-finish'), HOLD_FINISH_MS, () => { if (!isLocked()) openFinish(); }, '', () => !isLocked(), openFinish);
 $('#finish-only').addEventListener('click', () => guard(() => finishShopping()));
 // Das „+“ im Feld „Was hast du bezahlt?“: beendet den Einkauf und speichert den Betrag; die Tastatur schließt sich (auch bei einem Fehler, damit die Meldung sichtbar bleibt).
 let finishPlus = 0;

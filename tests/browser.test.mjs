@@ -10,7 +10,7 @@ import { after, before, describe, test } from 'node:test';
 import { planGenerated } from '../recipe-maker.js';
 import { readZip } from '../zip.js';
 import { orderedStores } from '../store-order.js';
-import { isoDate } from '../plan.js';
+import { isoDate, addDays } from '../plan.js';
 
 let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
@@ -2346,23 +2346,26 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Im Laden: „Einkauf beenden“ muss gedrückt gehalten werden; ein kurzer Tipp, Wegziehen oder Loslassen davor tut nichts', async () => {
+  test('Im Laden: Tippen und Halten öffnen nur die Abschlussfrage; Wegziehen bricht ab', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await inShop(page);
     await shopTap(page, 'Tomaten').click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));   // ganz nach unten, über die schwebende Leiste hinaus
     const box = await page.locator('#shop-finish').boundingBox(), at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    // Kurzer Tipp: nichts, nur ein Hinweis
+    // Kurzer Tipp: nur die Bestätigung, noch keine Datenänderung
     await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.mouse.up();
-    assert.equal(await page.locator('#finish-dialog[open]').count(), 0);
-    assert.equal(await page.textContent('#notice-text'), 'Zum Beenden gedrückt halten');
-    // Halten, aber vor der Zeit loslassen
+    assert.equal(await page.locator('#finish-dialog[open]').count(), 1);
+    assert.equal(await itemState(page, 'Tomaten'), true);
+    await page.keyboard.press('Escape');
+    // Auch kürzeres Halten öffnet beim Loslassen nur die Bestätigung
     await pressAndHold(page, '#shop-finish', 300);
     assert.equal(await page.locator('#shop-finish.holding').count(), 1, 'der Knopf füllt sich');
     await page.mouse.up();
     assert.equal(await page.locator('#shop-finish.holding').count(), 0);
-    assert.equal(await page.locator('#finish-dialog[open]').count(), 0);
+    assert.equal(await page.locator('#finish-dialog[open]').count(), 1);
+    assert.equal(await itemState(page, 'Tomaten'), true);
+    await page.keyboard.press('Escape');
     // Halten und währenddessen wegziehen (z. B. beim Scrollen): abgebrochen
     await pressAndHold(page, '#shop-finish', 200);
     await page.mouse.move(at.x + 60, at.y - 60, { steps: 4 });
@@ -3134,6 +3137,117 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await anna.page.getAttribute('#offers-link', 'href'), 'https://www.aldi-sued.de/angebote');
     assert.deepEqual(nico.problems.filter(text => !/Failed to load resource|Failed to fetch/.test(text)), []);
     assert.deepEqual(anna.problems, []); await nico.ctx.close(); await anna.ctx.close();
+  });
+
+  test('2.95: Auswahl zeigt lange Namen in breiten Zeilen und hält Artikelzahlen zusammen',async()=>{
+    for(const width of [280,320,390]){
+      const data=wishData();data.items=[];data.stores.push(...['Rossmann','Sonstige (Netto, Aldi, usw.)','Nadias Reise'].map((name,i)=>({...demo.stores[0],id:`quick295-${i}`,name,separate:i===2})));
+      data.items=[{...demo.items[0],id:'q1',storeId:'',name:'Milch'},{...demo.items[0],id:'q2',storeId:'quick295-0',name:'Seife'},{...demo.items[0],id:'q3',storeId:'store-wishes',name:'Geschenk'}];
+      const {ctx,page,problems}=await context({context:{viewport:{width,height:844}},config:{palette:'gruen'}});await seedLocal(ctx,data);await open(page);await page.click('#store-quick-open');await sheetOpen(page);
+      const bounds=await page.locator('#store-quick-options button').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),count=n.querySelector('.quick-count'),range=document.createRange();if(count)range.selectNodeContents(count);return {x:r.x,y:r.y,w:r.width,right:r.right,over:n.scrollWidth-n.clientWidth,countLines:count?range.getClientRects().length:0};}));
+      assert.ok(bounds.every((b,i)=>b.over<=1&&b.countLines<=1&&(!i||b.y>bounds[i-1].y)),JSON.stringify(bounds));
+      assert.ok(bounds.every(b=>Math.abs(b.w-bounds[0].w)<1));assert.equal(await page.locator('#store-quick-options [data-view=quick295-1] .quick-label').textContent(),'Sonstige (Netto, Aldi, usw.)');
+      const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.locator('.quick-label').textContent(),'');assert.equal(await wish.locator('.store-symbol').count(),1);
+      assert.equal(await page.locator('#store-quick-options [data-view=all]').getAttribute('aria-pressed'),'true');
+      assert.equal(await horizontalOverflow(page),0);await page.locator('#store-quick-options [data-view=quick295-0]').click();
+      assert.equal(await page.locator('#store-chips [data-store-id=quick295-0]').getAttribute('aria-selected'),'true');assert.deepEqual(problems,[]);await ctx.close();
+    }
+  });
+
+  test('2.95: Anleitung hält nur einen Abschnitt offen und bewahrt die Position der gewählten Überschrift',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'settings');await page.click('#open-help');await sheetOpen(page);
+    const sections=page.locator('#help-body .help-section'),target=sections.nth(5).locator('summary');await target.scrollIntoViewIfNeeded();
+    const before=await target.boundingBox();await target.click();await page.waitForTimeout(230);const after=await target.boundingBox();
+    assert.equal(await page.locator('#help-body .help-section[open]').count(),1);assert.equal(await sections.nth(5).evaluate(node=>node.open),true);
+    assert.ok(Math.abs(after.y-before.y)<3,JSON.stringify({before:before.y,after:after.y}));
+    const other=sections.nth(8).locator('summary');await other.scrollIntoViewIfNeeded();await other.focus();await page.keyboard.press('Enter');await page.waitForTimeout(230);
+    assert.equal(await page.locator('#help-body .help-section[open]').count(),1);assert.equal(await sections.nth(8).evaluate(node=>node.open),true);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: nächstes Rezept schließt Zutaten und Zubereitung des vorherigen ohne Scrollsprung',async()=>{
+    const data=structuredClone(demo);for(const recipe of data.recipes){recipe.instructions=Array.from({length:45},(_,i)=>`Schritt ${i+1}: Zutaten sorgfältig zubereiten und anschließend miteinander vermischen.`).join('\n');recipe.tags=[];}
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'recipes');
+    const cards=page.locator('#recipe-list .recipe-card');await cards.nth(0).locator('.recipe-details > summary').click();
+    for(const index of [1,2]){
+      const summary=cards.nth(index).locator('.recipe-details > summary');await summary.scrollIntoViewIfNeeded();await page.waitForTimeout(30);const before=await summary.boundingBox();
+      await summary.click();await page.waitForTimeout(230);const after=await summary.boundingBox();
+      assert.equal(await page.locator('#recipe-list .recipe-details[open]').count(),1);assert.equal(await cards.nth(index).locator('.recipe-details').evaluate(node=>node.open),true);
+      assert.ok(Math.abs(after.y-before.y)<3,JSON.stringify({index,before:before.y,after:after.y}));
+    }
+    const id=await cards.nth(2).getAttribute('data-recipe-id');await goTab(page,'shopping');await page.locator('#items .check').first().click();await goTab(page,'recipes');
+    assert.equal(await page.locator('#recipe-list .recipe-details[open]').count(),1);assert.equal(await page.locator(`[data-recipe-id="${id}"] .recipe-details`).evaluate(node=>node.open),true);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.95: sichtbare Listenauswahl und Pfeile sortieren Geschäfte und Vorratsreiter dauerhaft',async()=>{
+    const {ctx,page,problems}=await context();await open(page);
+    await page.click('#store-quick-open');await sheetOpen(page);await page.locator('#store-quick-options [data-view=store-lidl]').click();
+    assert.equal(await page.locator('#store-chips [data-store-id=store-lidl]').getAttribute('aria-selected'),'true');
+    await page.click('#manage-stores');await sheetOpen(page);await page.click('#store-order-open');await sheetOpen(page);
+    await page.getByRole('button',{name:'Rewe nach oben',exact:true}).click();
+    assert.deepEqual(orderedStores((await storedDemo(page)).stores).map(row=>row.name),['Edeka','Rewe','Lidl']);
+    await page.click('#order-dialog [data-close]');await page.click('#stores-dialog .sheet-head [data-close]');await openPantry(page);
+    const before=(await storedDemo(page)).pantry;await page.click('#product-tabs-order');await sheetOpen(page);
+    await page.getByRole('button',{name:'Alle nach oben',exact:true}).click();await page.click('#order-dialog [data-close]');
+    assert.equal(await page.locator('.product-modes [data-product-mode]').first().getAttribute('data-product-mode'),'all');
+    assert.deepEqual((await storedDemo(page)).pantry,before);await closePantry(page);await page.reload();await openPantry(page);
+    assert.equal(await page.locator('.product-modes [data-product-mode]').first().getAttribute('data-product-mode'),'all');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: Nachkaufen ist sichtbar und verändert den Vorratsstatus nicht',async()=>{
+    const data=structuredClone(demo);data.items=[];data.pantry=[{id:'milk295',name:'Milch',available:true,createdAt:demo.updatedAt,updatedAt:demo.updatedAt,deletedAt:null}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await openPantry(page);
+    const before=(await storedDemo(page)).pantry;await page.getByRole('button',{name:'Milch nachkaufen',exact:true}).click();await sheetOpen(page);
+    assert.equal(await page.locator('#pantry-buy-dialog').isVisible(),true);await page.fill('#pantry-buy-form [name=quantity]','2');await page.click('#pantry-buy-add');
+    const saved=await storedDemo(page);assert.equal(saved.items.filter(row=>!row.deletedAt&&row.name==='Milch').length,1);assert.deepEqual(saved.pantry,before);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: PDF und Tagwechsel sind ohne Haltegeste erreichbar und Speichern lässt die Einkaufsliste erhalten',async()=>{
+    const data=structuredClone(demo);data.meals=[{id:'meal295',recipeId:demo.recipes[0].id,date:isoDate(),servings:2,done:false,createdAt:demo.updatedAt,updatedAt:demo.updatedAt,deletedAt:null}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=(await storedDemo(page)).items;
+    await goTab(page,'plan');await page.locator('.meal[data-id=meal295]').getByRole('button',{name:/ändern/}).click();await sheetOpen(page);
+    const choice=await page.locator('#meal-form [name=recipeId]').inputValue();await page.click('#pick-preview');await page.waitForSelector('#sheet-dialog[open]');
+    assert.equal(await page.locator('#meal-form [name=recipeId]').inputValue(),choice);await page.click('#sheet-close');
+    await page.click('#meal-change-day');await page.fill('#meal-form [name=date]',addDays(isoDate(),1));
+    assert.match(await page.locator('#meal-form [data-form-feedback]').textContent(),/noch nicht übernommen/);await page.click('#meal-save');
+    const saved=await storedDemo(page);assert.equal(saved.meals.find(row=>row.id==='meal295').date,addDays(isoDate(),1));assert.deepEqual(saved.items,before);
+    assert.match(await page.textContent('#plan-save-note'),/Wochenplan gespeichert/);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: vergangenes Gericht per sichtbarem Entfernen-Button prüfen und abbrechen',async()=>{
+    const data=structuredClone(demo);data.meals=[{id:'past295',recipeId:demo.recipes[0].id,date:addDays(isoDate(),-1),servings:2,done:false,createdAt:demo.updatedAt,updatedAt:demo.updatedAt,deletedAt:null}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await goTab(page,'plan');
+    if(!await page.locator('.past-meal-remove').count())await page.click('#week-prev');
+    await page.locator('.past-meal-remove').click();await page.waitForSelector('#past-meal-dialog[open]');await page.click('#past-meal-no');
+    assert.deepEqual((await storedDemo(page)).meals,before.meals);assert.deepEqual((await storedDemo(page)).items,before.items);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: normaler Abschluss-Tipp öffnet nur die Bestätigung; sichtbarer Import-Abbruch verhindert verspätete Entwürfe',async()=>{
+    const {ctx,page,problems}=await context({config:{importProxy:'https://slow295.workers.dev',publicProxy:false,shopLock:0}});await open(page);
+    const before=await storedDemo(page);await page.click('#mode-shop');await page.click('#shop-finish');await page.waitForSelector('#finish-dialog[open]');
+    assert.deepEqual((await storedDemo(page)).items,before.items);await page.click('#finish-dialog [data-close]');await page.click('#shop-back');
+    await ctx.route('https://slow295.workers.dev/**',async route=>{await new Promise(resolve=>setTimeout(resolve,700));try{await route.fulfill({status:200,contentType:'text/html',body:recipeHtml});}catch{}});
+    await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
+    await page.waitForSelector('#import-cancel:not([hidden])');await page.click('#import-cancel');await page.waitForTimeout(850);
+    assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.locator('#import-cancel').isHidden(),true);
+    assert.deepEqual((await storedDemo(page)).recipes,before.recipes);assert.deepEqual(problems.filter(text=>!/Failed to fetch|Failed to load resource/.test(text)),[]);await ctx.close();
+  });
+  test('2.95: Ausgabe eintragen und Speicherbestätigung erst nach erfolgreichem Schreiben',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');assert.equal((await page.textContent('#add-purchase')).trim(),'Ausgabe eintragen');
+    await page.click('#add-purchase');await sheetOpen(page);assert.equal(await page.textContent('#purchase-title'),'Ausgabe eintragen');
+    await page.fill('#purchase-form [name=amount]','12,34');assert.match(await page.locator('#purchase-form [data-form-feedback]').textContent(),/noch nicht übernommen/);
+    await page.evaluate(()=>{window.failSave295=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.failSave295&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
+    await page.click('#purchase-save');assert.equal(await page.locator('#purchase-dialog').isVisible(),true);assert.equal(await page.locator('#spending-save-note').isHidden(),true);
+    assert.equal(((await storedDemo(page)).purchases||[]).length,0);await page.evaluate(()=>window.failSave295=false);await page.click('#purchase-save');
+    await page.waitForSelector('#purchase-dialog[open]',{state:'detached'});assert.equal((await storedDemo(page)).purchases.length,1);
+    assert.match(await page.textContent('#spending-save-note'),/Ausgaben gespeichert/);assert.ok(!(await page.textContent('#spending-save-note')).includes('GitHub'));
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.95: Darstellung und Sicherung getrennt, automatische Einstellungen sichtbar bestätigt und Wünsche nur unter Geschäfte',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await openSettings(page);
+    assert.equal(await page.locator('#display-card #export,#display-card #export-full').count(),0);assert.equal(await page.locator('#backup-card #export,#backup-card #export-full').count(),2);
+    assert.equal(await page.locator('#settings #wishlist-enabled,#shopping #wishlist-enabled').count(),0);assert.equal(await page.locator('#stores-dialog #wishlist-enabled').count(),1);
+    await page.focus('#theme');await page.selectOption('#theme','dark');assert.match(await page.textContent('#display-card [data-auto-feedback]'),/Auf diesem Gerät gespeichert/);
+    assert.equal(await page.getAttribute('html','data-theme'),'dark');assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('2.94: Wünsche ausschließlich unter Geschäfte aktivieren, ausblenden und ohne Datenverlust wieder einblenden',async()=>{
@@ -8047,7 +8161,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   }
   test('2.77: gewähltes Rezept zeigt PDF-Hinweis direkt neben der Auswahl; langes Drücken öffnet weiterhin das Blatt',async()=>{
     const {ctx,page,problems}=await context277();await pick277(page);
-    const selected=page.locator('#recipe-pick .pick-row[aria-pressed=true]');assert.equal(await selected.count(),1);assert.match(await selected.locator('.pick-pdf-hint').textContent(),/Lange drücken.*PDF/);assert.equal(await selected.locator('.pick-pdf-hint').isVisible(),true);
+    const selected=page.locator('#recipe-pick .pick-row[aria-pressed=true]');assert.equal(await selected.count(),1);assert.match(await selected.locator('.pick-pdf-hint').textContent(),/langem Drücken.*PDF/);assert.equal(await selected.locator('.pick-pdf-hint').isVisible(),true);
     assert.equal(await page.locator('#recipe-pick .pick-row:not([aria-pressed=true]) .pick-pdf-hint').first().isVisible(),false);
     await selected.scrollIntoViewIfNeeded();const box=await selected.boundingBox();await page.mouse.move(box.x+30,box.y+box.height/2);await page.mouse.down();await page.waitForSelector('#sheet-dialog[open] .sheet-page',{timeout:5000});await page.mouse.up();assert.match(await sheetText(page),/Tomaten-Pasta/);
     await page.click('#sheet-close');assert.equal(await page.inputValue('#meal-form [name=recipeId]'),'recipe-pasta');assert.deepEqual(problems,[]);await ctx.close();

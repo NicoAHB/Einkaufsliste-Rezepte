@@ -164,6 +164,11 @@ export function mountProductTabOrder(root, { enabled, announce, onError }) {
   });
   return {
     cancel: () => finish(false),
+    getOrder: () => read(),
+    setOrder(order) {
+      if (!enabled()) throw new Error('Bitte die Vorratsauswahl erneut öffnen.');
+      finish(false); save(order); apply(read());
+    },
     arrange(target) {
       finish(false); swallowUntil = 0;
       apply(target === 'pantry' ? read() : ['all', 'favorites', 'frequent', 'own']);

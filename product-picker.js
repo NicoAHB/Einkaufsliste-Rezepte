@@ -9,6 +9,7 @@ import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys } from './data.js';
 import { recentPurchases, purchaseLabel } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
+import { openOrderControls } from './ui-controls.js';
 import { mountProductTabOrder } from './product-tab-order.js';
 
 const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3, useGrouping: false }).format(value);
@@ -31,6 +32,11 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     announce: text => { $('product-modes-status').textContent = text; },
     onError: fail
   });
+  $('product-tabs-order').addEventListener('click', () => openOrderControls({
+    title: 'Vorratsreiter sortieren', scope, getScope,
+    getRows: () => tabOrder.getOrder().map(id => ({ id, name: dialog.querySelector(`[data-product-mode="${id}"]`).textContent.trim() })),
+    onChange: order => tabOrder.setOrder(order)
+  }));
   const library = () => {
     const data=getData(),products=(target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry);
     if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
@@ -153,7 +159,17 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         star.setAttribute('aria-label', `${product.name}: ${product.favorite ? 'aus Favoriten entfernen' : 'zu Favoriten hinzufügen'}`);
         star.setAttribute('aria-pressed', String(Boolean(product.favorite))); star.append(svg('star'));
         star.addEventListener('click', () => { try { clearError(); onFavorite(product); renderProducts(); } catch (error) { fail(error); } });
-        card.append(pick,star);cards.append(card);
+        card.append(pick,star);
+        if (target === 'pantry' && onQuickBuy) {
+          const buy = node('button', 'Nachkaufen', 'secondary pantry-quick-buy'); buy.type = 'button';
+          buy.setAttribute('aria-label', `${product.name} nachkaufen`);
+          buy.addEventListener('click', () => { try {
+            if (scope !== getScope()) throw new Error('Bitte die Vorratsauswahl erneut öffnen.');
+            onQuickBuy({ ...product, imageKey: product.imageKey || imageForProduct(product).key });
+          } catch (error) { fail(error); } });
+          card.append(buy);
+        }
+        cards.append(card);
       }
     }
     const count = target==='pantry'&&mode==='current'?visible.filter(product=>available.has(pantryKey(product.name))).length:visible.length;
@@ -228,13 +244,14 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     open(storeId = '', options = {}) {
       tabOrder.cancel();
       target=options.target==='pantry'?'pantry':'list';
+      $('product-tabs-order').hidden = target !== 'pantry';
       tabOrder.arrange(target);
       $('product-picker-cart').open = false;
       dialog.dataset.target=target;
       scope = getScope(); $('product-picker-feedback').hidden = true; selection.clear(); search.value = ''; category.value = ''; clearError(); visibleLimit = PAGE_SIZE;
       mode=target==='pantry'?'current':library().some(product=>product.favorite)?'favorites':'all';
       if(target==='list'&&['all','favorites','frequent','own'].includes(options.mode))mode=options.mode;
-      $('product-picker-hint').textContent=target==='pantry'?'Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat. ★ merkt Favoriten. Produkt lange drücken: Einkaufsliste. Reiter lange halten und ziehen: Reihenfolge ändern.':'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
+      $('product-picker-hint').textContent=target==='pantry'?'Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat. ★ merkt Favoriten. „Nachkaufen“ öffnet die Einkaufsauswahl. Die Reihenfolge änderst du mit dem Button unter den Reitern.':'Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
       dialog.querySelector('.product-target').hidden=target!=='list';
       $('pantry-own-add').hidden=target!=='pantry';
       dialog.querySelector('[data-close]').setAttribute('aria-label',target==='pantry'?'Vorratsauswahl schließen':'Produktauswahl schließen');
