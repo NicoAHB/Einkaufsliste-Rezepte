@@ -728,7 +728,7 @@ main {
 .private-copy strong { display:block; font-size:1rem; line-height:1.4 }
 .private-copy small { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; white-space:pre-wrap; color:var(--muted); font-weight:400; line-height:1.45; margin-top:4px }
 .private-row.checked strong { text-decoration:line-through; color:var(--muted) }
-#private-list-panel .private-row.checked>.check { background:var(--accent); border-color:var(--accent); color:var(--on-accent) }
+#private-list-panel .private-row.checked>.check { background:var(--accent-soft); border-color:var(--accent); color:var(--accent) }
 .private-done { margin-top:18px; padding:12px }
 .private-done>summary { min-height:48px; font-weight:650; cursor:pointer }
 .private-list-note { margin:20px 4px; line-height:1.55 }
@@ -859,9 +859,10 @@ details[open]>summary::after {
   border-color:var(--line-strong)
 }
 .chip[aria-selected=true],.chip[aria-pressed=true] {
-  background:var(--accent);
+  background:var(--accent-soft);
   border-color:var(--accent);
-  color:var(--on-accent)
+  color:var(--accent);
+  box-shadow:inset 0 0 0 1px var(--accent)
 }
 .chip .count {
   display:inline-grid;
@@ -875,7 +876,7 @@ details[open]>summary::after {
   font-size:.78rem
 }
 .chip[aria-selected=true] .count {
-  background:rgba(255,255,255,.25);
+  background:var(--card);
   color:inherit
 }
 .store-pick {
@@ -948,8 +949,9 @@ details[open]>summary::after {
   color:var(--on-accent)
 }
 .item.checked .check,.meal.done .check {
-  background:var(--accent);
-  border-color:var(--accent)
+  background:var(--accent-soft);
+  border-color:var(--accent);
+  color:var(--accent)
 }
 .group-head {
   display:flex;
@@ -1477,9 +1479,10 @@ button.link-button {
   font-size:.9rem
 }
 .segmented button[aria-selected=true],.segmented button[aria-checked=true],#cookable-modes button[aria-pressed=true] {
-  background:var(--card);
+  background:var(--accent-soft);
   color:var(--accent);
-  box-shadow:0 1px 3px rgba(0,0,0,.12)
+  border-color:var(--accent);
+  box-shadow:none
 }
 .file-drop {
   display:grid;
@@ -1983,8 +1986,9 @@ body.in-store .tabs {
   opacity:.55
 }
 .shop-item.checked .shop-mark {
-  background:var(--accent);
-  border-color:var(--accent)
+  background:var(--accent-soft);
+  border-color:var(--accent);
+  color:var(--accent)
 }
 .shop-item.news {
   background:var(--news);
@@ -2579,6 +2583,7 @@ body.in-store .tabs {
   font-weight:600
 }
 .palette button[aria-checked=true] {
+  background:var(--accent-soft);
   border-color:var(--accent);
   box-shadow:0 0 0 1px var(--accent)
 }
@@ -3387,7 +3392,6 @@ output {
   --glass-hi:hsl(0 0% 100% / .6);
   --glass-blur:calc(6px + var(--gs) * 24px);
   --glass-shadow:0 6px 20px hsl(var(--h) 55% 32% / .08);
-  --seg-on:hsl(0 0% 100% / .9);
   --muted:hsl(var(--h) 22% 28%);
   --tint:hsl(var(--h) 85% 70% / .34);
   --rim-a:hsl(var(--h) 85% 62% / .75);
@@ -3398,12 +3402,7 @@ output {
   --blob-3:hsl(calc(var(--h) - 45) 90% 88%);
   --field:hsl(0 0% 100% / calc(.92 - var(--gs) * .5));
   --field-line:hsl(var(--h) 40% 50% / .3);
-  --btn-top:hsl(var(--h) 66% 40%);
-  --btn-hi:hsl(0 0% 100% / .45);
-  --btn-glow:hsl(var(--h) 80% 45% / .35);
   --head-end:hsl(calc(var(--h) + 28) 65% 42%);
-  --tab-on:linear-gradient(180deg,hsl(var(--h) 90% 92%),var(--accent-soft));
-  --tab-on-glow:0 2px 10px hsl(var(--h) 80% 55% / .3);
   --float:0 14px 40px hsl(var(--h) 60% 20% / .28);
   --scrim:hsl(var(--h) 50% 10% / .35)
 }
@@ -3414,7 +3413,6 @@ output {
   --glass-hi:hsl(0 0% 100% / .14);
   --glass-blur:calc(6px + var(--gs) * 24px);
   --glass-shadow:0 8px 22px hsl(var(--h) 80% 4% / .3);
-  --seg-on:hsl(var(--h) 50% 30% / .85);
   --muted:hsl(var(--h) 22% 74%);
   --tint:hsl(var(--h) 80% 55% / .24);
   --rim-a:hsl(var(--h) 90% 75% / .55);
@@ -3425,12 +3423,7 @@ output {
   --blob-3:hsl(calc(var(--h) - 45) 75% 27%);
   --field:hsl(var(--h) 45% 10% / calc(.9 - var(--gs) * .5));
   --field-line:hsl(0 0% 100% / .22);
-  --btn-top:hsl(var(--h) 85% 86%);
-  --btn-hi:hsl(0 0% 100% / .6);
-  --btn-glow:hsl(var(--h) 90% 60% / .3);
   --head-end:hsl(calc(var(--h) + 28) 80% 72%);
-  --tab-on:linear-gradient(180deg,hsl(var(--h) 55% 38%),hsl(var(--h) 50% 28%));
-  --tab-on-glow:0 2px 12px hsl(var(--h) 90% 60% / .35);
   --float:0 14px 40px hsl(var(--h) 80% 3% / .55);
   --scrim:hsl(var(--h) 50% 6% / .5)
 }
@@ -3442,7 +3435,6 @@ output {
     --glass-hi:hsl(0 0% 100% / .14);
     --glass-blur:calc(6px + var(--gs) * 24px);
     --glass-shadow:0 8px 22px hsl(var(--h) 80% 4% / .3);
-    --seg-on:hsl(var(--h) 50% 30% / .85);
     --muted:hsl(var(--h) 22% 74%);
     --tint:hsl(var(--h) 80% 55% / .24);
     --rim-a:hsl(var(--h) 90% 75% / .55);
@@ -3453,12 +3445,7 @@ output {
     --blob-3:hsl(calc(var(--h) - 45) 75% 27%);
     --field:hsl(var(--h) 45% 10% / calc(.9 - var(--gs) * .5));
     --field-line:hsl(0 0% 100% / .22);
-    --btn-top:hsl(var(--h) 85% 86%);
-    --btn-hi:hsl(0 0% 100% / .6);
-    --btn-glow:hsl(var(--h) 90% 60% / .3);
     --head-end:hsl(calc(var(--h) + 28) 80% 72%);
-    --tab-on:linear-gradient(180deg,hsl(var(--h) 55% 38%),hsl(var(--h) 50% 28%));
-    --tab-on-glow:0 2px 12px hsl(var(--h) 90% 60% / .35);
     --float:0 14px 40px hsl(var(--h) 80% 3% / .55);
     --scrim:hsl(var(--h) 50% 6% / .5)
   }
@@ -3495,7 +3482,7 @@ output {
   border:1px solid var(--glass-line);
   box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-shadow)
 }
-/* Version 2.37: Karten tragen keinen farbigen Rahmenverlauf mehr; Farbe und Leuchten sind der Auswahl und der wichtigsten Aktion vorbehalten. */
+/* Karten tragen keinen farbigen Rahmenverlauf. Auswahlflächen bleiben sanft, Hauptaktionen klar gefüllt. */
 :root[data-glass] .item+.item {
   border-top-color:var(--glass-line)
 }
@@ -3515,8 +3502,8 @@ output {
   box-shadow:inset 0 1px 2px hsl(var(--h) 40% 20% / .08)
 }
 :root[data-glass] :is(.segmented button[aria-selected=true],.segmented button[aria-checked=true],#cookable-modes button[aria-pressed=true]) {
-  background:var(--seg-on);
-  box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px hsl(var(--h) 60% 30% / .18)
+  background:var(--accent-soft);
+  box-shadow:none
 }
 
 /* Eingaben: leicht durchscheinend, beim Fokus ein weicher Leuchtring */
@@ -3529,10 +3516,10 @@ output {
   box-shadow:0 0 0 4px hsl(var(--h) 90% 60% / .22),0 0 18px hsl(var(--h) 90% 60% / .25)
 }
 
-/* Knöpfe: dezenter Verlauf, heller Innenrand, farbiger Schein (nur die Akzentknöpfe) */
-:root[data-glass] :is(#add-purchase,#add-recipe,#purchase-save,.primary-action,.inline-form>button,.stack>button:not(.secondary):not(.danger):not(.text-button),.chip[aria-selected=true],.chip[aria-pressed=true]) {
-  background:linear-gradient(180deg,var(--btn-top),var(--accent));
-  box-shadow:inset 0 1px 0 var(--btn-hi),0 3px 10px var(--btn-glow)
+/* Hauptaktionen bleiben klar gefüllt, ohne Farbverlauf oder Leuchteffekt. */
+:root[data-glass] :is(#add-purchase,#add-recipe,#purchase-save,.primary-action,.inline-form>button,.stack>button:not(.secondary):not(.danger):not(.text-button)) {
+  background:var(--accent);
+  box-shadow:none
 }
 :root[data-glass] :is(button.secondary,.chip,.chip-button,.icon-button.round):not([aria-selected=true]):not([aria-pressed=true]) {
   background:var(--glass);
@@ -3542,14 +3529,18 @@ output {
   box-shadow:inset 0 1px 0 var(--glass-hi)
 }
 :root[data-glass] .chip:is([aria-selected=true],[aria-pressed=true]) {
-  border-color:transparent
+  background:var(--accent-soft);
+  border-color:var(--accent);
+  color:var(--accent);
+  box-shadow:inset 0 0 0 1px var(--accent)
 }
 :root[data-glass] .check {
   background:var(--field)
 }
-:root[data-glass] .item.checked .check {
-  background:linear-gradient(160deg,var(--btn-top),var(--accent));
-  box-shadow:0 0 0 4px hsl(var(--h) 90% 60% / .18),0 4px 12px var(--btn-glow)
+:root[data-glass] :is(.item.checked,.meal.done) .check {
+  background:var(--accent-soft);
+  color:var(--accent);
+  box-shadow:none
 }
 
 /* Tab-Leiste: schwebende Glaspille */
@@ -3568,8 +3559,8 @@ output {
   box-shadow:inset 0 1px 0 var(--glass-hi),var(--float)
 }
 :root[data-glass] .tabs button[aria-current=page] .tab-icon {
-  background:var(--tab-on);
-  box-shadow:inset 0 1px 0 var(--glass-hi),var(--tab-on-glow)
+  background:var(--accent-soft);
+  box-shadow:none
 }
 @media(max-width:360px) {
   :root[data-glass] .tabs {
@@ -4039,13 +4030,16 @@ body.selecting #plan-view {
   background:var(--accent-soft)
 }
 .check.select-mark.on {
-  background:var(--accent);
-  border-color:var(--accent)
+  background:var(--accent-soft);
+  border-color:var(--accent);
+  color:var(--accent)
 }
 body.selecting .item .item-copy {
   cursor:pointer
 }
-.list-head #select-mode[aria-pressed=true] {
+:root #shared-list-actions #select-mode[aria-pressed=true] {
+  background:var(--accent-soft);
+  border-color:var(--accent);
   color:var(--accent);
   font-weight:800
 }
@@ -4383,7 +4377,7 @@ input.purchase-unit { min-height:90px; padding:10px 22px 10px 8px; cursor:pointe
 .quantity-arrows .icon { width:22px; height:22px }
 
 .unit-types-label { grid-column:1/-1; margin:8px 0 0; font-size:.82rem }
-.unit-choices button[aria-pressed=true] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent) }
+:root .unit-choices button.secondary[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent) }
 
 .unit-choices>.purchase-custom { grid-column:1/-1; margin:6px 0; padding-top:6px }
 .pack-size-link { display:inline-flex; align-items:center; min-height:44px; padding:2px 4px; border:0; background:transparent; color:var(--accent); font:inherit; font-weight:650; text-decoration:underline; text-underline-offset:3px }
@@ -4557,9 +4551,9 @@ button.recipe-delete { color:var(--danger) }
 #cookable-list .cookable-action { display:flex; justify-content:center; align-items:center; gap:6px; min-width:0; white-space:normal; font-size:.9rem }
 #cookable-list .cookable-action .icon { flex:none; width:19px; height:19px }
 #cookable-list .cookable-action span { min-width:0; overflow-wrap:anywhere }
-:root #cookable-list .cookable-buy { grid-column:1/-1; background:var(--accent); color:var(--on-accent); box-shadow:0 2px 4px hsl(var(--h) 30% 15% / .12) }
+:root #cookable-list .cookable-buy { grid-column:1/-1; background:var(--accent); color:var(--on-accent); box-shadow:none }
 :root .mode-row .segmented button { min-height:44px; border:2px solid var(--line-strong); background:var(--card); color:var(--accent); font-weight:700 }
-:root #mode-row #mode-plan[aria-selected=true],:root #mode-row #mode-shop[aria-selected=true],:root #shop-back { background:var(--accent); border-color:var(--accent); color:var(--on-accent); box-shadow:0 2px 4px hsl(var(--h) 30% 15% / .12) }
+:root #mode-row #mode-plan[aria-selected=true],:root #mode-row #mode-shop[aria-selected=true],:root #shop-back { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); box-shadow:none }
 .shop-statusrow #shop-back { flex:none; max-width:45%; min-height:44px; margin:0; padding:8px 10px; gap:6px; font-size:.85rem; white-space:normal }
 #shop-back .icon { flex:none; width:18px; height:18px }
 #meal-save .meal-action-label { display:flex; align-items:center; justify-content:center; gap:8px }
@@ -4569,15 +4563,14 @@ button.recipe-delete { color:var(--danger) }
 /* Dieselben Zurück-/Weiter-Aktionen, jetzt mit klaren Flächen und Symbolen. */
 .daily-review-arrows { gap:10px; margin:10px 0 }
 .daily-review-arrows>button { min-width:0; min-height:48px; padding:10px 12px; border-radius:14px }
-#daily-review-prev { background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent) }
-#daily-review-next { background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 84%,#000)); color:var(--on-accent); box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 22%,transparent) }
+#daily-review-prev,#daily-review-next { background:var(--card); border:2px solid var(--line-strong); color:var(--accent); box-shadow:none }
 #daily-review-finish { width:100%; min-height:48px; margin:0 0 6px; padding:10px 12px; white-space:normal; background:var(--card); border:1px solid var(--line-strong); color:var(--accent) }
 #daily-review-nav button:active:not(:disabled) { filter:brightness(.92); transform:scale(.97) }
 #daily-review-nav button:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
 #daily-review-nav button:disabled { opacity:.4; filter:grayscale(1); box-shadow:none }
 
 /* Geschäfte und eigene Listen: klare Aktionen und sichtbare Speicherbestätigung. */
-#stores-dialog .store-save,#store-add { min-height:52px; padding:12px 16px; gap:10px; white-space:normal; line-height:1.4; border:1px solid var(--accent); border-radius:16px; background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 84%,#000)); color:var(--on-accent); box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 18%,transparent) }
+#stores-dialog .store-save,#store-add { min-height:52px; padding:12px 16px; gap:10px; white-space:normal; line-height:1.4; border:1px solid var(--accent); border-radius:16px; background:var(--accent); color:var(--on-accent); box-shadow:none }
 #stores-dialog .store-save:disabled { background:var(--line); color:var(--muted); border-color:var(--line-strong); opacity:1; box-shadow:none; cursor:default; transform:none }
 #stores-dialog .store-save>.icon { flex:none; width:20px; height:20px }
 #stores-dialog .store-delete { min-height:48px; padding:12px 16px; border:1px solid var(--line-strong); border-radius:16px; background:var(--card); color:var(--danger); line-height:1.4; white-space:normal; box-shadow:none; margin-top:12px }

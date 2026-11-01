@@ -158,7 +158,7 @@
       <div id="spending-empty" class="card spend-empty" hidden>
         <h3>Noch keine Ausgaben</h3>
         <p>Trage den Betrag ein. Dein Name und heute sind vorbelegt. Danach siehst du die Ausgaben eurer Familie nach Personen und Zeitraum.</p>
-        <button id="spending-first" type="button"><svg class="icon"><use href="#i-plus"/></svg>Erste Ausgabe eintragen</button>
+        <button id="spending-first" class="secondary" type="button"><svg class="icon"><use href="#i-plus"/></svg>Erste Ausgabe eintragen</button>
       </div>
       <p id="spending-save-note" class="save-feedback" data-save-feedback role="status" hidden></p><div id="spending-summary" class="card spend-summary" aria-live="polite"></div>
       <div id="spending-budget" class="card spend-budget" aria-label="Monatliches Familienbudget"></div>
@@ -219,7 +219,7 @@
         <button id="export-full" class="secondary" type="button">Mit Fotos sichern (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.95 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.96 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>

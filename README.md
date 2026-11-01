@@ -1,6 +1,16 @@
-# Sattplan – Version 2.95
+# Sattplan – Version 2.96
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.96: ruhigere Buttons mit klarer Gewichtung
+
+Kräftige, einfarbige Flächen kennzeichnen die Hauptaktion eines Bereichs oder einer Rezeptkarte, etwa **Produkte**, **Speichern** oder **Hinzufügen**. **Planen**, gewählte Geschäfte, Rezept- und Personenfilter sowie weitere Auswahlen erhalten eine sanfte Farbfläche mit dunkler Schrift im hellen Modus und heller Schrift im dunklen Modus. Rahmen markieren den gewählten Zustand. Weitere Aktionen behalten helle bzw. dunkle Kartenflächen und ihre sichtbare Umrandung.
+
+Farbverläufe und farbige Leuchteffekte auf Buttons entfallen auch im Glas-Design. Das gilt außerdem für die aktive untere Navigation und abgehakte Artikel. Zurück/Weiter im Tagesrezept-Verlauf sind gleichwertige, umrandete Buttons. Speichern unter Geschäfte bleibt klar gefüllt, gespeicherte/deaktivierte Buttons bleiben zurückgenommen. Die zusätzliche Aktion in der leeren Ausgabenansicht ist zurückhaltender als die Hauptaktion oben.
+
+Geprüft wurden die fünf Hauptbereiche, dynamische Auswahlen und die berechneten Buttonstile der 32 vorhandenen Dialoge sowie das dynamische Einheitenmenü. Mobile Ansichten mit 280, 320, 390 und 430 px decken Hell/Dunkel und Glas an/aus ab; Kontrastprüfungen aller sechs Farben bestehen mit mindestens 4,5 : 1 für die relevanten Textfarben. Sechs bestehende Browserprüfungen für Kontrast, Darstellung, Auswahl und die Sperre bestehen. Speicher- und Einkaufsabläufe bleiben unverändert.
+
+Offline-Paket **einkauf-shell-v108**.
 
 ## Neu in Version 2.95: übersichtliche Auswahl und einheitliche Bedienung
 
