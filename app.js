@@ -1160,7 +1160,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   const action = (symbol,label,title,callback,className='secondary') => {
     const node=button('',callback,className); node.append(icon(symbol),element('span',label)); node.title=title; if(!['cart','pot'].includes(symbol)) node.setAttribute('aria-label',title); return node;
   };
-  actions.append(action('cart','Einkaufen',`${recipe.name}: Zutaten auf die Einkaufsliste`, () => openTransfer(recipe.id,positive(servingInput.value),null,options.mealId),'primary-action'),
+  actions.append(action('cart','Einkaufen',`${recipe.name}: Zutaten auf die Einkaufsliste`, () => openTransfer(recipe.id,positive(servingInput.value),null,options.mealId),'recipe-outline'),
     action('pot','Kochen',`${recipe.name} kochen`, () => openCook(recipe.id,positive(servingInput.value)),'recipe-cook'),
     action('calendar','Einplanen',`${recipe.name} im Wochenplan einplanen`, () => { const servings=positive(servingInput.value); if(options.isolated) $('#plan-recipe-dialog').close(); openMeal({recipeId:recipe.id,servings}); },'recipe-outline'),
     action('text','Rezeptblatt',`${recipe.name}: Rezeptblatt (PDF) ansehen, speichern oder teilen`, () => openSheet(recipe.id,positive(servingInput.value)),'recipe-outline'));
@@ -2748,7 +2748,6 @@ function renderShop() {
   if (selected) chips.scrollLeft = Math.max(0, selected.offsetLeft - (chips.clientWidth - selected.offsetWidth) / 2);
   const list = $('#shop-list'); list.replaceChildren();
   if (!shopStore) {
-    $('#shop-status').textContent = '';
     list.append(element('li', stores.length ? 'Tippe oben auf das Geschäft, in dem du gerade bist.' : 'Es gibt noch kein Geschäft. Lege unter „Planen“ eines an.', 'empty'));
     return;
   }
@@ -2757,7 +2756,7 @@ function renderShop() {
   const shop = shopView(items, shopStore, shopChecked, takesAnywhere(stores.find(store => store.id === shopStore))), here = [...shop.open, ...shop.anywhere];
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const groups = rows => groupByCategory(rows.filter(item => !newIds.has(item.id)), itemHistory(), aislesOf(shopStore));
-  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen` : `Alles erledigt bei ${storeName(shopStore)}.`;
+  if (!here.length) list.append(element('li', `Alles erledigt bei ${storeName(shopStore)}.`, 'empty'));
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const group of groups(shop.open)) { list.append(groupHead(group.label)); group.items.forEach(item => list.append(shopRow(item))); }
   const anywhere = groups(shop.anywhere);
@@ -2782,7 +2781,7 @@ function appendShopDone(list, rows) {
 function renderShopAll(list, items, stores) {
   const all = shopAllView(items, stores), here = all.sections.flatMap(section => section.open);
   const news = seen ? newFromOthers(here, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
-  $('#shop-status').textContent = here.length ? `Noch ${here.length} offen` : 'Alles erledigt.';
+  if (!here.length) list.append(element('li', 'Alles erledigt.', 'empty'));
   news.forEach(entry => list.append(shopNewsRow(entry)));
   for (const section of all.sections) {
     const open = section.open.filter(item => !newIds.has(item.id)); if (!open.length) continue;

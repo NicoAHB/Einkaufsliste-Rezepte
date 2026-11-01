@@ -2199,6 +2199,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#mode-shop');
     assert.equal(await page.locator('#plan-view').isHidden(), true);
     assert.equal(await page.locator('#item-form').isHidden(), true, 'kein Eingabeformular im Laden');
+    assert.equal(await page.locator('#shop-status').count(), 0, 'keine doppelte Anzeige offener Artikel');
     const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.querySelector('.count')?.textContent ?? '', node.getAttribute('aria-selected')]));
     assert.deepEqual(await chips(), [['Alle', '5', 'true'], ['Edeka', '3', 'false'], ['Lidl', '2', 'false'], ['Rewe', '2', 'false']], 'Alle ist vorgewählt und zählt alles Offene; Brot zählt in jedem Geschäft mit');
     assert.equal(await page.locator('#shop-chips .chip[aria-selected=true]').first().textContent().then(text => text.startsWith('Alle')), true);
@@ -2208,13 +2209,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Bei Edeka
     await chip('Edeka').click();
     assert.deepEqual((await names()).sort(), ['Brot', 'Nudeln', 'Tomaten']);
-    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '3');
     assert.match(await page.textContent('#shop-list'), /Überall möglich/);
     assert.match(await page.textContent('#shop-list'), /2 Artikel für andere Geschäfte/);
     assert.equal(await page.locator('#shop-list .item-actions, #shop-list .icon-button').count(), 0, 'kein Stift, kein Mülleimer');
     assert.ok(await page.locator('.shop-tap').first().evaluate(node => node.getBoundingClientRect().height >= 60), 'große Tippfläche');
     await shopTap(page, 'Brot').click();
-    assert.match(await page.textContent('#shop-status'), /Noch 2 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '2');
     assert.match(await page.textContent('#shop-list .shop-done'), /Erledigt \(1\)[\s\S]*Brot/);
     assert.deepEqual(await chips(), [['Alle', '4', 'false'], ['Edeka', '2', 'true'], ['Lidl', '1', 'false'], ['Rewe', '1', 'false']]);
     // Danach bei Lidl: Brot steht dort nicht mehr (weder offen noch erledigt)
@@ -2278,12 +2279,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Die Überschrift „Ohne Geschäft“ bleibt auch mit Glas-Design lesbar (kein Farbverlauf in der Textfarbe)
     assert.equal(await page.locator('#shop-list .store-head.none').first().evaluate(node => getComputedStyle(node).backgroundImage), 'none');
     assert.deepEqual((await names()).sort(), ['Brot', 'Milch', 'Nudeln', 'Tomaten', 'Äpfel'].sort(), 'alles, auch das ohne Geschäft');
-    assert.match(await page.textContent('#shop-status'), /Noch 5 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '5');
     assert.equal(await horizontalOverflow(page), 0);
     // Abhaken wie sonst; abgehakt steht unter „Erledigt“, egal bei welchem Geschäft
     await shopTap(page, 'Brot').click();
     await shopTap(page, 'Milch').click();
-    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '3');
     assert.match(await page.textContent('#shop-list .shop-done'), /Erledigt \(2\)[\s\S]*Brot[\s\S]*Milch/);
     assert.equal(await all.locator('.count').textContent(), '3');
     assert.deepEqual(await heads(), ['Edeka', 'Rewe'], 'Abschnitte ohne offene Artikel verschwinden');
@@ -2337,7 +2338,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#notice-undo');
     assert.equal(await itemState(page, 'Tomaten'), false, 'zurückgenommen');
     assert.equal(await page.locator('#notice').isHidden(), true);
-    assert.match(await page.textContent('#shop-status'), /Noch 2 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '2');
     // Wieder öffnen aus „Erledigt“ geht ebenfalls nur über den Kreis
     await shopTap(page, 'Tomaten').click();
     await page.locator('#shop-list .shop-done summary').click();
@@ -2601,14 +2602,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const unlock = page.locator('#shop-unlock'), bar = page.locator('#shop-lockbar');
     const animations = node => node.evaluate(element => element.getAnimations().map(animation => animation.animationName));
     // Leere Fläche, Name, Menge, Planen: überall dasselbe, nie ein Text
-    for (const target of ['#shop-status', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back']) {
+    for (const target of ['#shop-list .shop-name', '#shop-list .shop-qty', '#shop-back']) {
       await page.locator(target).first().click();
       assert.equal(await page.locator('#notice').isHidden(), true, `${target}: kein Hinweistext`);
       assert.equal(await bar.evaluate(node => node.classList.contains('nudge')), true, `${target}: der Knopf leuchtet auf`);
       await page.waitForSelector('#shop-lockbar.nudge', { state: 'detached' });
     }
     // Der Knopf pulsiert (Animation am Knopf und an der Leiste); die Klasse verschwindet von selbst
-    await page.locator('#shop-status').click();
+    await page.locator('#shop-list .shop-name').first().click();
     assert.deepEqual(await animations(unlock), ['lock-nudge']);
     assert.deepEqual(await animations(bar), ['lock-nudge-bar']);
     // Für Bildschirmleser: unsichtbare Ansage statt des Textes
@@ -2634,7 +2635,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       }, [theme, palette, glass]);
       await page.waitForTimeout(80);
       const box = await unlock.boundingBox();
-      await page.locator('#shop-status').click();
+      await page.locator('#shop-list .shop-name').first().click();
       const at = time => page.evaluate(time => { for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = time; } return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); }, time);
       const ringSpot = [box.x - 5, box.y + box.height / 2], fillSpot = [box.x + 14, box.y + box.height / 2];
       await at(0);
@@ -2658,7 +2659,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     await inShop(page);
     await page.click('#shop-lock');
-    await page.locator('#shop-status').click();
+    await page.locator('#shop-list .shop-name').first().click();
     assert.equal(await page.locator('#shop-lockbar.nudge').count(), 1);
     assert.deepEqual(await page.locator('#shop-unlock').evaluate(node => node.getAnimations().length), 0, 'keine Animation');
     const style = await page.locator('#shop-unlock').evaluate(node => { const css = getComputedStyle(node); return { shadow: css.boxShadow, transform: css.transform }; });
@@ -3623,7 +3624,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await selectable('#items .group-head span'), 'none', 'auch unter Planen keine Textauswahl');
     assert.equal(await page.evaluate(() => { const node = document.querySelector('#items .group-head span'); const event = new Event('selectstart', { bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented; }), true);
     await inShop(page);
-    for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-chips .chip', '#shop-status', '#shop-finish']) {
+    for (const selector of ['#shop-list .shop-tap', '#shop-list .shop-name', '#shop-list .shop-qty', '#shop-list .group-head span', '#shop-chips .chip', '#shop-finish']) {
       assert.equal(await selectable(selector), 'none', `${selector}: keine Textauswahl`);
     }
     // Die Auswahl beginnt gar nicht erst …
@@ -3699,7 +3700,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#shop-chips .chip').first().click();
     assert.deepEqual(await page.locator('#shop-list .store-head > span:nth-of-type(1)').allTextContents(), ['Edeka', 'Lidl']);
     assert.ok(!(await page.textContent('#shop-list')).includes('Äpfel'), 'Artikel eines gelöschten Geschäfts bleiben verborgen');
-    assert.match(await page.textContent('#shop-status'), /Noch 3 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '3');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4630,7 +4631,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal((await chip('Wünsche').textContent()).trim(), '3');
     await chip('Alle').click();
     assert.ok(!(await names()).some(name => ['Fahrrad', 'Zwiebeln', 'Buch'].includes(name)), 'auch „Alle“ im Laden zeigt keine Wünsche');
-    assert.match(await page.textContent('#shop-status'), /Noch 5 offen/);
+    assert.equal(await page.textContent('#shop-chips [aria-selected=true] .count'), '5');
     await chip('Edeka').click();
     assert.deepEqual(await names(), ['Brot', 'Nudeln', 'Tomaten']);
     assert.match(await page.textContent('#shop-list'), /2 Artikel für andere Geschäfte/, 'Milch und Äpfel; die Wünsche zählen nicht mit');
@@ -5308,7 +5309,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.ok(chips.y < 24, `Geschäfte beginnen bei ${chips.y} px`);
       await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
       assert.ok((await box('#shop-list .shop-tap')).y < 170, `erster Artikel im Laden bei ${(await box('#shop-list .shop-tap')).y} px`);
-      assert.match(await page.textContent('#shop-status'), /Noch \d+ offen/);
+      assert.match(await page.textContent('#shop-chips [aria-selected=true] .count'), /^\d+$/);
       assert.equal(await horizontalOverflow(page), 0);
       // Der Weg zurück steht unter den Geschäften; in anderen Bereichen ist die Kopfzeile wieder da (im Laden ist die Leiste unten ausgeblendet: Reiterwechsel per Skript)
       await goTab(page, 'recipes');
@@ -7600,7 +7601,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#shopping-total').count(), 0);
     assert.doesNotMatch(await page.textContent('#shopping'), /Geschätzt|ohne Preis, nicht eingerechnet/);
     await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Edeka').click();
-    assert.doesNotMatch(await page.textContent('#shop-status'), /€|ca\./);
+    assert.doesNotMatch(await page.textContent('#shop-view'), /€|ca\./);
     await openSettings(page); const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);
     const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
     assert.equal(backup.purchases.find(row => row.id === 'nico-buy').estimate, 2580); assert.equal(backup.purchases.find(row => row.id === 'nico-buy').cents, 2445);
@@ -9068,7 +9069,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     const surface=node=>{const s=getComputedStyle(node);return [s.backgroundColor,s.borderTopColor,s.borderTopWidth];};
     const cookSurface=await card.locator('.recipe-cook').evaluate(surface);
-    for(const button of await card.locator('.recipe-outline').all())assert.deepEqual(await button.evaluate(surface),cookSurface,'Einplanen und Rezeptblatt sind auch im Glas-Design wie Kochen umrahmt');
+    for(const button of await card.locator('.recipe-outline').all())assert.deepEqual(await button.evaluate(surface),cookSurface,'Einkaufen, Einplanen und Rezeptblatt sind auch im Glas-Design wie Kochen umrahmt');
     await page.locator('#plan-recipe-dialog').evaluate(node=>{node.scrollTop=node.scrollHeight;});
     await page.screenshot({path:`/tmp/sattplan289-rezept-${width}.png`});
     await edit.click();await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.locator('#delete-recipe').textContent(),'Rezept dauerhaft aus dem Rezeptbuch löschen');

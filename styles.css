@@ -1841,39 +1841,6 @@ dialog.cook {
 .shop-statusrow .icon-button {
   flex:none
 }
-.shop-status {
-  display:flex;
-  align-items:center;
-  flex:1;
-  min-width:0;
-  gap:8px;
-  margin:0;
-  font-size:1rem;
-  font-weight:650
-}
-.shop-status:empty {
-  display:none
-}
-.shop-status::before {
-  content:"";
-  flex:none;
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:var(--muted)
-}
-body[data-sync=ok] .shop-status::before {
-  background:var(--ok)
-}
-body[data-sync=pending] .shop-status::before {
-  background:var(--warn)
-}
-body[data-sync=error] .shop-status::before {
-  background:var(--danger)
-}
-body[data-sync=busy] .shop-status::before {
-  background:var(--accent)
-}
 /* Im Laden: ganz oben nur die Geschäfte, darunter gleich die Artikel */
 body.in-store .topbar {
   display:none
@@ -4554,7 +4521,7 @@ button.recipe-delete { color:var(--danger) }
 :root #cookable-list .cookable-buy { grid-column:1/-1; background:var(--accent); color:var(--on-accent); box-shadow:none }
 :root .mode-row .segmented button { min-height:44px; border:2px solid var(--line-strong); background:var(--card); color:var(--accent); font-weight:700 }
 :root #mode-row #mode-plan[aria-selected=true],:root #mode-row #mode-shop[aria-selected=true],:root #shop-back { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); box-shadow:none }
-.shop-statusrow #shop-back { flex:none; max-width:45%; min-height:44px; margin:0; padding:8px 10px; gap:6px; font-size:.85rem; white-space:normal }
+.shop-statusrow #shop-back { flex:none; max-width:calc(100% - 52px); min-height:44px; margin:0; padding:8px 10px; gap:6px; font-size:.85rem; white-space:normal }
 #shop-back .icon { flex:none; width:18px; height:18px }
 #meal-save .meal-action-label { display:flex; align-items:center; justify-content:center; gap:8px }
 #meal-save small { color:inherit; opacity:.88 }

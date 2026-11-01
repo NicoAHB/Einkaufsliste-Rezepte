@@ -114,7 +114,7 @@
       </div>
       <div id="shop-view" hidden>
         <div class="shop-top"><div id="shop-chips" class="chips shop-chips" role="tablist" aria-label="Geschäft, in dem du gerade bist"></div></div>
-        <div class="shop-statusrow"><p id="shop-status" class="shop-status" aria-live="polite"></p>
+        <div class="shop-statusrow">
           <button id="shop-back" class="chip-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg><span>Zurück zu planen</span></button>
           <button id="shop-lock" class="icon-button round" type="button" aria-label="Sperren" title="Sperren: Tippen bewirkt nichts, bis du entsperrst"><svg class="icon"><use href="#i-lock"/></svg></button></div>
         <ul id="shop-list" class="item-list shop-list"></ul><p id="shop-save-note" class="save-feedback" data-save-feedback role="status" hidden></p>
@@ -219,7 +219,7 @@
         <button id="export-full" class="secondary" type="button">Mit Fotos sichern (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.98 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.99 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
