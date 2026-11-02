@@ -36,7 +36,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function resetHelp() {
     const hint=$('product-picker-hint'),list=node('ul');
     const texts=target==='pantry'
-      ?['Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat.','★ merkt Favoriten.','„Nachkaufen“ öffnet die Einkaufsauswahl.','Die Reihenfolge änderst du mit dem Button unter den Reitern.']
+      ?['Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat.','★ merkt Favoriten.','Mit „Nachkaufen“ fügst du Produkte zum Einkaufszettel hinzu. Menge und Geschäft wählen und mit „Auf die Einkaufsliste“ bestätigen.']
       :['Antippen zum Auswählen - Mit dem Stern als Favorit merken.','Wähle die gewünschten Produkte aus und füge sie mit dem Button unten schnell zur Einkaufsliste hinzu.'];
     for(const text of texts)list.append(node('li',text));
     hint.replaceChildren(list);

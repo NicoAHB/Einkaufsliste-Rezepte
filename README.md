@@ -1,6 +1,10 @@
-# Sattplan – Version 2.110
+# Sattplan – Version 2.111
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.111: Vorratshilfe erklärt Nachkaufen
+
+Die Vorratshilfe erklärt ausdrücklich: Mit **Nachkaufen** Produkte zum Einkaufszettel hinzufügen, Menge und Geschäft wählen und mit **Auf die Einkaufsliste** bestätigen. Der Hinweis zur Reihenfolge der Reiter entfällt. Offline-Paket **einkauf-shell-v123**.
 
 ## Neu in Version 2.110: Info-Button auch in der Produktauswahl
 
