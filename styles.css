@@ -4451,7 +4451,7 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 .select-bar>#select-count { grid-column:1/-1; font-size:.95rem; line-height:1.4 }
 .select-bar>#select-move { grid-column:1/-1; display:flex; justify-content:center; align-items:center; gap:8px; min-height:48px; background:var(--accent); color:var(--on-accent,#fff) }
 .select-bar>#select-delete { margin-top:4px; min-height:46px; border:1px solid currentColor; background:transparent }
-.select-bar>#select-done { margin-top:4px; min-height:46px }
+.select-bar>#select-done { margin-top:4px; min-height:46px; border:1px solid currentColor }
 
 /* Der Auswertungsbereich hat eine eigene, deckende Fläche, auch im Glasdesign. */
 #purchase-list { margin-bottom:24px; position:relative; isolation:isolate; overflow:hidden }
