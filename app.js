@@ -1,5 +1,7 @@
 import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion } from './ui-controls.js';
 import { createDraftStore } from './drafts.js';
+import { checkedRecipeGroups } from './recipe-tags.js';
+import { mountRecipeTagPicker } from './recipe-tag-picker.js';
 import { categorizedPurchases, defaultExpenseCategory } from './expense-categories.js';
 import { mountExpenseCategoryPicker } from './expense-category-view.js';
 import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
@@ -49,6 +51,7 @@ import { namesFrom, rankRecipes, indexNames, availability, required, canCookReci
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
+const recipeTagPicker=mountRecipeTagPicker({field:$('#recipe-groups-field'),input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[])});
 const CONFIG_KEY = 'einkauf-settings-v1';
 // Nur neue Geräte starten mit diesen Werten; gespeicherte Einstellungen behalten ihre bisherigen Vorgaben.
 // Die Startwerte vor dem ersten Anzeigen müssen zu theme.js passen.
@@ -1284,6 +1287,7 @@ function applyRecipeDraft(state) {
   for (const field of ['name', 'servings', 'tags', 'instructions', 'notes', 'sourceUrl']) form.elements[field].value = state[field] ?? '';
   $('#ingredient-editor').replaceChildren();
   (state.ingredients?.length ? state.ingredients : [{}]).forEach(row => ingredientRow({ id: typeof row.id === 'string' ? row.id : undefined, name: String(row.name ?? ''), quantity: String(row.quantity ?? '1'), unit: String(row.unit ?? 'Stück') }));
+  recipeTagPicker.reset();
 }
 function offerRecipeDraft() {
   const note = $('#recipe-draft-note'); note.replaceChildren(); note.hidden = true;
@@ -1307,7 +1311,7 @@ function editRecipe(id = '', draft = null) {
   if (recipeSaving) throw new Error('Das Rezept wird gerade gespeichert. Bitte kurz warten.');
   const editorVersion=++photoEditVersion;
   recipeDraftScope = namespace(); $('#recipe-draft-error').hidden = true;
-  const form = $('#recipe-form'); form.reset();
+  const form = $('#recipe-form'); form.reset();form.elements.tags.value='';
   recipeBaseline = id ? clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt)) : null;
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   if (recipeBaseline) recipeBaseline.notes ??= '';
@@ -1335,6 +1339,7 @@ function editRecipe(id = '', draft = null) {
     for (const warning of draft.warnings || []) note.append(element('p', warning, 'warn'));
   }
   $('#recipe-raw').hidden = !draft?.raw; $('#recipe-raw').open = false; $('#recipe-raw-text').textContent = draft?.raw || '';
+  recipeTagPicker.reset();
   // Entwurf: Ein importiertes Rezept gilt sofort als nicht gespeichert (der Import ist aufwendig); sonst zählt, was sich vom Öffnungsstand unterscheidet.
   recipeDraftKey = id || (draft ? 'import' : 'new'); recipeOpenState = draft ? null : JSON.stringify(recipeFormState());
   if (draft) saveRecipeDraft(); else offerRecipeDraft();
@@ -1345,7 +1350,7 @@ function discardImportedRecipe() {
   if($('#discard-imported-recipe').hidden || recipeBaseline) return;
   dropRecipeDraft();++photoEditVersion;
   pendingPhoto=null;photoRemoved=false;showPhotoPreview('');
-  const form=$('#recipe-form');form.reset();form.elements.id.value='';
+  const form=$('#recipe-form');form.reset();form.elements.id.value='';form.elements.tags.value='';recipeTagPicker.reset();
   $('#ingredient-editor').replaceChildren();
   for(const id of ['recipe-import-note','recipe-draft-note']) { $('#'+id).replaceChildren();$('#'+id).hidden=true; }
   $('#recipe-raw-text').textContent='';$('#recipe-raw').open=false;$('#recipe-raw').hidden=true;
@@ -1375,7 +1380,7 @@ function saveRecipe(event) {
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
     const patch = { name: form.elements.name.value.trim(), servings: positive(form.elements.servings.value),
-      instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: uniqueRecipeTags(form.elements.tags.value.split(',')) };
+      instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: checkedRecipeGroups(form.elements.tags.value.split(',')) };
     if (sourceUrl || beforeRecipe?.sourceUrl) patch.sourceUrl = sourceUrl;
     if (patch.notes.length > 10000) throw new Error('Meine Notizen dürfen höchstens 10.000 Zeichen enthalten.');
     if (!patch.name) throw new Error('Bitte dem Rezept einen Namen geben.');
@@ -2315,7 +2320,11 @@ function addDailyRecipe() {
   if (!draft?.ingredients.length) return false;
   if (dailyKnown(item, draft)) return false;
   const id = uid(), name = (draft.name || item.title).trim().slice(0, 120);
-  const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags: uniqueRecipeTags(draft.tags) };
+  let tags;
+  try{tags=checkedRecipeGroups(draft.tags);}catch(error){
+    $('#daily-dialog').close();editRecipe('',{...draft,warnings:[...(draft.warnings||[]),error.message]});recipeTagPicker.open();return null;
+  }
+  const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags };
   if (draft.sourceUrl || item.url) patch.sourceUrl = draft.sourceUrl || item.url;
   const ops = [nextOp('recipes', id, patch), ...draft.ingredients.map(row => nextOp('ingredients', uid(), { recipeId: id, name: row.name.slice(0, 120), quantity: row.quantity, unit: String(row.unit).slice(0, 30) }))];
   commit(ops, `„${name}“ zu deinen Rezepten hinzugefügt`); return true;
@@ -2325,8 +2334,9 @@ $('#daily-open').addEventListener('click', () => guard(() => {
   loadDaily(); dailyReview = null; $('#daily-dialog').showModal(); showDaily();
 }));
 function confirmDailyRecipe() {
-  if (!dailyReview) return decideDaily(addDailyRecipe() ? 'added' : 'known');
-  if (addDailyRecipe()) {
+  const added=addDailyRecipe();if(added===null)return;
+  if (!dailyReview) return decideDaily(added ? 'added' : 'known');
+  if (added) {
     const record = dailyReview.record, item = record.queue[dailyReview.index], current = loadDaily();
     record.outcome[item.key] = 'added';
     if (current.day === record.day && current.source === record.source) current.outcome[item.key] = 'added';

@@ -229,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.126 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.127 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -381,7 +381,15 @@
     <p id="recipe-draft-error" class="dialog-error" role="alert" hidden></p><div id="recipe-draft-note" class="import-note" hidden></div>
     <div id="recipe-import-note" class="import-note" hidden></div>
     <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
-    <div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" value="2" required></label><label>Tags (Komma)<input name="tags" placeholder="z. B. schnell" maxlength="300"></label></div>
+    <label class="recipe-portions-field">Portionen<input name="servings" inputmode="decimal" value="2" required></label>
+    <div id="recipe-groups-field" class="recipe-groups-field"><input name="tags" type="hidden"><label for="recipe-groups-toggle">Rezeptgruppen</label>
+      <button id="recipe-groups-toggle" class="recipe-groups-toggle" type="button" aria-expanded="false" aria-controls="recipe-groups-menu"><span id="recipe-groups-selection" class="recipe-groups-selection"></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <p id="recipe-groups-warning" class="dialog-error" role="alert" hidden></p>
+      <div id="recipe-groups-menu" class="recipe-groups-menu" hidden><p class="hint">Wähle alle passenden Gruppen. Unpassende Kombinationen werden beim Antippen automatisch ersetzt.</p><div id="recipe-groups-options"></div>
+        <div class="recipe-group-custom"><label for="recipe-group-custom">Eigene Gruppe (optional)<input id="recipe-group-custom" maxlength="30" autocomplete="off" placeholder="z. B. Familienküche"></label><button id="recipe-group-add" type="button" class="secondary" aria-label="Eigene Gruppe hinzufügen"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+        <p id="recipe-groups-feedback" class="hint" role="status" aria-live="polite"></p><button id="recipe-groups-done" type="button" class="secondary">Fertig</button>
+      </div>
+    </div>
     <div class="photo-field">
       <div id="photo-preview" class="photo-preview" hidden><img id="photo-preview-img" alt="Vorschau des Rezeptfotos"><button id="photo-remove" type="button" class="icon-button round" aria-label="Foto entfernen"><svg class="icon"><use href="#i-trash"/></svg></button></div>
       <label class="file-drop compact"><input name="photo" type="file" accept="image/*" class="visually-hidden"><svg class="icon"><use href="#i-camera"/></svg><span id="photo-label">Foto hinzufügen</span></label>

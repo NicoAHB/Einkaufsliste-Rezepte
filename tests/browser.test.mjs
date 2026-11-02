@@ -91,6 +91,14 @@ const sheetOpen = async page => {
   await page.evaluate(() => Promise.race([new Promise(resolve => setTimeout(resolve, 1500)),
     Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))]));
 };
+const selectRecipeGroups = async (page,tags) => {
+  await page.click('#recipe-groups-toggle');
+  for(const tag of tags){const option=page.locator('#recipe-groups-options button').filter({hasText:new RegExp(`^${tag}$`)});
+    if(await option.count()){if(await option.getAttribute('aria-pressed')!=='true')await option.click();}
+    else{await page.fill('#recipe-group-custom',tag);await page.click('#recipe-group-add');}
+  }
+  await page.click('#recipe-groups-done');
+};
 // Der Dialog „Geschäfte“ zeigt jedes Geschäft zugeklappt; die meisten Prüfungen brauchen die Felder und klappen deshalb alle auf (das Zuklappen prüft ein eigener Test).
 const openStores = async page => {
   await page.click('#manage-stores'); await sheetOpen(page);
@@ -3354,7 +3362,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     for(const name of [/^vegan$/i,/^vegetarisch$/i,/^low carb$/i]){await chips.getByRole('button',{name}).click();assert.deepEqual(await page.locator('#recipe-list>[data-recipe-id]').evaluateAll(nodes=>nodes.map(n=>n.dataset.recipeId).sort()),['tags-2117-0','tags-2117-1']);await chips.getByRole('button',{name}).click();}assert.equal(await page.locator('#recipe-list>[data-recipe-id]').count(),3);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.117: Speichern legt gleiche Rezeptgruppen zusammen und erhält die Zuordnung nach Neustart',async()=>{
-    const {ctx,page,problems}=await context();await seedLocal(ctx,tagData2117());await open(page);await goTab(page,'recipes');const card=page.locator('#recipe-list>[data-recipe-id=tags-2117-0]');await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);await page.fill('#recipe-form [name=tags]','vegan, Vegan, VEGETARISCH, vegetarisch, Low  Carb, LOW\u00a0CARB');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.id==='tags-2117-0').tags,['vegan','VEGETARISCH','Low Carb']);assert.equal(await card.locator('.tag').count(),3);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await goTab(page,'recipes');assert.equal(await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).count(),1);await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).click();assert.equal(await page.locator('#recipe-list>[data-recipe-id]').count(),2);assert.deepEqual(problems,[]);await ctx.close();
+    const {ctx,page,problems}=await context();await seedLocal(ctx,tagData2117());await open(page);await goTab(page,'recipes');const card=page.locator('#recipe-list>[data-recipe-id=tags-2117-0]');await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);await page.locator('#recipe-form [name=tags]').evaluate(node=>{node.value='vegan, Vegan, VEGETARISCH, vegetarisch, Low  Carb, LOW\u00a0CARB';node.dispatchEvent(new Event('change',{bubbles:true}));});await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.id==='tags-2117-0').tags,['vegan','VEGETARISCH','Low Carb']);assert.equal(await card.locator('.tag').count(),3);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await goTab(page,'recipes');assert.equal(await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).count(),1);await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).click();assert.equal(await page.locator('#recipe-list>[data-recipe-id]').count(),2);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.117: abweichende Gruppenschreibweisen vom zweiten Gerät erhalten den aktiven Filter und erzeugen keine Doppelgruppe',async()=>{
     const api=github(tagData2117()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',api.handler);await open(page);await synced(page);await goTab(page,'recipes');await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).click();api.remoteChange(data=>{data.recipes[0].tags=[' VEGAN ','vegetarisch'];data.recipes[1].tags=['Vegan','Vegetarisch'];});await pollNow(page);await synced(page);assert.equal(await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).count(),1);assert.equal(await page.locator('#tag-chips').getByRole('button',{name:/^vegan$/i}).getAttribute('aria-pressed'),'true');assert.equal(await page.locator('#recipe-list>[data-recipe-id]').count(),2);assert.deepEqual(problems,[]);await ctx.close();
@@ -4904,10 +4912,18 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     const number = Number(/Nummer-(\d+)/.exec(target.pathname)?.[1] || 0);
     const recipe = { '@context': 'https://schema.org', '@type': 'Recipe', name: `Tagesrezept ${number}`, recipeYield: '4 Portionen', totalTime: 'PT30M',
-      recipeIngredient: ['200 g Mehl', '2 Eier', '1 Prise Salz'], recipeInstructions: 'Alles verrühren.\nAusbacken.' };
+      recipeIngredient: ['200 g Mehl', '2 Eier', '1 Prise Salz'], recipeInstructions: 'Alles verrühren.\nAusbacken.', ...(behavior.keywords?{keywords:behavior.keywords}:{}) };
     return route.fulfill({ status: 200, headers: cors, body: `<!doctype html><html><head><title>Tagesrezept ${number}</title><script type="application/ld+json">${JSON.stringify(recipe)}</script></head><body>${'x'.repeat(250)}</body></html>` });
   };
   const dailyConfig = { importProxy: PROXY, publicProxy:false, dailySource: 'https://www.chefkoch.de/rezepte/tagesrezepte/' };
+
+  test('2.127: widersprüchliche Tagesrezepte öffnen die Gruppenauswahl vor dem Speichern',async()=>{
+    const {ctx,page,problems}=await context({config:dailyConfig});await ctx.route(`${PROXY}/**`,dailySite(1,{keywords:'Vegetarisch, Fleisch, Schnell'}));
+    await open(page);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 1")');const before=(await storedDemo(page)).recipes.length;
+    await page.click('#daily-add');await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.locator('#daily-dialog[open]').count(),0);assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);assert.equal((await storedDemo(page)).recipes.length,before);
+    await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
+    assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Tagesrezept 1').tags,['Vegetarisch','Schnell']);assert.deepEqual(problems,[]);await ctx.close();
+  });
 
   test('Rezepte des Tages: bis zu zehn einzeln durchklicken, 0 bis alle hinzufügen, entschiedene kommen nicht wieder', async () => {
     const behavior = {};
@@ -7045,6 +7061,57 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const pickRows = page => page.locator('#recipe-pick .pick-row strong').allTextContents();
 
+  test('2.127: Rezeptgruppen öffnen ohne Tastatur, bleiben für Mehrfachauswahl offen und ersetzen widersprüchliche Ernährung',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);
+    assert.equal(await page.locator('#recipe-form [name=tags]').getAttribute('type'),'hidden');assert.ok(!(await page.textContent('#recipe-form')).includes('Tags (Komma)'));
+    await page.click('#recipe-groups-toggle');assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
+    assert.equal(await page.evaluate(()=>['INPUT','TEXTAREA'].includes(document.activeElement.tagName)),false);
+    const pick=name=>page.locator('#recipe-groups-options').getByRole('button',{name,exact:true});
+    await pick('Vegetarisch').click();await pick('Schnell').click();await pick('Suppe').click();assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
+    await pick('Fleisch').click();assert.equal(await pick('Vegetarisch').getAttribute('aria-pressed'),'false');assert.match(await page.textContent('#recipe-groups-feedback'),/Vegetarisch.*abgewählt/);
+    await pick('Vegetarisch').click();assert.equal(await pick('Fleisch').getAttribute('aria-pressed'),'false');
+    await page.fill('#recipe-group-custom','Omas Küche');await page.keyboard.press('Enter');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
+    await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-menu').isHidden(),true);assert.deepEqual(await page.locator('#recipe-groups-selection .recipe-group-chip').allTextContents(),['Schnell','Suppe','Vegetarisch','Omas Küche']);
+    await page.fill('#recipe-form [name=name]','Gruppenmenü-Test');await page.locator('#ingredient-editor [data-field=name]').fill('Kartoffeln');await page.fill('#recipe-form [name=instructions]','Kochen.');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
+    assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Gruppenmenü-Test').tags,['Schnell','Suppe','Vegetarisch','Omas Küche']);
+    await page.click('#add-recipe');await sheetOpen(page);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),0,'Ein neues Rezept übernimmt keine vorherigen Gruppen');await page.click('#recipe-dialog [data-close]');
+    const card=page.locator('.recipe-card',{hasText:'Gruppenmenü-Test'});await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),4);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.127: alte widersprüchliche Gruppen bleiben zur Korrektur sichtbar und können nicht gespeichert werden',async()=>{
+    const data=structuredClone(demo);data.recipes[0].tags=['Vegetarisch','Fleisch','Schnell','Eigene Gruppe'];const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator(`[data-recipe-id="${data.recipes[0].id}"]`);await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);
+    const before=await storedDemo(page);assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),4);
+    await page.click('#recipe-form button[type=submit]');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.match(await page.textContent('#recipe-dialog [data-dialog-error]'),/passen nicht zusammen/);assert.deepEqual(await storedDemo(page),before);
+    await page.click('#recipe-groups-toggle');await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-warning').isHidden(),true);
+    await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.id===data.recipes[0].id).tags,['Vegetarisch','Schnell','Eigene Gruppe']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.127: Escape klappt zuerst das Gruppenmenü zu und ein Rezeptentwurf stellt die Auswahl wieder her',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);await selectRecipeGroups(page,['Vegan','Schnell','Familienküche']);await page.click('#recipe-groups-toggle');await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.equal(await page.locator('#recipe-groups-menu').isHidden(),true);
+    await page.click('#recipe-dialog [data-close]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});await page.click('#add-recipe');await sheetOpen(page);await page.getByRole('button',{name:'Entwurf zurückholen',exact:true}).click();assert.deepEqual(await page.locator('#recipe-groups-selection .recipe-group-chip').allTextContents(),['Vegan','Schnell','Familienküche']);assert.equal(await page.locator('#recipe-groups-menu').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  for(const [width,theme] of [[280,'light'],[390,'dark']])test(`2.127: Rezeptgruppen passen bei ${width}px ${theme} als Chips und Auswahlmenü`,async()=>{
+    const {ctx,page,problems}=await context({config:{theme,palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);await selectRecipeGroups(page,['Vegan','Vegetarisch','Glutenfrei','Laktosefrei','Schnell','Suppe','Mein Lieblingsrezept für Gäste']);
+    assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#recipe-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),7);
+    await page.click('#recipe-groups-toggle');assert.ok(await page.locator('#recipe-groups-menu').evaluate(node=>node.scrollWidth<=node.clientWidth+1));
+    const menu=await page.locator('#recipe-groups-menu').boundingBox(),done=await page.locator('#recipe-groups-done').boundingBox();assert.ok(menu.height<=844*.6+1);assert.ok(done.y>=0&&done.y+done.height<=844,'Fertig bleibt ohne zusätzliche Suche im sichtbaren Menü');
+    const last=page.locator('#recipe-groups-options').getByRole('button',{name:'Low Carb',exact:true});await last.scrollIntoViewIfNeeded();const scroll=await page.locator('#recipe-groups-options').evaluate(node=>node.scrollTop);await last.click();assert.ok(await page.locator('#recipe-groups-options').evaluate(node=>node.scrollTop)>=scroll-1,'Eine Auswahl am Listenende springt nicht an den Anfang');
+    const doneAfter=await page.locator('#recipe-groups-done').boundingBox(),footer=await page.locator('#recipe-form>.sheet-actions').boundingBox();assert.ok(doneAfter.y+doneAfter.height<footer.y,'Fertig bleibt auch nach wachsenden Auswahlchips oberhalb der festen Speicherleiste');
+    if(width===390)await page.locator('#recipe-groups-field').screenshot({path:'/workspace/work/sattplan-2127-rezeptgruppen.png'});
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.127: importierte widersprüchliche Rezeptgruppen werden im Auswahlmenü korrigiert',async()=>{
+    const {ctx,page,problems}=await context({config:{importProxy:'https://rezepte.test.workers.dev',publicProxy:false}});
+    const html='<html><script type="application/ld+json">'+JSON.stringify({'@context':'https://schema.org','@type':'Recipe',name:'Import mit Gruppen',recipeYield:'2 Portionen',recipeIngredient:['1 Stück Kartoffel'],recipeInstructions:'Kochen.',keywords:'vegetarisch, Fleisch, schnell'})+'</script>'+('x'.repeat(300))+'</html>';
+    await ctx.route('https://rezepte.test.workers.dev/**',route=>route.fulfill({status:200,contentType:'text/html',body:html}));await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');await page.waitForSelector('#recipe-dialog[open]');
+    assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);await page.click('#recipe-groups-toggle');await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
+    assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Import mit Gruppen').tags,['vegetarisch','schnell']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
   function bananaData2124(quantity=3,unit='Stück') {
     const data=structuredClone(demo),at='2026-11-02T09:00:00.000Z',record=(id,fields)=>({id,...fields,createdAt:at,updatedAt:at,deletedAt:null,_clock:{}});
     data.items=quantity?[record('banana-manual2124',{name:'Bananen',quantity,unit,checked:false,createdBy:'Nico',storeId:''})]:[];
@@ -9064,7 +9131,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const before = await data277(page);
     await page.evaluate(() => localStorage.setItem('einkauf-recipe-drafts-v2:einkauf-demo-v1', JSON.stringify({ new: { at: new Date().toISOString(), state: { name: 'Anderer Entwurf' } } })));
     await importText288(page);
-    await page.fill('#recipe-form [name=tags]', 'Alt, Entwurf');
+    await selectRecipeGroups(page,['Alt','Entwurf']);
     await page.fill('#recipe-form [name=notes]', 'Diese Notiz verwerfen');
     await page.fill('#recipe-form [name=sourceUrl]', 'https://example.org/alter-import');
     await page.setInputFiles('#recipe-form [name=photo]', await photo288(page));
