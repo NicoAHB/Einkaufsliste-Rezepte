@@ -520,9 +520,20 @@ main {
 #product-picker-dialog .product-picker-hint { margin:0 }
 .product-picker-help ul { display:grid; gap:8px; margin:0; padding-left:20px; overflow-wrap:anywhere }
 .smart-stock-controls { padding:12px; margin:12px 0; border:1px solid var(--line-strong); border-radius:12px; background:var(--card) }
-.smart-stock-controls>.checkbox-label { margin:0; min-height:44px }
-.smart-stock-controls>label:not(.checkbox-label) { display:block; margin-top:8px }
-.smart-stock-controls>.hint { margin:6px 0 0; font-size:.75rem }
+.smart-stock-controls>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; color:var(--text); font-weight:650; list-style:none; cursor:pointer }
+.smart-stock-controls>summary::-webkit-details-marker { display:none }
+.smart-stock-controls>summary>span { min-width:0; overflow-wrap:anywhere }
+.smart-stock-controls>summary>.icon { flex:none; width:20px; height:20px; transition:transform .15s }
+.smart-stock-controls[open]>summary>.icon { transform:rotate(180deg) }
+#smart-stock-draft { display:block; margin-top:4px; font-size:.75rem; font-weight:500; color:var(--muted) }
+.smart-stock-body { display:grid; gap:10px; margin-top:12px }
+.smart-stock-body>.checkbox-label { margin:0; min-height:44px }
+.smart-stock-body>label { min-width:0 }
+.smart-stock-body>.hint { margin:0; font-size:.75rem }
+:root #smart-stock-save { width:100%; min-height:48px; white-space:normal; overflow-wrap:anywhere; line-height:1.4 }
+:root #smart-stock-save:disabled { background:#e5e7eb; color:#59616a; border-color:#cbd1d6; opacity:1; box-shadow:none; cursor:default }
+:root[data-theme=dark] #smart-stock-save:disabled { background:#303943; color:#b2bdc8; border-color:#4b5967 }
+@media(prefers-color-scheme:dark) { :root:not([data-theme=light]) #smart-stock-save:disabled { background:#303943; color:#b2bdc8; border-color:#4b5967 } }
 :root .product-card .pantry-consume { margin:0 6px 7px; min-height:44px; padding:8px; font-size:.85rem; white-space:normal; color:var(--text); background:var(--card); border:1px solid var(--line-strong) }
 .product-card.consumed-recent .product-pick { opacity:.5 }
 :root #product-picker-help-close { margin-top:8px; min-height:44px; padding:8px 0; border:0; background:transparent; box-shadow:none; color:var(--accent); font-size:.85rem }

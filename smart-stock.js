@@ -16,6 +16,21 @@ export function smartStockSettingChange(patch){
   if(!patch||!Object.keys(patch).length||Object.keys(patch).some(key=>!['enabled','days'].includes(key))||(patch.enabled!==undefined&&typeof patch.enabled!=='boolean')||(patch.days!==undefined&&(!Number.isInteger(patch.days)||patch.days<1||patch.days>7)))throw new Error('Bitte eine gültige Einstellung für den automatischen Vorrat wählen.');
   return {collection:'stockSettings',id:'smart-stock',patch};
 }
+export function saveSmartStockChange(data,patch,by,at=new Date().toISOString()){
+  if(!patch||typeof patch!=='object'||Array.isArray(patch)||typeof by!=='string'||!by.trim()||by.trim().length>80||typeof at!=='string'||!Number.isFinite(Date.parse(at)))throw new Error('Bitte die Speicherung des automatischen Vorrats erneut versuchen.');
+  const change=Object.keys(patch).length?smartStockSettingChange(patch):{collection:'stockSettings',id:'smart-stock',patch:{}};
+  const row=(data.stockSettings||[]).find(row=>row.id==='smart-stock'&&!row.deletedAt),defaults=smartStockSettings(data);
+  return {...change,patch:{...(row?.enabled===undefined?{enabled:defaults.enabled}:{}),...(row?.days===undefined?{days:defaults.days}:{}),...change.patch,saved:{at,by:by.trim()}}};
+}
+export function smartStockSaved(data){
+  const row=(data.stockSettings||[]).find(row=>row.id==='smart-stock'&&!row.deletedAt),saved=row?.saved,clock=row?._clock?.saved;
+  if(!saved||!clock||typeof saved.at!=='string'||!Number.isFinite(Date.parse(saved.at))||typeof saved.by!=='string'||!saved.by.trim())return null;
+  const revision=value=>value?`${value.at}|${value.id}`:'';
+  // Ältere Apps ändern Einstellungen ohne Speichernachweis. Dann keinen
+  // veralteten Namen anzeigen; die aktuelle Einstellung lässt sich bestätigen.
+  if(['enabled','days'].some(field=>revision(row._clock[field]||row._clock['*'])>revision(clock)))return null;
+  return {...saved};
+}
 export function autoStockEligible(item,history=[]){return FOOD.has(itemCategory(item,history))&&suggestCategory(item.name)!=='haushalt';}
 export function automaticStockChanges(data,item,boughtAt){
   const settings=smartStockSettings(data),time=Date.parse(boughtAt);

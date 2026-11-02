@@ -7,7 +7,7 @@ import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedP
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys, pantryRows } from './data.js';
-import {isOptionalBasic,smartStockSettings} from './smart-stock.js';
+import {isOptionalBasic,smartStockSaved,smartStockSettings} from './smart-stock.js';
 import { recentPurchases, purchaseLabel } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
 import { openOrderControls } from './ui-controls.js';
@@ -26,6 +26,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   const selection = new Map();
   const PAGE_SIZE = 96;
   let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE;
+  let stockChanges={};
   const helpToggle=$('product-picker-help-toggle'),help=$('product-picker-help');
   function showHelp(open,restoreFocus=false) {
     const expanded=Boolean(open);
@@ -37,7 +38,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function resetHelp() {
     const hint=$('product-picker-hint'),list=node('ul');
     const texts=target==='pantry'
-      ?['Antippen: Vorrat vormerken oder ausgrauen; unten mit „Änderungen speichern“ übernehmen. ★ merkt Favoriten.','„Nachkaufen“: Menge und Geschäft wählen, mit „Auf die Einkaufsliste“ zum Einkaufszettel hinzufügen.','Unter „Letzte 7 Tage gekauft“ Automatik einschalten und 1–7 Tage wählen. Neue Lebensmittel bleiben so lange im Vorrat.','Ausnahme Grundvorrat: Mehl, Nudeln und andere Grundvorräte bleiben, bis du sie als aufgebraucht markierst. Manuelle Vorräte laufen nicht ab.','Haushalt, Drogerie und Sonstiges werden nicht automatisch übernommen.','„Aufgebraucht“ nimmt das Produkt sofort aus dem Vorrat. Der Einkauf bleibt sieben Tage sichtbar, aufgebrauchte Produkte grau.','Optionale Grundvorräte (Nudeln, Tomatenmark, Butter) kommen beim Aufbrauchen automatisch auf den Einkaufszettel.']
+      ?['Antippen: Vorrat vormerken oder ausgrauen; unten mit „Änderungen speichern“ übernehmen. ★ merkt Favoriten.','„Nachkaufen“: Menge und Geschäft wählen, mit „Auf die Einkaufsliste“ zum Einkaufszettel hinzufügen.','Unter „Letzte 7 Tage gekauft“ die Einstellung aufklappen, einschalten, 1–7 Tage wählen und „Speichern“ drücken. Die Kopfzeile zeigt den gespeicherten Zustand; Datum und Nutzer stehen auf dem gespeicherten Button.','Ausnahme Grundvorrat: Mehl, Nudeln und andere Grundvorräte bleiben, bis du sie als aufgebraucht markierst. Manuelle Vorräte laufen nicht ab.','Haushalt, Drogerie und Sonstiges werden nicht automatisch übernommen.','„Aufgebraucht“ nimmt das Produkt sofort aus dem Vorrat. Der Einkauf bleibt sieben Tage sichtbar, aufgebrauchte Produkte grau.','Optionale Grundvorräte (Nudeln, Tomatenmark, Butter) kommen beim Aufbrauchen automatisch auf den Einkaufszettel.']
       :['Antippen zum Auswählen - Mit dem Stern als Favorit merken.','Wähle die gewünschten Produkte aus und füge sie mit dem Button unten schnell zur Einkaufsliste hinzu.'];
     for(const text of texts)list.append(node('li',text));
     hint.replaceChildren(list);
@@ -48,9 +49,27 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   dialog.addEventListener('cancel',event=>{if(!help.hidden){event.preventDefault();showHelp(false,true);}});
   const fail = error => { $('product-picker-error').textContent = error.message; $('product-picker-error').hidden = false; $('product-picker-error').scrollIntoView({ block: 'nearest' }); };
   const clearError = () => { $('product-picker-error').hidden = true; };
-  function changeStockSetting(patch){try{if(target!=='pantry'||scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');clearError();onStockSettings(patch);$('product-picker-feedback').textContent='Einstellung gespeichert.';$('product-picker-feedback').hidden=false;}catch(error){renderProducts();fail(error);}}
-  $('smart-stock-enabled').addEventListener('change',event=>changeStockSetting({enabled:event.target.checked}));
-  $('smart-stock-days').addEventListener('change',event=>changeStockSetting({days:Number(event.target.value)}));
+  function renderStockControls(){
+    const current=smartStockSettings(getData());
+    for(const key of Object.keys(stockChanges))if(stockChanges[key]===current[key])delete stockChanges[key];
+    const draft={...current,...stockChanges},dirty=Object.keys(stockChanges).length>0,saved=smartStockSaved(getData()),save=$('smart-stock-save');
+    $('smart-stock-controls').hidden=target!=='pantry'||mode!=='recent';$('smart-stock-enabled').checked=draft.enabled;$('smart-stock-days').value=String(draft.days);$('smart-stock-days-field').hidden=!draft.enabled;
+    const duration=current.days===7?'1 Woche':current.days===1?'1 Tag':`${current.days} Tage`;
+    $('smart-stock-summary').textContent=current.enabled?`Gekaufte Lebensmittel werden automatisch für ${duration} in den Vorrat übernommen.`:'Automatische Übernahme gekaufter Produkte: ausgeschaltet.';
+    $('smart-stock-draft').hidden=!dirty;$('smart-stock-unsaved').hidden=!dirty;
+    save.disabled=!dirty&&Boolean(saved);save.textContent=save.disabled?`Gespeichert am ${new Intl.DateTimeFormat('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(saved.at))} von ${saved.by}`:'Speichern';
+  }
+  function changeStockDraft(patch){
+    if(!dialog.open||target!=='pantry'||scope!==getScope())return;
+    clearError();Object.assign(stockChanges,patch);renderStockControls();
+  }
+  $('smart-stock-enabled').addEventListener('change',event=>changeStockDraft({enabled:event.target.checked}));
+  $('smart-stock-days').addEventListener('change',event=>changeStockDraft({days:Number(event.target.value)}));
+  $('smart-stock-save').addEventListener('click',()=>{try{
+    if(!dialog.open||target!=='pantry'||scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');
+    if($('smart-stock-save').disabled)return;
+    clearError();onStockSettings({...stockChanges});stockChanges={};renderStockControls();$('product-picker-feedback').textContent='Einstellung gespeichert.';$('product-picker-feedback').hidden=false;
+  }catch(error){renderStockControls();fail(error);}});
   const tabOrder = mountProductTabOrder(dialog.querySelector('.product-modes'), {
     enabled: () => dialog.open && target === 'pantry' && scope === getScope(),
     announce: text => { $('product-modes-status').textContent = text; },
@@ -127,8 +146,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const focusKey=focused?.dataset.productAction,focusId=focused?.dataset.product;
     const available=target==='pantry'?stockedKeys():pantryKeys(getData().pantry||[]);
     const inventory=new Map(pantryRows(getData().pantry||[]).map(row=>[pantryKey(row.name),row]));
-    const stockSettings=smartStockSettings(getData());
-    $('smart-stock-controls').hidden=target!=='pantry'||mode!=='recent';$('smart-stock-enabled').checked=stockSettings.enabled;$('smart-stock-days').value=String(stockSettings.days);$('smart-stock-days-field').hidden=!stockSettings.enabled;
+    renderStockControls();
     const allProducts=library();
     // Gespeicherte Vorräte bleiben bis zum Speichern an ihrem Platz, auch abgewählte.
     const currentViewKeys=new Set([...pantryKeys(getData().pantry||[]),...[...selection.values()].map(product=>pantryKey(product.name))]);
@@ -278,11 +296,12 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     } catch (error) { fail(error); }
     finally { submitting = false; updateFooter(); }
   });
-  dialog.addEventListener('close', () => { if (!dialog.open) { showHelp(false);tabOrder.cancel(); selection.clear();$('pantry-own-dialog').close();renderCart(); clearError(); } });
+  dialog.addEventListener('close', () => { if (!dialog.open) { stockChanges={};$('smart-stock-controls').open=false;showHelp(false);tabOrder.cancel(); selection.clear();$('pantry-own-dialog').close();renderCart(); clearError(); } });
   return {
     open(storeId = '', options = {}) {
       tabOrder.cancel();
       target=options.target==='pantry'?'pantry':'list';
+      stockChanges={};$('smart-stock-controls').open=false;
       $('product-tabs-order').hidden = target !== 'pantry';
       tabOrder.arrange(target);
       $('product-picker-cart').open = false;

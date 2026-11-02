@@ -2,7 +2,7 @@ import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, 
 import { createDraftStore } from './drafts.js';
 import { categorizedPurchases, defaultExpenseCategory } from './expense-categories.js';
 import { mountExpenseCategoryPicker } from './expense-category-view.js';
-import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,smartStockSettingChange,undoAutomaticStockChanges} from './smart-stock.js';
+import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
@@ -3829,7 +3829,7 @@ productPicker = mountProductPicker({
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]),removals=products.filter(product=>product.pantryAvailable===false);const ops=[...changes.map(({id,patch})=>nextOp('pantry',id,patch)),...stockRemovalOperations(removals)];if(ops.length)commit(ops);return removals.filter(product=>isOptionalBasic(product.name)).map(product=>product.name); },
-  onStockSettings:patch=>commit(stockOps([smartStockSettingChange(patch)])),
+  onStockSettings:patch=>commit(stockOps([saveSmartStockChange(state,patch,config.actor||'Unbekannt')])),
   onConsume:product=>{commit(stockRemovalOperations([product]));return isOptionalBasic(product.name);},
   recognizeName,
   onQuickBuy: product => pantryBuyer.buyProduct(product),

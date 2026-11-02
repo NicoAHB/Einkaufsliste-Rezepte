@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {emptyData,merge,operation,pantryKeys,pantryRows,validate,SCHEMA_REV} from '../data.js';
 import {pantryChanges,pantrySelectionChanges} from '../pantry.js';
-import {automaticStockChanges,autoStockEligible,consumeStockChanges,isAutomaticBasic,isOptionalBasic,nextStockBoundary,optionalRestockOperations,smartStockSettingChange,smartStockSettings,undoAutomaticStockChanges} from '../smart-stock.js';
+import {automaticStockChanges,autoStockEligible,consumeStockChanges,isAutomaticBasic,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,smartStockSaved,smartStockSettingChange,smartStockSettings,undoAutomaticStockChanges} from '../smart-stock.js';
 import {recentPurchases} from '../recent-purchases.js';
 import {namesFrom} from '../cookable.js';
 import {compact} from '../compact.js';
@@ -80,4 +80,17 @@ test('Optionale Grundvorräte landen beim Aufbrauchen einmalig auf dem Einkaufsz
 test('Gleichzeitiges Aufbrauchen optionaler Grundvorräte erzeugt dieselbe Übernahme; ein neuer Auffüllzyklus bleibt möglich',()=>{
  let data=enabled();data.items=[item('Nudeln',{category:'vorrat'})];data=apply(data,automaticStockChanges(data,data.items[0],stamp));const product={name:'Nudeln',quantity:1,unit:'Stück'},a=optionalRestockOperations(data,product,'Nico',at(.1)),b=optionalRestockOperations(data,product,'Anna',at(.2));assert.equal(a[0].id,b[0].id);assert.equal(a[0].entityId,b[0].entityId);let after=merge(data,[...a,...b]);assert.equal(after.items.filter(row=>!row.checked&&!row.deletedAt).length,1);assert.equal(after.items.find(row=>!row.checked).quantity,1);
  const boughtAgain=after.items.find(row=>!row.checked);after=apply(after,[{collection:'items',id:boughtAgain.id,patch:{checked:true,shopBoughtAt:at(1)}},...automaticStockChanges(after,boughtAgain,at(1))],at(1));const next=optionalRestockOperations(after,product,'Nico',at(1.1));assert.equal(next.length,1);assert.notEqual(next[0].entityId,a[0].entityId);
+});
+test('Explizites Speichern hält Datum und Nutzer gemeinsam fest und verändert nur gewählte Einstellungen',()=>{
+ const data=enabled(2),change=saveSmartStockChange(data,{days:3},'Nico',at(.1));assert.equal(change.patch.enabled,undefined);assert.deepEqual(change.patch.saved,{by:'Nico',at:at(.1)});const after=apply(data,[change],at(.1));assert.deepEqual(smartStockSettings(after),{enabled:true,days:3});assert.deepEqual(smartStockSaved(after),{by:'Nico',at:at(.1)});assert.deepEqual(after.pantry,data.pantry);assert.deepEqual(after.items,data.items);
+ const initial=apply(emptyData(),[saveSmartStockChange(emptyData(),{},'Nico',stamp)]);assert.deepEqual(smartStockSettings(initial),{enabled:false,days:7});assert.equal(initial.stockSettings[0].days,7);assert.equal(initial.stockSettings[0].enabled,false);assert.equal(smartStockSaved(initial).by,'Nico');
+});
+test('Alte Einstellungen ohne Nachweis lassen sich bestätigen; spätere Änderungen alter Apps erhalten keinen falschen Speichernamen',()=>{
+ let data=enabled(2);assert.equal(smartStockSaved(data),null);data=apply(data,[saveSmartStockChange(data,{},'Nico',at(.1))],at(.1));assert.equal(smartStockSaved(data).by,'Nico');data=apply(data,[smartStockSettingChange({days:4})],at(.2),'Anna');assert.equal(smartStockSaved(data),null);data=apply(data,[saveSmartStockChange(data,{},'Anna',at(.3))],at(.3),'Anna');assert.equal(smartStockSaved(data).by,'Anna');assert.equal(smartStockSettings(data).days,4);
+});
+test('Parallele Speichervorgänge bewahren unabhängige Einstellungen und einen zusammengehörigen Speichernachweis',()=>{
+ const data=enabled(2),a=saveSmartStockChange(data,{days:3},'Nico',at(.1)),b=saveSmartStockChange(data,{enabled:false},'Anna',at(.2));const ops=[operation(a.collection,a.id,a.patch,'Nico',at(.1)),operation(b.collection,b.id,b.patch,'Anna',at(.2))],left=merge(data,ops),right=merge(merge(data,[ops[1]]),[ops[0]]);assert.deepEqual(left.stockSettings,right.stockSettings);assert.deepEqual(smartStockSettings(left),{enabled:false,days:3});assert.equal(smartStockSaved(left).by,'Anna');
+});
+test('Ungültige Speichernachweise werden zurückgewiesen',()=>{
+ for(const [name,time]of [['',stamp],['Nico','kaputt']])assert.throws(()=>saveSmartStockChange(emptyData(),{},name,time));const data=enabled();data.stockSettings[0].saved={at:stamp,by:42};assert.throws(()=>validate(data),/Speichernachweis/);
 });

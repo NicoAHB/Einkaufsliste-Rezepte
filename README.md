@@ -1,6 +1,12 @@
-# Sattplan – Version 2.112
+# Sattplan – Version 2.113
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.113: Automatik aufklappen und ausdrücklich speichern
+
+Die Smart-Stock-Einstellung ist beim Öffnen der Vorratsauswahl **zugeklappt**. Die Kopfzeile beschreibt den aktuell gespeicherten Zustand und die Dauer. Aufklappen zeigt Schalter, Dauer und einen eigenen **Speichern**-Button. Erst dieser Button übernimmt Änderungen; die Speicherung der Produktauswahl bleibt davon unabhängig.
+
+Nach dem Speichern ist der Button grau und deaktiviert: **„Gespeichert am TT.MM.JJJJ von Name“**. Eine Änderung aktiviert ihn wieder. Datum und Nutzer werden mit der Einstellung abgeglichen; bestehende Einstellungen ohne Speichernachweis lassen sich einmal bestätigen. Ungespeicherte Änderungen bleiben beim Zuklappen erhalten, werden beim Schließen der Vorratsauswahl verworfen und sind in der Kopfzeile gekennzeichnet. Änderungen vom zweiten Gerät aktualisieren unberührte Felder, während eigene Entwürfe bis zum Speichern erhalten bleiben. Offline-Paket **einkauf-shell-v125**.
 
 ## Neu in Version 2.112: Automatischer Vorrat (Smart Stock)
 
