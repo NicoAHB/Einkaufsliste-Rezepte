@@ -74,10 +74,10 @@ test('Tagesverlauf: Schnappschüsse enthalten das Rezept, keine rohen Webseiten 
   const snap = dailySnapshot(input); assert.ok(!('raw' in snap) && !('token' in snap)); assert.equal(snap.ingredients[0].quantity, 200);
   snap.ingredients[0].name = 'neu'; assert.equal(input.ingredients[0].name, 'Linsen');
 });
-test('Grundvorrat: alle 28 festen Zutaten haben Bilder und gehören zum Kochen', () => {
-  assert.equal(PANTRY_BASIC_IDS.length, 28); assert.equal(new Set(PANTRY_BASIC_IDS).size, 28);
+test('Grundvorrat: alle 23 festen Zutaten haben Bilder und gehören zum Kochen', () => {
+  assert.equal(PANTRY_BASIC_IDS.length, 23); assert.equal(new Set(PANTRY_BASIC_IDS).size, 23);
   for (const id of PANTRY_BASIC_IDS) {
-    const product = GROCERY_PRODUCTS.find(p => p.id === id); assert.ok(product, id); assert.ok(pantryProductAllowed(product)); assert.notEqual(product.category, 'haushalt');
+    const product = GROCERY_PRODUCTS.find(p => p.id === id); assert.ok(product, id); assert.ok(pantryProductAllowed(product)); assert.notEqual(product.category, 'haushalt');assert.notEqual(product.category,'obst');assert.ok(product.category!=='kuehl'||product.id==='butter');
   }
 });
 test('Vorratsauswahl enthält Essen/Drogerie, keine Technik aus Verlauf oder Favoriten', () => {
@@ -98,7 +98,7 @@ test('Eigener Kochvorrat behält sein Bild, offensichtliche Technik wird auch ma
 test('Letzte Einkäufe: ausschließlich echtes Kaufdatum, neueste zuerst, Einzahl/Mehrzahl einmal, kein updatedAt-Raten',()=>{
  const now=Date.parse('2026-10-31T12:00:00Z'),at=days=>new Date(now-days*86400000).toISOString();
  const rows=[{name:'Karotte',shopBoughtAt:at(2)},{name:'KAROTTEN',shopBoughtAt:at(1),deletedAt:at(0)},{name:'Milch',checked:true,updatedAt:at(0)},{name:'Mehl',shopBoughtAt:at(7)},{name:'Reis',shopBoughtAt:at(8)},{name:'Butter',shopBoughtAt:at(-1)}],before=structuredClone(rows);
- assert.deepEqual(recentPurchases(rows,now).map(row=>row.name),['KAROTTEN','Mehl']);assert.deepEqual(rows,before);assert.equal(purchaseLabel(at(0),now),'heute gekauft');
+ assert.deepEqual(recentPurchases(rows,now).map(row=>row.name),['KAROTTEN']);assert.deepEqual(rows,before);assert.equal(purchaseLabel(at(0),now),'heute gekauft');
 });
 test('Kaufdatum bleibt bei Entfernen, Export und parallelem Bearbeiten erhalten; Aufräumen schützt sieben Tage',()=>{
  const now=Date.parse('2026-10-31T12:00:00Z'),at=days=>new Date(now-days*86400000).toISOString();

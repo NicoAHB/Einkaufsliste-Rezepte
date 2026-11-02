@@ -2,6 +2,7 @@ import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, 
 import { createDraftStore } from './drafts.js';
 import { categorizedPurchases, defaultExpenseCategory } from './expense-categories.js';
 import { mountExpenseCategoryPicker } from './expense-category-view.js';
+import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,smartStockSettingChange,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
@@ -58,6 +59,7 @@ for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStora
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let restoring = false, restoreController = null;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null, expenseCategoryPicker = null;
+let stockClockTimer=0;
 const storeReorders = [];
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
@@ -201,6 +203,15 @@ function restingStatus() {
 function nextOp(collection, id, patch) {
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   return operation(collection, id, patch, config.actor || 'Unbekannt', new Date(lastTime).toISOString());
+}
+const stockOps=changes=>changes.map(({collection,id,patch})=>nextOp(collection,id,patch));
+function stockRemovalOperations(products){
+  const ops=[];
+  for(const product of products){
+    const at=new Date(Math.max(Date.now(),lastTime+1,Date.parse(state.updatedAt)+1)).toISOString();
+    ops.push(...stockOps(consumeStockChanges(state,product.name)),...optionalRestockOperations(state,product,config.actor||'Unbekannt',at));
+  }
+  return ops;
 }
 // Kurzer Hinweis; verschwindet von selbst. Mit `undo` steht ein Knopf „Rückgängig“ dabei (etwas länger sichtbar).
 let noticeUndo = null;
@@ -361,6 +372,7 @@ function render() {
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
   productPicker?.refresh();
+  scheduleStockRefresh();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
@@ -536,7 +548,7 @@ function itemRow(item, withStore = false) {
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
-    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null} : {}) })]);
+    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null} : {}) }),...stockOps(latest.checked?undoAutomaticStockChanges(state,latest):[])]);
   }, 'check');
   if (item.checked) check.append(icon('check'));
   check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
@@ -1608,7 +1620,7 @@ function renderPlanRecipe() {
   const meal=state.meals.find(row=>row.id===plannedRecipe.mealId&&!row.deletedAt);
   const recipe=active(state.recipes).find(row=>row.id===plannedRecipe.recipeId);
   const ingredients=active(state.ingredients).filter(row=>row.recipeId===plannedRecipe.recipeId);
-  const signature=JSON.stringify([meal,recipe,ingredients,state.pantry]);
+  const signature=JSON.stringify([meal,recipe,ingredients,state.pantry,[...pantryKeys(state.pantry)]]);
   if(signature===plannedRecipe.signature)return;
   const dialog=$('#plan-recipe-dialog'),content=$('#plan-recipe-content'),scroll=dialog.scrollTop;
   let servings=meal?.servings;
@@ -2792,12 +2804,14 @@ function shopRow(item) {
     if (!latest || latest.deletedAt) return;
     // Ein Artikel ohne Geschäft, der hier abgehakt wird, steht in den anderen Geschäften nicht mehr auf der Liste.
     if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
-    commit([nextOp('items', item.id, { checked: !latest.checked, shopBoughtAt: !latest.checked && !isWish(latest) ? new Date().toISOString() : null })]);
+    const boughtAt=!latest.checked&&!isWish(latest)?new Date().toISOString():null;
+    const autoChanges=latest.checked?undoAutomaticStockChanges(state,latest):boughtAt?automaticStockChanges(state,latest,boughtAt):[];
+    commit([nextOp('items', item.id, { checked: !latest.checked, shopBoughtAt:boughtAt,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:null}:{}) }),...stockOps(autoChanges)]);
     // Ein versehentliches Abhaken lässt sich gleich zurücknehmen (der Artikel verschwindet sonst aus der offenen Liste).
     if (!latest.checked) showNotice(`„${latest.name}“ abgehakt`, () => {
       const now = state.items.find(entry => entry.id === item.id);
       if (!now || now.deletedAt || !now.checked) return;
-      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null })]);
+      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:latest.stockConsumedAt}:{}) }),...stockOps(undoAutomaticStockChanges(state,now))]);
     });
   }));
   row.append(tap, text);
@@ -3323,6 +3337,16 @@ function renderPantry() {
   $('#pantry-shortcut-count').textContent=count?String(count):'';
   $('#open-pantry').setAttribute('aria-label',`Vorrat öffnen, ${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat`);
 }
+function scheduleStockRefresh(){
+  clearTimeout(stockClockTimer);const at=nextStockBoundary(state);
+  if(at!==null)stockClockTimer=setTimeout(()=>{if(!document.hidden)refreshTimedStock();},Math.max(10,Math.min(2147483000,at-Date.now()+5)));
+}
+function refreshTimedStock(){
+  renderPantry();renderRecipes();productPicker?.refresh();
+  if($('#plan-recipe-dialog').open)renderPlanRecipe();
+  if($('#cookable-dialog').open)renderCookable();
+  scheduleStockRefresh();
+}
 
 /* ---------- Vorlagen ---------- */
 const templateRows = () => active(state.templates || []).sort((a, b) => a.name.localeCompare(b.name, 'de'));
@@ -3801,10 +3825,12 @@ for (const [selector, horizontal, itemSelector, handleSelector] of [
 productPicker = mountProductPicker({
   getScope: namespace,
   getStores: () => orderedStores(state.stores).filter(store => !isSeparate(store)),
-  getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [],
+  getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [], stockSettings:state.stockSettings||[],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
-  onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]); if(changes.length)commit(changes.map(({id,patch})=>nextOp('pantry',id,patch))); },
+  onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]),removals=products.filter(product=>product.pantryAvailable===false);const ops=[...changes.map(({id,patch})=>nextOp('pantry',id,patch)),...stockRemovalOperations(removals)];if(ops.length)commit(ops);return removals.filter(product=>isOptionalBasic(product.name)).map(product=>product.name); },
+  onStockSettings:patch=>commit(stockOps([smartStockSettingChange(patch)])),
+  onConsume:product=>{commit(stockRemovalOperations([product]));return isOptionalBasic(product.name);},
   recognizeName,
   onQuickBuy: product => pantryBuyer.buyProduct(product),
   onFavorite: product => {
@@ -4155,7 +4181,7 @@ async function start() {
     }
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
     window.addEventListener('online', () => void sync(true));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) void sync(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) {refreshTimedStock();void sync();} });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
     if ('serviceWorker' in navigator) {
       // Neue App-Version: Hinweis statt stillem Wechsel mitten in einer Eingabe.

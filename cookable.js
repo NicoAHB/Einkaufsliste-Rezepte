@@ -70,7 +70,8 @@ export function rankRecipes(recipes, ingredientsOf, names, limit = 15) {
   return limit ? ranked.slice(0, limit) : ranked;
 }
 
-/* Abgehakte oder entfernte Einkäufe gelten niemals automatisch als Vorrat. */
+/* Verfügbarkeit kommt ausschließlich aus pantryRows (einschließlich Smart Stock),
+   nicht aus einem Rückschluss auf abgehakte Einkaufszeilen. */
 export function namesFrom({ pantry = [], items = [], mode = 'pantry' }) {
   return { have: pantryRows(pantry).filter(row => row.available !== false).map(row => row.name),
     soon: mode === 'shopping' ? items.filter(item => !item.checked && !item.deletedAt && typeof item.name === 'string').map(item => item.name) : [] };

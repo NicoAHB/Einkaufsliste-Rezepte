@@ -20,11 +20,11 @@ export function pantryChanges(products, rows = []) {
     const key = pantryKey(name); if (seen.has(key)) continue; seen.add(key);
     const matches = rows.filter(row => pantryKey(row.name) === key), live = matches.filter(row => !row.deletedAt);
     if (live.length) {
-      for (const row of live) if (row.available === false) changes.push({ id: row.id, patch: { available: true } });
+      for (const row of live) if (row.available === false || row.autoStock) changes.push({ id: row.id, patch: { available: true, ...(row.autoStock?{autoStock:null}:{}) } });
       continue;
     }
     const existing = [...matches].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))[0];
-    if (existing) { changes.push({ id: existing.id, patch: { available: true, deletedAt: null } }); continue; }
+    if (existing) { changes.push({ id: existing.id, patch: { available: true, deletedAt: null, ...(existing.autoStock?{autoStock:null}:{}) } }); continue; }
     const category = isCategory(product?.category) ? product.category : suggestCategory(name) || 'sonstiges';
     const imageKey = typeof product?.imageKey === 'string' ? product.imageKey : null;
     changes.push({ id: newPantryId(name, rows), patch: { name, category, imageKey, available: true, deletedAt: null } });

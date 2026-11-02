@@ -3,7 +3,7 @@ import { pantryKey } from './data.js';
 export const PURCHASE_DAYS = 7;
 export function isRecentPurchase(row, now = Date.now()) {
   const time = typeof row.shopBoughtAt === 'string' ? Date.parse(row.shopBoughtAt) : NaN;
-  return Number.isFinite(time) && time <= now && time >= now - PURCHASE_DAYS * 86400000;
+  return Number.isFinite(time) && time <= now && time > now - PURCHASE_DAYS * 86400000;
 }
 export function recentPurchases(items = [], now = Date.now()) {
   const found = new Map();

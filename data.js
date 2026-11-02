@@ -12,19 +12,24 @@ import { restoredState, revisionKey } from './restore-state.js';
 import { expenseCategoryId } from './expense-categories.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories'];
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt && !row._planEmpty);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], expenseCategories: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], expenseCategories: [], stockSettings: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
 export const validPhotoId = id => typeof id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(id);
+function validAutoStock(value){
+  if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.purchaseId!=='string'||!value.purchaseId||typeof value.boughtAt!=='string'||!Number.isFinite(Date.parse(value.boughtAt))||(value.storeId!==undefined&&typeof value.storeId!=='string'))return false;
+  if(value.basic===true)return value.expiresAt===null;
+  return (value.basic===undefined||value.basic===false)&&typeof value.expiresAt==='string'&&Number.isFinite(Date.parse(value.expiresAt))&&Date.parse(value.expiresAt)>Date.parse(value.boughtAt)&&Date.parse(value.expiresAt)-Date.parse(value.boughtAt)<=7*86400000;
+}
 export const validDay = value => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T12:00:00Z`);
@@ -43,6 +48,9 @@ export function validateRow(key, row) {
       (row.sortOrder !== undefined && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) ||
       (row.replacementId !== undefined && row.replacementId !== null && (typeof row.replacementId !== 'string' || !row.replacementId || row.replacementId.length > 2048 || row.replacementId === row.id)))) throw new Error('Ungültige Ausgabenkategorie.');
   if (key === 'purchases' && row.categoryId !== undefined && row.categoryId !== null && (typeof row.categoryId !== 'string' || !row.categoryId || row.categoryId.length > 2048)) throw new Error('Ungültige Ausgabenkategorie einer Buchung.');
+  if (key === 'stockSettings' && (row.id !== 'smart-stock' || (row.enabled !== undefined && typeof row.enabled !== 'boolean') || (row.days !== undefined && (!Number.isInteger(row.days) || row.days < 1 || row.days > 7)))) throw new Error('Ungültige Einstellungen für den automatischen Vorrat.');
+  if (key === 'items' && row.stockConsumedAt != null && (typeof row.stockConsumedAt !== 'string' || !Number.isFinite(Date.parse(row.stockConsumedAt)))) throw new Error('Ungültiger Zeitpunkt für aufgebrauchten Vorrat.');
+  if (key === 'pantry' && row.autoStock != null && !validAutoStock(row.autoStock)) throw new Error('Ungültige Ablaufzeit für den automatischen Vorrat.');
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
   if (key === 'stores' && row.sortOrder != null && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) throw new Error('Ungültige Geschäftsreihenfolge.');
   if (key === 'members' && (!validMemberId(row.id) || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 30 ||
@@ -173,7 +181,8 @@ export function validateRow(key, row) {
 // Revision 14: Wiederherstellungen besitzen eine gemeinsame Grenze. Ältere
 // Offline-Änderungen dürfen den ausdrücklich zurückgesetzten Stand nicht ersetzen.
 // Revision 15: gemeinsame Ausgabenkategorien und Weiterleitungen nach dem Löschen.
-export const SCHEMA_REV = 15;
+// Revision 16: gemeinsame Smart-Stock-Einstellung, Ablaufzeiten und Aufbrauchen.
+export const SCHEMA_REV = 16;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -246,7 +255,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   let next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= []; next.stockSettings ||= [];
   const applied = new Set(next.sync.applied); let created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
@@ -270,6 +279,9 @@ export function merge(data, operations) {
       next[op.collection].push(row); created.push([op.collection, row]);
     }
     row._clock ||= {};
+    // Unabhängige erste Einstellungen dürfen auch dann zusammenkommen,
+    // wenn ein offline geänderter Schalter erst nach der Dauer eintrifft.
+    if(op.collection==='stockSettings'&&op.at<row.createdAt)row.createdAt=op.at;
     // Die drei Angaben gehören zu EINER bewussten Auswahl. Beim Offline-Abgleich
     // entscheidet deren Zeitpunkt, nicht das spätere Hinzufügen mit alter Vorgabe.
     const protectedChoice = op.collection === 'items' && (hasUnitChoice(op.patch) || hasUnitChoice(row));
@@ -343,6 +355,7 @@ export function merge(data, operations) {
   if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
   if (next.meals.some(row=>row.listedParts?.length) || next.items.some(row=>row._planCuts?.length || row.purchaseAmount === null)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,10);
   if (next.expenseCategories.length || next.purchases.some(row=>row.categoryId!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,15);
+  if (next.stockSettings.length || next.pantry.some(row=>row.autoStock) || next.items.some(row=>row.stockConsumedAt!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,16);
   return validate(next);
 }
 
@@ -495,17 +508,27 @@ export function isCookingWater(name) {
 const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
 // Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
 export const pantryKey = name => spellingStem(canonicalProductName(name)) || productKey(canonicalProductName(name));
-// Alte Dateien können denselben Namen mit mehreren zufälligen IDs besitzen. Ein Eintrag pro Name,
-// die jüngste Fassung entscheidet. IDs bleiben zum gemeinsamen Ändern/Entfernen erhalten.
-export function pantryRows(rows = []) {
+// Ein Eintrag pro Name: die jüngste manuelle Fassung entscheidet. Automatische
+// Einträge laufen separat ab und verdrängen keinen vorhandenen manuellen Vorrat.
+// Alle IDs bleiben zum gemeinsamen Aufbrauchen/Entfernen erhalten.
+export function pantryRows(rows = [], now = Date.now()) {
   const byName = new Map();
   for (const row of active(rows).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')))) {
-    const key = pantryKey(row.name), previous = byName.get(key);
-    byName.set(key, { ...row, ids: [...(previous?.ids || []), row.id] });
+    const key = pantryKey(row.name);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(row);
   }
-  return [...byName.values()];
+  return [...byName.values()].map(group=>{
+    let selected=group.at(-1);
+    if(group.some(row=>row.autoStock)){
+      const manual=group.filter(row=>!row.autoStock).at(-1);
+      const automatic=group.filter(row=>row.autoStock&&row.available!==false&&(row.autoStock.basic===true||Date.parse(row.autoStock.expiresAt)>now)).at(-1);
+      if(manual&&manual.available!==false)selected=manual;
+      else if(automatic&&(!manual||String(automatic.updatedAt)>String(manual.updatedAt)))selected=automatic;
+      else selected={...selected,available:false};
+    }
+    return {...selected,ids:group.map(row=>row.id)};
+  });
 }
-export const pantryKeys = rows => new Set(pantryRows(rows || []).filter(row => row.available !== false).map(row => pantryKey(row.name)));
+export const pantryKeys = (rows,now=Date.now()) => new Set(pantryRows(rows || [],now).filter(row => row.available !== false).map(row => pantryKey(row.name)));
 export const inPantry = (keys, name) => { const parts = nameParts(name); return isCookingWater(name) || keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => isCookingWater(part) || keys.has(pantryKey(part)))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
 export function pantryAdditions(names, keys) {

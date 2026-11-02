@@ -81,7 +81,8 @@ export function selectedProducts(selection) {
 }
 
 // Vorratsauswahl ist kein Wunschzettel: nur Lebensmittel und Drogerie-/Haushaltsbedarf.
-export const PANTRY_BASIC_IDS = Object.freeze(['salz','pfeffer','paprikapulver','curry','oregano-getrocknet','zimt','mehl','zucker','backpulver','nudeln','reis','haferflocken','linsen','kichererbsen','kidneybohnen','tomatenstuecke','passierte-tomaten','tomatenmark','olivenoel','rapsoel','essig','bruehe','zwiebeln','knoblauch','kartoffeln','eier','milch','butter']);
+export const PANTRY_BASIC_IDS = Object.freeze(['salz','pfeffer','paprikapulver','curry','oregano-getrocknet','zimt','mehl','zucker','backpulver','nudeln','reis','haferflocken','linsen','kichererbsen','kidneybohnen','tomatenstuecke','passierte-tomaten','tomatenmark','olivenoel','rapsoel','essig','bruehe','butter']);
+export const OPTIONAL_PANTRY_BASIC_IDS=Object.freeze(['nudeln','tomatenmark','butter']);
 const basicIds = new Set(PANTRY_BASIC_IDS);
 const noPantryIds = new Set(['katzenfutter','hundefutter','waescheklammern','waeschenetz','frischhaltedosen','trinkflasche','schnuller','babyflasche', ...GROCERY_PRODUCTS.filter(p => p.sheet === 30 && p.cell >= 20).map(p => p.id), ...GROCERY_PRODUCTS.filter(p => p.sheet === 31 && !['schuhcreme','impraegnierspray','insektenschutz'].includes(p.id)).map(p => p.id)]);
 const catalogNames = new Map(GROCERY_PRODUCTS.map(p => [productKey(p.name), p]));

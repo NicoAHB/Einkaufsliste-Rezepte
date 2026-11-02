@@ -6,7 +6,8 @@ import { CATEGORIES } from './categories.js';
 import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic, pantryProductsForMode } from './product-catalog.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
-import { pantryKey, pantryKeys } from './data.js';
+import { pantryKey, pantryKeys, pantryRows } from './data.js';
+import {isOptionalBasic,smartStockSettings} from './smart-stock.js';
 import { recentPurchases, purchaseLabel } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
 import { openOrderControls } from './ui-controls.js';
@@ -19,7 +20,7 @@ const svg = name => {
   icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); icon.append(use); return icon;
 };
 
-export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName }) {
+export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName, onStockSettings, onConsume }) {
   const $ = id => document.getElementById(id), dialog = $('product-picker-dialog'), form = $('product-picker-form');
   const search = $('product-picker-search'), category = $('product-picker-category'), store = $('product-picker-store'), grid = $('product-picker-list');
   const selection = new Map();
@@ -36,7 +37,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function resetHelp() {
     const hint=$('product-picker-hint'),list=node('ul');
     const texts=target==='pantry'
-      ?['Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat.','★ merkt Favoriten.','Mit „Nachkaufen“ fügst du Produkte zum Einkaufszettel hinzu. Menge und Geschäft wählen und mit „Auf die Einkaufsliste“ bestätigen.']
+      ?['Antippen: Vorrat vormerken oder ausgrauen; unten mit „Änderungen speichern“ übernehmen. ★ merkt Favoriten.','„Nachkaufen“: Menge und Geschäft wählen, mit „Auf die Einkaufsliste“ zum Einkaufszettel hinzufügen.','Unter „Letzte 7 Tage gekauft“ Automatik einschalten und 1–7 Tage wählen. Neue Lebensmittel bleiben so lange im Vorrat.','Ausnahme Grundvorrat: Mehl, Nudeln und andere Grundvorräte bleiben, bis du sie als aufgebraucht markierst. Manuelle Vorräte laufen nicht ab.','Haushalt, Drogerie und Sonstiges werden nicht automatisch übernommen.','„Aufgebraucht“ nimmt das Produkt sofort aus dem Vorrat. Der Einkauf bleibt sieben Tage sichtbar, aufgebrauchte Produkte grau.','Optionale Grundvorräte (Nudeln, Tomatenmark, Butter) kommen beim Aufbrauchen automatisch auf den Einkaufszettel.']
       :['Antippen zum Auswählen - Mit dem Stern als Favorit merken.','Wähle die gewünschten Produkte aus und füge sie mit dem Button unten schnell zur Einkaufsliste hinzu.'];
     for(const text of texts)list.append(node('li',text));
     hint.replaceChildren(list);
@@ -47,6 +48,9 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   dialog.addEventListener('cancel',event=>{if(!help.hidden){event.preventDefault();showHelp(false,true);}});
   const fail = error => { $('product-picker-error').textContent = error.message; $('product-picker-error').hidden = false; $('product-picker-error').scrollIntoView({ block: 'nearest' }); };
   const clearError = () => { $('product-picker-error').hidden = true; };
+  function changeStockSetting(patch){try{if(target!=='pantry'||scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');clearError();onStockSettings(patch);$('product-picker-feedback').textContent='Einstellung gespeichert.';$('product-picker-feedback').hidden=false;}catch(error){renderProducts();fail(error);}}
+  $('smart-stock-enabled').addEventListener('change',event=>changeStockSetting({enabled:event.target.checked}));
+  $('smart-stock-days').addEventListener('change',event=>changeStockSetting({days:Number(event.target.value)}));
   const tabOrder = mountProductTabOrder(dialog.querySelector('.product-modes'), {
     enabled: () => dialog.open && target === 'pantry' && scope === getScope(),
     announce: text => { $('product-modes-status').textContent = text; },
@@ -122,11 +126,14 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const focused=dialog.contains(document.activeElement)?document.activeElement:null;
     const focusKey=focused?.dataset.productAction,focusId=focused?.dataset.product;
     const available=target==='pantry'?stockedKeys():pantryKeys(getData().pantry||[]);
+    const inventory=new Map(pantryRows(getData().pantry||[]).map(row=>[pantryKey(row.name),row]));
+    const stockSettings=smartStockSettings(getData());
+    $('smart-stock-controls').hidden=target!=='pantry'||mode!=='recent';$('smart-stock-enabled').checked=stockSettings.enabled;$('smart-stock-days').value=String(stockSettings.days);$('smart-stock-days-field').hidden=!stockSettings.enabled;
     const allProducts=library();
     // Gespeicherte Vorräte bleiben bis zum Speichern an ihrem Platz, auch abgewählte.
     const currentViewKeys=new Set([...pantryKeys(getData().pantry||[]),...[...selection.values()].map(product=>pantryKey(product.name))]);
     const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
-    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
+    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
     const categories = new Set(products.map(product => product.category));
     for (const option of category.options) option.disabled = target === 'pantry' && mode !== 'all' && Boolean(option.value) && !categories.has(option.value);
     if (category.selectedOptions[0]?.disabled) category.value = '';
@@ -153,11 +160,14 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         const chosen=selection.get(product.id),picked=Boolean(chosen);
         const amount = shoppingAmount(chosen || purchaseStart(product));
         const stocked = available.has(pantryKey(product.name));
+        const stock=inventory.get(pantryKey(product.name)),consumed=mode==='recent'&&!stocked&&Boolean(product.stockConsumedAt);
         const card=node('div',undefined,`product-card${picked?' picked':''}${target==='pantry'&&stocked?' in-stock':''}${target==='pantry'&&chosen?.pantryAvailable===false?' pending-removal':''}`);
+        if(consumed)card.classList.add('consumed-recent');
         card.dataset.product = product.id; card.dataset.id = product.id;
         const pick = node('button', undefined, 'product-pick'); pick.type = 'button'; pick.dataset.productAction = 'pick'; pick.dataset.product = product.id;
         pick.setAttribute('aria-pressed',String(target==='pantry'?stocked:picked));
         pick.setAttribute('aria-label',target==='pantry'?`${product.name}: ${stocked?'aus dem Vorrat nehmen':'als vorhanden auswählen'}`:`${product.name}, ${amount}: ${picked?'Auswahl aufheben':'auswählen'}`);
+        if(target==='pantry'&&mode==='recent'&&stocked)pick.setAttribute('aria-label',`${product.name}: vorhanden. Zum Aufbrauchen den Button unter dem Produkt wählen.`);
         if(target==='pantry'){pick.setAttribute('aria-keyshortcuts','Shift+F10');pick.setAttribute('aria-description','Lange drücken: auf die Einkaufsliste. Änderungen am Vorrat unten übernehmen.');}
         const check=node('span',undefined,'product-picked');check.append(svg('check'));check.hidden=target==='pantry'?!stocked:!picked;check.setAttribute('aria-hidden','true');
         pick.append(photo(product), node('span', product.name, 'product-name'));
@@ -168,6 +178,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
         if(mode==='recent')pick.append(node('small',purchaseLabel(product.shopBoughtAt),'product-on-list'));
+        if(target==='pantry'&&mode==='basics'&&isOptionalBasic(product.name))pick.append(node('small','Optional · beim Aufbrauchen nachkaufen','product-on-list'));
+        if(consumed)pick.append(node('small','Aufgebraucht','product-on-list'));
+        else if(target==='pantry'&&stocked&&stock?.autoStock)pick.append(node('small',stock.autoStock.basic?'Grundvorrat · ohne Ablauf':`Automatisch bis ${new Date(stock.autoStock.expiresAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`,'product-on-list'));
+        else if(mode==='recent'&&!stocked&&stock?.autoStock&&Date.parse(stock.autoStock.expiresAt)<=Date.now())pick.append(node('small','Automatisch abgelaufen','product-on-list'));
         pick.addEventListener('click',()=>{
           if(mode==='recent'&&stocked&&!chosen)return;
           clearError(); $('product-picker-feedback').hidden = true;
@@ -180,6 +194,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         star.setAttribute('aria-pressed', String(Boolean(product.favorite))); star.append(svg('star'));
         star.addEventListener('click', () => { try { clearError(); onFavorite(product); renderProducts(); } catch (error) { fail(error); } });
         card.append(pick,star);
+        if(target==='pantry'&&mode==='recent'&&!consumed&&onConsume){
+          const consume=node('button',isOptionalBasic(product.name)?'Aufgebraucht & nachkaufen':'Aufgebraucht','secondary pantry-consume');consume.type='button';consume.dataset.productAction='consume';consume.dataset.product=product.id;consume.setAttribute('aria-label',`${product.name} als aufgebraucht markieren`);if(isOptionalBasic(product.name))consume.setAttribute('aria-description','Wird automatisch auf den Einkaufszettel gesetzt.');
+          consume.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');const restocked=onConsume(purchaseStart(product));for(const [id,selected]of selection)if(pantryKey(selected.name)===pantryKey(product.name))selection.delete(id);renderCart();renderProducts();$('product-picker-feedback').textContent=restocked?`${product.name} ist aufgebraucht und steht auf dem Einkaufszettel.`:`${product.name} ist aufgebraucht. Der Einkauf bleibt in der Historie.`;$('product-picker-feedback').hidden=false;}catch(error){fail(error);}});card.append(consume);
+        }
         if (target === 'pantry' && onQuickBuy) {
           const buy = node('button', 'Nachkaufen', 'secondary pantry-quick-buy'); buy.type = 'button';
           buy.setAttribute('aria-label', `${product.name} nachkaufen`);
@@ -252,9 +270,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       clearError();if(scope!==getScope())throw new Error('Die Datenverbindung hat sich geändert. Bitte die Auswahl erneut öffnen.'); if(target==='list')for(const [id,controls]of cartControls){try{Object.assign(selection.get(id),controls.read());}catch(error){throw new Error(`${selection.get(id).name}: ${error.message}`);}} const selected = target === 'pantry' ? [...selection.values()] : selectedProducts(selection);
       if (target === 'list' && store.value && !getStores().some(shop => shop.id === store.value)) throw new Error('Dieses Geschäft wurde gelöscht. Bitte wähle ein anderes.');
       submitting = true; updateFooter();
-      if (target === 'pantry') onPantry(selected); else onAdd(selected, store.value);
+      const restocked=target === 'pantry'?onPantry(selected.map(product=>product.pantryAvailable===false?{...purchaseStart(product),pantryAvailable:false}:product)):[];
+      if(target!=='pantry')onAdd(selected,store.value);
       selection.clear();
-      if(target==='pantry'){$('product-picker-feedback').textContent='Vorrat gespeichert.';$('product-picker-feedback').hidden=false;renderCart();renderProducts();}
+      if(target==='pantry'){$('product-picker-feedback').textContent=`Vorrat gespeichert.${restocked?.length?` Auf dem Einkaufszettel: ${restocked.join(', ')}.`:''}`;$('product-picker-feedback').hidden=false;renderCart();renderProducts();}
       else dialog.close();
     } catch (error) { fail(error); }
     finally { submitting = false; updateFooter(); }
