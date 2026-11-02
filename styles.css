@@ -553,7 +553,13 @@ main {
 .list-shortcuts .chip-button { padding-inline:10px }
 .list-shortcuts .shop-tools { justify-self:end; align-self:center }
 .list-shortcuts .shop-tools a.button { min-height:44px }
-.list-shortcuts .shop-tools { grid-column:1/-1; display:flex; flex-direction:column; align-items:flex-start; justify-self:stretch; gap:5px }
+.list-shortcuts .shop-tools { grid-column:1/-1; display:block; justify-self:stretch; min-width:0 }
+.shop-tools>summary { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px; padding:8px 12px; border:1px solid var(--line-strong); border-radius:12px; background:var(--card); color:var(--accent); font-size:.85rem; font-weight:650; list-style:none; cursor:pointer }
+.shop-tools>summary::-webkit-details-marker { display:none }
+.shop-tools>summary>.icon { flex:none; width:18px; height:18px; transition:transform .15s }
+.shop-tools[open]>summary>.icon { transform:rotate(180deg) }
+.shop-tools>summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+.offers-content { display:grid; gap:6px; min-width:0; margin-top:8px }
 .list-shortcuts .shop-tools #offers-link { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:auto; max-width:100%; min-height:54px; padding:12px 8px; border:1.5px solid var(--accent); border-radius:16px; font-size:.95rem; font-weight:700; white-space:normal }
 .list-shortcuts .shop-tools #offers-link .label { display:inline }
 .list-shortcuts .shop-tools .hint { margin:0; font-size:.78rem }

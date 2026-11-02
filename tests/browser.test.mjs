@@ -3372,11 +3372,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const data=wishData();data.stores.push({...demo.stores[0],id:'other292',name:'Sonstige (Netto, Aldi, usw.)',offersUrl:''});
       const {ctx,page,problems}=await context({context:{viewport:{width,height:844}},config:{theme:width===320?'dark':'light'}});await seedLocal(ctx,data);await open(page);
       for(const id of ['other292','store-wishes']) {await page.locator(`#store-chips [data-store-id=${id}]`).click();assert.equal(await page.locator('.shop-tools').isVisible(),false);}
-      await page.locator('#store-chips [data-store-id=store-edeka]').click();assert.equal(await page.locator('#offers-link').isVisible(),true);
+      await page.locator('#store-chips [data-store-id=store-edeka]').click();assert.equal(await page.locator('#offers-details').evaluate(n=>n.open),false);assert.equal(await page.locator('#offers-link').isVisible(),false);assert.equal(await page.locator('#offers-hint').isVisible(),false);await page.click('#offers-details>summary');assert.equal(await page.locator('#offers-link').isVisible(),true);
       assert.equal(await page.textContent('#offers-link .label'),'Angebote bei Edeka ansehen');assert.equal(await page.locator('#offers-link use').getAttribute('href'),'#i-external');
       assert.equal(await page.getAttribute('#offers-link','target'),'_blank');assert.equal(await page.locator('#offers-hint').isVisible(),true);
       const product=await page.locator('#open-products').boundingBox(),offers=await page.locator('#offers-link').boundingBox();
-      assert.ok(Math.abs(product.x-offers.x)<1);assert.equal(product.height,offers.height);assert.equal(await horizontalOverflow(page),0);
+      assert.ok(Math.abs(product.x-offers.x)<1);assert.equal(product.height,offers.height);assert.equal(await horizontalOverflow(page),0);await page.locator('#offers-details>summary').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#offers-link').isVisible(),false);await page.keyboard.press('Enter');assert.equal(await page.locator('#offers-link').isVisible(),true);await page.locator('#store-chips [data-store-id=store-lidl]').click();assert.equal(await page.locator('#offers-details').evaluate(n=>n.open),false);assert.equal(await page.locator('#offers-link').isVisible(),false);await page.locator('#store-chips [data-store-id=store-edeka]').click();assert.equal(await page.locator('#offers-details').evaluate(n=>n.open),false);
       await page.locator('#store-chips [data-all-stores]').click();assert.equal(await page.locator('.shop-tools').isVisible(),false);
       assert.deepEqual(problems,[]);await ctx.close();
     }
@@ -5250,7 +5250,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   for (const width of [280, 314, 360, 390, 430]) {
     test(`Schnellzugriffe (${width} px): auch große Favoriten- und Vorratszahlen verdecken keine Beschriftung`, async () => {
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 844 } } });
-      await open(page); await storeButton(page, '#store-chips', 'Edeka').click();
+      await open(page); await storeButton(page, '#store-chips', 'Edeka').click();await page.click('#offers-details>summary');
       await page.evaluate(() => { const count = document.querySelector('#product-favorite-count'); count.hidden = false; count.textContent = '★ 1000'; document.querySelector('#pantry-shortcut-count').textContent = '999'; });
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
@@ -5281,7 +5281,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
         await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
         const layout = await page.evaluate(() => {
           const rect = selector => { const node = document.querySelector(selector); return node && !node.hidden && node.getClientRects().length ? node.getBoundingClientRect() : null; };
-          const card = rect('.list-shortcuts'), text = rect('#open-products'), pantry = rect('#open-pantry'), buttons = ['#offers-link', '#set-offers'].map(rect).filter(Boolean);
+          const card = rect('.list-shortcuts'), text = rect('#open-products'), pantry = rect('#open-pantry'), buttons = ['#offers-details>summary', '#set-offers'].map(rect).filter(Boolean);
           return { card, text, pantry, buttons, textFits: text.width >= 44 };
         });
         assert.equal(layout.buttons.length, 1, `${name}: der Angebote-Knopf ist sichtbar (kein Kassenbon-Knopf mehr)`);

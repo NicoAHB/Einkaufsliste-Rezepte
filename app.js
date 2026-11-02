@@ -658,7 +658,8 @@ function renderItems() {
 // schon etwas im Namensfeld steht oder „Kategorie, Preis & Angebot“ aufgeklappt ist.
 function syncForm() {
   const form = $('#item-form');
-  const open = form.dataset.choosingUnit === 'yes' || form.matches(':focus-within') || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
+  const editingFocus=form.matches(':focus-within')&&!$('#offers-details').contains(document.activeElement);
+  const open = form.dataset.choosingUnit === 'yes' || editingFocus || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
   form.classList.toggle('compact', !open);
   $('#clear-item-name').hidden = !form.elements.name.value;
   $('#add-item-confirm').disabled = !form.elements.name.value.trim();
@@ -713,13 +714,15 @@ function renderQuickPick() {
 }
 function renderShoppingInfo() {
   const store = viewStore(), url = store && !isSeparate(store) ? storeOfferUrl(store) : '';
+  const details=$('#offers-details'),context=`${store?.id||''}|${url}`;
+  if(details.dataset.context!==context||!url)details.open=false;
+  details.dataset.context=context;details.hidden=!url;
   $('#offers-link').hidden = !url;
   if (url) {
     $('#offers-link').href = url;
     $('#offers-link .label').textContent = `Angebote bei ${store.name} ansehen`;
     $('#offers-link').setAttribute('aria-label', `Angebote bei ${store.name} ansehen – öffnet extern`);
   } else $('#offers-link').removeAttribute('href');
-  $('.shop-tools').hidden = !url;
   $('#open-templates').hidden=isSeparate(store);
 }
 function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
