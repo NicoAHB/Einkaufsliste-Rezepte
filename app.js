@@ -1506,7 +1506,11 @@ function mealRow(meal, recipes, past = false) {
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
   row.append(check, copy);
-  if (past) row.append(button('Entfernen', () => askPastMeal(row, false), 'secondary past-meal-remove'));
+  if (past) {
+    const remove = button('', () => askPastMeal(row, false), 'secondary past-meal-remove');
+    remove.append(element('span', 'Entfernen'), element('small', 'Bitte lange gedrückt halten'));
+    row.append(remove);
+  }
   if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => changePlannedMeal(meal,{deletedAt:new Date().toISOString()},null)));
   return row;
 }

@@ -8930,7 +8930,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   test('2.89: echtes Touch-Halten auf vergangenem Gericht zeigt die Frage ohne Textmarkierung oder anschließenden Tipp',async()=>{
     const {ctx,page,problems}=await pastContext289();const row=page.locator('[data-past-id=past-thu] .link-button');
-    await row.scrollIntoViewIfNeeded();const box=await row.boundingBox(),cdp=await ctx.newCDPSession(page);
+    // Rohe Touch-Koordinaten müssen oberhalb der festen unteren Reiter liegen.
+    await row.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));const box=await row.boundingBox(),cdp=await ctx.newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+30,y:box.y+box.height/2,id:1}]});
     await page.waitForSelector('#past-meal-dialog[open]',{timeout:3000});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     assert.equal(await page.locator('#past-meal-dialog[open]').count(),1);assert.equal(await page.locator('#plan-recipe-dialog[open]').count(),0);
