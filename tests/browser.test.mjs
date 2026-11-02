@@ -5259,10 +5259,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   for (const width of [280, 314, 360, 390, 430]) {
-    test(`Schnellzugriffe (${width} px): auch große Favoriten- und Vorratszahlen verdecken keine Beschriftung`, async () => {
+    test(`Schnellzugriffe (${width} px): Produkte und Vorrat zeigen auch während der Eingabe keine Zahlen oder Sterne`, async () => {
       const { ctx, page, problems } = await context({ context: { viewport: { width, height: 844 } } });
       await open(page); await storeButton(page, '#store-chips', 'Edeka').click();await page.click('#offers-details>summary');
-      await page.evaluate(() => { const count = document.querySelector('#product-favorite-count'); count.hidden = false; count.textContent = '★ 1000'; document.querySelector('#pantry-shortcut-count').textContent = '999'; });
+      await page.fill('#item-form [name=name]','Tomatenmark');assert.equal((await page.textContent('#open-products')).trim(),'Produkte');assert.equal((await page.textContent('#open-pantry')).trim(),'Vorrat');assert.equal(await page.locator('#product-favorite-count,#pantry-shortcut-count').count(),0);await page.fill('#item-form [name=name]','');await page.locator('#item-form [name=name]').evaluate(n=>n.blur());await page.waitForFunction(()=>document.querySelector('#item-form').classList.contains('compact'));
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
         const sizes = await page.locator('#open-products,#open-pantry,#offers-link').evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height, fits: node.scrollWidth <= node.clientWidth + 1 })));
@@ -8721,7 +8721,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(a.page);await synced(a.page);await open(b.page);await synced(b.page);
     assert.equal(remote.content.items.find(row=>row.id==='old-olives').name,'Oliven');assert.equal(remote.content.items.find(row=>row.id==='old-olives').quantity,2);
     assert.equal(remote.content.pantry.length,2);assert.ok(remote.content.pantry.every(row=>row.name==='Oliven'&&row.available));
-    assert.equal(await a.page.textContent('#product-favorite-count'),'★ 1');
+    assert.equal(await a.page.locator('#product-favorite-count,#pantry-shortcut-count').count(),0);assert.equal((await a.page.textContent('#open-products')).trim(),'Produkte');assert.equal((await a.page.textContent('#open-pantry')).trim(),'Vorrat');
     await a.page.click('#open-products');await sheetOpen(a.page);await a.page.click('[data-product-mode=favorites]');assert.equal(await a.page.locator('.product-card').count(),1);
     await a.page.locator('.product-star').click();await synced(a.page);assert.equal(remote.content.productFavorites.filter(row=>!row.deletedAt).length,0);await a.page.click('#product-picker-dialog [data-close]');
     await a.page.fill('#item-form [name=name]','Grüne Oliven');await a.page.click('#item-form button[type=submit]');await synced(a.page);

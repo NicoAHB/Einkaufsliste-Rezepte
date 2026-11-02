@@ -393,9 +393,6 @@ function render() {
   $('#manage-stores').disabled = !ready;
   $('#open-products').disabled = !ready;
   $('#open-pantry').disabled = !ready;
-  const favorites = new Set(active(state.productFavorites || []).map(row=>pantryKey(row.name))).size;
-  $('#product-favorite-count').textContent = favorites ? `★ ${favorites}` : '';
-  $('#product-favorite-count').hidden = !favorites;
   $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
 }
 function describeStoreChip(chip, id, label, selected) {
@@ -3369,9 +3366,6 @@ function renderAliases() {
 }
 function renderPantry() {
   pantryBuyer?.refresh();
-  const count=pantryKeys(state.pantry||[]).size;
-  $('#pantry-shortcut-count').textContent=count?String(count):'';
-  $('#open-pantry').setAttribute('aria-label',`Vorrat öffnen, ${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat`);
 }
 function scheduleStockRefresh(){
   clearTimeout(stockClockTimer);const at=nextStockBoundary(state);

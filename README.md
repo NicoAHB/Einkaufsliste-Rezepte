@@ -1,6 +1,10 @@
-# Sattplan – Version 2.120
+# Sattplan – Version 2.121
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.121: Produkte und Vorrat ohne Zähler
+
+Die Schnellzugriffe **Produkte** und **Vorrat** zeigen dauerhaft nur ihr Symbol und ihre Beschriftung, auch während der Produkteingabe. Die Anzahl-Badges und der Favoritenstern am Produkte-Button entfallen. Favoriten und Vorratsbestand bleiben in den jeweiligen Auswahlen verfügbar. Offline-Paket **einkauf-shell-v133**.
 
 ## Neu in Version 2.120: Vorratsübernahme beim Abschluss bestätigen
 
