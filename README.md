@@ -1,6 +1,10 @@
-# Sattplan – Version 2.107
+# Sattplan – Version 2.108
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.108: Vergangene Gerichte ausschließlich durch Halten entfernen
+
+Vergangene Gerichte im Wochenplan haben einen reinen Hinweistext: **„Zum Entfernen die Zeile lange gedrückt halten.“** Es gibt keinen Entfernen-Button. Nur langes Drücken auf die Rezeptzeile öffnet die Rückfrage. Erst **Ja** entfernt den Planeintrag; ein kurzer Tipp auf den Hinweis oder kurzes Halten öffnet keine Löschfrage. Der Rezeptname öffnet per kurzem Tipp weiterhin das Rezept. Offline-Paket **einkauf-shell-v120**.
 
 ## Neu in Version 2.107: Hinweis zum Entfernen vergangener Gerichte
 

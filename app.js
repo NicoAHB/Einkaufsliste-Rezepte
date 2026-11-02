@@ -1505,12 +1505,8 @@ function mealRow(meal, recipes, past = false) {
   const changed = recipe && listed ? mealChanges(meal) : null;
   if (listed && recipe) copy.append(element('small', listed + 1e-9 >= meal.servings ? 'Zutaten übernommen' : `Zutaten für ${format(listed)} Portionen übernommen`, 'meal-listed'));
   if (changed) copy.append(element('small', `Rezept seitdem geändert (${changeText(changed)}): Liste prüfen`, 'meal-listed changed'));
+  if (past) copy.append(element('small', 'Zum Entfernen die Zeile lange gedrückt halten.', 'past-meal-hint'));
   row.append(check, copy);
-  if (past) {
-    const remove = button('', () => askPastMeal(row, false), 'secondary past-meal-remove');
-    remove.append(element('span', 'Entfernen'), element('small', 'Bitte lange gedrückt halten'));
-    row.append(remove);
-  }
   if (!past) row.append(iconButton('edit', `${name} ändern`, () => openMeal({ id: meal.id })), iconButton('trash', `${name} aus dem Plan entfernen`, () => changePlannedMeal(meal,{deletedAt:new Date().toISOString()},null)));
   return row;
 }
@@ -1564,15 +1560,15 @@ document.addEventListener('click',event=>{
   if(!pastMealHeld)return;
   pastMealHeld=false;event.preventDefault();event.stopImmediatePropagation();
 },true);
-function askPastMeal(node, held = false) {
+function askPastMeal(node) {
   const meal=active(state.meals).find(row=>row.id===node.dataset.pastId);
   if(!node.isConnected || !meal || meal.date>=isoDate() || !ready)return;
-  pastMealHeld=held;getSelection()?.removeAllRanges();
+  pastMealHeld=true;getSelection()?.removeAllRanges();
   pastMealPending={id:meal.id,date:meal.date,signature:JSON.stringify(meal),scope:namespace()};
   $('#past-meal-detail').textContent=`${mealName(meal)} · ${dayName(meal.date)} ${dayMonthLabel(meal.date)}`;
   $('#past-meal-error').hidden=true; $('#past-meal-dialog').showModal();
 }
-const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{askPastMeal(node,true);navigator.vibrate?.(15);}));
+const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{askPastMeal(node);navigator.vibrate?.(15);}));
 document.addEventListener('scroll',stopPastMealHold,true);
 document.addEventListener('visibilitychange',stopPastMealHold);
 window.addEventListener('blur',stopPastMealHold);

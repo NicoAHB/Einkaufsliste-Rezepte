@@ -3208,11 +3208,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const saved=await storedDemo(page);assert.equal(saved.meals.find(row=>row.id==='meal295').date,addDays(isoDate(),1));assert.deepEqual(saved.items,before);
     assert.match(await page.textContent('#plan-save-note'),/Wochenplan gespeichert/);assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.95: vergangenes Gericht per sichtbarem Entfernen-Button prüfen und abbrechen',async()=>{
+  test('2.108: vergangenes Gericht hat reinen Hinweistext; nur langes Halten öffnet die Löschfrage',async()=>{
     const data=structuredClone(demo);data.meals=[{id:'past295',recipeId:demo.recipes[0].id,date:addDays(isoDate(),-1),servings:2,done:false,createdAt:demo.updatedAt,updatedAt:demo.updatedAt,deletedAt:null}];
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const before=await storedDemo(page);await goTab(page,'plan');
-    if(!await page.locator('.past-meal-remove').count())await page.click('#week-prev');
-    await page.locator('.past-meal-remove').click();await page.waitForSelector('#past-meal-dialog[open]');await page.click('#past-meal-no');
+    if(!await page.locator('.past-meal-hint').count())await page.click('#week-prev');
+    const row=page.locator('[data-past-id=past295]'),hint=row.locator('.past-meal-hint');
+    assert.equal(await row.getByRole('button',{name:/Entfernen/i}).count(),0);assert.equal(await hint.evaluate(n=>n.tagName==='SMALL'&&!n.closest('button,a,[role=button]')),true);
+    await hint.click();assert.equal(await page.locator('#past-meal-dialog[open]').count(),0);assert.deepEqual(await storedDemo(page),before);
+    await hint.evaluate(n=>n.scrollIntoView({block:'center',behavior:'instant'}));const box=await hint.boundingBox();await page.mouse.move(box.x+10,box.y+box.height/2);await page.mouse.down();await page.waitForTimeout(200);await page.mouse.up();await page.waitForTimeout(650);assert.equal(await page.locator('#past-meal-dialog[open]').count(),0,'Kurzes Halten startet auch nach dem Loslassen keine Löschfrage');
+    await row.locator('.link-button').click();await page.waitForSelector('#plan-recipe-dialog[open]');assert.equal(await page.locator('#past-meal-dialog[open]').count(),0);await page.click('#plan-recipe-dialog .sheet-actions button');
+    await hint.evaluate(n=>n.scrollIntoView({block:'center',behavior:'instant'}));const held=await hint.boundingBox();await page.mouse.move(held.x+10,held.y+held.height/2);await page.mouse.down();await page.waitForSelector('#past-meal-dialog[open]');await page.mouse.up();assert.deepEqual(await storedDemo(page),before,'Langes Halten allein entfernt noch nichts');await page.click('#past-meal-no');
     assert.deepEqual((await storedDemo(page)).meals,before.meals);assert.deepEqual((await storedDemo(page)).items,before.items);
     assert.deepEqual(problems,[]);await ctx.close();
   });
@@ -8929,7 +8934,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.89: echtes Touch-Halten auf vergangenem Gericht zeigt die Frage ohne Textmarkierung oder anschließenden Tipp',async()=>{
-    const {ctx,page,problems}=await pastContext289();const row=page.locator('[data-past-id=past-thu] .link-button');
+    const {ctx,page,problems}=await pastContext289();const row=page.locator('[data-past-id=past-thu] .past-meal-hint');
     // Rohe Touch-Koordinaten müssen oberhalb der festen unteren Reiter liegen.
     await row.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));const box=await row.boundingBox(),cdp=await ctx.newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+30,y:box.y+box.height/2,id:1}]});
