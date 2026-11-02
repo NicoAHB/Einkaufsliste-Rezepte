@@ -1492,7 +1492,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Edeka beenden: der Text nennt, was bleibt; mit Betrag gespeichert
     await finishShop(page); await sheetOpen(page);
     assert.match(await page.textContent('#finish-text'), /^1 abgehakter Artikel wird von der Liste entfernt\. 2 abgehakte Artikel anderer Geschäfte bleiben bis zum jeweiligen Abschluss stehen\.$/);
-    await page.fill('#finish-form input[name=amount]', '5'); await page.click('#finish-form .add-button');
+    await page.fill('#finish-form input[name=amount]', '5'); await page.click('#finish-save');
     await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     const after = await stored();
     assert.deepEqual(after.items.filter(row => !row.deletedAt).map(row => row.name).sort(), ['Milch', 'Nudeln', 'Salz', 'Äpfel'], 'nur die Tomaten sind weg');
@@ -1530,13 +1530,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // 1. „Nur beenden“
     await finish('Lidl', ['Milch'], () => page.click('#finish-only')); await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
     // 2. mit Betrag (Tomaten und Nudeln haben im Beispiel einen Preis: geschätzte Summe merkt sich der Eintrag), bezahlt viel mehr: rot
-    await finish('Edeka', ['Tomaten', 'Nudeln'], async () => { await page.fill('#finish-form input[name=amount]', '99'); await page.click('#finish-form .add-button'); });
+    await finish('Edeka', ['Tomaten', 'Nudeln'], async () => { await page.fill('#finish-form input[name=amount]', '99'); await page.click('#finish-save'); });
     await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
     const purchase = (await stored()).purchases.filter(row => !row.deletedAt).at(-1);
     assert.equal(purchase.cents, 9900);
     assert.ok(!('estimate' in purchase), 'kein neuer Schätzwert, auch mit Preisnotizen');
     // 3. Ein günstiger Einkauf: grün (Beispiel: Äpfel bei Rewe, dort 1,00 € bezahlt)
-    await finish('Rewe', ['Äpfel'], async () => { await page.fill('#finish-form input[name=amount]', '1'); await page.click('#finish-form .add-button'); });
+    await finish('Rewe', ['Äpfel'], async () => { await page.fill('#finish-form input[name=amount]', '1'); await page.click('#finish-save'); });
     await page.waitForSelector('#finish-dialog', { state: 'hidden' }); await backToList();
     // Ausgaben: ein Eintrag von Hand ohne Schätzung hat keinen Punkt
     await page.click('[data-tab=spending]');
@@ -1555,7 +1555,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.keyboard.press('Escape');
     // Ohne genug Preise keine Schätzung: ein Artikel ohne Preis, abgehakt, beendet mit Betrag
     await page.click('[data-tab=shopping]'); await page.fill('#item-form input[name=name]', 'Gartenschlauch'); await page.click('#item-form button[type=submit]');
-    await finish('Rewe', ['Gartenschlauch'], async () => { await page.fill('#finish-form input[name=amount]', '15'); await page.click('#finish-form .add-button'); });
+    await finish('Rewe', ['Gartenschlauch'], async () => { await page.fill('#finish-form input[name=amount]', '15'); await page.click('#finish-save'); });
     await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.ok(!('estimate' in (await stored()).purchases.filter(row => !row.deletedAt).at(-1)), 'zu wenige Preise: keine Schätzung gespeichert');
     assert.deepEqual(problems, []);
@@ -1831,10 +1831,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // „Einkauf beenden“ mit Betrag: derselbe Schutz („+“ noch einmal)
     await page.click('[data-tab=shopping]'); await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
     await shopTap(page, 'Tomaten').click(); await finishShop(page); await sheetOpen(page);
-    await page.fill('#finish-form input[name=amount]', '40'); await page.click('#finish-form .add-button');
-    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Möglicherweise doppelt[\s\S]*tippe auf „\+“ noch einmal/);
+    await page.fill('#finish-form input[name=amount]', '40'); await page.click('#finish-save');
+    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Möglicherweise doppelt[\s\S]*tippe auf „Einkauf beenden & Betrag speichern“ noch einmal/);
     assert.equal(await count(), 5);
-    await page.click('#finish-form .add-button'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    await page.click('#finish-save'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.equal(await count(), 6);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -2238,7 +2238,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Einkauf beenden mit Betrag: gespeichert ohne Geschäft, Abgehaktes ist weg, zurück bei „Planen“
     await finishShop(page); await sheetOpen(page);
     assert.match(await page.textContent('#finish-text'), /2 abgehakte Artikel werden von der Liste entfernt/);
-    await page.fill('#finish-form input[name=amount]', '12,50'); await page.press('#finish-form input[name=amount]', 'Enter');
+    await page.fill('#finish-form input[name=amount]', '12,50'); await page.click('#finish-save');
     await page.waitForSelector('#finish-dialog[open]', { state: 'detached' });
     const data = await stored();
     assert.deepEqual(data.purchases.map(row => [row.cents, row.storeId || '', row.storeName || '']), [[1250, '', '']], 'ohne Geschäft gespeichert');
@@ -3911,7 +3911,18 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Einkauf beenden: Betrag mit dem „+“ direkt unter Ausgaben speichern; Fehler lassen alles unverändert, die Tastatur schließt sich', async () => {
+  test('2.119: sichtbarer Abschlussbutton speichert den Betrag auch ohne abgehakte Artikel; Fertig speichert noch nichts',async()=>{
+    const {ctx,page,problems}=await context({config:{shopLock:0}});await open(page);await page.click('#mode-shop');await finishShop(page);await sheetOpen(page);const save=page.getByRole('button',{name:'Einkauf beenden & Betrag speichern',exact:true}),amount=page.locator('#finish-amount');assert.equal(await save.isHidden(),true);assert.equal(await page.textContent('#finish-only'),'Einkauf beenden');assert.equal(await page.locator('#finish-form .add-button').count(),0);const before=(await storedDemo(page)).items;
+    await amount.fill('10');assert.equal(await save.isVisible(),true);assert.equal(await page.textContent('#finish-only'),'Ohne Betrag beenden');await amount.fill('');assert.equal(await save.isHidden(),true);assert.equal(await page.textContent('#finish-only'),'Einkauf beenden');await amount.fill('10');await page.selectOption('#finish-form [name=expenseStoreId]','store-lidl');await amount.press('Enter');assert.equal(await page.locator('#finish-dialog').evaluate(n=>n.open),true);assert.equal((await storedDemo(page)).purchases?.length||0,0);assert.equal(await page.evaluate(()=>document.activeElement.id),'finish-save');await save.click();await page.waitForSelector('#finish-dialog[open]',{state:'detached'});let data=await storedDemo(page);assert.equal(data.purchases.length,1);assert.deepEqual([data.purchases[0].cents,data.purchases[0].storeId,data.purchases[0].buyerName],[1000,'store-lidl','Nico']);assert.deepEqual(data.items,before);await page.evaluate(()=>document.querySelector('#finish-form').requestSubmit(document.querySelector('#finish-save')));data=await storedDemo(page);assert.equal(data.purchases.length,1);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.119: fehlgeschlagenes Abschließen erhält Betrag, Person und Artikel; erneutes Speichern bucht genau einmal',async()=>{
+    const {ctx,page,problems}=await context({config:{shopLock:0}});await open(page);await page.click('#mode-shop');await page.locator('#shop-chips [data-store-id=store-lidl]').click();await shopTap(page,'Milch').click();await finishShop(page);await sheetOpen(page);await page.fill('#finish-amount','12,50');const buyer=await page.inputValue('#finish-form [name=buyerId]'),before=await storedDemo(page);await page.evaluate(()=>{window.finishQuota2119=true;const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.finishQuota2119&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return original.call(this,key,value);};});await page.click('#finish-save');assert.equal(await page.locator('#finish-dialog').evaluate(n=>n.open),true);assert.equal(await page.inputValue('#finish-amount'),'12,50');assert.equal(await page.inputValue('#finish-form [name=buyerId]'),buyer);assert.deepEqual(await storedDemo(page),before);await page.evaluate(()=>window.finishQuota2119=false);await page.click('#finish-save');await page.waitForSelector('#finish-dialog[open]',{state:'detached'});const data=await storedDemo(page);assert.equal(data.purchases.length,1);assert.equal(data.purchases[0].cents,1250);assert.ok(data.items.find(row=>row.name==='Milch').deletedAt);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const [width,theme]of [[280,'light'],[390,'dark']])test(`2.119: Abschluss mit Betrag hat lesbare und erreichbare Buttons am unteren Rand bei ${width}px ${theme}`,async()=>{
+    const {ctx,page,problems}=await context({config:{theme,shopLock:0},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await page.click('#mode-shop');await finishShop(page);await sheetOpen(page);await page.fill('#finish-amount','10');const save=page.locator('#finish-save'),skip=page.locator('#finish-only');assert.equal(await save.isVisible(),true);const a=await save.boundingBox(),b=await skip.boundingBox(),dialog=await page.locator('#finish-dialog').boundingBox();assert.ok(a.height>=44&&b.height>=44);assert.ok(a.x>=dialog.x&&a.x+a.width<=dialog.x+dialog.width+1);assert.ok(a.y+a.height<=b.y+1);assert.ok(b.y+b.height<=dialog.y+dialog.height+1);assert.equal(await save.evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.equal(await page.locator('#finish-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);await page.screenshot({path:`/workspace/work/sattplan-2119-finish-${width}-${theme}.png`});await amountFocus2119(page);assert.equal(await page.locator('#finish-dialog').evaluate(n=>n.open),true);await page.keyboard.press('Enter');await page.waitForSelector('#finish-dialog[open]',{state:'detached'});assert.equal((await storedDemo(page)).purchases.length,1);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  async function amountFocus2119(page){await page.locator('#finish-amount').focus();await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>document.activeElement.id),'finish-save');}
+  test('Einkauf beenden: beschrifteter Speicherbutton übernimmt den Betrag; Fehler lassen alles unverändert und die Tastatur schließt sich', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
@@ -3922,14 +3933,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Lidl' }).click();
     await shopTap(page, 'Milch').click();
     await finishShop(page); await sheetOpen(page);
-    const amount = page.locator('#finish-form input[name=amount]'), plus = page.locator('#finish-form .add-button');
-    assert.equal(await plus.isVisible(), false, 'leeres Feld: kein „+“');
-    // Eingabetaste ohne Betrag: Hinweis, nichts passiert
+    const amount = page.locator('#finish-form input[name=amount]'), save = page.locator('#finish-save');
+    assert.equal(await save.isVisible(), false, 'leeres Feld: kein Speicherbutton');
+    // Fertig ohne Betrag schließt nur die Tastatur
     await amount.focus(); await page.keyboard.press('Enter');
-    assert.match(await page.textContent('#finish-dialog [data-dialog-error]'), /Betrag eingeben oder „Nur beenden“/);
+    assert.equal(await page.locator('#finish-dialog [data-dialog-error]:not([hidden])').count(),0);assert.equal(await page.locator('#finish-dialog').evaluate(n=>n.open),true);
     // Ungültiger Betrag: Meldung, Tastatur zu, Fenster offen, Milch bleibt abgehakt und auf der Liste, die Ansicht bleibt „Im Laden“
-    await amount.fill('abc'); assert.equal(await plus.isVisible(), true);
-    await page.touchscreen.tap(...await center(plus));
+    await amount.fill('abc'); assert.equal(await save.isVisible(), true);
+    await page.touchscreen.tap(...await center(save));
     await page.waitForFunction(() => /Betrag in Euro eingeben/.test(document.querySelector('#finish-dialog [data-dialog-error]')?.textContent || ''));
     assert.equal(await typing(), false, 'Tastatur zu');
     assert.ok(await page.locator('#finish-dialog').evaluate(node => node.open));
@@ -3939,7 +3950,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal((data.purchases || []).length, 0);
     // Gültiger Betrag: Einkauf beendet, Betrag gespeichert (Geschäft, heute, Notiz „Wocheneinkauf“)
     await amount.fill('12,50');
-    await page.touchscreen.tap(...await center(plus));
+    await page.touchscreen.tap(...await center(save));
     await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#notice-text'), /12,50\s€ unter Ausgaben gespeichert/);
     // Danach ist die App wieder in „Planen“ (nicht mehr „Im Laden“), auch nach dem Neuladen
@@ -7769,7 +7780,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await finishShop(page); await sheetOpen(page); assert.equal(await page.inputValue('#finish-form select[name=buyerId]'), 'member-nico');
     await page.fill('#finish-form input[name=amount]', '8,50'); await page.click('#finish-person-add'); await sheetOpen(page);
     await page.fill('#member-form input[name=name]', 'Oma'); await page.click('#member-form button[type=submit]');
-    assert.equal(await page.inputValue('#finish-form input[name=amount]'), '8,50'); await page.click('#finish-form .add-button');
+    assert.equal(await page.inputValue('#finish-form input[name=amount]'), '8,50'); await page.click('#finish-save');
     const saved = (await expenseStored(page)).purchases[0]; assert.equal(saved.buyerId, 'member-oma'); assert.equal(saved.buyerName, 'Oma'); assert.equal(saved.cents, 850);
     assert.equal(saved.date, isoDay(new Date())); assert.equal(saved.storeId, 'store-edeka'); assert.equal(await page.locator('#plan-view').isVisible(), true);
     assert.deepEqual(problems, []); await ctx.close();
@@ -8185,7 +8196,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await open(page);await page.click('#mode-shop');await storeButton(page,'#shop-chips','Alle').click();
     await shopTap(page,'Tomaten').click();await shopTap(page,'Milch').click();await finishShop(page);await sheetOpen(page);
     assert.equal(await page.locator('#finish-store-field').isVisible(),true);await page.selectOption('#finish-form [name=expenseStoreId]','store-lidl');await page.fill('#finish-form [name=amount]','23,45');
-    await page.screenshot({path:'/tmp/sattplan276-abschluss.png'});await page.click('#finish-form .add-button');
+    await page.screenshot({path:'/tmp/sattplan276-abschluss.png'});await page.click('#finish-save');
     const out=await expenseStored(page),purchase=out.purchases.at(-1);assert.equal(purchase.storeId,'store-lidl');assert.equal(purchase.storeName,'Lidl');assert.equal(purchase.cents,2345);assert.ok(out.items.filter(row=>['Tomaten','Milch'].includes(row.name)).every(row=>row.deletedAt));assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.76: Portionsvorschau und Gericht entfernen erhalten manuell hinzugefügten Reis',async()=>{

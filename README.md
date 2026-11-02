@@ -1,6 +1,12 @@
-# Sattplan – Version 2.118
+# Sattplan – Version 2.119
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.119: Einkauf ausdrücklich beenden und Betrag speichern
+
+Im Fenster **Einkauf beenden** erscheint nach Eingabe eines Betrags unten der große Button **Einkauf beenden & Betrag speichern**. Er speichert den Betrag mit Geschäft und Käufer unter **Ausgaben**, entfernt die zum Einkauf gehörenden abgehakten Artikel und kehrt zu **Planen** zurück. Das funktioniert auch, wenn nichts abgehakt ist. Das Plus im Betragsfeld entfällt; das Plus neben der Personenauswahl bleibt zum Hinzufügen einer Person.
+
+**Fertig/Enter** im Betragsfeld schließt nur die Tastatur und führt zum Speicherbutton. Erst die ausdrückliche Abschlussaktion übernimmt den Betrag. **Ohne Betrag beenden** bleibt als klar beschriftete Alternative; bei leerem Betragsfeld heißt diese Aktion **Einkauf beenden**. Die Buttons bleiben am unteren Fensterrand erreichbar. Eingabefehler und fehlgeschlagene Speicherung erhalten die Angaben und die Artikel; die bisherige Duplikatwarnung nennt jetzt den Speicherbutton. Offline-Paket **einkauf-shell-v131**.
 
 ## Neu in Version 2.118: Angebote standardmäßig eingeklappt
 

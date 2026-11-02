@@ -2930,7 +2930,7 @@ function openFinish() {
   const checked = finishItems().length, others = shopStore && shopStore !== ALL_STORES ? visibleItems(shopStore).filter(item => item.checked).length - checked : 0;
   $('#finish-text').textContent = (checked ? `${checked === 1 ? '1 abgehakter Artikel wird' : `${checked} abgehakte Artikel werden`} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.')
     + (others > 0 ? ` ${others === 1 ? 'Ein abgehakter Artikel eines anderen Geschäfts bleibt' : `${others} abgehakte Artikel anderer Geschäfte bleiben`} bis zum jeweiligen Abschluss stehen.` : '');
-  $('#finish-form').reset(); message(); finishScope = namespace();
+  $('#finish-form').reset(); syncFinishActions(); message(); finishScope = namespace();
   spendingView.fillBuyer($('#finish-form').elements.buyerId, spendingView.defaultBuyer());
   const expenseStores=$('#finish-form').elements.expenseStoreId;
   expenseStores.replaceChildren(new Option('Ohne Zuordnung',''));
@@ -2941,7 +2941,13 @@ function openFinish() {
 // Beendet den Einkauf: Abgehaktes verschwindet von der Liste. Mit `amount` (bezahlter Betrag) wird er gleich unter „Ausgaben“ gespeichert, für das gewählte Geschäft und heute,
 // und die App springt zurück zu „Planen“.
 let finishScope = '';
+function syncFinishActions(){
+  const hasAmount=Boolean($('#finish-amount').value.trim());
+  $('#finish-save').hidden=!hasAmount;$('#finish-save-hint').hidden=!hasAmount;
+  $('#finish-only').textContent=hasAmount?'Ohne Betrag beenden':'Einkauf beenden';
+}
 function finishShopping(amount = '') {
+  if(!$('#finish-dialog').open)return;
   if (finishScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Einkauf erneut öffnen.');
   const checked = finishItems(), ids = checked.map(item => item.id), typed = amount.trim();
   const storeId = shopStore === ALL_STORES && typed ? currentStore($('#finish-form').elements.expenseStoreId.value) : shopStore === ALL_STORES ? '' : shopStore;
@@ -2949,7 +2955,7 @@ function finishShopping(amount = '') {
   const category = defaultExpenseCategory(state);
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: category?.name || '', categoryId: category?.id || null,
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
-  if (fields) duplicateWarning(fields, '', 'tippe auf „+“');
+  if (fields) duplicateWarning(fields, '', 'tippe auf „Einkauf beenden & Betrag speichern“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   const notice = fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '';
   if (fields) rememberOwnBuyer(buyer.id);
@@ -4102,16 +4108,21 @@ $('#mode-shop').addEventListener('click', () => guard(() => setShopMode(true)));
 $('#shop-awake').addEventListener('change', event => guard(() => { awake.shop.failed = false; saveConfig({ ...config, shopScreenOn: event.target.checked }); syncShopAwake(); }));
 holdToConfirm($('#shop-finish'), HOLD_FINISH_MS, () => { if (!isLocked()) openFinish(); }, '', () => !isLocked(), openFinish);
 $('#finish-only').addEventListener('click', () => guard(() => finishShopping()));
-// Das „+“ im Feld „Was hast du bezahlt?“: beendet den Einkauf und speichert den Betrag; die Tastatur schließt sich (auch bei einem Fehler, damit die Meldung sichtbar bleibt).
-let finishPlus = 0;
-$('#finish-form .add-button').addEventListener('pointerdown', () => { finishPlus = Date.now(); });
+// Eine sichtbare Abschlussaktion statt des Plus im Betragsfeld. „Fertig“
+// schließt nur die Tastatur; die Angaben lassen sich vor dem Speichern prüfen.
+let finishSaveIntent = 0;
+for(const type of ['input','change'])$('#finish-amount').addEventListener(type,syncFinishActions);
+$('#finish-amount').addEventListener('keydown',event=>{
+  if(event.key==='Enter'&&!event.isComposing){event.preventDefault();document.activeElement?.blur?.();if(!$('#finish-save').hidden)$('#finish-save').focus();}
+});
+$('#finish-save').addEventListener('pointerdown', () => { finishSaveIntent = Date.now(); });
 $('#finish-form').addEventListener('submit', event => {
   event.preventDefault();
-  if (Date.now() - finishPlus < 1500) document.activeElement?.blur?.();
-  finishPlus = 0;
+  if (Date.now() - finishSaveIntent < 1500) document.activeElement?.blur?.();
+  finishSaveIntent = 0;
   guard(() => {
     const amount = event.currentTarget.elements.amount.value;
-    if (!amount.trim()) throw new Error('Bitte einen Betrag eingeben oder „Nur beenden“ wählen.');
+    if (!amount.trim()) throw new Error('Bitte einen Betrag eingeben oder „Einkauf beenden“ wählen.');
     finishShopping(amount);
   });
 });
@@ -4141,7 +4152,7 @@ $('#purchase-delete').addEventListener('click', () => guard(() => {
   $('#purchase-dialog').close();
 }));
 $('#purchase-dialog').addEventListener('close', () => { purchaseAbort?.abort(); duplicateWarned = ''; });
-$('#finish-dialog').addEventListener('close', () => { duplicateWarned = ''; });
+$('#finish-dialog').addEventListener('close', () => { duplicateWarned = '';finishSaveIntent=0; });
 $('#compact-now').addEventListener('click', () => guard(compactNow));
 $('#clean-photos').addEventListener('click', () => guard(cleanPhotos));
 $('#welcome').addEventListener('cancel', event => event.preventDefault());
