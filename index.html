@@ -229,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.122 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.123 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -524,7 +524,8 @@
     <input name="id" type="hidden">
     <label data-day>Tag<input name="date" type="date" required></label><button id="meal-change-day" type="button" class="secondary" hidden>Auf einen anderen Tag verschieben</button>
     <input name="recipeId" type="hidden">
-    <div class="pick-field" role="group" aria-labelledby="recipe-pick-label"><div class="pick-head"><span id="recipe-pick-label" class="pick-caption">Rezept</span><select id="recipe-filter" aria-label="Rezepte filtern"></select></div>
+    <div class="pick-field" role="group" aria-labelledby="recipe-pick-label"><div class="pick-head"><label id="recipe-pick-label" class="pick-caption" for="recipe-filter">Rezeptauswahl</label><select id="recipe-filter" aria-label="Rezepte filtern" aria-describedby="recipe-filter-hint"></select></div>
+      <p id="recipe-filter-hint" class="hint pick-filter-hint" role="status" hidden></p>
       <div id="recipe-pick" class="recipe-pick"></div>
       <p id="recipe-pick-help" class="hint">Wähle ein Rezept. Mit „Rezept ansehen“ öffnest du das Rezeptblatt.</p><button id="pick-preview" type="button" class="secondary" disabled><svg class="icon" aria-hidden="true"><use href="#i-text"/></svg>Rezept ansehen (PDF)</button></div>
     <label data-custom hidden>Eigenes Gericht<input name="title" maxlength="80" placeholder="z. B. Pizza bestellen" autocomplete="off"></label>

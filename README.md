@@ -1,6 +1,12 @@
-# Sattplan – Version 2.122
+# Sattplan – Version 2.123
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.123: Übersichtliche Rezeptfilter und verlässliche Kochbarkeitszähler
+
+Die Rezeptauswahl unter **Gericht planen** zeigt ein breites Filterfeld mit kurzen Einträgen: **Sofort kochbar** nutzt den aktuellen Vorrat, **Nach dem Einkauf** zusätzlich den offenen Einkaufszettel. **Kochbarkeit**, **Deine Auswahl** und **Rezeptgruppen** stehen in getrennten Abschnitten. Ein kurzer Hinweis erklärt den gewählten Kochbarkeitsfilter; der Abgleich prüft das Vorhandensein der Produkte, keine Rezeptmengen.
+
+Die gemeinsame Verfügbarkeitslogik verwendet jetzt dieselben aktiven Einkaufszeilen wie der Einkaufszettel. Intern aufbewahrte, auf null zurückgenommene Wochenplan-Anteile zählen nicht mehr als offene Produkte. Ein leerer Zettel kann dadurch keine vier Rezepte fälschlich als nach dem Einkauf kochbar ausweisen. Auch Rezepte ohne prüfbare Zutaten werden nicht mehr als kochbar gezählt. Zähler, Rezeptliste und Zutatenhinweise aktualisieren sich bei geöffnetem Fenster nach dem Geräteabgleich und beim Smart-Stock-Ablauf. Eine gewählte Ausnahme bleibt sichtbar und wird ausdrücklich gekennzeichnet; die eingestellten Portionen bleiben erhalten. Regressionstests decken den ursprünglichen Vier-statt-null-Fehler, einen echten neuen Einkauf, fehlende Zutaten, Geräteänderungen und den Ablauf ab. Offline-Paket **einkauf-shell-v135**.
 
 ## Neu in Version 2.122: Monatsbudget ohne automatische Tastatur und nur in vollen Euro
 

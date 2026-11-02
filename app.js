@@ -45,7 +45,7 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -383,6 +383,7 @@ function render() {
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
+  refreshRecipePick();
   productPicker?.refresh();
   if($('#finish-dialog').open)renderFinishStockHint();
   scheduleStockRefresh();
@@ -1685,7 +1686,7 @@ function recipeStockMissing(recipe,mode='pantry') {
   const index=indexNames(cookableNames(mode));
   return active(state.ingredients).filter(row=>row.recipeId===recipe.id&&required(row)&&availability(row.name,index)==='missing');
 }
-const recipeAvailable=(recipe,filter)=>recipeStockMissing(recipe,filter===WITH_SHOPPING?'shopping':'pantry').length===0;
+const recipeAvailable=(recipe,filter)=>canCookRecipe(active(state.ingredients).filter(row=>row.recipeId===recipe.id),indexNames(cookableNames(filter===WITH_SHOPPING?'shopping':'pantry')));
 function weekShoppingNeeds(plan,snapshot=state) {
   const recipes=active(snapshot.recipes),ingredients=active(snapshot.ingredients);
   const reserved=plan.basket.again?[]:aggregateIngredients((plan.coverageMeals||plan.meals).filter(meal=>Number(meal.listedServings)>0).map(meal=>({...meal,servings:Math.min(meal.servings,meal.listedServings)})),recipes,ingredients);
@@ -3063,7 +3064,7 @@ $('#sheet-scroll').addEventListener('contextmenu', event => event.preventDefault
   scroll.addEventListener('pointercancel', () => { down = null; lastTap = null; });
 }
 // Die Auswahl „Rezept“ im Fenster „Gericht planen“: eine Liste statt einer Auswahlbox, damit sich ein Rezept lange drücken lässt
-let pickPool = [];   // alle Rezepte, aus denen die Auswahl im Fenster „Gericht planen“ filtert
+let pickPool = [], pickSignature = '';   // alle Rezepte, aus denen die Auswahl im Fenster „Gericht planen“ filtert
 // Die Liste nach dem Filter: das gerade gewählte Rezept bleibt immer sichtbar (siehe recipe-filter.js); „Eigenes Gericht“ steht immer am Ende.
 function renderPick() {
   const list = $('#recipe-pick'), form = $('#meal-form'), filter = $('#recipe-filter').value, choice = form.elements.recipeId.value;
@@ -3082,18 +3083,43 @@ function renderPick() {
     return !recipe.lastCookedAt ? ' · noch nie gekocht' : when === 'geplant' ? '' : ` · zuletzt ${when}`;
   };
   const shown = pickRecipes(pickPool, filter, { today: isoDate(), keep: choice, available:recipeAvailable });
-  for (const recipe of shown) { const missing=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size; row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)} · ${missing} ${missing===1?'Produkt fehlt':'Produkte fehlen'} im Vorrat`, false); }
+  for (const recipe of shown) {
+    const tracked=active(state.ingredients).some(item=>item.recipeId===recipe.id&&required(item)),missing=new Set(recipeStockMissing(recipe).map(item=>pantryKey(item.name))).size;
+    const stock=tracked?`${missing} ${missing===1?'Produkt fehlt':'Produkte fehlen'} im Vorrat`:'Keine prüfbaren Zutaten';
+    const kept=[WITH_PANTRY,WITH_SHOPPING].includes(filter)&&recipe.id===choice&&!recipeAvailable(recipe,filter)?' · ausgewählt, passt nicht zum Filter':'';
+    row(recipe.id, `${recipe.favorite ? '★ ' : ''}${recipe.name}`, `${format(recipe.servings)} Portionen${lastTime(recipe)} · ${stock}${kept}`, false);
+  }
   if (!shown.length) list.append(element('p', 'Kein Rezept dafür.', 'pick-empty'));
   row('__custom', 'Eigenes Gericht (ohne Rezept)', '', true);
+  const hint=$('#recipe-filter-hint');
+  hint.hidden=![WITH_PANTRY,WITH_SHOPPING].includes(filter);
+  hint.textContent=hint.hidden?'':filter===WITH_PANTRY?'Alle nötigen Zutaten stehen im aktuellen Vorrat. Die Mengen werden nicht geprüft.':'Vorrat + offene Einkaufsliste: kochbar, sobald die Produkte eingekauft sind. Die Mengen werden nicht geprüft.';
   syncPickHint();
 }
 // Das Auswahlfeld für den Filter (Alle, Favoriten, Lange nicht gekocht, jedes Stichwort); mit nur einem Eintrag gibt es nichts zu filtern.
-function fillRecipePick(recipes) {
+function recipePickSignature(recipes) { return JSON.stringify([namespace(),isoDate(),recipes,active(state.ingredients),cookableNames('shopping')]); }
+function fillRecipePick(recipes, keepFilter = false) {
   pickPool = recipes;
-  const select = $('#recipe-filter'), options = filterOptions(recipes, isoDate(),recipeAvailable);
-  select.replaceChildren(...options.map(option => { const node = element('option', `${option.label} (${option.count})`); node.value = option.value; return node; }));
-  select.value = ''; select.hidden = options.length < 2;
+  pickSignature = recipePickSignature(recipes);
+  const select = $('#recipe-filter'), previous = keepFilter ? select.value : '', options = filterOptions(recipes, isoDate(),recipeAvailable);
+  const groups = new Map(); select.replaceChildren();
+  for (const option of options) {
+    const node = element('option', `${option.label} (${option.count})`); node.value = option.value;
+    if (!option.value) { select.append(node); continue; }
+    const label = [WITH_PANTRY,WITH_SHOPPING].includes(option.value) ? 'Kochbarkeit' : option.value.startsWith('tag:') ? 'Rezeptgruppen' : 'Deine Auswahl';
+    if (!groups.has(label)) { const group=element('optgroup');group.label=label;groups.set(label,group);select.append(group); }
+    groups.get(label).append(node);
+  }
+  select.value = options.some(option=>option.value===previous) ? previous : ''; select.hidden = options.length < 2;
   renderPick();
+}
+function refreshRecipePick() {
+  if (!$('#meal-dialog').open) return;
+  const recipes=active(state.recipes).sort((a,b)=>Number(Boolean(b.favorite))-Number(Boolean(a.favorite))||a.name.localeCompare(b.name,'de'));
+  if (recipePickSignature(recipes)===pickSignature) return;
+  const list=$('#recipe-pick'), scroll=list.scrollTop, focused=document.activeElement.closest('#recipe-pick .pick-row')?.dataset.value;
+  fillRecipePick(recipes,true); syncMealForm(false); list.scrollTop=scroll;
+  if (focused) (Array.from(list.querySelectorAll('.pick-row')).find(row=>row.dataset.value===focused)||$('#recipe-filter')).focus({preventScroll:true});
 }
 $('#pick-preview').addEventListener('click', () => { const selected = $('#recipe-pick .pick-row[aria-pressed=true]:not(.custom)'); if (selected) openPickedSheet(selected); });
 $('#recipe-filter').addEventListener('change', () => { renderPick(); $('#recipe-pick').scrollTop = 0; });
@@ -3378,6 +3404,7 @@ function refreshTimedStock(){
   renderPantry();renderRecipes();productPicker?.refresh();
   if($('#plan-recipe-dialog').open)renderPlanRecipe();
   if($('#cookable-dialog').open)renderCookable();
+  refreshRecipePick();
   scheduleStockRefresh();
 }
 

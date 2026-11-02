@@ -1,7 +1,7 @@
 /* Was kann ich kochen? Reine Logik ohne DOM: ordnet die Rezepte danach, wie viele Zutaten schon da sind.
    „Da“ ist ausschließlich der aktuelle Vorrat. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
    Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Zutaten „nach Bedarf“ (Salz, Pfeffer) und Wasser zählen nicht mit. */
-import { isCookingWater, pantryRows, spellingStem } from './data.js';
+import { active, isCookingWater, pantryRows, spellingStem } from './data.js';
 import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
@@ -45,6 +45,12 @@ export function availability(name, index) {
 // Muss die Zutat vorhanden sein? „Nach Bedarf“ (Salz, Pfeffer) und Wasser nicht.
 export const required = row => !isCookingWater(row.name) && row.unit !== NO_AMOUNT && parts(row.name).some(part => !part.every(token => ALWAYS.has(token)));
 
+// Ohne prüfbare Zutaten gibt es keinen Nachweis, dass ein Rezept kochbar ist.
+export function canCookRecipe(ingredients, index) {
+  const rows = ingredients.filter(required);
+  return rows.length > 0 && rows.every(row => availability(row.name, index) !== 'missing');
+}
+
 /* Rezepte ordnen. `recipes`: aktive Rezepte; `ingredientsOf(recipe)`: deren Zutaten (mit id, name, unit); `names`: { have, soon }.
    Ergebnis: [{ recipe, total, have: [Namen], soon: [Namen], missing: [{ id, name }], tier }] mit tier 0 = alles da, 1 = alles da, sobald
    die Einkaufsliste abgearbeitet ist, 2 = es fehlt etwas (nur wenn mindestens die Hälfte der Zutaten da ist oder kommt). Zuerst Stufe 0, dann 1,
@@ -72,7 +78,8 @@ export function rankRecipes(recipes, ingredientsOf, names, limit = 15) {
 
 /* Verfügbarkeit kommt ausschließlich aus pantryRows (einschließlich Smart Stock),
    nicht aus einem Rückschluss auf abgehakte Einkaufszeilen. */
-export function namesFrom({ pantry = [], items = [], mode = 'pantry' }) {
-  return { have: pantryRows(pantry).filter(row => row.available !== false).map(row => row.name),
-    soon: mode === 'shopping' ? items.filter(item => !item.checked && !item.deletedAt && typeof item.name === 'string').map(item => item.name) : [] };
+export function namesFrom({ pantry = [], items = [], mode = 'pantry', now = Date.now() }) {
+  return { have: pantryRows(pantry, now).filter(row => row.available !== false).map(row => row.name),
+    // Dieselben aktiven Zeilen wie auf dem Einkaufszettel: zurückgenommene Wochenplan-Mengen sind keine offenen Einkäufe.
+    soon: mode === 'shopping' ? active(items).filter(item => !item.checked && typeof item.name === 'string' && (item.quantity === undefined || Number.isFinite(item.quantity) && item.quantity > 0)).map(item => item.name) : [] };
 }

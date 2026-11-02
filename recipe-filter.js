@@ -21,7 +21,7 @@ export function cookedLongAgo(recipe, today) {
 // Die Einträge des Auswahlfelds: [{ value, label, count }]. „Alle Rezepte“ steht immer da, Favoriten und „Lange nicht gekocht“ nur mit mindestens einem Rezept.
 export function filterOptions(recipes, today, available) {
   const options = [{ value: ALL, label: 'Alle Rezepte', count: recipes.length }];
-  if(available)for(const [value,label]of [[WITH_PANTRY,'Mit Vorrat kochbar'],[WITH_SHOPPING,'Mit Vorrat + Einkaufszettel kochbar']])options.push({value,label,count:recipes.filter(recipe=>available(recipe,value)).length});
+  if(available)for(const [value,label]of [[WITH_PANTRY,'Sofort kochbar'],[WITH_SHOPPING,'Nach dem Einkauf']])options.push({value,label,count:recipes.filter(recipe=>available(recipe,value)).length});
   const favorites = recipes.filter(recipe => recipe.favorite).length, longAgo = recipes.filter(recipe => cookedLongAgo(recipe, today)).length;
   if (favorites) options.push({ value: FAVORITES, label: '★ Favoriten', count: favorites });
   if (longAgo) options.push({ value: LONG_AGO, label: 'Lange nicht gekocht', count: longAgo });

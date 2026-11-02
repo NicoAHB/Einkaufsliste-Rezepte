@@ -11,6 +11,7 @@ import { planGenerated } from '../recipe-maker.js';
 import { readZip } from '../zip.js';
 import { orderedStores } from '../store-order.js';
 import { isoDate, addDays } from '../plan.js';
+import { active, addToList, merge, operation } from '../data.js';
 
 let playwright = null;
 try { playwright = createRequire(import.meta.url)('playwright'); } catch { /* optional */ }
@@ -7043,21 +7044,81 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const pickRows = page => page.locator('#recipe-pick .pick-row strong').allTextContents();
 
-  test('Plan: neben „Rezept“ steht ein Auswahlfeld zum Filtern: Alle, Favoriten, Lange nicht gekocht und jedes Stichwort (Groß-/Kleinschreibung egal) mit Zahl; die Liste zeigt nur Passendes', async () => {
+  function emptyPlanRecipes2123() {
+    const data = structuredClone(demo), names = ['Milch', 'Nudeln', 'Eier', 'Tomaten'], at = '2026-11-02T10:00:00.000Z';
+    data.pantry = []; data.items = []; data.meals = [];
+    data.recipes = names.map((name,i)=>({...demo.recipes[0],id:`recipe2123-${i}`,name:`${name}-Gericht`,servings:2}));
+    data.ingredients = names.map((name,i)=>({...demo.ingredients[0],id:`ingredient2123-${i}`,recipeId:`recipe2123-${i}`,name,quantity:100,unit:'g'}));
+    const added = addToList(names.map((name,i)=>({name,quantity:100,unit:'g',key:`ingredient-${i}`})), '', 'Nico', at, [], [], 'empty2123');
+    const withList = merge(data,added.ops);
+    return merge(withList,added.ops.map(source=>operation('items',source.entityId,{cutPlan:{sourceId:source.id,name:source.patch.name,storeId:'',at:source.at,quantity:100,originalQuantity:100,unit:'g'}},'Nico','2026-11-02T10:01:00.000Z')));
+  }
+  test('2.123: leerer Einkaufszettel mit vier zurückgenommenen Wochenplan-Produkten zählt null kochbare Rezepte; ein echter Einkauf zählt wieder', async () => {
+    const data = emptyPlanRecipes2123(); assert.equal(active(data.items).length,0);
+    const {ctx,page,problems}=await filterContext(data); await open(page);
+    assert.equal(await page.locator('#items .item').count(),0);
+    await openMealPicker(page);
+    assert.equal(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),'Sofort kochbar (0)');
+    assert.equal(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),'Nach dem Einkauf (0)');
+    await page.selectOption('#recipe-filter','available-shopping');
+    assert.deepEqual(await pickRows(page),['Eigenes Gericht (ohne Rezept)']);
+    assert.equal(await page.textContent('#recipe-pick .pick-empty'),'Kein Rezept dafür.');
+    assert.match(await page.textContent('#recipe-filter-hint'),/Vorrat \+ offene Einkaufsliste.*sobald.*eingekauft/);
+    await page.screenshot({path:'/workspace/work/sattplan-2123-plan-390.png'});
+    await page.click('#meal-dialog [data-close]'); await goTab(page,'shopping');
+    await page.fill('#item-form input[name=name]','Milch'); await page.click('#item-form button[type=submit]');
+    await openMealPicker(page);
+    assert.equal(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),'Nach dem Einkauf (1)');
+    await page.selectOption('#recipe-filter','available-shopping');
+    assert.deepEqual(await pickRows(page),['Milch-Gericht','Eigenes Gericht (ohne Rezept)']);
+    assert.equal(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),'Sofort kochbar (0)');
+    assert.deepEqual(problems,[]); await ctx.close();
+  });
+
+  test('2.123: Geräteabgleich aktualisiert offene Rezeptfilter und Zutatenstatus; Auswahl und Portionen bleiben erhalten', async () => {
+    const api=github(data280()),{ctx,page,problems}=await context({config:connectedConfig});
+    await ctx.route('https://api.github.com/**',api.handler); await open(page); await synced(page); await openMealPicker(page);
+    await page.selectOption('#recipe-filter','available-shopping'); await page.locator('#recipe-pick [data-value=r280-1]').click(); await setMealPortions(page,'4');
+    api.remoteChange(data=>Object.assign(data,merge(data,[operation('items','open-milk',{checked:true},'Anna')])));
+    await pollNow(page); await page.waitForFunction(()=>document.querySelector('#recipe-filter option[value=available-shopping]').textContent==='Nach dem Einkauf (1)');
+    assert.equal(await page.inputValue('#recipe-filter'),'available-shopping');
+    assert.equal(await page.inputValue('#meal-form input[name=recipeId]'),'r280-1'); assert.equal(await page.inputValue('#meal-form input[name=servings]'),'4');
+    assert.match(await page.locator('#recipe-pick [data-value=r280-1]').textContent(),/ausgewählt, passt nicht zum Filter/);
+    api.remoteChange(data=>Object.assign(data,merge(data,[operation('pantry',data.pantry.find(row=>/^Karot/.test(row.name)).id,{available:false},'Anna')])));
+    await pollNow(page); await page.waitForFunction(()=>document.querySelector('#recipe-filter option[value=available-shopping]').textContent==='Nach dem Einkauf (0)');
+    assert.equal(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),'Sofort kochbar (0)');
+    assert.deepEqual(await page.locator('#recipe-pick .pick-row:not(.custom)').evaluateAll(nodes=>nodes.map(node=>node.dataset.value)),['r280-1'],'nur die ausdrücklich gewählte Ausnahme bleibt sichtbar');
+    assert.equal(await page.inputValue('#meal-form input[name=servings]'),'4'); assert.deepEqual(problems,[]); await ctx.close();
+  });
+
+  test('2.123: Smart-Stock-Ablauf aktualisiert den geöffneten Rezeptfilter ohne erneutes Öffnen', async () => {
+    const data=data280(),now=Date.now(),at=new Date(now).toISOString(),stock=data.pantry.find(row=>/^Karot/.test(row.name));
+    stock.autoStock={purchaseId:'purchase2123',boughtAt:at,expiresAt:new Date(now+30000).toISOString()}; stock.updatedAt=at;
+    const {ctx,page,problems}=await filterContext(data); await page.clock.install({time:now}); await open(page); await openMealPicker(page);
+    await page.selectOption('#recipe-filter','available-shopping');
+    assert.equal(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),'Nach dem Einkauf (2)');
+    await page.clock.fastForward(31000);
+    await page.waitForFunction(()=>document.querySelector('#recipe-filter option[value=available-shopping]').textContent==='Nach dem Einkauf (0)');
+    assert.equal(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),'Sofort kochbar (0)');
+    assert.deepEqual(await pickRows(page),['Eigenes Gericht (ohne Rezept)']); assert.deepEqual(problems,[]); await ctx.close();
+  });
+
+  test('Plan: Rezeptfilter mit kurzen Einträgen, Gruppen und korrekten Zählern; die Liste zeigt nur Passendes', async () => {
     const { ctx, page, problems } = await filterContext();
     await open(page);
     await openMealPicker(page);
     const select=page.locator('#recipe-filter');
-    const hints=async()=> (await page.locator('#recipe-pick .pick-row small').allTextContents()).map(text=>text.split(' · ').filter(part=>!/Produkte? fehl/.test(part)).join(' · '));
+    const hints=async()=> (await page.locator('#recipe-pick .pick-row small').allTextContents()).map(text=>text.split(' · ').filter(part=>!/Produkte? fehl|Keine prüfbaren Zutaten/.test(part)).join(' · '));
     assert.equal(await select.isVisible(), true);
     assert.equal(await select.getAttribute('aria-label'), 'Rezepte filtern');
-    assert.deepEqual(await select.locator('option').allTextContents(), ['Alle Rezepte (6)','Mit Vorrat kochbar (3)','Mit Vorrat + Einkaufszettel kochbar (3)', '★ Favoriten (1)', 'Lange nicht gekocht (3)', 'Einfach (2)', 'Schnell (1)', 'Suppe (2)', 'Süß (2)', 'Vegan (2)', 'Vegetarisch (2)']);
+    assert.deepEqual(await select.locator('option').allTextContents(), ['Alle Rezepte (6)','Sofort kochbar (0)','Nach dem Einkauf (0)', '★ Favoriten (1)', 'Lange nicht gekocht (3)', 'Einfach (2)', 'Schnell (1)', 'Suppe (2)', 'Süß (2)', 'Vegan (2)', 'Vegetarisch (2)']);
+    assert.deepEqual(await select.locator('optgroup').evaluateAll(nodes=>nodes.map(node=>node.label)), ['Kochbarkeit','Deine Auswahl','Rezeptgruppen']);
     assert.equal(await select.inputValue(), '', 'zuerst alle Rezepte');
     assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Apfel-Pfannkuchen', 'Kürbissuppe', 'Linsensuppe', 'Schokokuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
-    // rechts neben „Rezept“, auf einer Zeile, im Fenster, gut zu treffen
+    // Volle Breite unter einer klaren Beschriftung, im Fenster gut zu treffen.
     const caption = await page.locator('#recipe-pick-label').boundingBox(), field = await select.boundingBox(), dialog = await page.locator('#meal-dialog').boundingBox();
-    assert.ok(field.x >= caption.x + caption.width, 'rechts neben „Rezept“');
-    assert.ok(Math.abs(field.y + field.height / 2 - (caption.y + caption.height / 2)) < 8, 'auf einer Zeile mit „Rezept“');
+    assert.ok(field.y >= caption.y + caption.height, 'unter der Beschriftung');
+    assert.ok(Math.abs(field.x - caption.x) < 1, 'mit der Beschriftung bündig');
     assert.ok(field.x + field.width <= dialog.x + dialog.width && field.height >= 36, 'im Fenster und groß genug zum Tippen');
     // Stichwort: „Suppe“ und „suppe“ sind ein Eintrag; Favoriten zuerst, sonst nach Namen; „Eigenes Gericht“ bleibt am Ende
     await select.selectOption({ label: 'Suppe (2)' });
@@ -7159,14 +7220,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   for (const width of [280, 320, 390]) {
-    test(`Plan bei ${width} px: „Rezept“ und das Filterfeld stehen auf einer Zeile, nichts läuft über den Rand`, async () => {
+    test(`Plan bei ${width} px: Rezeptfilter nutzt die volle Breite, nichts läuft über den Rand`, async () => {
       const { ctx, page, problems } = await filterContext(filterData(), { context: { viewport: { width, height: 740 } } });
       await open(page);
       await openMealPicker(page);
       await page.locator('#recipe-filter').selectOption({ label: 'Lange nicht gekocht (3)' });
       assert.equal(await horizontalOverflow(page), 0);
       const caption = await page.locator('#recipe-pick-label').boundingBox(), field = await page.locator('#recipe-filter').boundingBox(), list = await page.locator('#recipe-pick').boundingBox();
-      assert.ok(field.x >= caption.x + caption.width - 1 && Math.abs(field.y + field.height / 2 - (caption.y + caption.height / 2)) < 10, 'auf einer Zeile');
+      assert.ok(field.y >= caption.y + caption.height && Math.abs(field.x - caption.x) < 1, 'Feld unter der Beschriftung');
       assert.ok(field.x + field.width <= list.x + list.width + 1 && field.width >= 120, `das Feld ist breit genug (${Math.round(field.width)} px) und endet mit der Liste`);
       const rows = await page.locator('#recipe-pick .pick-row').evaluateAll(nodes => nodes.map(node => ({ right: node.getBoundingClientRect().right, scroll: node.scrollWidth - node.clientWidth })));
       assert.ok(rows.every(entry => entry.right <= width && entry.scroll <= 1), 'die Zeilen passen in die Breite');
@@ -8640,7 +8701,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('2.84: Rezeptauswahl filtert nach Vorrat und Einkaufszettel; Mengenhinweis nennt nur tatsächlich fehlende Einkaufsprodukte',async()=>{
     const data=data280();data.items.find(row=>row.name==='Milch').unit='g';const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');await page.locator('.day.today .day-head .icon-button').click();await sheetOpen(page);
-    assert.match(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),/Mit Vorrat kochbar.*1/);assert.match(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),/Einkaufszettel.*2/);
+    assert.match(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),/Sofort kochbar.*1/);assert.match(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),/Nach dem Einkauf.*2/);
     await page.selectOption('#recipe-filter','available-pantry');assert.deepEqual(await page.locator('#recipe-pick .pick-row:not(.custom)').evaluateAll(nodes=>nodes.map(node=>node.dataset.value)),['r280-0']);
     await page.selectOption('#recipe-filter','available-shopping');assert.equal(await page.locator('#recipe-pick .pick-row:not(.custom)').count(),2);await page.locator('#recipe-pick [data-value=r280-1]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 1 Produkt fehlt.*0 noch/);await setMealPortions(page, '4');assert.match(await page.textContent('#meal-save-shopping small'),/1 noch auf den Einkaufszettel/);
     await page.selectOption('#recipe-filter','');await page.locator('#recipe-pick [data-value=r280-0]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 0 Produkte fehlen.*0 noch/);const before=(await storedDemo(page)).items;await page.click('#meal-save-shopping');assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();

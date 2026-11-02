@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { availability, indexNames, namesFrom, rankRecipes, required } from '../cookable.js';
+import { availability, canCookRecipe, indexNames, namesFrom, rankRecipes, required } from '../cookable.js';
 import { NO_AMOUNT } from '../recipe-import.js';
+import { active, addToList, emptyData, merge, operation } from '../data.js';
 
 const check = (name, have = [], soon = []) => availability(name, indexNames({ have, soon }));
 const row = (id, name, unit = 'g') => ({ id, name, unit });
@@ -115,6 +116,42 @@ describe('Was ist da?', () => {
   test('ohne Angaben leere Listen', () => {
     assert.deepEqual(namesFrom({}), { have: [], soon: [] });
   });
+});
+
+test('Entfernte Wochenplan-Mengen zählen weder als offene Einkäufe noch als vier kochbare Rezepte', () => {
+  const names = ['Milch', 'Nudeln', 'Eier', 'Tomaten'], at = '2026-11-02T10:00:00.000Z';
+  const added = addToList(names.map((name, i) => ({ name, quantity: 100, unit: 'g', key: `ingredient-${i}` })), '', 'Nico', at, [], [], 'empty-cookable');
+  let data = merge(emptyData(), added.ops);
+  data = merge(data, added.ops.map(source => operation('items', source.entityId, { cutPlan: {
+    sourceId: source.id, name: source.patch.name, storeId: '', at: source.at, quantity: 100, originalQuantity: 100, unit: 'g'
+  } }, 'Nico', '2026-11-02T10:01:00.000Z')));
+  assert.equal(data.items.length, 4, 'die Korrekturen bleiben für den Geräteabgleich gespeichert');
+  assert.equal(active(data.items).length, 0, 'im echten Einkaufszettel steht kein Produkt mehr');
+  const available = namesFrom({ pantry: [], items: data.items, mode: 'shopping' });
+  const recipes = names.map((name, i) => recipe(`r${i}`, name));
+  assert.deepEqual(rankRecipes(recipes, item => [row(`i${item.id}`, item.name)], available), [], 'leerer Zettel darf keine vier Rezepte als nach dem Einkauf kochbar zählen');
+  assert.deepEqual(available.soon, []);
+});
+
+test('Kochbarkeit braucht prüfbare Zutaten und berücksichtigt nur lebende offene Einkäufe', () => {
+  const names = namesFrom({ mode: 'shopping', items: [
+    { name: 'Mehl', quantity: 0 }, { name: 'Milch', checked: true }, { name: 'Eier', deletedAt: '2026-11-02T10:00:00Z' },
+    { name: 'Tomaten', quantity: 1, _planEmpty: true }, { name: 'Nudeln', quantity: 1, checked: false }
+  ] });
+  const index = indexNames(names);
+  for (const ingredients of [[], [row('salt', 'Salz')], [row('water', 'Wasser')], [row('spice', 'Kräuter', NO_AMOUNT)],
+    ...['Mehl', 'Milch', 'Eier', 'Tomaten'].map(name => [row(name, name)])]) assert.equal(canCookRecipe(ingredients, index), false, JSON.stringify(ingredients));
+  assert.equal(canCookRecipe([row('pasta', 'Nudeln')], index), true, 'echte offene Einkäufe sind nach dem Einkauf nutzbar');
+  assert.equal(canCookRecipe([row('pasta', 'Nudeln')], indexNames({ have: [] })), false, 'sie zählen nicht bereits als Vorrat');
+});
+
+test('Smart-Stock-Ablauf und Aufbrauchen werden zum selben Zeitpunkt für Rezeptfilter berücksichtigt', () => {
+  const at = '2026-11-02T10:00:00.000Z', until = '2026-11-03T10:00:00.000Z';
+  const pantry = [{ id: 'milk', name: 'Milch', available: true, updatedAt: at, autoStock: { purchaseId: 'p', boughtAt: at, expiresAt: until } }];
+  const cookable = (now, rows = pantry) => canCookRecipe([row('i', 'Milch')], indexNames(namesFrom({ pantry: rows, now })));
+  assert.equal(cookable(Date.parse(until) - 1), true);
+  assert.equal(cookable(Date.parse(until)), false);
+  assert.equal(cookable(Date.parse(at), [{ ...pantry[0], available: false }]), false);
 });
 
 test('Nur Vorrat ist Standard; Einkauf und Kaufdatum machen Zutaten niemals automatisch verfügbar',()=>{
