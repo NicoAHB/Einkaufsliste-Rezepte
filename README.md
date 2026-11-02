@@ -1,6 +1,10 @@
-# Sattplan – Version 2.108
+# Sattplan – Version 2.109
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.109: Vorratshilfe bei Bedarf öffnen
+
+In **Vorrat auswählen** steht neben dem Schließen-Symbol ein **i-Button**. Die Bedienhinweise sind zunächst ausgeblendet und lassen sich darüber öffnen. Erneutes Antippen, **Hilfe ausblenden** oder Escape schließt nur die Hilfe. Das funktioniert in allen Vorratsreitern; beim Reiterwechsel bleibt die gewählte Hilfsanzeige erhalten. Nach erneutem Öffnen der Vorratsauswahl ist sie wieder eingeklappt. Offline-Paket **einkauf-shell-v121**.
 
 ## Neu in Version 2.108: Vergangene Gerichte ausschließlich durch Halten entfernen
 
