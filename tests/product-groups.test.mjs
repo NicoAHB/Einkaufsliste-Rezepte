@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {test,afterEach} from 'node:test';
-import {emptyData,merge,operation,pantryKeys,inPantry,validate} from '../data.js';
-import {canonicalProductName,productGroupMigration,PRODUCT_FAMILIES,reuseProductNames} from '../product-groups.js';
+import {emptyData,merge,operation,pantryKeys,inPantry,sameIngredient,sameProduct,validate} from '../data.js';
+import {canonicalProductName,ingredientProductName,productGroupMigration,PRODUCT_FAMILIES,reuseProductNames} from '../product-groups.js';
 import {imageForProduct} from '../product-images.js';
 import {productLibrary,filterProducts} from '../product-catalog.js';
 import {availability,indexNames} from '../cookable.js';
-import {shoppingDeficits} from '../plan.js';
+import {aggregateIngredients,shoppingDeficits} from '../plan.js';
 import {summarizePeriod} from '../spending.js';
 import {wishGroup,wishImage} from '../wish-images.js';
 import {fetchRecipePage} from '../page-source.js';
@@ -139,4 +139,54 @@ test('Rezeptübernahme: genaue freie Artikelbezeichnung bleibt, Mengen und Einka
   const rows=reuseProductNames([{name:'Hackfleisch',quantity:200,unit:'g'}],items,'laden');
   assert.deepEqual(rows,[{name:'Hackfleisch gemischt',quantity:200,unit:'g'}]);
   assert.equal(items[0].quantity,900);assert.equal(items[0].name,'Hackfleisch gemischt');
+});
+
+test('Reife Bananen: vorhandene Einkaufsmenge deckt die Zutat ab, nur eine echte Fehlmenge wird ergänzt',()=>{
+  const rows=[{name:'Reife Bananen',quantity:3,unit:'Stück'}],item={name:'Bananen',quantity:3,unit:'Stück',checked:false},before=JSON.stringify([rows,item]);
+  assert.deepEqual(shoppingDeficits(rows,[],[item]),[]);
+  assert.deepEqual(shoppingDeficits(rows,[],[{...item,name:'Banane',quantity:1}]),[{...rows[0],quantity:2}]);
+  assert.equal(JSON.stringify([rows,item]),before,'Reifehinweis und manuelle Produktnamen bleiben erhalten');
+});
+
+test('Zutatenidentität: geprüfte Reife-/Größenangaben, Einzahl und Wortreihenfolge werden gemeinsam erkannt',()=>{
+  for(const [name,base] of [['Reife Bananen','Bananen'],['sehr überreife Banane','Bananen'],['Bananen (reif)','Bananen'],['Bananen, reif','Bananen'],['kleine frische Karotte','Karotten'],['große Kartoffel','Kartoffeln'],['frische Petersilie','Petersilie'],['kleines Ei','Eier']]) {
+    assert.equal(ingredientProductName(name),base,name);
+    assert.ok(sameIngredient(name,base),name); assert.ok(sameIngredient(base,name),name);
+    assert.ok(inPantry(pantryKeys([{name:base,available:true}]),name),name);
+    assert.equal(availability(name,indexNames({have:[base]})),'have',name);
+    assert.equal(availability(name,indexNames({soon:[base]})),'soon',name);
+  }
+  assert.equal(sameProduct('Reife Bananen','Bananen'),false,'freie Artikel behalten ihre bewusst gewählten Namen');
+  assert.equal(canonicalProductName('Reife Bananen'),'Reife Bananen','keine nachträgliche Umbenennung von Rezepten');
+});
+
+test('Zutatenidentität: Produktart, Verarbeitung und Ernährungsangaben werden nicht pauschal entfernt',()=>{
+  for(const [a,b] of [['Banane','Bananenchips'],['Banane','Kochbanane'],['Tomaten','Tomatenmark'],['Tomaten','getrocknete Tomaten'],['Tomaten','Tomaten (getrocknet)'],['Tomaten','Tomaten (Konserve)'],['Milch','Hafermilch'],['Milch','Milch (laktosefrei)'],['Nudeln','glutenfreie Nudeln'],['Hefe','frische Hefe'],['Butter','Buttermilch'],['Banane','Bananen für Nico']]) {
+    assert.equal(sameIngredient(a,b),false,`${a} ≠ ${b}`);
+    assert.equal(inPantry(pantryKeys([{name:a,available:true}]),b),false,`${a} ≠ ${b} im Vorrat`);
+    assert.equal(availability(b,indexNames({have:[a]})),'missing',`${a} ≠ ${b} beim Rezeptabgleich`);
+    assert.equal(shoppingDeficits([{name:b,quantity:3,unit:'Stück'}],[],[{name:a,quantity:3,unit:'Stück'}]).length,1,`${a} ≠ ${b} beim Einkaufsbedarf`);
+  }
+  assert.equal(ingredientProductName('große Überraschung'),'große Überraschung','kein Raten bei unbekannten Produkten');
+});
+
+test('Zutatenmengen: mehrere Rezepte und reservierte Mengen werden trotz beschreibender Zusätze einmalig angerechnet',()=>{
+  const recipes=[{id:'bread',name:'Bananenbrot',servings:10},{id:'shake',name:'Shake',servings:2}];
+  const ingredients=[{recipeId:'bread',name:'Reife Bananen',quantity:3,unit:'Stück'},{recipeId:'shake',name:'kleine Banane',quantity:2,unit:'Stück'}];
+  const before=JSON.stringify(ingredients),rows=aggregateIngredients([{recipeId:'bread',servings:10},{recipeId:'shake',servings:2}],recipes,ingredients);
+  assert.equal(rows.length,1);assert.equal(rows[0].quantity,5);
+  assert.deepEqual(new Set(rows[0].sources),new Set(['Bananenbrot','Shake']));
+  assert.equal(shoppingDeficits(rows,[],[{name:'Bananen',quantity:2,unit:'Stück'}])[0].quantity,3);
+  assert.equal(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{name:'Banane',quantity:4,unit:'Stück'}],[{name:'Bananen',quantity:2,unit:'Stück'}])[0].quantity,1);
+  assert.equal(JSON.stringify(ingredients),before);
+});
+
+test('Zutatenübernahme: Restmengen verwenden den bestehenden Namen und Merker; unbekannte Bundgrößen werden nicht geraten',()=>{
+  const item={name:'Bananen',quantity:1,unit:'Stück',checked:false,storeId:'laden',purchaseAmount:{quantity:1,unit:'Stück'},purchaseAmountAt:at};
+  const missing=shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[item]);
+  assert.deepEqual(reuseProductNames(missing,[item],'laden'),[{name:'Bananen',quantity:2,unit:'Stück'}]);
+  assert.equal(item.quantity,1); assert.equal(item.purchaseAmountAt,at);
+  assert.deepEqual(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{...item,unit:'Bund'}]),[]);
+  assert.equal(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{...item,checked:true}])[0].quantity,3);
+  assert.equal(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{...item,_planEmpty:true,quantity:0}])[0].quantity,3);
 });

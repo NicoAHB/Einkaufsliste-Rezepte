@@ -1,6 +1,15 @@
 /* Geprüfte Produktfamilien. Rohkatalog und Bildkoordinaten bleiben unverändert.
    Nur bekannte Varianten werden zugeordnet, keine freie Teilwort-Ersetzung. */
 import { PRODUCT_ROWS } from './product-catalog-data.js';
+import { productKey } from './prices.js';
+
+const PLURAL = ['en', 'er', 'n', 'e'];
+export function spellingStem(name) {
+  return productKey(name).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => {
+    for (const ending of PLURAL) if (word.length - ending.length >= 2 && word.endsWith(ending)) return word.slice(0, -ending.length);
+    return word;
+  }).join(' ');
+}
 
 const families = [
   ['aepfel','Äpfel','elstar-aepfel gala-aepfel pink-lady-aepfel granny-smith-aepfel golden-delicious-aepfel braeburn-aepfel boskoop-aepfel jonagold-aepfel'],
@@ -93,11 +102,39 @@ export const productGroup = name => byName.get(groupNameKey(name)) || null;
 export const productGroupById = id => byId.get(id) || null;
 export const canonicalProductName = name => productGroup(name)?.name || name;
 
-// Übernahmen aus Katalog/Rezept zählen zu einem schon genauer benannten Artikel.
+// Rezeptzusätze ändern nicht das Einkaufsprodukt. Nur geprüfte Größenangaben
+// und bei Obst/Gemüse Reife/Frische übergehen, wenn ein bekanntes Lebensmittel übrig bleibt.
+const ingredientNames = new Map();
+const ingredientStem = name => spellingStem(groupNameKey(name)).split(' ').sort().join(' ');
+for (const row of PRODUCT_ROWS.filter(row=>!['haushalt','sonstiges'].includes(row[4]))) {
+  const key=ingredientStem(row[1]),name=productGroup(row[1])?.id==='wasser'?row[1]:canonicalProductName(row[1]),previous=ingredientNames.get(key);
+  ingredientNames.set(key,previous===null||previous&&previous.name!==name?null:{name,produce:row[4]==='obst'});
+}
+for(const name of ['Salz fein','Salz grob'])ingredientNames.set(ingredientStem(name),{name:'Salz',produce:false});
+const sizeWord='(?:klein|gross|mittelgross)(?:e|en|er|es|em)?';
+const produceWord='(?:reif|uberreif|unreif|frisch)(?:e|en|er|es|em)?';
+const descriptor=new RegExp(`^(?:(?:(?:sehr|gut|voll) )?(?:${sizeWord}|${produceWord}))(?: (?:(?:sehr|gut|voll) )?(?:${sizeWord}|${produceWord}))*$`);
+const sizesOnly=new RegExp(`^(?:(?:sehr|gut|voll) )?${sizeWord}(?: (?:(?:sehr|gut|voll) )?${sizeWord})*$`);
+export function ingredientProductName(name) {
+  // Leitungswasser im Rezept ist kein Mineralwasser/Getränk aus der Katalogfamilie „Wasser“.
+  const exact=productGroup(name); if(exact)return exact.id==='wasser'?name:exact.name;
+  const words=groupNameKey(name).split(' ');
+  for(let start=0;start<Math.min(words.length,5);start++) {
+    const prefix=words.slice(0,start).join(' ');if(prefix&&!descriptor.test(prefix))continue;
+    for(let suffix=0;suffix<Math.min(words.length-start,5);suffix++) {
+      const ending=words.slice(words.length-suffix).join(' ');if(ending&&!descriptor.test(ending))continue;
+      const known=ingredientNames.get(ingredientStem(words.slice(start,words.length-suffix).join(' ')));
+      if(known&&([prefix,ending].every(part=>!part||sizesOnly.test(part))||known.produce))return known.name;
+    }
+  }
+  return name;
+}
+
+// Übernahmen aus Katalog/Rezept zählen zu einem passenden bereits benannten Artikel.
 // Die freie Eingabe selbst verwendet diese Funktion nicht und behält ihren Namen.
 export function reuseProductNames(rows,items,storeId) {
   const open=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&(row.storeId || '')===(storeId || ''));
-  return rows.map(row=>{const group=productGroup(row.name),existing=group && open.find(item=>productGroup(item.name)?.id===group.id);return existing?{...row,name:existing.name}:row;});
+  return rows.map(row=>{const key=spellingStem(ingredientProductName(row.name)),existing=key&&open.find(item=>spellingStem(ingredientProductName(item.name))===key);return existing?{...row,name:existing.name}:row;});
 }
 
 // Feldweise, idempotente Migration. Keine IDs, Mengen, Preise oder Löschmarkierungen ändern.

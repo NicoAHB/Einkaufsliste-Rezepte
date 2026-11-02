@@ -2,7 +2,7 @@
    „Da“ ist ausschließlich der aktuelle Vorrat. „Kommt noch“ ist, was offen auf der Einkaufsliste steht. Alles andere fehlt.
    Geprüft wird nur, ob eine Zutat da ist, nicht die Menge. Zutaten „nach Bedarf“ (Salz, Pfeffer) und Wasser zählen nicht mit. */
 import { active, isCookingWater, pantryRows, spellingStem } from './data.js';
-import { canonicalProductName } from './product-groups.js';
+import { ingredientProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
 
@@ -13,16 +13,17 @@ const stemOf = word => spellingStem(word);
 const group = new Map(SAME.flatMap((names, index) => names.map(name => [stemOf(name), `g${index}`])));
 const ALWAYS = new Set(['wasser', 'leitungswasser', 'salz', 'pfeffer'].map(stemOf));
 const ingredientName = name => {
-  const canonical = canonicalProductName(name);
+  const canonical = ingredientProductName(name);
   return canonical === 'Wasser' && !isCookingWater(name) ? name : canonical;
 };
 
-// Namensteile ohne Klammerzusatz („Salz, Pfeffer“, „Tomaten und Zwiebeln“ sind mehrere Zutaten); jeder Teil als Menge von Wortstämmen.
-const parts = name => String(name ?? '').replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i)
+// Bekannte Beschreibungen über die gemeinsame Zutatenidentität auflösen.
+// Unbekannte Zusätze bleiben bedeutend; „getrocknet“ oder „laktosefrei“ nicht pauschal übergehen.
+const parts = name => String(ingredientName(name ?? '')).split(/\s*(?:,|;|\bund\b)\s*/i)
   .map(part => [...new Set(stemOf(ingredientName(part)).split(' ').filter(Boolean).map(word => group.get(word) || word))]).filter(tokens => tokens.length);
 const within = (small, big) => small.every(token => big.includes(token));
-// Passt ein Zutatenteil zu einem Namen? Gleiche Wörter (Einzahl/Mehrzahl egal), auch wenn einer mehr Wörter hat („rote Zwiebel“ zu „Zwiebeln“).
-const same = (a, b) => within(a, b) || within(b, a);
+// Nach der Namensauflösung müssen alle Wörter passen, auch bei umgekehrter Wortreihenfolge.
+const same = (a, b) => a.length === b.length && within(a, b);
 
 /* Erreichbarkeit der Zutaten: `have` und `soon` sind Namenslisten. Gibt für einen Zutatennamen 'have', 'soon' oder 'missing' zurück;
    bei mehreren Teilen („Salz und Pfeffer“) zählt der schlechteste. */

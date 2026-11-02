@@ -1,6 +1,12 @@
-# Sattplan – Version 2.123
+# Sattplan – Version 2.124
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.124: Gemeinsame Zutatenidentität für Vorrat, Rezepte und Einkaufsbedarf
+
+**Reife Bananen**, **Banane** und **Bananen** werden beim Rezeptabgleich und der Einkaufsberechnung als dasselbe Produkt erkannt. Geprüfte Größenangaben sowie Reife-/Frischeangaben bei bekanntem Obst und Gemüse werden für diesen Abgleich auf das Grundprodukt zurückgeführt. Einzahl, Mehrzahl, Wortreihenfolge und bekannte Produktfamilien nutzen dieselbe Grundlage. Beschreibungen im Rezept bleiben erhalten. Unbekannte Zusätze, Verarbeitung und Ernährungsangaben werden nicht pauschal entfernt: Getrocknete Tomaten, Tomatenmark, laktosefreie Milch oder glutenfreie Nudeln decken das jeweilige andere Produkt nicht automatisch ab.
+
+Vorhandene offene Mengen werden einmalig angerechnet: Für drei reife Bananen und eine bereits notierte Banane kommen nur zwei zum bestehenden Artikel hinzu. Die Wochenübernahme bündelt passende Zutaten mehrerer Rezepte und berücksichtigt bereits reservierte Mengen. Bei einer unbekannten Bund-/Packungsgröße entsteht keine zweite Produktzeile durch eine geratene Umrechnung. Die Zuordnung der tatsächlich ergänzten Mengen bleibt erhalten, sodass eine spätere Plan-Korrektur manuelle Mengen schützt. Regressionstests prüfen den Bananenfall, Teilmengen, Vorrat, mehrere Rezepte, unterschiedliche Produktarten und die Rücknahme eines Gerichts. Offline-Paket **einkauf-shell-v136**.
 
 ## Neu in Version 2.123: Übersichtliche Rezeptfilter und verlässliche Kochbarkeitszähler
 

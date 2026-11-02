@@ -7044,6 +7044,61 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const pickRows = page => page.locator('#recipe-pick .pick-row strong').allTextContents();
 
+  function bananaData2124(quantity=3,unit='Stück') {
+    const data=structuredClone(demo),at='2026-11-02T09:00:00.000Z',record=(id,fields)=>({id,...fields,createdAt:at,updatedAt:at,deletedAt:null,_clock:{}});
+    data.items=quantity?[record('banana-manual2124',{name:'Bananen',quantity,unit,checked:false,createdBy:'Nico',storeId:''})]:[];
+    data.pantry=[];data.meals=[];
+    data.recipes=[record('banana-bread2124',{name:'Bananenbrot',servings:10,tags:[],instructions:'Reife Bananen zerdrücken.'})];
+    data.ingredients=[record('banana-ingredient2124',{recipeId:'banana-bread2124',name:'Reife Bananen',quantity:3,unit:'Stück'})];
+    return {data,record};
+  }
+  for(const [quantity,unit,remaining] of [[3,'Stück',0],[1,'Bund',0],[1,'Stück',1]])test(`2.124: Bananenbrot mit ${quantity} ${unit} Bananen auf der Liste ergänzt nur die echte Fehlmenge`,async()=>{
+    const {data}=bananaData2124(quantity,unit),{ctx,page,problems}=await filterContext(data);
+    await open(page);const before=(await storedDemo(page)).items;await openMealPicker(page);
+    assert.equal(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),'Nach dem Einkauf (1)');
+    await page.locator('#recipe-pick [data-value=banana-bread2124]').click();
+    assert.equal(await page.inputValue('#meal-form input[name=servings]'),'10');
+    assert.match(await page.textContent('#meal-save-shopping small'),new RegExp(`${remaining} noch auf den Einkaufszettel`));
+    await page.click('#meal-save-shopping');await page.waitForSelector('#meal-dialog',{state:'hidden'});
+    const saved=await storedDemo(page),items=active(saved.items);assert.equal(items.length,1);assert.equal(items[0].id,'banana-manual2124');assert.equal(items[0].name,'Bananen');
+    assert.equal(items[0].quantity,unit==='Bund'?1:3);assert.equal(items[0].unit,unit);assert.equal(saved.ingredients[0].name,'Reife Bananen');
+    if(!remaining)assert.deepEqual(saved.items,before,'ausreichende bzw. unbekannte Packungsgrößen werden nicht verdoppelt');
+    else {
+      assert.equal(saved.meals[0].listedParts.length,1);assert.equal(saved.meals[0].listedParts[0].quantity,2);
+      await page.getByRole('button',{name:'Bananenbrot aus dem Plan entfernen'}).click();await sheetOpen(page);await page.click('#plan-adjust-apply');
+      assert.equal(active((await storedDemo(page)).items)[0].quantity,1,'Entfernen des Gerichts lässt die ursprüngliche manuelle Banane stehen');
+    }
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.124: Wocheneinkauf fasst Reife-/Größenangaben aus zwei Rezepten zusammen und ordnet die Mengen beiden Gerichten zu',async()=>{
+    const {data,record}=bananaData2124(0),day=isoDay(new Date());
+    data.recipes.push(record('banana-shake2124',{name:'Bananenshake',servings:2,tags:[],instructions:'Mixen.'}));
+    data.ingredients.push(record('banana-small2124',{recipeId:'banana-shake2124',name:'kleine Banane',quantity:2,unit:'Stück'}));
+    data.meals=[record('banana-meal2124',{date:day,recipeId:'banana-bread2124',servings:10,done:false}),record('shake-meal2124',{date:day,recipeId:'banana-shake2124',servings:2,done:false})];
+    const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);
+    assert.equal(await page.locator('#week-ingredients input:checked').count(),1);assert.match(await page.textContent('#week-ingredients'),/5 Stück/);
+    await page.click('#week-form button[type=submit]');await page.waitForSelector('#week-dialog',{state:'hidden'});
+    const saved=await storedDemo(page),items=active(saved.items);assert.equal(items.length,1);assert.equal(items[0].quantity,5);assert.equal(items[0].unit,'Stück');
+    assert.equal(saved.meals.find(row=>row.id==='banana-meal2124').listedParts[0].quantity,3);assert.equal(saved.meals.find(row=>row.id==='shake-meal2124').listedParts[0].quantity,2);
+    assert.deepEqual(saved.ingredients.map(row=>row.name),['Reife Bananen','kleine Banane']);
+    await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.deepEqual((await storedDemo(page)).items,saved.items);
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.124: vorhandene Bananen im Vorrat decken reife Bananen ab, getrocknete Bananen bleiben getrennt',async()=>{
+    const {data,record}=bananaData2124();data.pantry=[record('stock-banana2124',{name:'Banane',available:true})];
+    const {ctx,page,problems}=await filterContext(data);await open(page);await openMealPicker(page);
+    assert.equal(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),'Sofort kochbar (1)');
+    await page.locator('#recipe-pick [data-value=banana-bread2124]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 0 Produkte fehlen.*0 noch/);
+    await page.click('#meal-dialog [data-close]');await ctx.close();
+    const negative=bananaData2124();negative.data.ingredients[0].name='getrocknete Bananen';const other=await filterContext(negative.data);await open(other.page);await openMealPicker(other.page);
+    assert.equal(await other.page.locator('#recipe-filter option[value=available-shopping]').textContent(),'Nach dem Einkauf (0)');
+    await other.page.locator('#recipe-pick [data-value=banana-bread2124]').click();await other.page.click('#meal-save-shopping');await other.page.waitForSelector('#meal-dialog',{state:'hidden'});
+    assert.deepEqual(active((await storedDemo(other.page)).items).map(row=>row.name).sort(),['Bananen','getrocknete Bananen']);
+    assert.deepEqual([...problems,...other.problems],[]);await other.ctx.close();
+  });
+
   function emptyPlanRecipes2123() {
     const data = structuredClone(demo), names = ['Milch', 'Nudeln', 'Eier', 'Tomaten'], at = '2026-11-02T10:00:00.000Z';
     data.pantry = []; data.items = []; data.meals = [];

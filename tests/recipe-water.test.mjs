@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { active, addToList, emptyData, ingredientItems, inPantry, isCookingWater, merge, pantryAdditions, pantryKeys } from '../data.js';
+import { active, addToList, emptyData, ingredientItems, inPantry, isCookingWater, merge, pantryAdditions, pantryKeys, sameIngredient } from '../data.js';
 import { availability, indexNames, required } from '../cookable.js';
 import { aggregateIngredients, shoppingDeficits } from '../plan.js';
 import { productGroupMigration } from '../product-groups.js';
@@ -40,7 +40,11 @@ test('Rezeptwasser: direkte und Wochenübernahme lassen Wasser aus, Getränke bl
   const direct = ingredientItems(ingredients, 'r', '', 2, 'Nico', at);
   assert.deepEqual(direct.map(op => op.patch.name), ['Mineralwasser', 'Mehl']);
   const rows = aggregateIngredients([{ recipeId: 'r', servings: 4 }], [{ id: 'r', name: 'Teig', servings: 2 }], ingredients);
-  assert.deepEqual(shoppingDeficits(rows).map(row => row.name), ['Mehl', 'Mineralwasser']);
+  const deficits=shoppingDeficits(rows);
+  assert.deepEqual(deficits.map(row => row.name), ['Mehl', 'Mineralwasser']);
+  assert.equal(deficits.find(row=>row.name==='Mineralwasser').quantity,600,'nur die verdoppelte Mineralwassermenge; Kochwasser wird nicht dazugezählt');
+  assert.equal(sameIngredient('Wasser','Mineralwasser'),false);
+  assert.equal(inPantry(pantryKeys([{name:'Wasser',available:true}]),'Mineralwasser'),false);
   // Manuelles Hinzufügen darf weiterhin ausdrücklich Wasser einkaufen.
   const data = merge(emptyData(), addToList([{ name: 'Wasser', quantity: 6, unit: 'Flasche' }], '', 'Nico', at).ops);
   assert.equal(active(data.items)[0].name, 'Wasser');

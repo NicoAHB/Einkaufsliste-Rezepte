@@ -5,7 +5,7 @@ import { mountExpenseCategoryPicker } from './expense-category-view.js';
 import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
-import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
@@ -1741,11 +1741,11 @@ function saveMeal(event) {
 // Einträge können deshalb auch während einer Korrektur sicher dazukommen.
 function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = state, unchecked = []) {
   const take=weekTakeId(plan.takeUse||plan.basket.use), ops=[],rename=new Map(appliedAliases().map(alias=>[alias.from,alias.name])); let projected=snapshot;
-  const quotas=weekShoppingNeeds(plan,snapshot).filter(row=>selected.some(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group)).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
+  const quotas=weekShoppingNeeds(plan,snapshot).filter(row=>selected.some(chosen=>sameIngredient(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group)).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
   for(const use of plan.basket.use) {
     const meal=plan.meals.find(row=>row.id===use.id);
     const rows=aggregateIngredients([use],active(snapshot.recipes),active(snapshot.ingredients)).flatMap(row=>{
-      const quota=quotas.find(chosen=>sameProduct(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group);if(!quota)return [];
+      const quota=quotas.find(chosen=>sameIngredient(chosen.name,row.name)&&unitSpec(chosen.unit).group===unitSpec(row.unit).group);if(!quota)return [];
       const factor=unitSpec(row.unit).factor,amount=Math.min(row.quantity*factor,quota.left);quota.left-=amount;
       return amount>1e-7?[{...row,quantity:Math.round(amount/factor*1e6)/1e6}]:[];
     });
@@ -1754,7 +1754,7 @@ function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = st
     const result=addToList(reuseProductNames(inputs,projected.items,storeId),storeId,config.actor||'Unbekannt',new Date(lastTime).toISOString(),projected.items.map(item=>rename.has(aliasKey(item.name))?{...item,name:rename.get(aliasKey(item.name))}:item),itemHistory(),`${take}-${shortHash(meal.id)}`);
     for(const op of result.ops)op.patch.planLinked=true;
     projected=merge(projected,result.ops);ops.push(...result.ops);
-    const parts=result.ops.filter(op=>!rows.find(row=>row.unit===NO_AMOUNT&&sameProduct(row.name,op.patch.name||projected.items.find(item=>item.id===op.entityId)?.name||''))).map(op=>{
+    const parts=result.ops.filter(op=>!rows.find(row=>row.unit===NO_AMOUNT&&sameIngredient(row.name,op.patch.name||projected.items.find(item=>item.id===op.entityId)?.name||''))).map(op=>{
       const item=projected.items.find(row=>row.id===op.entityId),amount=op.patch.add||op.patch;
       return {itemId:item.id,sourceId:op.id,at:op.at,name:item.name,storeId:item.storeId,quantity:amount.quantity,unit:amount.unit,remaining:amount.quantity};
     });
@@ -1918,7 +1918,7 @@ function renderWeekRows() {
       : 'Keine Zutaten: Plane zuerst Gerichte mit Rezepten ein oder nimm schon gekochte Gerichte hinzu.', 'empty'));
   }
   for (const row of rows) {
-    const missing=deficits.find(needed=>sameProduct(needed.name,row.name)&&unitSpec(needed.unit).group===unitSpec(row.unit).group);
+    const missing=deficits.find(needed=>sameIngredient(needed.name,row.name)&&unitSpec(needed.unit).group===unitSpec(row.unit).group);
     const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(missing||row));
     const stocked = inPantry(keys, row.name);
     check.type = 'checkbox'; check.checked = required(row) && !stocked && Boolean(missing);

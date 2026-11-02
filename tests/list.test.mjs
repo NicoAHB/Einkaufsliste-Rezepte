@@ -254,6 +254,7 @@ test('Vorrat: „Zwiebeln“ im Vorrat deckt das Rezept „Zwiebel“ ab; Hinzuf
   assert.equal(inPantry(keys, 'Zwiebel'), true);
   assert.equal(inPantry(keys, 'Ei'), true);
   assert.equal(inPantry(keys, 'Salz, Zwiebel'), true);
-  assert.equal(inPantry(keys, 'rote Zwiebel'), false);
+  assert.equal(inPantry(keys, 'rote Zwiebel'), true, 'Einzahl einer bereits bekannten Produktgruppen-Variante');
+  assert.equal(inPantry(keys, 'Frühlingszwiebel'), false, 'eine andere Produktart bleibt getrennt');
   assert.deepEqual(pantryAdditions(['Zwiebel', 'Tomate', 'Tomaten'], keys), ['Tomate'], 'Zwiebel steht schon da; Tomate und Tomaten sind eins');
 });

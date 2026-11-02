@@ -1,8 +1,7 @@
 /* Wochenplan: Datumsrechnung und Zutaten über mehrere Gerichte zusammenzählen. Reine Logik ohne DOM.
    Tage sind lokale Kalendertage im Format JJJJ-MM-TT; gerechnet wird um 12 Uhr, damit Zeitumstellungen nie einen Tag verschieben. */
-import { sameProduct, pantryKeys, inPantry } from './data.js';
+import { sameIngredient, pantryKeys, inPantry } from './data.js';
 import { productKey, unitSpec } from './prices.js';
-import { canonicalProductName } from './product-groups.js';
 import { NO_AMOUNT } from './recipe-import.js';
 
 const pad = number => String(number).padStart(2, '0');
@@ -98,7 +97,7 @@ export function recipeChanges(snapshot, rows) {
 /* Zutaten aller Gerichte zusammenzählen. Gleicher Name und vergleichbare Einheit werden addiert
    (g und kg zusammen, ml und l zusammen); 1,2 kg statt 1200 g. Unterschiedliche Einheiten wie
    „2 EL Öl“ und „100 ml Öl“ bleiben getrennt, weil sich ein Esslöffel nicht ehrlich umrechnen lässt.
-   Als gleicher Name gilt auch eine andere Schreibweise desselben Produkts („Zwiebel“ und „Zwiebeln“, siehe sameProduct in data.js); angezeigt wird die Schreibweise, die in den
+   Die gemeinsame Zutatenidentität erkennt auch bekannte Rezeptzusätze („reife Bananen“/„Banane“, siehe sameIngredient in data.js); angezeigt wird die Schreibweise, die in den
    Rezepten am häufigsten vorkommt, bei Gleichstand die längere (meist die Mehrzahl). */
 export function aggregateIngredients(meals, recipes, ingredients) {
   const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
@@ -111,7 +110,7 @@ export function aggregateIngredients(meals, recipes, ingredients) {
     const factor = meal.servings / recipe.servings;
     for (const row of byRecipe.get(recipe.id) || []) {
       const spec = unitSpec(row.unit), noAmount = row.unit === NO_AMOUNT, group = noAmount ? 'nach' : spec.group, name = row.name.trim();
-      let entry = entries.find(found => found.group === group && sameProduct(found.name, name));
+      let entry = entries.find(found => found.group === group && sameIngredient(found.name, name));
       if (!entry) { entry = { name, group, label: spec.label, unit: row.unit, base: 0, sources: new Set(), spellings: new Map() }; entries.push(entry); }
       if (!noAmount) entry.base += row.quantity * factor * spec.factor;
       entry.sources.add(recipe.name);
@@ -135,7 +134,7 @@ export function aggregateIngredients(meals, recipes, ingredients) {
 // Offene Mengen werden nur einmal verrechnet. Bereits für andere Gerichte
 // eingeplante Mengen stehen zusätzlichen Gerichten nicht nochmals zur Verfügung.
 export function shoppingDeficits(rows, pantry = [], items = [], reserved = []) {
-  const sameGroup=(a,b)=>sameProduct(canonicalProductName(a),canonicalProductName(b));
+  const sameGroup=sameIngredient;
   const stock=pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
   const consume=(row,amount)=>{for(const item of pool){if(!sameGroup(item.name,row.name)||unitSpec(item.unit).group!==unitSpec(row.unit).group)continue;const used=Math.min(amount,item.left);amount-=used;item.left-=used;if(amount<=1e-8)break;}return amount;};
   for(const row of reserved)if(!inPantry(stock,row.name))consume(row,row.quantity*unitSpec(row.unit).factor);

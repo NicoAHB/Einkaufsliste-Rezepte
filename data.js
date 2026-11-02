@@ -2,7 +2,8 @@
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
-import { canonicalProductName } from './product-groups.js';
+import { ingredientProductName, spellingStem } from './product-groups.js';
+export { spellingStem };
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
@@ -400,13 +401,6 @@ export function suggestItemNames(items, query, limit = 6) {
 /* Schreibweisen: „Zwiebel“ und „Zwiebeln“, „Tomate“ und „Tomaten“, „Apfel“ und „Äpfel“ meinen denselben Artikel. Die App rät nie still: Sie
    schlägt die bekannte Schreibweise nur vor. Erst wenn die Person sie bestätigt, wird die Zuordnung gemerkt (Sammlung `aliases`) und danach
    automatisch angewendet. */
-const PLURAL = ['en', 'er', 'n', 'e'];
-export function spellingStem(name) {
-  return productKey(name).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => {
-    for (const ending of PLURAL) if (word.length - ending.length >= 2 && word.endsWith(ending)) return word.slice(0, -ending.length);
-    return word;
-  }).join(' ');
-}
 // Bekannte Namen, die wie `typed` geschrieben werden könnten, aber anders lauten (nie der genau gleiche Name).
 export function spellingVariants(typed, known) {
   const stem = spellingStem(typed);
@@ -447,6 +441,8 @@ export function sameProduct(a, b) {
   const one = left.split(' '), two = right.split(' ');
   return one.length === two.length && one.every((word, index) => word === two[index] || (Math.max(word.length, two[index].length) >= LONG_WORD && wordSimilarity(word, two[index]) >= SAME_PRODUCT));
 }
+// Rezept-/Vorratsabgleich; freie Listenartikel behalten den strengeren Namensvergleich oben.
+export const sameIngredient = (a,b) => sameProduct(ingredientProductName(a),ingredientProductName(b));
 
 /* Gemerkte Namen (Sammlung `aliases`) sind von zwei Herkünften. Eine bestätigte **Schreibweise** („Zwiebel“ → „Zwiebeln“) entsteht durch einen Tipp auf den Vorschlag
    „Meinst du dasselbe wie …?“; beide Seiten lassen sich gleich schreiben. Frühere Versionen (2.40 bis 2.43) legten auch Zuordnungen von **Kassenbontext** an
@@ -508,9 +504,9 @@ export function isCookingWater(name) {
 
 /* Vorrat: Zutaten, die man immer zu Hause hat. Ein Name wie „Salz, Pfeffer“ oder „Salz und Pfeffer“ besteht aus mehreren Teilen
    und zählt nur dann als Vorrat, wenn jeder Teil im Vorrat steht. Klammerzusätze („Zwiebel (rot)“) bleiben unberücksichtigt. */
-const nameParts = name => String(name).replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
+const nameParts = name => String(name).split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
 // Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
-export const pantryKey = name => spellingStem(canonicalProductName(name)) || productKey(canonicalProductName(name));
+export const pantryKey = name => spellingStem(ingredientProductName(name)) || productKey(ingredientProductName(name));
 // Ein Eintrag pro Name: die jüngste manuelle Fassung entscheidet. Automatische
 // Einträge laufen separat ab und verdrängen keinen vorhandenen manuellen Vorrat.
 // Alle IDs bleiben zum gemeinsamen Aufbrauchen/Entfernen erhalten.
