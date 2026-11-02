@@ -34,7 +34,7 @@ import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, l
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
 import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
-import { planReduction, planRemovalCounts, planRemovalDetails } from './plan-list.js';
+import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetails } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
@@ -1780,7 +1780,7 @@ function prepareWeekParts(plan, selected, storeId, rememberPantry, snapshot = st
       const item=projected.items.find(row=>row.id===op.entityId),amount=op.patch.add||op.patch;
       return {itemId:item.id,sourceId:op.id,at:op.at,name:item.name,storeId:item.storeId,quantity:amount.quantity,unit:amount.unit,remaining:amount.quantity};
     });
-    ops.push(nextOp('meals',meal.id,{listedServings:meal.servings,listedAt:new Date().toISOString(),listedRows:snapshotRows(active(snapshot.ingredients).filter(row=>row.recipeId===meal.recipeId)),listedUntracked:Boolean(meal.listedUntracked||(meal.listedServings&&!meal.listedParts?.length)),listedParts:[...(meal.listedParts||[]),...parts]}));
+    ops.push(nextOp('meals',meal.id,{listedServings:meal.servings,listedAt:new Date().toISOString(),listedRows:snapshotRows(active(snapshot.ingredients).filter(row=>row.recipeId===meal.recipeId)),listedUntracked:Boolean(meal.listedUntracked||(meal.listedServings&&!Array.isArray(meal.listedParts))),listedParts:[...(meal.listedParts||[]),...parts]}));
   }
   if(rememberPantry){
     for(const change of pantryChanges(pantryAdditions(unchecked,pantryKeys(snapshot.pantry)),snapshot.pantry||[]))ops.push(nextOp('pantry',change.id,change.patch));
@@ -1832,22 +1832,27 @@ function renderPlanAdjustment() {
     const left=Math.max(0,item.quantity-remove);
     box.append(element('li',`${item.name} · ${storeName(item.storeId)}: ${amountText(item)} → ${left>1e-8?amountText({...item,quantity:left}):'entfällt'}`));
   }
-  const {legacy,partial,skipped}=request.reduction;
-  $('#plan-adjust-note').textContent=legacy?'Für diese frühere Übernahme fehlt eine genaue Zuordnung. Die Einkaufsliste bleibt unverändert; bitte die Mengen selbst prüfen.':partial?'Ein Teil stammt aus einer früheren Übernahme ohne genaue Zuordnung. Nur die zugeordneten Anteile werden angepasst; bitte die übrigen Mengen selbst prüfen.':skipped.length?'Bereits gekaufte, entfernte, verschobene oder manuell neu gesetzte Zutaten bleiben unverändert. Bitte diese Mengen bei Bedarf selbst prüfen.':byItem.size?'Nur die hier aufgeführten Wochenplan-Anteile werden entfernt.':'Es gibt keine zugehörigen offenen Mengen mehr. Deine Einkaufsliste bleibt unverändert.';
+  const {legacy,partial,skipped}=request.reduction,noAdded=!legacy&&!partial&&meal.listedParts?.length===0;
+  $('#plan-adjust-note').textContent=legacy?'Für diese frühere Übernahme fehlt eine genaue Zuordnung. Die Einkaufsliste bleibt unverändert; bitte die Mengen selbst prüfen.':partial?'Ein Teil stammt aus einer früheren Übernahme ohne genaue Zuordnung. Nur die zugeordneten Anteile werden angepasst; bitte die übrigen Mengen selbst prüfen.':noAdded?'Für dieses Gericht wurden keine zusätzlichen Mengen auf den Einkaufszettel geschrieben.':skipped.length?'Bereits gekaufte, entfernte, verschobene oder manuell neu gesetzte Zutaten bleiben unverändert. Bitte diese Mengen bei Bedarf selbst prüfen.':byItem.size?'Nur die hier aufgeführten, durch dieses Gericht hinzugefügten Mengen werden entfernt.':'Es gibt keine zugehörigen offenen Mengen mehr. Deine Einkaufsliste bleibt unverändert.';
   const removing=!request.next;
   const counts=planRemovalCounts(request.reduction),info=$('#plan-adjust-remaining'),counted=!legacy&&!partial;
   const details=planRemovalDetails(request.reduction,state.items),allRemoved=details.every(row=>row.status==='removed');
-  info.hidden=!removing || (!counts.removed && counts.remaining>0) || !counted;
-  info.textContent=allRemoved?(counts.remaining?`${counts.removed} von ${counts.total} Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle Zutaten sind schon vom Einkaufszettel entfernt.'):(counts.remaining?`${counts.removed} von ${counts.total} Zutaten werden nicht mehr angepasst.`:'Diese Zutaten werden nicht mehr angepasst.');
+  info.hidden=!removing || !counts.total || (!counts.removed && counts.remaining>0) || !counted;
+  info.textContent=allRemoved?(counts.remaining?`${counts.removed} von ${counts.total} hinzugefügten Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle hinzugefügten Zutaten sind schon vom Einkaufszettel entfernt.'):(counts.remaining?`${counts.removed} von ${counts.total} hinzugefügten Zutaten werden nicht mehr angepasst.`:'Diese hinzugefügten Zutaten werden nicht mehr angepasst.');
   const removedList=$('#plan-adjust-removed');removedList.replaceChildren();removedList.hidden=info.hidden||!details.length;
   const detailLabels={removed:'Bereits entfernt',purchased:'Bereits gekauft',moved:'In ein anderes Geschäft verschoben',changed:'Inzwischen geändert'};
   for(const row of details)removedList.append(element('li',allRemoved?row.name:`${row.name} · ${detailLabels[row.status]}`));
+  const existing=removing?planExistingDetails(meal,withoutSeparate(state.items,state.stores)):[],context=$('#plan-adjust-existing'),existingList=$('#plan-adjust-existing-list');
+  context.hidden=!existing.length;context.open=existing.some(row=>row.status!=='present');
+  $('#plan-adjust-existing-title').textContent=`Schon vorher notiert (${existing.length})`;
+  const contextLabels={removed:'Inzwischen entfernt',purchased:'Inzwischen gekauft',present:'Weiterhin auf dem Einkaufszettel'};
+  existingList.replaceChildren(...existing.map(row=>element('li',`${row.name} · ${contextLabels[row.status]}`)));
   $('#plan-adjust-title').textContent=removing?`Gericht vom ${dayName(meal.date)} entfernen?`:'Einkaufsliste anpassen?';
-  $('#plan-adjust-intro').textContent=removing?'Möchtest du auch die Zutaten dieses Rezepts vom Einkaufszettel entfernen? Manuelle Zusatzmengen und das gespeicherte Rezept bleiben erhalten.':'Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.';
-  $('#plan-adjust-apply').textContent=removing?(counted&&counts.removed&&counts.remaining?(counts.remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${counts.remaining} Zutaten auch vom Einkaufszettel entfernen`):'Ja, Zutaten dieses Rezepts entfernen'):byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
+  $('#plan-adjust-intro').textContent=removing?'Möchtest du die durch dieses Gericht hinzugefügten Mengen vom Einkaufszettel entfernen? Schon vorher notierte Mengen und das gespeicherte Rezept bleiben erhalten.':'Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.';
+  $('#plan-adjust-apply').textContent=removing?(counted&&counts.removed&&counts.remaining?(counts.remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${counts.remaining} Zutaten auch vom Einkaufszettel entfernen`):'Ja, hinzugefügte Mengen entfernen'):byItem.size?'Einkaufsliste anpassen':'Planänderung übernehmen';
   $('#plan-adjust-apply').hidden=removing&&!byItem.size;
   $('#plan-adjust-apply').disabled=removing&&!byItem.size;
-  $('#plan-adjust-keep').textContent=removing?(byItem.size?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':legacy||!allRemoved?'Nur das Gericht entfernen – Einkaufsliste unverändert lassen':'Gericht entfernen – Zutaten sind bereits vom Einkaufszettel entfernt'):'Einkaufsliste unverändert lassen';
+  $('#plan-adjust-keep').textContent=removing?(byItem.size?'Nein, nur das Gericht entfernen – Zutaten bleiben auf dem Einkaufszettel':legacy||noAdded||!allRemoved?'Nur das Gericht entfernen – Einkaufsliste unverändert lassen':'Gericht entfernen – Zutaten sind bereits vom Einkaufszettel entfernt'):'Einkaufsliste unverändert lassen';
   $('#plan-adjust-error').hidden=true;
 }
 function finishPlanAdjustment(adjust) {

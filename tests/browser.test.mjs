@@ -7060,6 +7060,40 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     data.items=[record('tomato-pack2125',{name:'Tomaten',quantity:1,unit:'Packung',storeId:'',checked:false,createdBy:'Nico'})];
     data.pantry=[record('onion-stock2125',{name:'Zwiebeln',available:true})];return {data,record};
   }
+  for(const state of ['vorhanden','entfernt','neu hinzugefügt'])test(`2.126: vorherige Tomaten ${state} bleiben beim Entfernen des Gerichts getrennt von den fünf hinzugefügten Zutaten`,async()=>{
+    const {data,record}=tomatoData2125();Object.assign(data.items[0],{quantity:4,unit:'Stück'});
+    for(const [i,[name,quantity,unit]] of [['Zucchini',2,'Stück'],['Aubergine',1,'Stück'],['Paprika',2,'Stück'],['Knoblauchzehen',2,'Stück'],['Thymian',1,'TL']].entries())data.ingredients.push(record(`extra2126-${i}`,{recipeId:'ratatouille2125',name,quantity,unit}));
+    const {ctx,page,problems}=await filterContext(data);await open(page);await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();await page.click('#meal-save-shopping');
+    const planned=await storedDemo(page);assert.equal(planned.meals[0].listedParts.length,5);assert.ok(planned.meals[0].listedParts.every(part=>part.itemId!=='tomato-pack2125'));
+    if(state!=='vorhanden'){
+      await goTab(page,'shopping');await page.locator('#items .item[data-id=tomato-pack2125] .item-copy').click();await sheetOpen(page);await page.click('#delete-item');await page.waitForSelector('#edit-item-dialog',{state:'hidden'});
+      if(state==='neu hinzugefügt'){await page.fill('#item-form [name=name]','Tomaten');await chooseUnit(page,'#item-form [name=unit]','Stück');await page.fill('#item-form [name=quantity]','4');await page.click('#item-form button[type=submit]');}
+    }
+    await goTab(page,'plan');const before=await storedDemo(page);await page.getByRole('button',{name:'Ratatouille aus dem Plan entfernen',exact:true}).click();await sheetOpen(page);
+    assert.equal(await page.locator('#plan-adjust-list li').count(),5);assert.ok(!(await page.textContent('#plan-adjust-list')).includes('Tomaten'));
+    assert.equal(await page.locator('#plan-adjust-remaining').isHidden(),true,'der eigene Artikel wird nicht als entfernte Rezeptzutat mitgezählt');
+    assert.equal(await page.textContent('#plan-adjust-existing-title'),'Schon vorher notiert (1)');
+    assert.deepEqual(await page.locator('#plan-adjust-existing-list li').allTextContents(),[`Tomaten · ${state==='vorhanden'?'Weiterhin auf dem Einkaufszettel':'Inzwischen entfernt'}`]);
+    if(state==='vorhanden')await page.locator('#plan-adjust-existing summary').click();
+    assert.equal(await page.locator('#plan-adjust-existing-list').isVisible(),true);
+    if(state==='entfernt'){await page.locator('#plan-adjust-existing').scrollIntoViewIfNeeded();await page.screenshot({path:'/workspace/work/sattplan-2126-vorherige-tomaten.png'});}
+    await page.click('#plan-adjust-cancel');assert.deepEqual(await storedDemo(page),before,'Kontext und Abbrechen verändern keine Einkaufsdaten');
+    await page.getByRole('button',{name:'Ratatouille aus dem Plan entfernen',exact:true}).click();await page.click('#plan-adjust-apply');await page.waitForSelector('#plan-adjust-dialog',{state:'hidden'});
+    const after=await storedDemo(page);assert.deepEqual(after.recipes,before.recipes);assert.equal(active(after.meals).length,0);
+    assert.deepEqual(after.items.filter(row=>row.name==='Tomaten'),before.items.filter(row=>row.name==='Tomaten'),'alte und neue eigene Tomaten werden nicht angetastet');
+    assert.equal(active(after.items).length,state==='entfernt'?0:1);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.126: vollständig durch vorhandene Artikel abgedecktes Gericht bleibt auch nach erneuter Übernahme eindeutig zugeordnet',async()=>{
+    const {data}=tomatoData2125();Object.assign(data.items[0],{quantity:4,unit:'Stück'});
+    const {ctx,page,problems}=await filterContext(data);await open(page);const original=(await storedDemo(page)).items;await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();await page.click('#meal-save-shopping');
+    await page.locator('.day.today .meal .link-button').click();await sheetOpen(page);await page.locator('#plan-recipe-content').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(page);await page.click('#transfer-form button[type=submit]');await page.waitForSelector('#transfer-dialog',{state:'hidden'});
+    const transferred=await storedDemo(page);assert.deepEqual(transferred.meals[0].listedParts,[]);assert.equal(transferred.meals[0].listedUntracked,false);assert.deepEqual(transferred.items,original);
+    await goTab(page,'plan');await page.getByRole('button',{name:'Ratatouille aus dem Plan entfernen',exact:true}).click();await sheetOpen(page);
+    assert.match(await page.textContent('#plan-adjust-note'),/keine zusätzlichen Mengen/);assert.ok(!(await page.textContent('#plan-adjust-note')).includes('frühere Übernahme'));
+    assert.equal(await page.locator('#plan-adjust-remaining').isHidden(),true);assert.equal(await page.locator('#plan-adjust-apply').isHidden(),true);assert.match(await page.textContent('#plan-adjust-keep'),/Nur das Gericht entfernen.*unverändert/);
+    await page.click('#plan-adjust-keep');assert.deepEqual((await storedDemo(page)).items,original);assert.deepEqual(problems,[]);await ctx.close();
+  });
   for(const route of ['Rezept','geplantes Gericht','Wocheneinkauf','Speichern mit Einkauf'])test(`2.125: eine Packung Tomaten verhindert zusätzliche vier Stück über ${route}`,async()=>{
     const {data,record}=tomatoData2125();
     if(['geplantes Gericht','Wocheneinkauf'].includes(route))data.meals=[record('meal2125',{date:isoDay(new Date()),recipeId:'ratatouille2125',servings:4,done:false})];
@@ -9247,9 +9281,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();await page.waitForSelector('#plan-adjust-dialog[open]');
     const remaining=5-removed,apply=page.locator('#plan-adjust-apply');
     assert.equal(await apply.isVisible(),remaining>0);
-    if(removed===0) { assert.equal(await apply.textContent(),'Ja, Zutaten dieses Rezepts entfernen');assert.equal(await page.locator('#plan-adjust-remaining').isVisible(),false); }
+    if(removed===0) { assert.equal(await apply.textContent(),'Ja, hinzugefügte Mengen entfernen');assert.equal(await page.locator('#plan-adjust-remaining').isVisible(),false); }
     else {
-      assert.equal(await page.textContent('#plan-adjust-remaining'),remaining?`${removed} von 5 Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle Zutaten sind schon vom Einkaufszettel entfernt.');
+      assert.equal(await page.textContent('#plan-adjust-remaining'),remaining?`${removed} von 5 hinzugefügten Zutaten hast du schon vom Einkaufszettel entfernt.`:'Alle hinzugefügten Zutaten sind schon vom Einkaufszettel entfernt.');
       if(remaining)assert.equal(await apply.textContent(),remaining===1?'Ja, restliche Zutat auch vom Einkaufszettel entfernen':`Ja, restliche ${remaining} Zutaten auch vom Einkaufszettel entfernen`);
     }
     assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),before.items.filter(row=>row.deletedAt).map(row=>row.name).toSorted());
@@ -9271,7 +9305,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.reload();await goTab(page,'plan');const before=await storedDemo(page);
     await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
     assert.equal(await page.textContent('#plan-adjust-apply'),'Ja, restliche 2 Zutaten auch vom Einkaufszettel entfernen');
-    assert.equal(await page.textContent('#plan-adjust-remaining'),'3 von 5 Zutaten werden nicht mehr angepasst.');
+    assert.equal(await page.textContent('#plan-adjust-remaining'),'3 von 5 hinzugefügten Zutaten werden nicht mehr angepasst.');
     assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),[`${before.items[0].name} · Bereits gekauft`,`${before.items[1].name} · In ein anderes Geschäft verschoben`,`${before.items[2].name} · Inzwischen geändert`].toSorted());
     assert.match(await page.textContent('#plan-adjust-note'),/gekaufte.*verschobene.*manuell neu gesetzte/);
     await page.click('#plan-adjust-apply');const after=await storedDemo(page);
@@ -9629,7 +9663,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.102: vollständig gekaufte Zutaten sind benannt und werden nicht als entfernt bezeichnet',async()=>{
     const {ctx,page,problems}=await countContext289(0);await page.evaluate(()=>{const key='einkauf-demo-v1',saved=JSON.parse(localStorage.getItem(key));saved.base.items.forEach(row=>row.checked=true);localStorage.setItem(key,JSON.stringify(saved));});
     await page.reload();await goTab(page,'plan');const before=await storedDemo(page);await page.getByRole('button',{name:'Zählergericht aus dem Plan entfernen',exact:true}).click();
-    assert.equal(await page.textContent('#plan-adjust-remaining'),'Diese Zutaten werden nicht mehr angepasst.');assert.equal(await page.locator('#plan-adjust-apply').isHidden(),true);
+    assert.equal(await page.textContent('#plan-adjust-remaining'),'Diese hinzugefügten Zutaten werden nicht mehr angepasst.');assert.equal(await page.locator('#plan-adjust-apply').isHidden(),true);
     assert.deepEqual((await page.locator('#plan-adjust-removed li').allTextContents()).toSorted(),before.items.map(row=>`${row.name} · Bereits gekauft`).toSorted());assert.match(await page.textContent('#plan-adjust-keep'),/Nur das Gericht entfernen.*Einkaufsliste unverändert/);
     await page.click('#plan-adjust-keep');assert.deepEqual((await storedDemo(page)).items,before.items);assert.deepEqual(problems,[]);await ctx.close();
   });

@@ -4735,3 +4735,9 @@ button.recipe-delete { color:var(--danger) }
 #expense-category-add-dialog .sheet-head h2,#expense-category-delete-dialog .sheet-head h2 { min-width:0; overflow-wrap:anywhere }
 #expense-category-add-dialog .sheet-head>.icon-button,#expense-category-delete-dialog .sheet-head>.icon-button { flex:none }
 #expense-category-delete-apply { white-space:normal }
+
+/* Markierte Nebenaktionen behalten auch im Glas-Design einen klaren Rahmen. */
+:root :is(#export,#export-full,#restore-open,#disconnect,#test-proxy,#sheet-share),
+:root #plan-recipe-dialog > .stack > .sheet-actions > button {
+  border:2px solid var(--accent);
+}

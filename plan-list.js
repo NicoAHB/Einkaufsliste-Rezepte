@@ -1,6 +1,8 @@
 /* Nachvollziehbare Wochenplan-Anteile. Korrekturen betreffen ausschließlich die
    ursprüngliche Übernahme, niemals spätere manuelle Zuwächse oder neue Käufe. */
 import { unitSpec } from './prices.js';
+import { ingredientProductName, spellingStem } from './product-groups.js';
+import { NO_AMOUNT } from './recipe-import.js';
 const round = n => Math.round(n * 1e9) / 1e9;
 export function planSourceLive(item, part) {
   if (!item || item.deletedAt || item.checked || item.name !== part.name || item.storeId !== part.storeId) return false;
@@ -26,7 +28,7 @@ export function planReduction(meal, next, items) {
       changes.push({ item, part, remove, cut }); parts.push({ ...part, remaining });
     } else { parts.push(part); if (remove > 1e-8) skipped.push(part); }
   }
-  return { parts, changes, skipped, target, partial: Boolean(meal.listedUntracked), legacy: listed > 0 && !meal.listedParts?.length };
+  return { parts, changes, skipped, target, partial: Boolean(meal.listedUntracked), legacy: listed > 0 && !Array.isArray(meal.listedParts) };
 }
 // Mehrere Übernahmen derselben Einkaufszeile zählen als eine Zutat. Grundlage
 // sind genau die zugeordneten Anteile, die auch die Mengenprüfung verwendet.
@@ -46,6 +48,27 @@ export function planRemovalDetails(reduction, items) {
     details.set(part.itemId, { itemId: part.itemId, name: part.name, status });
   }
   return [...details.values()];
+}
+
+// Nur erläuternder Kontext: frühere eigene Einkaufsartikel sind keine Anteile
+// des Gerichts. Die Zuordnung und die Löschmengen oben werden dadurch nie erweitert.
+export function planExistingDetails(meal, items) {
+  if (!Array.isArray(meal.listedParts) || meal.listedUntracked || !Array.isArray(meal.listedRows)) return [];
+  const at=Date.parse(meal._clock?.listedAt?.at||meal.listedAt);if(!Number.isFinite(at))return [];
+  const key=name=>spellingStem(ingredientProductName(name));
+  const wanted=new Set(meal.listedRows.map(text=>text.split('|')).filter(([name,,unit])=>name&&unit!==NO_AMOUNT).map(([name])=>key(name)));
+  const owned=new Set(meal.listedParts.map(part=>part.itemId));
+  for(const part of meal.listedParts){const current=items.find(item=>item.id===part.sourceId||item._adds?.some(add=>add.id===part.sourceId));if(current)owned.add(current.id);}
+  const stamp=(row,field)=>Date.parse(row._clock?.[field]?.at||row[field]);
+  return items.filter(item=>{
+    if(owned.has(item.id)||!wanted.has(key(item.name))||!(Date.parse(item.createdAt)<=at))return false;
+    if(item.deletedAt&&stamp(item,'deletedAt')<=at)return false;
+    if(item.checked&&!(stamp(item,'checked')>at||Date.parse(item.shopBoughtAt)>at))return false;
+    if(item._planEmpty&&!(Date.parse(item.updatedAt)>at))return false;
+    if(stamp(item,'name')>at&&!wanted.has(key(item.productOriginalName||'')))return false;
+    return true;
+  }).map(item=>({itemId:item.id,name:item.name,status:item.checked?'purchased':item.deletedAt||item._planEmpty?'removed':'present'}))
+    .sort((a,b)=>a.name.localeCompare(b.name,'de'));
 }
 export function applyPlanCuts(item) {
   const spec = unitSpec(item.unit);

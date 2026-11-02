@@ -1,6 +1,14 @@
-# Sattplan – Version 2.125
+# Sattplan – Version 2.126
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.126: Eigene Einkaufsartikel erklären und wichtige Buttons klar umrahmen
+
+Der Löschdialog benennt ausdrücklich die **durch dieses Gericht hinzugefügten Mengen**. Passende Artikel, die bereits vor der Zutatenübernahme auf dem Einkaufszettel standen, werden anhand des gespeicherten Zutatenstands und der vorhandenen Artikelhistorie getrennt unter **Schon vorher notiert** erläutert. Dort steht beispielsweise **Tomaten · Inzwischen entfernt**, **Inzwischen gekauft** oder **Weiterhin auf dem Einkaufszettel**. Bei entfernten oder gekauften Artikeln ist der Abschnitt direkt aufgeklappt. Diese Hinweise erweitern weder die Zuordnung zum Gericht noch die entfernbaren Mengen; später neu eingetragene Artikel werden nicht als frühere Einträge ausgegeben. Der Hinweis wird bei alten oder unvollständigen Zuordnungen nicht erraten.
+
+Eine dokumentierte Übernahme mit leerer Zuordnungsliste bedeutet jetzt korrekt: **Für dieses Gericht wurden keine zusätzlichen Mengen auf den Einkaufszettel geschrieben.** Sie gilt auch nach erneuter Übernahme als vollständig erfasst. Ohne hinzugefügte Zutaten zeigt der Dialog weder eine alte Zuordnungswarnung noch die irreführende Meldung, alle Zutaten seien schon entfernt. **Nur das Gericht entfernen** lässt die Einkaufsliste erhalten. Regressionstests prüfen den ursprünglichen Tomatenablauf, vorhandene und später neu angelegte eigene Artikel, Abbrechen, vollständige Abdeckung und geschützte Teilmengen. Offline-Paket **einkauf-shell-v138**.
+
+Die Buttons **Zurück zum Wochenplan**, **Datensicherung erstellen (JSON)**, **Mit Fotos sichern (ZIP)**, **Datensicherung wiederherstellen**, **Token entfernen**, **Eigenen Hilfsdienst testen** und **Teilen** haben einen klaren 2-Pixel-Rahmen in der gewählten App-Farbe. Der Rahmen bleibt auch im Glas-Design, bei Schlicht und in dunkler Darstellung sichtbar.
 
 ## Neu in Version 2.125: Packungen und Stückbedarf auf allen Rezeptwegen berücksichtigen
 

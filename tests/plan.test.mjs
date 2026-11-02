@@ -163,7 +163,7 @@ test('Schlüssel der Zeilen: Name und Einheit (Schreibweisen gleich), kommt ders
 
 // Quellenbezogene Rücknahmen: manuelle Mengen und gleichzeitige Geräte erhalten.
 import { emptyData, merge, addToList, operation, active } from '../data.js';
-import { planReduction, planRemovalCounts, planRemovalDetails } from '../plan-list.js';
+import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetails } from '../plan-list.js';
 import { compact } from '../compact.js';
 const planAt = n => `2026-10-31T10:00:${String(n).padStart(2,'0')}.000Z`;
 function plannedFixture(manual = 100, fresh = false) {
@@ -231,6 +231,42 @@ test('Plan-Entfernungsdetails: mehrere Anteile derselben Zeile werden einmal gen
   const skipped={changes:[],skipped:[part,{...part,sourceId:'anderer-anteil'}]};
   assert.deepEqual(planRemovalDetails(skipped,[]),[{itemId:item.id,name:'Reis',status:'removed'}]);
   assert.deepEqual(planRemovalDetails({changes:[{item}],skipped:[part]},data.items),[]);
+});
+
+test('Plan-Kontext: vorher notierte und inzwischen entfernte Tomaten werden erläutert, ohne sie dem Gericht zuzuordnen',()=>{
+  const {data,meal}=plannedFixture(0,true),tomato={id:'manual-tomato',name:'Tomaten',quantity:4,unit:'Stück',storeId:'',checked:false,createdBy:'Nico',createdAt:planAt(1),updatedAt:planAt(5),deletedAt:planAt(5)};
+  const tracked={...meal,listedAt:planAt(3),listedRows:['Reis|400|g','Tomate|4|Stück']},items=[...data.items,tomato],before=JSON.stringify([tracked,items]);
+  assert.deepEqual(planExistingDetails(tracked,items),[{itemId:'manual-tomato',name:'Tomaten',status:'removed'}]);
+  const reduction=planReduction(tracked,null,items);
+  assert.deepEqual(planRemovalCounts(reduction),{total:1,remaining:1,removed:0},'nur die hinzugefügte Reiszeile zählt zu den Rezeptmengen');
+  const adjusted=merge({...data,items},reduction.changes.map(({item,part,cut})=>operation('items',item.id,{cutPlan:{...cut,originalQuantity:part.quantity}},'Nico',planAt(6))));
+  assert.deepEqual(adjusted.items.find(row=>row.id===tomato.id),tomato);
+  assert.equal(JSON.stringify([tracked,items]),before);
+});
+
+test('Plan-Kontext: vorhandene, entfernte und später gekaufte eigene Artikel bleiben unterscheidbar',()=>{
+  const meal={listedAt:planAt(3),listedRows:['reife Bananen|3|Stück'],listedParts:[]};
+  const item={id:'banana',name:'Banane',quantity:3,unit:'Stück',checked:false,createdAt:planAt(1),updatedAt:planAt(1),deletedAt:null};
+  assert.equal(planExistingDetails(meal,[item])[0].status,'present');
+  assert.equal(planExistingDetails(meal,[{...item,deletedAt:planAt(5)}])[0].status,'removed');
+  assert.equal(planExistingDetails(meal,[{...item,checked:true,deletedAt:planAt(5),shopBoughtAt:planAt(4)}])[0].status,'purchased');
+  for(const patch of [{createdAt:planAt(4)},{deletedAt:planAt(2)},{checked:true,shopBoughtAt:planAt(2)},{name:'Bananenchips'},{_planEmpty:true,quantity:0,updatedAt:planAt(2)}])assert.deepEqual(planExistingDetails(meal,[{...item,...patch}]),[],JSON.stringify(patch));
+  assert.deepEqual(planExistingDetails({...meal,listedParts:undefined},[item]),[],'bei älteren unvollständigen Zuordnungen nichts behaupten');
+  assert.deepEqual(planExistingDetails({...meal,listedUntracked:true},[item]),[]);
+});
+
+test('Plan-Kontext: manuelle Teilmengen derselben zugeordneten Zeile werden nicht doppelt aufgeführt; Operationszeiten gelten bei Uhrabweichung',()=>{
+  const {data,meal}=plannedFixture();
+  assert.deepEqual(planExistingDetails({...meal,listedAt:planAt(3),listedRows:['Reis|400|g']},data.items),[]);
+  const item={id:'tomato',name:'Tomaten',quantity:4,unit:'Stück',checked:false,createdAt:planAt(4),deletedAt:planAt(4),_clock:{deletedAt:{at:planAt(6)}}};
+  const tracked={listedAt:planAt(3),_clock:{listedAt:{at:planAt(5)}},listedRows:['Tomaten|4|Stück'],listedParts:[]};
+  assert.deepEqual(planExistingDetails(tracked,[item]),[{itemId:'tomato',name:'Tomaten',status:'removed'}]);
+});
+
+test('Plan-Korrektur: eine bekannte leere Übernahme ist keine fehlende alte Zuordnung',()=>{
+  const result=planReduction({listedServings:4,listedParts:[],listedAt:planAt(3)},null,[]);
+  assert.equal(result.legacy,false);assert.equal(result.partial,false);assert.equal(result.changes.length,0);
+  assert.deepEqual(planRemovalCounts(result),{total:0,remaining:0,removed:0});
 });
 test('Plan-Korrektur: unterschiedliche Bestätigungen zweier Geräte ziehen denselben Anteil nur einmal ab',()=>{
   const {data,meal}=plannedFixture();const a=correction(data,meal,2,3).ops,b=correction(data,meal,2,4).ops;
