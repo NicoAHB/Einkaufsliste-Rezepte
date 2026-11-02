@@ -19,3 +19,9 @@ export function purchaseLabel(at, now = Date.now()) {
   const days=Math.round((day(now)-day(at))/86400000);
   return days === 0 ? 'heute gekauft' : days === 1 ? 'gestern gekauft' : `gekauft vor ${days} Tagen`;
 }
+export function purchaseBuyer(row) {
+  const purchase=row.shopPurchase;
+  // Der Ersteller oder spätere Bearbeiter ist nicht unbedingt der Käufer.
+  // Alte Apps kennen den Nachweis nicht: Ein neuer Kauf darf keinen alten Namen erben.
+  return purchase?.at===row.shopBoughtAt&&typeof purchase?.by==='string'?purchase.by.trim():'';
+}

@@ -5,7 +5,7 @@ import { dailyHistory, dailyRecord, dailySnapshot } from '../daily.js';
 import { GROCERY_PRODUCTS, PANTRY_BASIC_IDS, pantryProductAllowed, pantryProductLibrary, productLibrary } from '../product-catalog.js';
 import { pantryChanges } from '../pantry.js';
 import { layoutRecipe, PAGE } from '../recipe-sheet.js';
-import { recentPurchases, purchaseLabel } from '../recent-purchases.js';
+import { recentPurchases, purchaseLabel, purchaseBuyer } from '../recent-purchases.js';
 import { compact, POLICY } from '../compact.js';
 import { makePdf, textWidth } from '../pdf.js';
 
@@ -106,4 +106,17 @@ test('Kaufdatum bleibt bei Entfernen, Export und parallelem Bearbeiten erhalten;
  const data=merge(base,[operation('items','bought',{imageKey:'milch'},'Anna',at(0))]);assert.equal(validate(JSON.parse(JSON.stringify(data))).items[0].shopBoughtAt,at(2));
  assert.equal(compact(data,new Date(now),{...POLICY,tombstoneDays:0}).data.items.length,1);assert.equal(compact(data,new Date(now+15*86400000)).data.items.length,0);
  assert.throws(()=>merge(data,[operation('items','bought',{shopBoughtAt:'gestern'},'Nico',at(0))]),/Kaufdatum/);
+});
+test('Letzte Einkäufe nennen den Käufer des letzten Einkaufs statt Ersteller oder späterem Bearbeiter',()=>{
+ const now=Date.parse('2026-11-02T14:00:00Z'),old='2026-11-01T12:00:00Z',latest='2026-11-02T12:00:00Z';
+ const rows=[{name:'Karotte',createdBy:'Nico',shopBoughtAt:old,shopPurchase:{at:old,by:'Nico'}},{name:'Karotten',createdBy:'Nico',shopBoughtAt:latest,shopPurchase:{at:latest,by:'Anna'},updatedAt:'2026-11-02T13:00:00Z'}];
+ const recent=recentPurchases(rows,now);assert.equal(recent.length,1);assert.equal(purchaseBuyer(recent[0]),'Anna');assert.equal(purchaseBuyer({createdBy:'Nico',shopBoughtAt:old}),'');assert.equal(purchaseBuyer({}),'');
+ assert.equal(purchaseBuyer({...rows[1],shopBoughtAt:'2026-11-02T13:00:00Z'}),'','Neue Käufe alter Apps erben keinen falschen Käufer');
+});
+test('Käufernachweis bleibt beim Bearbeiten, Entfernen, Aufräumen und JSON-Export erhalten',()=>{
+ const bought='2026-11-01T12:00:00Z',later='2026-11-02T12:00:00Z';
+ const base=merge(emptyData(),[operation('items','buyer',{name:'Milch',quantity:1,unit:'l',storeId:'',checked:true,createdBy:'Nico',shopBoughtAt:bought,shopPurchase:{at:bought,by:'Anna'}},'Anna',bought)]);
+ const edited=merge(base,[operation('items','buyer',{imageKey:'milch',deletedAt:later,stockConsumedAt:later},'Nico',later)]),clean=compact(edited,new Date('2026-11-03T12:00:00Z'),{...POLICY,settledDays:0,tombstoneDays:0}).data;
+ assert.equal(purchaseBuyer(validate(JSON.parse(JSON.stringify(clean))).items[0]),'Anna');
+ for(const value of [{at:bought,by:''},{at:bought,by:42},{at:'kaputt',by:'Anna'},[]])assert.throws(()=>merge(base,[operation('items','buyer',{shopPurchase:value},'Nico',later)]),/Käufernachweis/);
 });

@@ -664,6 +664,7 @@ main {
 }
 .product-amount { color:var(--muted); font-size:.76rem; font-weight:500 }
 .product-on-list { color:var(--accent); font-size:.68rem; line-height:1.2; font-weight:600 }
+.product-purchase { max-width:100%; overflow-wrap:anywhere }
 .product-star {
   position:absolute;
   top:0;

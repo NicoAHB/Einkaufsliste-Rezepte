@@ -548,7 +548,7 @@ function itemRow(item, withStore = false) {
   const check = button('', () => {
     const latest = state.items.find(entry => entry.id === item.id);
     if (!latest || latest.deletedAt) return;
-    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null} : {}) }),...stockOps(latest.checked?undoAutomaticStockChanges(state,latest):[])]);
+    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null,shopPurchase:null} : {}) }),...stockOps(latest.checked?undoAutomaticStockChanges(state,latest):[])]);
   }, 'check');
   if (item.checked) check.append(icon('check'));
   check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
@@ -2806,12 +2806,12 @@ function shopRow(item) {
     if (!latest.checked && !latest.storeId && shopStore !== ALL_STORES) shopChecked.set(latest.id, shopStore); else shopChecked.delete(latest.id);
     const boughtAt=!latest.checked&&!isWish(latest)?new Date().toISOString():null;
     const autoChanges=latest.checked?undoAutomaticStockChanges(state,latest):boughtAt?automaticStockChanges(state,latest,boughtAt):[];
-    commit([nextOp('items', item.id, { checked: !latest.checked, shopBoughtAt:boughtAt,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:null}:{}) }),...stockOps(autoChanges)]);
+    commit([nextOp('items', item.id, { checked: !latest.checked, shopBoughtAt:boughtAt,shopPurchase:boughtAt?{at:boughtAt,by:config.actor||'Unbekannt'}:null,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:null}:{}) }),...stockOps(autoChanges)]);
     // Ein versehentliches Abhaken lässt sich gleich zurücknehmen (der Artikel verschwindet sonst aus der offenen Liste).
     if (!latest.checked) showNotice(`„${latest.name}“ abgehakt`, () => {
       const now = state.items.find(entry => entry.id === item.id);
       if (!now || now.deletedAt || !now.checked) return;
-      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:latest.stockConsumedAt}:{}) }),...stockOps(undoAutomaticStockChanges(state,now))]);
+      shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null,shopPurchase:latest.shopPurchase||null,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:latest.stockConsumedAt}:{}) }),...stockOps(undoAutomaticStockChanges(state,now))]);
     });
   }));
   row.append(tap, text);

@@ -8,7 +8,7 @@ import { groupImageFor, imageForProduct, paintProductImage } from './product-ima
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys, pantryRows } from './data.js';
 import {isOptionalBasic,smartStockSaved,smartStockSettings} from './smart-stock.js';
-import { recentPurchases, purchaseLabel } from './recent-purchases.js';
+import { recentPurchases, purchaseLabel, purchaseBuyer } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
 import { openOrderControls } from './ui-controls.js';
 import { mountProductTabOrder } from './product-tab-order.js';
@@ -151,7 +151,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     // Gespeicherte Vorräte bleiben bis zum Speichern an ihrem Platz, auch abgewählte.
     const currentViewKeys=new Set([...pantryKeys(getData().pantry||[]),...[...selection.values()].map(product=>pantryKey(product.name))]);
     const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
-    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
+    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
     const categories = new Set(products.map(product => product.category));
     for (const option of category.options) option.disabled = target === 'pantry' && mode !== 'all' && Boolean(option.value) && !categories.has(option.value);
     if (category.selectedOptions[0]?.disabled) category.value = '';
@@ -195,7 +195,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird dem Vorrat hinzugefügt'):'Vorhanden','product-on-list'));
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
-        if(mode==='recent')pick.append(node('small',purchaseLabel(product.shopBoughtAt),'product-on-list'));
+        if(mode==='recent')pick.append(node('small',`${purchaseLabel(product.shopBoughtAt)}${product.boughtBy?` von ${product.boughtBy}`:' · Käufer unbekannt'}`,'product-on-list product-purchase'));
         if(target==='pantry'&&mode==='basics'&&isOptionalBasic(product.name))pick.append(node('small','Optional · beim Aufbrauchen nachkaufen','product-on-list'));
         if(consumed)pick.append(node('small','Aufgebraucht','product-on-list'));
         else if(target==='pantry'&&stocked&&stock?.autoStock)pick.append(node('small',stock.autoStock.basic?'Grundvorrat · ohne Ablauf':`Automatisch bis ${new Date(stock.autoStock.expiresAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`,'product-on-list'));
