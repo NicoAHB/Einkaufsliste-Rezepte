@@ -50,6 +50,9 @@ import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, mo
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
+// Nur neue Geräte starten mit diesen Werten; gespeicherte Einstellungen behalten ihre bisherigen Vorgaben.
+// Die Startwerte vor dem ersten Anzeigen müssen zu theme.js passen.
+const DISPLAY_DEFAULTS = Object.freeze({theme:'light',storeStyle:'text',palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65,groupItems:true,productImages:true});
 watchSaveForms();
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
@@ -2479,11 +2482,14 @@ function fillSettings() {
   }
   const importForm = $('#import-settings-form');
   importForm.elements.importProxy.value = config.importProxy || ''; importForm.elements.dailySource.value = config.dailySource || ''; importForm.elements.publicProxy.checked = publicProxyEnabled(config);
-  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); applyTheme();
+  fillDisplaySettings();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
   applyFolds();
   showConnectionState(); updateSaveButtons();
+}
+function fillDisplaySettings() {
+  $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); applyTheme();
 }
 // Speichern-Knöpfe der Einstellungen: grau mit „Gespeichert am …“, solange nichts geändert ist; bei einer Änderung wieder aktiv.
 function saveButtonState(form, dirty, savedAt, idle) {
@@ -4028,6 +4034,10 @@ $('#disconnect').addEventListener('click', () => guard(async () => {
   fillSettings(); message(); await loadWorkspace();
 }));
 $('#group-items').addEventListener('change', () => guard(() => { saveConfig({ ...config, groupItems: $('#group-items').checked }); renderItems(); }));
+$('#display-reset').addEventListener('click', () => guard(() => {
+  saveConfig({...config,...DISPLAY_DEFAULTS});fillDisplaySettings();render();renderShop();renderStores();
+  message();showNotice('Anzeige-Einstellungen auf Standard zurückgesetzt.');
+}));
 // Gilt sofort, ohne Neuladen: Aus = keine Kacheln, die Zeile sieht aus wie früher.
 $('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry();privateList?.refresh(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
@@ -4157,7 +4167,8 @@ function freshStart() {
 }
 async function start() {
   try {
-    config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+    const storedConfig=localStorage.getItem(CONFIG_KEY);
+    config = storedConfig===null?{...DISPLAY_DEFAULTS}:JSON.parse(storedConfig);
     draftStore = createDraftStore(localStorage, namespace());
     try { draftStore.migrateLegacy(); } catch (error) { showNotice(error.message); }
     restoreController = mountBackupRestore({getData:()=>state,getScope:namespace,getSignature:restoreSignature,

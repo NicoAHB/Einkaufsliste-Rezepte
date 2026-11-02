@@ -1,10 +1,12 @@
 // Läuft vor dem ersten Anzeigen (klassisches Skript im Kopf der Seite), damit Farbe und Hell/Dunkel nicht erst nach dem Laden der App umspringen.
-// Die Namen der Farben müssen zu index.html und styles.css passen; ohne gemerkte Wahl gilt Blau und „wie auf dem Gerät“.
+// Neue Geräte: Hell, Grün, Schlicht, 65 % (muss zu DISPLAY_DEFAULTS in app.js passen).
+// Bei vorhandenen Einstellungen gelten weiterhin deren bisherige Vorgaben.
 try {
-  const saved = JSON.parse(localStorage.getItem('einkauf-settings-v1')) || {}, root = document.documentElement;
+  const stored=localStorage.getItem('einkauf-settings-v1');
+  const saved = stored===null?{theme:'light',palette:'gruen',glassBg:'schlicht',glassLevel:65}:JSON.parse(stored)||{}, root = document.documentElement;
   if (saved.theme === 'light' || saved.theme === 'dark') root.dataset.theme = saved.theme;
   if (/^(blau|gruen|tuerkis|flieder|rose|pfirsich)$/.test(saved.palette)) root.dataset.palette = saved.palette;
-  // Glas-Design: ohne gemerkte Wahl an, Hintergrund „Lichter“, Transparenz 50 (muss zu applyTheme in app.js passen)
+  // Bestehende Einstellungen ohne Glas-Wahl: an, Lichter, 50 (wie applyTheme in app.js).
   if (saved.glass !== false) {
     root.dataset.glass = '';
     root.dataset.glassBg = /^(lichter|verlauf|schlicht)$/.test(saved.glassBg) ? saved.glassBg : 'lichter';

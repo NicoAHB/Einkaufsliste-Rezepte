@@ -218,6 +218,7 @@
           <input id="glass-level" type="range" min="0" max="100" step="5" value="50" aria-describedby="glass-hint">
           <p class="hint" id="glass-hint">Weniger: Karten fast deckend wie bisher. Mehr: Karten scheinen stärker durch. Die Farben des Hintergrunds folgen der gewählten Farbe. Gilt nur auf diesem Gerät.</p>
         </div>
+        <button id="display-reset" type="button" class="text-button" aria-label="Anzeige-Einstellungen auf Standard zurücksetzen" title="Hell · Text · Grün · Schlicht · 65 %"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>Anzeige zurücksetzen</button>
         <p class="form-feedback" data-auto-feedback role="status">Änderungen werden sofort auf diesem Gerät gespeichert.</p></div></details>
 
       </div><div id="shop-card" data-auto-save class="card stack"><details id="shop-details" class="fold"><summary><h3>Im Laden</h3></summary><div class="stack">
@@ -228,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.114 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.115 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
