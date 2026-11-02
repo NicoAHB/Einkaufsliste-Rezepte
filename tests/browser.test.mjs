@@ -9464,4 +9464,44 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#plan-shopping');await sheetOpen(page);text=await page.textContent('#week-ingredients');assert.match(text,/Nudeln/);assert.ok(!text.includes('Reis'));assert.deepEqual(problems,[]);await ctx.close();
   });
 
+  function frequencyData2105() {
+    const data=familyExpenseData(),day=isoDay(new Date()),stamp=data.updatedAt;
+    data.stores.push({...data.stores[0],id:'private-trip',name:'Eigene Reiseliste',separate:true});
+    const purchase=(id,storeId,extra={})=>({id,date:day,cents:1000,source:'hand',storeId,storeName:data.stores.find(row=>row.id===storeId)?.name||'',buyerId:'member-nico',buyerName:'Nico',createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{},...extra});
+    data.purchases=[...Array.from({length:5},(_,i)=>purchase('frequency-edeka-'+i,'store-edeka',i===4?{buyerId:'member-anna',buyerName:'Anna'}:{})),...Array.from({length:2},(_,i)=>purchase('frequency-lidl-'+i,'store-lidl')),
+      purchase('frequency-refund','store-edeka',{kind:'refund'}),purchase('frequency-deleted','store-edeka',{deletedAt:stamp}),purchase('frequency-own','private-trip'),purchase('frequency-last-month','store-edeka',{date:isoDay(monthsAgo(1))})];
+    return data;
+  }
+  const frequencyRows2105=page=>page.locator('#spending-frequency-stores .spend-store').evaluateAll(nodes=>Object.fromEntries(nodes.map(node=>[node.querySelector('strong').textContent,node.querySelector('.spend-store-head span').textContent])));
+  test('2.105: Ausgaben bleiben Standard; Einkaufshäufigkeit zeigt 5 Edeka, 2 Lidl und 0 Rewe ohne Datenänderung',async()=>{
+    const {ctx,page,problems}=await localExpenses({},frequencyData2105()),before=await expenseStored(page),summary=await page.textContent('#spending-summary');
+    assert.equal(await page.inputValue('#spending-analysis'),'expenses');assert.equal(await page.locator('#spending-frequency').isHidden(),true);
+    await page.selectOption('#spending-analysis','frequency');assert.deepEqual(await frequencyRows2105(page),{Edeka:'5 Einkäufe',Lidl:'2 Einkäufe',Rewe:'0 Einkäufe'});assert.equal(await page.textContent('#spending-frequency-summary'),'7 Einkäufe im gewählten Zeitraum');
+    for(const id of ['spending-summary','spending-people-card','spending-budget','purchase-details','spending-details'])assert.equal(await page.locator('#'+id).isHidden(),true);
+    assert.equal(await page.locator('#spending-frequency-stores [data-store-id=store-rewe] .spend-share span').evaluate(n=>n.getBoundingClientRect().width),0);assert.deepEqual(await expenseStored(page),before);
+    await page.selectOption('#spending-analysis','expenses');assert.equal(await page.textContent('#spending-summary'),summary);assert.equal(await page.locator('#purchase-details').isVisible(),true);
+    await page.selectOption('#spending-analysis','frequency');await page.reload();await goTab(page,'spending');assert.equal(await page.inputValue('#spending-analysis'),'expenses');assert.equal(await page.locator('#spending-frequency').isHidden(),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.105: Einkaufshäufigkeit übernimmt Monatswechsel, eigenen Zeitraum und Personenfilter',async()=>{
+    const {ctx,page,problems}=await localExpenses({},frequencyData2105());await page.selectOption('#spending-analysis','frequency');await page.click('#month-prev');assert.equal(await page.textContent('#spending-frequency-summary'),'1 Einkauf im gewählten Zeitraum');assert.equal((await frequencyRows2105(page)).Lidl,'0 Einkäufe');
+    await page.click('#month-next');assert.equal(await page.textContent('#spending-frequency-summary'),'7 Einkäufe im gewählten Zeitraum');await personFilter(page,'member-nico').click();assert.equal((await frequencyRows2105(page)).Edeka,'4 Einkäufe');await personFilter(page,'member-anna').click();assert.equal((await frequencyRows2105(page)).Lidl,'0 Einkäufe');assert.equal(await page.textContent('#spending-frequency-summary'),'1 Einkauf im gewählten Zeitraum');
+    await page.click('#spending-period');await sheetOpen(page);await page.fill('#spending-period-form [name=from]',isoDay(monthsAgo(1)));await page.fill('#spending-period-form [name=to]',isoDay(new Date()));await page.click('#spending-period-form button[type=submit]');assert.equal(await page.inputValue('#spending-analysis'),'frequency');assert.equal(await page.textContent('#spending-frequency-summary'),'1 Einkauf im gewählten Zeitraum');
+    await personFilter(page,'all').click();assert.equal(await page.textContent('#spending-frequency-summary'),'8 Einkäufe im gewählten Zeitraum');await page.selectOption('#spending-analysis','expenses');assert.equal(await page.locator('#month-prev').isHidden(),true,'der eigene Zeitraum bleibt beim Umschalten erhalten');await page.selectOption('#spending-analysis','frequency');assert.equal(await page.textContent('#spending-frequency-summary'),'8 Einkäufe im gewählten Zeitraum');
+    await page.click('#spending-period');await sheetOpen(page);await page.click('[data-spend-preset=this]');assert.equal(await page.textContent('#spending-frequency-summary'),'7 Einkäufe im gewählten Zeitraum');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const refunds of [false,true])test(`2.105: ohne Einkäufe sind alle Geschäfte mit 0 erreichbar (${refunds?'nur Retouren':'keine Einträge'})`,async()=>{
+    const data=frequencyData2105();data.purchases=refunds?data.purchases.filter(row=>row.kind==='refund'):[];
+    const {ctx,page,problems}=await localExpenses({},data);assert.equal(await page.inputValue('#spending-analysis'),'expenses');await page.selectOption('#spending-analysis','frequency');assert.deepEqual(await frequencyRows2105(page),{Edeka:'0 Einkäufe',Lidl:'0 Einkäufe',Rewe:'0 Einkäufe'});assert.equal(await page.locator('#spending-empty').isHidden(),true);assert.equal(await page.textContent('#spending-frequency-summary'),'0 Einkäufe im gewählten Zeitraum');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.105: neue Einträge, gelöschte Käufe und geänderte Geschäfte aktualisieren die offene Statistik beim Abgleich',async()=>{
+    const api=github(frequencyData2105()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'spending');await page.selectOption('#spending-analysis','frequency');
+    api.remoteChange(data=>{data.purchases.push({...data.purchases[0],id:'new-frequency-purchase'});data.purchases.find(row=>row.id==='frequency-lidl-0').deletedAt=new Date().toISOString();data.stores.find(row=>row.id==='store-lidl').name='Lidl am Bahnhof';data.stores.push({...data.stores[0],id:'store-netto',name:'Netto'});});await pollNow(page);
+    await page.waitForFunction(()=>document.querySelector('#spending-frequency-stores [data-store-id=store-edeka] .spend-store-head span')?.textContent==='6 Einkäufe');assert.equal(await page.inputValue('#spending-analysis'),'frequency');assert.deepEqual(await frequencyRows2105(page),{Edeka:'6 Einkäufe','Lidl am Bahnhof':'1 Einkauf',Netto:'0 Einkäufe',Rewe:'0 Einkäufe'});assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const width of [280,390])for(const theme of ['light','dark'])test(`2.105: umschaltbare Auswertung mit langen Geschäftsnamen bei ${width}px ${theme}`,async()=>{
+    const data=frequencyData2105();data.stores.find(row=>row.id==='store-edeka').name='Edeka Lebensmittelmarkt am langen Marktplatz';data.stores.find(row=>row.id==='store-rewe').name='Mein weiterer Supermarkt ohne bisherigen Einkauf';
+    const {ctx,page,problems}=await localExpenses({config:{theme,palette:'gruen'},context:{viewport:{width,height:844},colorScheme:theme}},data);await page.selectOption('#spending-analysis','frequency');assert.equal(await horizontalOverflow(page),0);
+    const sizes=await page.locator('#spending-frequency .spend-store-head').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,scroll:node.scrollWidth})));assert.ok(sizes.every(row=>row.scroll<=row.width+1),JSON.stringify(sizes));assert.equal(await page.locator('#spending-analysis').evaluate(n=>n.getBoundingClientRect().height>=44),true);await page.click('#spending-period');await sheetOpen(page);assert.equal(await page.locator('#spending-period-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
 });

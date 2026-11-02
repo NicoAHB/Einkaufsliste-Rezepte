@@ -4,6 +4,7 @@
 import { validDay } from './data.js';
 import { chainOf } from './brand.js';
 import { buyerKey, buyerNameOf, validMemberId } from './family.js';
+import { isSeparate } from './shop.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
 export const SOURCES = ['bon', 'hand'];     // aus einem Kassenbon-Foto/-Screenshot erkannt oder von Hand eingegeben
@@ -138,6 +139,30 @@ export function summarizePeriod(rows, period, stores = [], members = [], person 
   const byNote = [...notes.values()].sort((a,b)=>b.total-a.total || a.name.localeCompare(b.name,'de'));
   const purchaseCount = list.length - refundCount;
   return { ...periodBounds(period), total, gross, refunds, refundCount, purchaseCount, count: list.length, average: purchaseCount ? Math.round(gross / purchaseCount) : 0, byStore, byPerson, byNote, list };
+}
+
+// Häufigkeit statt Geldbeträgen: jeder Einkauf zählt einmal, Retouren nicht.
+// Vorhandene Geschäfte bleiben auch ohne Einkauf sichtbar. Eigene Listen sind
+// keine Geschäfte; historische Einkäufe bleiben ihren früheren Geschäften zugeordnet.
+export function purchaseFrequency(rows, period, stores = [], person = 'all') {
+  const normalName = name => String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+  const known = new Map(stores.map(store => [store.id, store]));
+  const current = stores.filter(store => !store.deletedAt && !isSeparate(store)), groups = new Map();
+  for (const store of current) groups.set(`id:${store.id}`, { id: store.id, name: store.name, count: 0 });
+  for (const row of filterPurchases(rows, period, person)) {
+    if (row.kind === 'refund') continue;
+    const original = known.get(row.storeId);
+    if (original && isSeparate(original)) continue;
+    const savedName = String(row.storeName || '').trim().replace(/\s+/g, ' ');
+    const matches = !row.storeId && savedName ? current.filter(store => normalName(store.name) === normalName(savedName)) : [];
+    const store = original || (matches.length === 1 ? matches[0] : null);
+    const id = store?.id || (savedName ? row.storeId : '') || '';
+    const name = store?.name || savedName || 'Ohne Geschäft', key = id ? `id:${id}` : `name:${normalName(name)}`;
+    const group = groups.get(key) || { id, name, count: 0 };
+    group.count++; groups.set(key, group);
+  }
+  const byStore = [...groups.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'de') || a.id.localeCompare(b.id));
+  return { count: byStore.reduce((sum, store) => sum + store.count, 0), byStore };
 }
 // Unterschied zum Vergleichsmonat: { diff (Cent), percent (ganze Prozent, null ohne Vergleichswert) }.
 export function compareTotals(current, previous) {

@@ -4642,3 +4642,12 @@ button.recipe-delete { color:var(--danger) }
 #restore-dialog .sheet-head { align-items:flex-start; gap:10px }
 #restore-dialog .sheet-head h2 { min-width:0; overflow-wrap:anywhere }
 #restore-dialog .sheet-head .icon-button { flex:none }
+
+/* Optionale Einkaufshäufigkeit nutzt dieselbe Zeitraum- und Personenauswahl. */
+.spend-analysis { margin:0 0 12px }
+.spend-analysis select { width:100%; min-width:0 }
+.spend-frequency-summary { margin:0 0 16px; color:var(--muted); font-weight:650 }
+#spending-frequency .spend-store-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:12px }
+#spending-frequency .spend-store-head span { white-space:nowrap }
+#spending-frequency>.hint { margin:16px 0 0 }
+#purchase-list>.spend-item,#spending-frequency-stores>.spend-store { scroll-margin-bottom:calc(var(--tabs-h) + 24px + env(safe-area-inset-bottom)) }

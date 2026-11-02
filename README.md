@@ -1,6 +1,12 @@
-# Sattplan – Version 2.104
+# Sattplan – Version 2.105
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.105: Einkäufe je Geschäft auswerten
+
+Im Bereich **Ausgaben** gibt es das Auswahlfeld **Auswertung** mit **Ausgaben** und **Einkäufe je Geschäft**. Beim Neustart und beim Wechsel der Datenverbindung sind weiterhin **Ausgaben** ausgewählt. Die neue Ansicht zählt jeden gespeicherten Einkauf einmal, auch gleich teure Einkäufe am selben Tag. Rückerstattungen und gelöschte Einträge zählen nicht.
+
+Die bekannten Geschäfte erscheinen auch ohne Einkauf mit **0 Einkäufen**. Eigene Wunsch-/Reiselisten sind keine Geschäfte. Frühere Geschäfte mit Einträgen im gewählten Zeitraum und Einträge **Ohne Geschäft** bleiben nachvollziehbar. Zeitraum, Monatsnavigation und Personenfilter gelten für beide Ansichten und bleiben beim Umschalten erhalten. Die Statistik wird aus den bestehenden Ausgaben berechnet und verändert keine Daten. Offline-Paket **einkauf-shell-v117**.
 
 ## Neu in Version 2.104: eindeutiger Hinweis in der Vorratsauswahl
 

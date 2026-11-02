@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, purchaseFrequency, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -293,5 +293,36 @@ describe('Doppelt erfasst?', () => {
   test('Einträge mit Zwilling für den Hinweis in der Liste', () => {
     assert.deepEqual([...possibleDuplicates([...rows, row('e', '2026-10-27', 4000, { storeId: 'store-edeka' }), row('f', '2026-10-27', 1550)])].sort(), ['a', 'b', 'e', 'f']);
     assert.deepEqual([...possibleDuplicates(rows)], []);
+  });
+});
+
+
+describe('Einkaufshäufigkeit je Geschäft',()=>{
+  const stores=[{id:'e',name:'Edeka'},{id:'l',name:'Lidl'},{id:'r',name:'Rewe'},{id:'w',name:'Wünsche',separate:true}];
+  const purchases=[...Array.from({length:5},(_,i)=>row('edeka-'+i,'2026-11-02',1000,{storeId:'e',buyerId:'member-nico'})),...Array.from({length:2},(_,i)=>row('lidl-'+i,'2026-11-02',1000,{storeId:'l',buyerId:'member-anna'}))];
+  test('fünf erfasste Edeka-Einkäufe und zwei Lidl-Einkäufe bleiben sieben; Geschäfte ohne Einkauf zeigen null',()=>{
+    const rows=[...purchases,row('retoure','2026-11-02',500,{storeId:'e',kind:'refund'}),row('gelöscht','2026-11-02',500,{storeId:'e',deletedAt:'2026-11-02T12:00:00.000Z'}),row('eigene-liste','2026-11-02',500,{storeId:'w'})];
+    const before=structuredClone({rows,stores}),result=purchaseFrequency(rows,'2026-11',stores);
+    assert.deepEqual(result,{count:7,byStore:[{id:'e',name:'Edeka',count:5},{id:'l',name:'Lidl',count:2},{id:'r',name:'Rewe',count:0}]});
+    assert.deepEqual({rows,stores},before,'die Statistik verändert keine Daten');
+  });
+  test('Zeitraumgrenzen und Personenfilter gelten wie bei Ausgaben, einschließlich alter nicht zugeordneter Einträge',()=>{
+    const rows=[...purchases,row('vorher','2026-10-31',1,{storeId:'e',buyerId:'member-nico'}),row('nachher','2026-11-03',1,{storeId:'e',buyerId:'member-nico'}),row('alt','2026-11-02',1,{storeId:'l',createdBy:'Nico'})];
+    const range={from:'2026-11-02',to:'2026-11-02'};
+    assert.equal(purchaseFrequency(rows,range,stores).count,8);assert.equal(purchaseFrequency(rows,range,stores,'member-nico').count,5);assert.equal(purchaseFrequency(rows,range,stores,'member-anna').count,2);assert.equal(purchaseFrequency(rows,range,stores,'unassigned').count,1);
+    assert.equal(purchaseFrequency(rows,{from:'2026-10-31',to:'2026-11-03'},stores).count,10);
+    assert.throws(()=>purchaseFrequency(rows,{from:'2026-11-03',to:'2026-11-01'},stores),/Anfangsdatum/);
+  });
+  test('aktuelle Namen, eindeutig zuordenbare alte Namenseinträge und frühere Geschäfte bleiben nachvollziehbar',()=>{
+    const shops=[{id:'e',name:'Edeka am Markt'},{id:'alt',name:'Früherer Markt',deletedAt:'2026-01-01T12:00:00.000Z'},{id:'weg',name:'Nie besucht',deletedAt:'2026-01-01T12:00:00.000Z'}];
+    const rows=[row('id','2026-11-02',1,{storeId:'e',storeName:'Alter Name'}),row('name','2026-11-02',1,{storeName:'  EDEKA  AM MARKT '}),row('früher','2026-11-02',1,{storeId:'alt',storeName:'Früherer Markt'}),row('ohne','2026-11-02',1),row('fehlend','2026-11-02',1,{storeId:'nicht-mehr-bekannt'})];
+    const result=purchaseFrequency(rows,'2026-11',shops);assert.equal(result.count,5);
+    assert.deepEqual(result.byStore.find(shop=>shop.id==='e'),{id:'e',name:'Edeka am Markt',count:2});assert.equal(result.byStore.find(shop=>shop.id==='alt').count,1);assert.equal(result.byStore.find(shop=>shop.name==='Ohne Geschäft').count,2);assert.ok(!result.byStore.some(shop=>shop.id==='weg'));
+  });
+  test('ohne Einträge oder mit reinen Retouren werden alle aktuellen Geschäfte mit null gezeigt',()=>{
+    for(const rows of [[],[row('r','2026-11-02',500,{storeId:'e',kind:'refund'})]]){
+      const result=purchaseFrequency(rows,'2026-11',stores);assert.equal(result.count,0);assert.deepEqual(result.byStore.map(shop=>shop.name),['Edeka','Lidl','Rewe']);assert.ok(result.byStore.every(shop=>shop.count===0));
+    }
+    assert.deepEqual(purchaseFrequency([],'2026-11',[]),{count:0,byStore:[]});
   });
 });

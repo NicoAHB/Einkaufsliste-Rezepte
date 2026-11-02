@@ -2,7 +2,7 @@
    Schreiben bleibt bei den App-Callbacks; offene Betrags-/Namensfelder werden nicht neu aufgebaut. */
 import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './family.js';
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
-  periodBounds, possibleDuplicates, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE } from './spending.js';
+  periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE } from './spending.js';
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; };
 const button = (label, click, cls = 'text-button') => { const el = node('button', label, cls); el.type = 'button'; el.addEventListener('click', click); return el; };
@@ -14,7 +14,7 @@ const shortDate = day => new Intl.DateTimeFormat('de-DE', { day: '2-digit', mont
 export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onExport, onMessage }) {
   const $ = id => document.getElementById(id), rangeDialog = $('spending-period-dialog'), rangeForm = $('spending-period-form');
   const membersDialog = $('members-dialog'), memberForm = $('member-form');
-  let range = null, person = 'all', scope = getScope(), editingMember = '', editingName = '', returnSelect = null;
+  let range = null, person = 'all', analysis = 'expenses', scope = getScope(), editingMember = '', editingName = '', returnSelect = null;
   const period = () => range || getMonth();
   const data = () => getData(), rows = () => (data().purchases || []).filter(row => !row.deletedAt), members = () => liveMembers(data().members);
   const fail = (id, error) => { $(id).textContent = error.message; $(id).hidden = false; };
@@ -63,7 +63,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   }
   function refresh() {
     if (getScope() !== scope) {
-      scope = getScope(); person = 'all'; range = null; setMonth(monthOf(today())); resetMemberForm();
+      scope = getScope(); person = 'all'; analysis = 'expenses'; range = null; setMonth(monthOf(today())); resetMemberForm();
       membersDialog.close(); rangeDialog.close(); $('purchase-dialog').close(); $('finish-dialog').close(); $('budget-dialog').close(); $('spending-details').open = false; $('purchase-details').open = true;
     }
     for (const id of ['purchase-form', 'finish-form']) {
@@ -77,6 +77,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   }
   function renderPeopleFilters(summary) {
     const box = $('spending-person-filter'), allNames = new Map(members().filter(row => !row.archived).map(row => [row.id, row.name]));
+    box.setAttribute('aria-label', analysis === 'frequency' ? 'Einkäufe nach Person filtern' : 'Ausgaben nach Person filtern');
     const own = getOwn(); if (own) allNames.set(own.id, own.name);
     for (const entry of summary.byPerson) allNames.set(entry.id, entry.name);
     if (person !== 'all' && !allNames.has(person)) allNames.set(person, nameFor(person));
@@ -119,8 +120,23 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       li.append(head, track, node('small', plural(group.count, 'Eintrag', 'Einträge'))); box.append(li);
     }
   }
+  function renderFrequency(allRows) {
+    const result = purchaseFrequency(allRows, period(), data().stores || [], person), list = $('spending-frequency-stores');
+    $('spending-frequency-summary').textContent = `${plural(result.count, 'Einkauf', 'Einkäufe')} im gewählten Zeitraum`;
+    list.replaceChildren();
+    const max = Math.max(1, ...result.byStore.map(store => store.count));
+    for (const store of result.byStore) {
+      const li = node('li', undefined, 'spend-store'), head = node('div', undefined, 'spend-store-head');
+      const track = node('div', undefined, 'spend-share'), bar = node('span');
+      li.dataset.storeId = store.id; track.setAttribute('aria-hidden', 'true');
+      head.append(node('strong', store.name), node('span', plural(store.count, 'Einkauf', 'Einkäufe')));
+      bar.style.width = `${store.count * 100 / max}%`; track.append(bar); li.append(head, track); list.append(li);
+    }
+    if (!result.byStore.length) list.append(node('li', 'Noch keine Geschäfte oder Einkäufe vorhanden.', 'empty'));
+  }
   function render() {
     refresh(); if ($('spending').hidden) return;
+    const frequency = analysis === 'frequency'; $('spending-analysis').value = analysis;
     const allRows = rows(), shops = (data().stores || []).filter(row => !row.deletedAt), month = fullMonth(period()), now = monthOf(today());
     const family = summarizePeriod(allRows, period(), shops, members()), current = summarizePeriod(allRows, period(), shops, members(), person);
     const bounds = periodBounds(period());
@@ -129,9 +145,12 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     $('month-prev').disabled = getMonth() <= firstMonth(allRows, now); $('month-next').disabled = getMonth() >= latestMonth(allRows, now);
     $('month-today').hidden = Boolean(month && month === now);
     renderPeopleFilters(family); renderPeople(family);
-    const none = !allRows.length; $('spending-empty').hidden = !none;
-    for (const id of ['spending-summary', 'purchase-details', 'spending-details']) $(id).hidden = none;
-    $('spending-budget').hidden = person !== 'all' || !month;
+    if (frequency) $('spending-people-card').hidden = true;
+    const none = !allRows.length; $('spending-empty').hidden = frequency || !none;
+    for (const id of ['spending-summary', 'purchase-details', 'spending-details']) $(id).hidden = frequency || none;
+    $('spending-budget').hidden = frequency || person !== 'all' || !month;
+    $('spending-frequency').hidden = !frequency;
+    if (frequency) renderFrequency(allRows);
     if (person === 'all' && month) onBudget(current.total);
     const summary = $('spending-summary'); summary.replaceChildren();
     const label = person === 'all' ? 'Familie insgesamt' : `${nameFor(person)} · Ausgaben`;
@@ -160,6 +179,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       open.append(copy, amount); li.append(open); list.append(li);
     }
   }
+  $('spending-analysis').addEventListener('change', event => { analysis = event.target.value === 'frequency' ? 'frequency' : 'expenses'; render(); });
   $('month-prev').addEventListener('click', () => chooseMonth(shiftMonth(getMonth(), -1)));
   $('month-next').addEventListener('click', () => chooseMonth(shiftMonth(getMonth(), 1)));
   $('month-today').addEventListener('click', () => chooseMonth(monthOf(today())));
