@@ -384,6 +384,7 @@ function render() {
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
   refreshRecipePick();
+  if($('#transfer-dialog').open)updateTransfer();
   productPicker?.refresh();
   if($('#finish-dialog').open)renderFinishStockHint();
   scheduleStockRefresh();
@@ -1162,7 +1163,7 @@ function recipeCard(recipe, ingredients, options = {}) {
     const tags = element('div', undefined, 'tags');
     uniqueRecipeTags(recipe.tags).forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
   }
-  const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required);
+  const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required),shopping=active(withoutSeparate(state.items,state.stores)).filter(row=>!row.checked);
   const showStock=stock.have.length>0;
   let stockView=null;
   if(showStock && tracked.length) {
@@ -1178,9 +1179,15 @@ function recipeCard(recipe, ingredients, options = {}) {
   const updateAmounts = () => {
     const count = positive(servingInput.value); if (!options.isolated) portions.set(recipe.id, count);
     stockView?.updateAmounts(count);
+    const missing=new Map(recipeNeeds(ingredients,count/recipe.servings).map(row=>[row.id,row]));
     list.replaceChildren(...ingredients.map(row => {
       const li=element('li'), label=element('span',ingredientLabel(row,count/recipe.servings)); li.append(label);
-      if(showStock) { const have=!required(row) || availability(row.name,stockIndex)==='have', status=element('span',have?'Vorhanden':'Fehlt',`ingredient-stock ${have?'have':'missing'}`); status.prepend(icon(have?'check':'minus')); li.append(status); }
+      if(showStock||shopping.length) {
+        const have=!required(row)||availability(row.name,stockIndex)==='have',need=missing.get(row.id),listed=!have&&!need;
+        const partial=need&&shopping.some(item=>sameIngredient(item.name,row.name));
+        const text=have?'Vorhanden':listed?'Auf Einkaufszettel':partial?`Noch ${format(need.quantity)} ${need.unit} fehlen`:'Fehlt';
+        const status=element('span',text,`ingredient-stock ${have?'have':listed?'soon':'missing'}`);status.prepend(icon(have?'check':listed?'cart':'minus'));li.append(status);
+      }
       return li;
     }));
   };
@@ -1405,25 +1412,29 @@ function saveRecipe(event) {
   });
 }
 // `only`: Kennungen der Zutaten, die vorausgewählt sein sollen (z. B. nur das, was zum Kochen noch fehlt); sonst alles außer Vorrat und „nach Bedarf“.
+function recipeNeeds(ingredients,factor=1) {
+  return shoppingDeficits(ingredients.map(row=>({...row,...listRow(row,factor)})),state.pantry||[],withoutSeparate(state.items,state.stores));
+}
 function openTransfer(id, servings, only = null, mealId = null) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
   if (!transferRecipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
-  const form = $('#transfer-form'); form._cookableMissing=false; form.elements.servings.value = plain(servings);
+  const form = $('#transfer-form'); form.elements.servings.value = plain(servings);
   const meal=mealId?active(state.meals).find(row=>row.id===mealId&&row.recipeId===id):null;
   if(mealId&&!meal)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Wochenplan erneut öffnen.');
   form._meal=meal?clone(meal):null;
   form._mealRecipeSignature=meal?transferRecipeSignature(id):'';
   form._mealScope=namespace();
   $('#transfer-plan-note').hidden=!meal;
-  $('#transfer-plan-note').textContent=meal?(meal.listedServings?'Die Zutaten sind für dieses Gericht schon berücksichtigt. Eine weitere Übernahme fügt die gewählte Menge zusätzlich hinzu.':'Diese Zutaten werden dem Gericht im Wochenplan zugeordnet. Beim Entfernen des Gerichts kannst du sie wieder vom Einkaufszettel nehmen.'):'';
+  $('#transfer-plan-note').textContent=meal?(meal.listedServings?'Die Zutaten sind für dieses Gericht schon berücksichtigt. Vorhandene Mengen werden erneut geprüft; ergänzt werden nur noch fehlende Mengen.':'Diese Zutaten werden dem Gericht im Wochenplan zugeordnet. Beim Entfernen des Gerichts kannst du sie wieder vom Einkaufszettel nehmen.'):'';
   storeOptions(form.elements.storeId, defaultStore(), true); $('#transfer-ingredients').replaceChildren(); form.elements.rememberPantry.checked = false;
-  const keys = pantryKeys(state.pantry);
   for (const row of active(state.ingredients).filter(row => row.recipeId === id)) {
-    const label = element('label', undefined, 'transfer-row'), check = element('input'), water = isCookingWater(row.name), stocked = inPantry(keys, row.name);
+    const label = element('label', undefined, 'transfer-row'), check = element('input'), water = isCookingWater(row.name);
     // Salz, Pfeffer und Co. („nach Bedarf“) und der Vorrat: hat man meist da, nicht vorausgewählt.
-    check.type = 'checkbox'; check.checked = !water && (only ? only.has(row.id) : row.unit !== NO_AMOUNT && !stocked); check.disabled = water; check.value = row.id;
-    // Die angezeigte Auswahl bleibt bis zur Bestätigung stabil, auch beim Abgleich.
-    label._ingredient = clone(row); label.append(check, element('span')); if (stocked) label.append(element('small', 'Vorrat', 'pantry-badge'));
+    check.type = 'checkbox'; check.disabled = water; check.value = row.id;
+    label._eligible=!water&&(only?only.has(row.id):row.unit!==NO_AMOUNT);label._dirty=false;
+    // Bewusst gesetzte Haken erhalten; automatisch vorgeschlagene Fehlmengen bleiben aktuell.
+    label._ingredient = clone(row); label.append(check, element('span'));
+    check.addEventListener('change',()=>{label._dirty=true;guard(updateTransfer);});
     $('#transfer-ingredients').append(label);
   }
   updateTransfer(); $('#transfer-dialog').showModal();
@@ -1433,8 +1444,19 @@ function transferRecipeSignature(id) {
   return JSON.stringify([recipe?.servings,active(state.ingredients).filter(row=>row.recipeId===id).map(row=>[row.id,row.name,row.quantity,row.unit]).sort((a,b)=>a[0].localeCompare(b[0]))]);
 }
 function updateTransfer() {
-  const factor = positive($('#transfer-form').elements.servings.value) / transferRecipe.servings;
-  for (const label of $('#transfer-ingredients').children) label.querySelector('span').textContent = ingredientLabel(label._ingredient, factor);
+  const form=$('#transfer-form'),labels=[...$('#transfer-ingredients').children],keys=pantryKeys(state.pantry);
+  let factor;try{factor=positive(form.elements.servings.value)/transferRecipe.servings;}catch{return;}
+  const candidates=labels.filter(label=>!isCookingWater(label._ingredient.name)&&(label._dirty?label.querySelector('input').checked:label._eligible)).map(label=>label._ingredient);
+  const missing=new Map(recipeNeeds(candidates,factor).map(row=>[row.id,row]));
+  for(const label of labels) {
+    const row=label._ingredient,check=label.querySelector('input'),stocked=inPantry(keys,row.name),need=missing.get(row.id);
+    label._shoppingCovered=!stocked&&!need&&active(withoutSeparate(state.items,state.stores)).some(item=>!item.checked&&sameIngredient(item.name,row.name));
+    if(!label._dirty)check.checked=label._eligible&&!stocked&&Boolean(need);
+    label.querySelector('span').textContent=need?ingredientLabel(need):ingredientLabel(row,factor);
+    label.querySelector('.pantry-badge')?.remove();
+    if(stocked||label._shoppingCovered)label.append(element('small',stocked?'Vorrat':'Bereits auf dem Einkaufszettel','pantry-badge'));
+  }
+  form.querySelector('button[type=submit]').textContent=labels.some(label=>label.querySelector('input').checked)||form.elements.rememberPantry.checked?'Ausgewählte Zutaten hinzufügen':'Fertig';
 }
 
 /* ---------- Rezeptfotos ---------- */
@@ -2359,7 +2381,7 @@ function renderCookable() {
       const buy = button('', later(() => {
       const missing=cookableMissing(entry.missing);
       if(!missing.length){showNotice('Die fehlenden Zutaten stehen bereits offen auf der Einkaufsliste.');return;}
-      openTransfer(recipe.id,servings,new Set(missing.map(row=>row.id)));$('#transfer-form')._cookableMissing=true;
+      openTransfer(recipe.id,servings,new Set(missing.map(row=>row.id)));
       }), 'primary-action cookable-action cookable-buy');
       buy.append(icon('cart'), element('span', 'Fehlendes auf die Liste')); actions.append(buy);
     }
@@ -3405,6 +3427,7 @@ function refreshTimedStock(){
   if($('#plan-recipe-dialog').open)renderPlanRecipe();
   if($('#cookable-dialog').open)renderCookable();
   refreshRecipePick();
+  if($('#transfer-dialog').open)updateTransfer();
   scheduleStockRefresh();
 }
 
@@ -4026,22 +4049,25 @@ $('#recipe-form').elements.photo.addEventListener('change', event => guard(async
 $('#photo-remove').addEventListener('click', () => { ++photoEditVersion;pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
 $('#recipe-dialog').addEventListener('close', () => { if ($('#recipe-dialog').open) return; ++photoEditVersion;pendingPhoto = null; showPhotoPreview(''); });
 $('#transfer-form').elements.servings.addEventListener('change', () => guard(updateTransfer));
+$('#transfer-form').elements.rememberPantry.addEventListener('change', () => guard(updateTransfer));
 // Während des Tippens still mitrechnen; bei unfertiger Eingabe („2,“) bleibt die Anzeige einfach stehen.
 $('#transfer-form').elements.servings.addEventListener('input', () => { try { updateTransfer(); } catch { /* Eingabe noch unvollständig */ } });
 $('#transfer-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget; let selected = [...$('#transfer-ingredients').children]
     .filter(label => label.querySelector('input').checked && !isCookingWater(label._ingredient.name)).map(label => label._ingredient);
   if (!active(state.recipes).some(row => row.id === transferRecipe.id)) throw new Error('Das Rezept wurde inzwischen gelöscht.');
-  if (!selected.length) throw new Error('Bitte mindestens eine Zutat auswählen.');
-  if(form._cookableMissing){selected=cookableMissing(selected);if(!selected.length){$('#transfer-dialog').close();showNotice('Die Zutaten stehen bereits im Vorrat oder offen auf der Einkaufsliste.');return;}}
   const factor = positive(form.elements.servings.value) / transferRecipe.servings;
-  const unchecked=[...$('#transfer-ingredients').children].filter(label=>!label.querySelector('input').checked).map(label=>label._ingredient.name);
+  const unchecked=[...$('#transfer-ingredients').children].filter(label=>!label.querySelector('input').checked&&(!label._shoppingCovered||label._dirty)).map(label=>label._ingredient.name);
   if(form._meal){
     const meal=active(state.meals).find(row=>row.id===form._meal.id&&row.recipeId===transferRecipe.id);
     if(form._mealScope!==namespace()||!meal||JSON.stringify(meal)!==JSON.stringify(form._meal)||transferRecipeSignature(transferRecipe.id)!==form._mealRecipeSignature)throw new Error('Das Gericht wurde inzwischen geändert. Bitte die Zutatenübernahme schließen und aus dem Wochenplan erneut öffnen.');
     const count=positive(form.elements.servings.value),use={...meal,servings:count},mark={...meal,servings:(Number(meal.listedServings)||0)+count};
     commit(prepareWeekParts({meals:[mark],basket:{use:[use]}},selected,currentStore(form.elements.storeId.value),form.elements.rememberPantry.checked,state,unchecked),'Zutaten für das geplante Gericht übernommen');
-  }else addRows(selected.map(row=>listRow(row,factor)),currentStore(form.elements.storeId.value),unchecked,form.elements.rememberPantry.checked);
+  }else {
+    const missing=recipeNeeds(selected,factor),remember=form.elements.rememberPantry.checked;
+    if(missing.length||remember&&pantryAdditions(unchecked,pantryKeys(state.pantry)).length)addRows(missing,currentStore(form.elements.storeId.value),unchecked,remember);
+    else showNotice(selected.length?'Die ausgewählten Zutaten stehen bereits im Vorrat oder auf dem Einkaufszettel.':'Keine weiteren Zutaten hinzugefügt.');
+  }
   if(form._meal)$('#plan-recipe-dialog').close();
   view = 'all'; $('#transfer-dialog').close(); render(); tab('shopping');
 }); });

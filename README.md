@@ -1,6 +1,12 @@
-# Sattplan – Version 2.124
+# Sattplan – Version 2.125
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.125: Packungen und Stückbedarf auf allen Rezeptwegen berücksichtigen
+
+Eine bereits notierte **Packung Tomaten** deckt die Zutat **4 Stück Tomaten** ab, ohne einen zweiten Eintrag zu erzeugen. Bekannte Packungsinhalte werden exakt umgerechnet und einmalig angerechnet; bei unbekanntem Inhalt bleibt das Produkt als bereits auf dem Einkaufszettel berücksichtigt. Konkrete Stückangaben behalten ihre genaue Menge. Die direkte Rezeptübernahme, das einzelne geplante Gericht, die Wochenübernahme und **Speichern & Zutaten hinzufügen** verwenden dieselbe Fehlmengenprüfung. Auch beim Bestätigen wird der aktuelle Einkaufszettel erneut geprüft.
+
+Die Zutatenliste unterscheidet **Vorhanden**, **Auf Einkaufszettel** und noch fehlende Mengen. Im Übernahmedialog sind bereits abgedeckte Zutaten automatisch abgewählt und gekennzeichnet; bei Teilmengen wird nur der noch nötige Rest vorgeschlagen. Portionenänderungen und der Geräteabgleich aktualisieren diese Vorschläge, bewusste Haken bleiben erhalten. Ein automatisch abgewählter Einkaufsartikel wird durch **Abgewählte Zutaten als Vorrat merken** nicht versehentlich zum vorhandenen Vorrat. Ohne neue Zutaten schließt **Fertig** den Dialog. Regressionstests prüfen Packung/Stück, bekannte Teilmengen, alle vier Übernahmewege, parallele Änderungen und eigene Listen. Offline-Paket **einkauf-shell-v137**.
 
 ## Neu in Version 2.124: Gemeinsame Zutatenidentität für Vorrat, Rezepte und Einkaufsbedarf
 

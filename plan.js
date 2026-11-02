@@ -1,8 +1,9 @@
 /* Wochenplan: Datumsrechnung und Zutaten über mehrere Gerichte zusammenzählen. Reine Logik ohne DOM.
    Tage sind lokale Kalendertage im Format JJJJ-MM-TT; gerechnet wird um 12 Uhr, damit Zeitumstellungen nie einen Tag verschieben. */
-import { sameIngredient, pantryKeys, inPantry } from './data.js';
+import { sameIngredient, pantryKey, pantryKeys, inPantry } from './data.js';
 import { productKey, unitSpec } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
+import { withKnownPack } from './buying.js';
 
 const pad = number => String(number).padStart(2, '0');
 export const isoDate = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -135,15 +136,21 @@ export function aggregateIngredients(meals, recipes, ingredients) {
 // eingeplante Mengen stehen zusätzlichen Gerichten nicht nochmals zur Verfügung.
 export function shoppingDeficits(rows, pantry = [], items = [], reserved = []) {
   const sameGroup=sameIngredient;
-  const stock=pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty).map(row=>({...row,left:row.quantity*unitSpec(row.unit).factor}));
+  const history=new Map();
+  for(const item of items){const key=pantryKey(item.name);if(!history.has(key))history.set(key,[]);history.get(key).push(item);}
+  const measure=row=>['weight','volume','count'].includes(unitSpec(row.unit).group)?row:withKnownPack(row,(history.get(pantryKey(row.name))||[]).map(item=>({...item,name:row.name})));
+  const stock=pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&row.quantity>0).map(source=>{
+    const row=measure(source);return {...row,left:row.quantity*unitSpec(row.unit).factor};
+  });
   const consume=(row,amount)=>{for(const item of pool){if(!sameGroup(item.name,row.name)||unitSpec(item.unit).group!==unitSpec(row.unit).group)continue;const used=Math.min(amount,item.left);amount-=used;item.left-=used;if(amount<=1e-8)break;}return amount;};
-  for(const row of reserved)if(!inPantry(stock,row.name))consume(row,row.quantity*unitSpec(row.unit).factor);
+  for(const row of reserved)if(!inPantry(stock,row.name)){const normalized=measure(row);consume(normalized,normalized.quantity*unitSpec(normalized.unit).factor);}
   return rows.flatMap(row=>{
     if(inPantry(stock,row.name))return [];
+    const normalized=measure(row),spec=unitSpec(normalized.unit);
     // Unbekannte Packungsgrößen/Einheiten nicht in eine zweite Produktzeile umdeuten.
-    if(pool.some(item=>item.left>0&&sameGroup(item.name,row.name)&&unitSpec(item.unit).group!==unitSpec(row.unit).group))return [];
-    if(row.unit===NO_AMOUNT)return pool.some(item=>sameGroup(item.name,row.name)&&item.left>0)?[]:[{...row}];
-    const spec=unitSpec(row.unit),missing=consume(row,row.quantity*spec.factor);
-    return missing>1e-7?[{...row,quantity:Math.round(missing/spec.factor*1e6)/1e6}]:[];
+    if(pool.some(item=>item.left>0&&sameGroup(item.name,row.name)&&unitSpec(item.unit).group!==spec.group))return [];
+    if(row.unit===NO_AMOUNT||row.noAmount)return pool.some(item=>sameGroup(item.name,row.name)&&item.left>0)?[]:[{...row}];
+    const amount=normalized.quantity*spec.factor,missing=consume(normalized,amount);
+    return missing>1e-7?[{...row,quantity:Math.round(row.quantity*missing/amount*1e6)/1e6}]:[];
   });
 }

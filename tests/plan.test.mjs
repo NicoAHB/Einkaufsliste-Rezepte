@@ -301,3 +301,26 @@ test('Einkaufsbedarf: Mengen anderer künftiger Gerichte bleiben reserviert; gek
 test('Einkaufsbedarf: nicht vergleichbare Packungsgrößen erzeugen keine zweite Zeile desselben Produkts',()=>{
  assert.deepEqual(shoppingDeficits([{name:'Mehl',quantity:500,unit:'g'}],[],[{name:'Mehl',quantity:1,unit:'Packung'}]),[]);
 });
+
+test('Einkaufsbedarf: eine bekannte Packung deckt Stückbedarf ab, ohne Mengen zu verändern',()=>{
+  const items=[{name:'Tomaten',quantity:6,unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'},checked:false}],before=JSON.stringify(items);
+  assert.deepEqual(shoppingDeficits([{name:'Tomate',quantity:4,unit:'Stück'}],[],items),[]);
+  assert.equal(shoppingDeficits([{name:'Tomaten',quantity:8,unit:'Stück'}],[],items)[0].quantity,2);
+  assert.equal(JSON.stringify(items),before);
+});
+
+test('Einkaufsbedarf: unbekannte Packung statt Stück ist bereits notiert; bekannte Größen werden exakt verrechnet',()=>{
+  const row={name:'Tomaten',quantity:4,unit:'Stück'};
+  for(const unit of ['Packung','Packungen','Schale','Beutel','Bund'])assert.deepEqual(shoppingDeficits([row],[],[{name:'Tomaten',quantity:1,unit,checked:false}]),[],unit);
+  const pack={name:'Tomaten',quantity:1,unit:'Packung',purchaseUnit:{label:'Packung',quantity:2,unit:'Stück'},checked:false};
+  assert.equal(shoppingDeficits([row],[],[pack])[0].quantity,2);
+  for(const patch of [{checked:true},{deletedAt:'2026-11-02T10:00:00Z'},{_planEmpty:true,quantity:0}])assert.equal(shoppingDeficits([row],[],[{...pack,...patch}])[0].quantity,4);
+});
+
+test('Einkaufsbedarf: Packungsinhalt wird einmal verteilt und Reservierungen bleiben berücksichtigt',()=>{
+  const items=[{name:'Tomaten',quantity:6,unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'}}];
+  const rows=[{name:'Tomaten',quantity:4,unit:'Stück'},{name:'kleine Tomaten',quantity:4,unit:'Stück'}];
+  assert.deepEqual(shoppingDeficits(rows,[],items),[{...rows[1],quantity:2}]);
+  assert.equal(shoppingDeficits([rows[0]],[],items,[{name:'Tomate',quantity:3,unit:'Stück'}])[0].quantity,1);
+  assert.equal(shoppingDeficits([rows[0]],[],[{...items[0],quantity:1,purchaseUnit:null}])[0].quantity,3,'bewusste Stückwahl wird nicht auf eine Packung aufgerundet');
+});

@@ -599,10 +599,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const checked = await page.locator('#transfer-ingredients input:checked').count();
     assert.equal(checked, 4, 'Salz und Pfeffer („nach Bedarf“) sollen nicht vorausgewählt sein');
     await page.fill('#transfer-form input[name=servings]', '8');
-    assert.match(await page.textContent('#transfer-ingredients'), /1\.600 g Tomaten/);
+    assert.match(await page.textContent('#transfer-ingredients'), /1\.100 g Tomaten/, 'die 500 g auf dem Einkaufszettel werden angerechnet');
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#items'), /Tomaten[\s\S]*1\.600 g/);
+    assert.equal((await storedDemo(page)).items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Tomaten').reduce((sum,row)=>sum+row.quantity*(row.unit==='kg'?1000:1),0),1600);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -1095,7 +1095,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Gleiche Artikel werden zusammengezählt; Rezept-Zutaten zählen zur Liste dazu', async () => {
+  test('Gleiche Artikel werden zusammengezählt; Rezept-Zutaten ergänzen nur noch fehlende Mengen', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.getByRole('tab', { name: /^Edeka/ }).click();
@@ -1114,7 +1114,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Gramm und Kilogramm werden verrechnet (Beispieldaten: Tomaten 500 g bei Edeka).
     await add('Tomaten', '0,7', 'kg');
     assert.match(await rows('Tomaten').first().textContent(), /1,2 kg/);
-    // Rezept auf die Liste: Nudeln 500 g + 200 g, Tomaten 1,2 kg + 400 g
+    // Die vorhandenen Nudeln und Tomaten decken das Rezept ab; nur andere fehlende Zutaten kommen hinzu.
     await page.click('[data-tab=recipes]');
     const card = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
     await card.locator('summary').click();
@@ -1123,12 +1123,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.selectOption('#transfer-form select[name=storeId]', 'store-edeka');
     await page.click('#transfer-form button:not([data-close])');
     await page.waitForSelector('#transfer-dialog', { state: 'hidden' });
-    assert.match(await page.textContent('#notice-text'), /dazugezählt/);
+    assert.match(await page.textContent('#notice-text'), /neu/);
     await page.getByRole('tab', { name: /^Edeka/ }).click();
     assert.equal(await rows('Nudeln').count(), 1);
-    assert.match(await rows('Nudeln').textContent(), /2 Packungen à 500 g/);
-    assert.equal((await storedDemo(page)).items.find(row=>row.name==='Nudeln'&&!row.deletedAt&&row.storeId==='store-edeka').quantity,700);
-    assert.match(await rows('Tomaten').first().textContent(), /1,6 kg/);
+    assert.match(await rows('Nudeln').textContent(), /1 Packung à 500 g/);
+    assert.equal((await storedDemo(page)).items.find(row=>row.name==='Nudeln'&&!row.deletedAt&&row.storeId==='store-edeka').quantity,500);
+    assert.match(await rows('Tomaten').first().textContent(), /1,2 kg/);
     assert.equal(await page.getByRole('button', { name: 'Rückgängig' }).count(), 0, 'Es gibt keinen Rückgängig-Knopf');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -1137,6 +1137,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('Vorrat: im Einkauf pflegen, beim Übernehmen vorab abgewählt, abgewählte Zutaten merken', async () => {
     const { ctx, page, problems } = await context();
+    const data=structuredClone(demo);data.items=data.items.filter(row=>row.name!=='Tomaten');await seedLocal(ctx,data);
     await open(page);
     await openPantry(page);
     for (const name of ['Nudeln', 'olivenöl']) { await addPantryProduct(page, name); }
@@ -6414,8 +6415,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Zweites Mal: Salz steht jetzt wirklich auf der Liste, nichts wird doppelt aufgeschrieben
     await transferOnly(page, 'Salz');
     await page.click('#transfer-form button:not([data-close])');
-    assert.match(await page.textContent('#transfer-dialog .dialog-error'), /Alles davon steht schon auf der Liste/);
-    await page.keyboard.press('Escape');
+    await page.waitForSelector('#transfer-dialog',{state:'hidden'});
+    assert.match(await page.textContent('#notice-text'), /bereits.*Einkaufszettel/);
     assert.equal(await page.locator('#items .item').count(), 1);
     // Mit Menge: „Milch“ steht nur im Gedächtnis (Einheit Liter); 250 ml werden ein neuer Artikel, nichts wird „dazugezählt“
     await transferOnly(page, 'Milch', 'Apfel-Pfannkuchen');
@@ -7052,6 +7053,70 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     data.ingredients=[record('banana-ingredient2124',{recipeId:'banana-bread2124',name:'Reife Bananen',quantity:3,unit:'Stück'})];
     return {data,record};
   }
+  function tomatoData2125() {
+    const {data,record}=bananaData2124(0);
+    data.recipes=[record('ratatouille2125',{name:'Ratatouille',servings:4,tags:[],instructions:'Gemüse garen.'})];
+    data.ingredients=[record('tomato-needed2125',{recipeId:'ratatouille2125',name:'Tomaten',quantity:4,unit:'Stück'})];
+    data.items=[record('tomato-pack2125',{name:'Tomaten',quantity:1,unit:'Packung',storeId:'',checked:false,createdBy:'Nico'})];
+    data.pantry=[record('onion-stock2125',{name:'Zwiebeln',available:true})];return {data,record};
+  }
+  for(const route of ['Rezept','geplantes Gericht','Wocheneinkauf','Speichern mit Einkauf'])test(`2.125: eine Packung Tomaten verhindert zusätzliche vier Stück über ${route}`,async()=>{
+    const {data,record}=tomatoData2125();
+    if(['geplantes Gericht','Wocheneinkauf'].includes(route))data.meals=[record('meal2125',{date:isoDay(new Date()),recipeId:'ratatouille2125',servings:4,done:false})];
+    const {ctx,page,problems}=await filterContext(data);await open(page);const before=(await storedDemo(page)).items;
+    if(route==='Speichern mit Einkauf') {
+      await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();
+      assert.match(await page.textContent('#meal-save-shopping small'),/0 noch auf den Einkaufszettel/);await page.click('#meal-save-shopping');
+    } else if(route==='Wocheneinkauf') {
+      await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);
+      assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.match(await page.textContent('#week-ingredients'),/Bereits auf dem Einkaufszettel/);
+      await page.locator('#week-ingredients input').check();await page.click('#week-form button[type=submit]');
+    } else {
+      let card;
+      if(route==='geplantes Gericht') {await goTab(page,'plan');await page.locator('.day.today .meal .link-button').click();await sheetOpen(page);card=page.locator('#plan-recipe-content .recipe-card');}
+      else {await goTab(page,'recipes');card=page.locator('[data-recipe-id=ratatouille2125]');await card.locator('.recipe-details summary').click();}
+      assert.equal(await card.locator('.recipe-ingredients .ingredient-stock').textContent(),'Auf Einkaufszettel');
+      await card.getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(page);
+      assert.equal(await page.locator('#transfer-ingredients input:checked').count(),0);assert.match(await page.textContent('#transfer-ingredients'),/Bereits auf dem Einkaufszettel/);
+      if(route==='Rezept')await page.check('#transfer-form [name=rememberPantry]');
+      await page.click('#transfer-form button[type=submit]');await page.waitForSelector('#transfer-dialog',{state:'hidden'});
+    }
+    const saved=await storedDemo(page);assert.deepEqual(saved.items,before,'die vorhandene Packung wird weder verdoppelt noch umgerechnet');
+    assert.ok(!saved.pantry.some(row=>!row.deletedAt&&/^Tomat/.test(row.name)),'ein Artikel auf dem Zettel wird nicht als vorhandener Vorrat gespeichert');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.125: bekannte Packungsgröße und geänderte Portionen ergänzen nur fehlende Stücke zum vorhandenen Artikel',async()=>{
+    const {data}=tomatoData2125();Object.assign(data.items[0],{quantity:6,unit:'Stück',purchaseUnit:{label:'Packung',quantity:6,unit:'Stück'}});
+    const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');await page.locator('[data-recipe-id=ratatouille2125]').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(page);
+    assert.equal(await page.locator('#transfer-ingredients input:checked').count(),0);
+    await page.fill('#transfer-form [name=servings]','8');await page.locator('#transfer-form [name=servings]').dispatchEvent('change');
+    assert.equal(await page.locator('#transfer-ingredients input:checked').count(),1);assert.match(await page.textContent('#transfer-ingredients'),/2 Stück Tomaten/);
+    await page.click('#transfer-form button[type=submit]');await page.waitForSelector('#transfer-dialog',{state:'hidden'});
+    const items=active((await storedDemo(page)).items);assert.equal(items.length,1);assert.equal(items[0].id,'tomato-pack2125');assert.equal(items[0].quantity,8);assert.equal(items[0].unit,'Stück');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.125: Packung vom anderen Gerät wird auch bei bereits geöffnetem Übernahmedialog berücksichtigt',async()=>{
+    const {data}=tomatoData2125();data.items=[];const api=github(data),{ctx,page,problems}=await context({config:connectedConfig});
+    await ctx.route('https://api.github.com/**',api.handler);await open(page);await synced(page);await goTab(page,'recipes');await page.locator('[data-recipe-id=ratatouille2125]').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(page);
+    assert.equal(await page.locator('#transfer-ingredients input:checked').count(),1);
+    await page.fill('#transfer-form [name=servings]','');
+    api.remoteChange(data=>Object.assign(data,merge(data,[operation('items','partner-pack2125',{name:'Tomaten',quantity:1,unit:'Packung',checked:false,createdBy:'Anna',storeId:''},'Anna')])));
+    await pollNow(page);await page.waitForFunction(()=>document.querySelector('#items').textContent.includes('Tomaten'));assert.equal(await page.inputValue('#transfer-form [name=servings]'),'');
+    await page.fill('#transfer-form [name=servings]','4');await page.waitForFunction(()=>document.querySelectorAll('#transfer-ingredients input:checked').length===0);
+    await page.click('#transfer-form button[type=submit]');await page.waitForSelector('#transfer-dialog',{state:'hidden'});await synced(page);
+    assert.equal(active(api.content.items).length,1);assert.equal(active(api.content.items)[0].unit,'Packung');assert.equal(active(api.content.items)[0].quantity,1);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.125: Packung im Vorrat wird als vorhanden angezeigt; eigene Listen decken keine Rezeptzutaten ab',async()=>{
+    const {data,record}=tomatoData2125();data.items=[];data.pantry.push(record('tomato-stock2125',{name:'Tomaten',available:true}));
+    const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator('[data-recipe-id=ratatouille2125]');await card.locator('.recipe-details summary').click();assert.equal(await card.locator('.ingredient-stock').textContent(),'Vorhanden');await ctx.close();
+    const own=tomatoData2125();own.data.stores.push(own.record('wishes2125',{name:'Wünsche',separate:true}));own.data.items[0].storeId='wishes2125';
+    const other=await filterContext(own.data);await open(other.page);await goTab(other.page,'recipes');await other.page.locator('[data-recipe-id=ratatouille2125]').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(other.page);
+    assert.equal(await other.page.locator('#transfer-ingredients input:checked').count(),1);await other.page.click('#transfer-form button[type=submit]');await other.page.waitForSelector('#transfer-dialog',{state:'hidden'});
+    const groceries=active((await storedDemo(other.page)).items).filter(row=>!row.storeId);assert.equal(groceries.length,1);assert.equal(groceries[0].quantity,4);assert.equal(groceries[0].unit,'Stück');assert.deepEqual([...problems,...other.problems],[]);await other.ctx.close();
+  });
   for(const [quantity,unit,remaining] of [[3,'Stück',0],[1,'Bund',0],[1,'Stück',1]])test(`2.124: Bananenbrot mit ${quantity} ${unit} Bananen auf der Liste ergänzt nur die echte Fehlmenge`,async()=>{
     const {data}=bananaData2124(quantity,unit),{ctx,page,problems}=await filterContext(data);
     await open(page);const before=(await storedDemo(page)).items;await openMealPicker(page);
@@ -8532,13 +8597,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await storedDemo(page)).pantry,before.pantry);assert.deepEqual((await storedDemo(page)).items,before.items);await closePantry(page);await openPantry(page);assert.equal(await page.getAttribute('[data-product-mode=current]','aria-pressed'),'true');
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.78: aufgebrauchte Zutaten werden im Rezept wieder ausgewählt, Nachkaufen erhält Bild und Vorratsstatus',async()=>{
+  test('2.78: aufgebrauchter optionaler Grundvorrat wird nachgekauft; das Rezept vermeidet doppelte Nachkäufe',async()=>{
     const data=pantryData278([{id:'my-noodles',name:'Nudeln',available:true},{name:'Meine Testmischung',category:'vorrat',imageKey:'muesli',available:false}]);
+    data.items=data.items.filter(row=>row.name!=='Nudeln');
     const {ctx,page,problems}=await context({config:{productImages:true}});await seedLocal(ctx,data);await open(page);await openPantry(page);await setPantryAvailable(page,'Nudeln',false);
     await buyPantryProduct(page,'Meine Testmischung');await page.selectOption('#pantry-buy-form [name=storeId]','store-lidl');await page.fill('#pantry-buy-form [name=quantity]','2');
     await page.evaluate(()=>{document.querySelector('#pantry-buy-add').click();document.querySelector('#pantry-buy-add').click();});let saved=await storedDemo(page),purchased=saved.items.filter(row=>!row.deletedAt&&row.name==='Meine Testmischung');assert.equal(purchased.length,1);assert.equal(purchased[0].quantity,2);assert.equal(purchased[0].imageKey,'muesli');assert.equal(saved.pantry.find(row=>row.name==='Meine Testmischung').available,false);
     await closePantry(page);await goTab(page,'recipes');const recipe=page.locator('.recipe-card',{hasText:'Tomaten-Pasta'});await recipe.locator('summary').click();await recipe.getByRole('button',{name:'Einkaufen'}).click();await sheetOpen(page);
-    const noodles=page.locator('#transfer-ingredients .transfer-row',{hasText:'Nudeln'});assert.equal(await noodles.locator('input').isChecked(),true);assert.equal(await noodles.locator('.pantry-badge').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+    const noodles=page.locator('#transfer-ingredients .transfer-row',{hasText:'Nudeln'});assert.equal(await noodles.locator('input').isChecked(),false);assert.equal(await noodles.locator('.pantry-badge').textContent(),'Bereits auf dem Einkaufszettel');assert.equal(active((await storedDemo(page)).items).filter(row=>!row.checked&&row.name==='Nudeln').length,1);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.78: gespeicherte eigene Bilder, Favoriten und Status sind nach Offline-Neustart weiter nutzbar',async()=>{
     const data=pantryData278([{id:'my-mix',name:'Meine Hausmischung',category:'sonstiges',imageKey:'muesli',available:true},{name:'Mehl',available:false}]);

@@ -114,8 +114,7 @@ export function preferredPurchase(name, history = []) {
 // Auch Rezeptangaben wie „½ Packung Wraps“ sind bei bekannter Größe eindeutig.
 // Keine Gramm/Stück-Schätzung und kein Erfinden eines unbekannten Inhalts.
 export function withKnownPack(row,history=[]) {
-  if(row.purchaseUnit!==undefined)return row;
-  const pref=preferredPurchase(row.name,history),profile=pref.purchaseUnit;
+  const pref=row.purchaseUnit!==undefined?row:preferredPurchase(row.name,history),profile=pref.purchaseUnit;
   if(!validPurchaseUnit(profile))return row;
   const isPack=key(row.unit)===key(profile.label)||(profile.label==='Packung'&&['pck','pck.','pkg','pkg.','pk','päckchen'].includes(productKey(row.unit)));
   const quantity=row.quantity*profile.quantity;
