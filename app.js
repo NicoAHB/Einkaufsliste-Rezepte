@@ -2,7 +2,7 @@ import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, 
 import { createDraftStore } from './drafts.js';
 import { categorizedPurchases, defaultExpenseCategory } from './expense-categories.js';
 import { mountExpenseCategoryPicker } from './expense-category-view.js';
-import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,undoAutomaticStockChanges} from './smart-stock.js';
+import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
@@ -384,6 +384,7 @@ function render() {
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
   if ($('#cookable-dialog').open) renderCookable();
   productPicker?.refresh();
+  if($('#finish-dialog').open)renderFinishStockHint();
   scheduleStockRefresh();
   renderDailyButton();
   form.querySelector('button[type=submit]').disabled = !ready;
@@ -2930,7 +2931,7 @@ function openFinish() {
   const checked = finishItems().length, others = shopStore && shopStore !== ALL_STORES ? visibleItems(shopStore).filter(item => item.checked).length - checked : 0;
   $('#finish-text').textContent = (checked ? `${checked === 1 ? '1 abgehakter Artikel wird' : `${checked} abgehakte Artikel werden`} von der Liste entfernt.` : 'Es ist noch nichts abgehakt.')
     + (others > 0 ? ` ${others === 1 ? 'Ein abgehakter Artikel eines anderen Geschäfts bleibt' : `${others} abgehakte Artikel anderer Geschäfte bleiben`} bis zum jeweiligen Abschluss stehen.` : '');
-  $('#finish-form').reset(); syncFinishActions(); message(); finishScope = namespace();
+  $('#finish-form').reset(); syncFinishActions();renderFinishStockHint(); message(); finishScope = namespace();
   spendingView.fillBuyer($('#finish-form').elements.buyerId, spendingView.defaultBuyer());
   const expenseStores=$('#finish-form').elements.expenseStoreId;
   expenseStores.replaceChildren(new Option('Ohne Zuordnung',''));
@@ -2946,6 +2947,7 @@ function syncFinishActions(){
   $('#finish-save').hidden=!hasAmount;$('#finish-save-hint').hidden=!hasAmount;
   $('#finish-only').textContent=hasAmount?'Ohne Betrag beenden':'Einkauf beenden';
 }
+function renderFinishStockHint(){const text=stockTransferNotice(state,finishItems()),hint=$('#finish-stock-hint');hint.textContent=text;hint.hidden=!text;}
 function finishShopping(amount = '') {
   if(!$('#finish-dialog').open)return;
   if (finishScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Einkauf erneut öffnen.');
@@ -2957,10 +2959,10 @@ function finishShopping(amount = '') {
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
   if (fields) duplicateWarning(fields, '', 'tippe auf „Einkauf beenden & Betrag speichern“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
-  const notice = fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '';
+  const notice = [fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '',stockTransferNotice(state,checked)].filter(Boolean).join(' · ');
   if (fields) rememberOwnBuyer(buyer.id);
   // Erst lokal sichern, dann die Ansicht schließen. Bei vollem Gerätespeicher bleibt der Einkauf offen.
-  if (ops.length) commit(ops, notice); else render();
+  if (ops.length) commit(ops, notice); else {render();if(notice)showNotice(notice);}
   for (const id of ids) shopChecked.delete(id);
   if (fields) spendingView.reveal(fields);
   $('#finish-dialog').close(); setShopMode(false);

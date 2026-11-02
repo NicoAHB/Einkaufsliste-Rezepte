@@ -229,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.119 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.120 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -417,6 +417,7 @@
     <label for="finish-amount">Was hast du bezahlt? (optional)<input id="finish-amount" name="amount" inputmode="decimal" enterkeyhint="done" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Bezahlter Betrag in Euro"></label>
     <div class="purchase-person-field"><label>Eingekauft von<select name="buyerId" aria-label="Person für diesen Einkauf"></select></label><button id="finish-person-add" type="button" class="icon-button secondary" aria-label="Person hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
     <p id="finish-save-hint" class="hint" hidden>Der Betrag wird unter Ausgaben gespeichert.</p>
+    <p id="finish-stock-hint" class="hint" role="status" hidden></p>
     <div class="sheet-actions finish-actions"><button id="finish-save" type="submit" hidden>Einkauf beenden &amp; Betrag speichern</button><button id="finish-only" type="button" class="secondary">Einkauf beenden</button></div>
   </form></dialog>
   <dialog id="cookable-dialog"><div class="stack"><div class="sheet-head"><h2>Was kann ich kochen?</h2><button type="button" data-close="cookable-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

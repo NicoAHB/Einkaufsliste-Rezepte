@@ -3861,6 +3861,7 @@ html[data-landscape] .turn-hint {
 .finish-actions { display:grid; gap:8px }
 :root #finish-save,:root #finish-only { min-height:48px; padding:12px; white-space:normal; line-height:1.35 }
 :root #finish-only { border:1px solid var(--accent); background:var(--card); color:var(--accent); box-shadow:none }
+#finish-stock-hint { overflow-wrap:anywhere }
 .stack>.sheet-actions {
   margin:14px -18px calc(-22px - env(safe-area-inset-bottom))
 }

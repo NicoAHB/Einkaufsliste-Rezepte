@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {emptyData,merge,operation,pantryKeys,pantryRows,validate,SCHEMA_REV} from '../data.js';
 import {pantryChanges,pantrySelectionChanges} from '../pantry.js';
-import {automaticStockChanges,autoStockEligible,consumeStockChanges,isAutomaticBasic,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,smartStockSaved,smartStockSettingChange,smartStockSettings,undoAutomaticStockChanges} from '../smart-stock.js';
+import {automaticStockChanges,autoStockEligible,consumeStockChanges,isAutomaticBasic,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,smartStockSaved,smartStockSettingChange,smartStockSettings,stockTransferNotice,undoAutomaticStockChanges} from '../smart-stock.js';
 import {recentPurchases} from '../recent-purchases.js';
 import {namesFrom} from '../cookable.js';
 import {compact} from '../compact.js';
@@ -93,4 +93,13 @@ test('Parallele Speichervorgänge bewahren unabhängige Einstellungen und einen 
 });
 test('Ungültige Speichernachweise werden zurückgewiesen',()=>{
  for(const [name,time]of [['',stamp],['Nico','kaputt']])assert.throws(()=>saveSmartStockChange(emptyData(),{},name,time));const data=enabled();data.stockSettings[0].saved={at:stamp,by:42};assert.throws(()=>validate(data),/Speichernachweis/);
+});
+
+test('Abschluss nennt nur tatsächliche Übernahmen des Einkaufs und trennt schon vorhandenen manuellen Vorrat',()=>{
+ let data=bought(2);data.items.push(item('Mehl',{id:'flour',category:'vorrat'}),item('Shampoo',{id:'shampoo',category:'haushalt'}),item('Sonderartikel',{id:'other',category:'sonstiges'}));data=apply(data,pantryChanges(['Mehl']).map(change=>({...change,collection:'pantry'})));const before=structuredClone(data);
+ assert.equal(stockTransferNotice(data,data.items,now),'Automatisch in den Vorrat übernommen: Bananen. Bereits im Vorrat vorhanden: Mehl.');assert.deepEqual(data,before);assert.equal(stockTransferNotice({...data,stockSettings:[]},data.items,now),'');
+});
+test('Abschluss bestätigt weder abgelaufenen oder aufgebrauchten Vorrat noch eine Übernahme aus einem anderen Einkauf',()=>{
+ const data=bought(1);assert.match(stockTransferNotice(data,data.items,now+DAY),/^Keine kochrelevanten/);const consumed=apply(data,consumeStockChanges(data,'Bananen',at(.1)),at(.1));assert.match(stockTransferNotice(consumed,consumed.items,now+DAY*.1),/^Keine kochrelevanten/);
+ const other=item('Bananen',{id:'another-purchase',shopBoughtAt:at(.1)});assert.equal(stockTransferNotice(data,[other],now+DAY*.1),'Bereits im Vorrat vorhanden: Bananen.');assert.match(stockTransferNotice(data,[],now),/^Keine kochrelevanten/);
 });

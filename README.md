@@ -1,6 +1,10 @@
-# Sattplan – Version 2.119
+# Sattplan – Version 2.120
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.120: Vorratsübernahme beim Abschluss bestätigen
+
+Bei aktivierter Vorratsautomatik nennt **Einkauf beenden** die tatsächlich automatisch übernommenen kochrelevanten Produkte. Der Hinweis steht im Abschlussfenster und in der Bestätigung nach dem Beenden, mit und ohne gespeicherten Betrag. Bereits vorhandener Vorrat wird separat benannt. Haushalt/Drogerie, Sonstiges, abgelaufene oder aufgebrauchte Bestände erhalten keine falsche Übernahmebestätigung. Ohne übernommene Zutaten wird das klar angezeigt; bei ausgeschalteter Automatik entfällt der Hinweis. Der Abschluss startet keine zusätzliche Übernahme und verändert keine Ablaufzeit. Offline-Paket **einkauf-shell-v132**.
 
 ## Neu in Version 2.119: Einkauf ausdrücklich beenden und Betrag speichern
 

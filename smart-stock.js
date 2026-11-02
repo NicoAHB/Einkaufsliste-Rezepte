@@ -32,6 +32,17 @@ export function smartStockSaved(data){
   return {...saved};
 }
 export function autoStockEligible(item,history=[]){return FOOD.has(itemCategory(item,history))&&suggestCategory(item.name)!=='haushalt';}
+export function stockTransferNotice(data,items,now=Date.now()){
+  if(!smartStockSettings(data).enabled)return '';
+  const history=[...(data.names||[]),...(data.items||[])],bought=items.filter(item=>item.checked&&item.shopBoughtAt&&!item.deletedAt&&!isSeparate((data.stores||[]).find(store=>store.id===item.storeId))&&autoStockEligible(item,history));
+  const available=pantryRows(data.pantry||[],now).filter(row=>row.available!==false),transferred=[],already=[];
+  for(const key of new Set(bought.map(item=>pantryKey(item.name)))){
+    const stock=available.find(row=>pantryKey(row.name)===key);if(!stock)continue;
+    const matches=stock.autoStock&&bought.some(item=>item.id===stock.autoStock.purchaseId&&item.shopBoughtAt===stock.autoStock.boughtAt);
+    (matches?transferred:already).push(stock.name);
+  }
+  return [transferred.length?`Automatisch in den Vorrat übernommen: ${transferred.join(', ')}.`:'',already.length?`Bereits im Vorrat vorhanden: ${already.join(', ')}.`:''].filter(Boolean).join(' ')||'Keine kochrelevanten Produkte aus diesem Einkauf automatisch in den Vorrat übernommen.';
+}
 export function automaticStockChanges(data,item,boughtAt){
   const settings=smartStockSettings(data),time=Date.parse(boughtAt);
   if(!settings.enabled||!Number.isFinite(time)||!autoStockEligible(item,[...(data.names||[]),...(data.items||[])]))return [];
