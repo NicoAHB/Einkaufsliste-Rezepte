@@ -31,7 +31,7 @@ export function parseAmount(input) {
 export const formatAmount = cents => (cents / 100).toFixed(2).replace('.', ',');
 
 // Prüft die Eingaben für einen Eintrag und gibt die Felder zum Speichern zurück (`today` = JJJJ-MM-TT, Heute und morgen sind erlaubt).
-export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand', buyerId, buyerName = '', kind }, today) {
+export function purchaseFields({ amount, date, storeId = '', storeName = '', note = '', source = 'hand', buyerId, buyerName = '', kind, categoryId }, today) {
   const cents = parseAmount(amount);
   if (!validDay(date)) throw new Error('Bitte ein gültiges Datum angeben.');
   const limit = new Date(`${today}T12:00:00Z`); limit.setUTCDate(limit.getUTCDate() + 1);
@@ -39,10 +39,14 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
   const fields = { date, cents, source: SOURCES.includes(source) ? source : 'hand' };
   if (storeId) fields.storeId = String(storeId);
   if (storeName.trim()) fields.storeName = storeName.trim().replace(/\s+/g, ' ').slice(0, 80);
-  fields.note = String(note).trim().replace(/\s+/g, ' ').slice(0, 120);
+  fields.note = String(note).trim().replace(/\s+/g, ' ').slice(0, categoryId === undefined ? 120 : 200);
   if (kind !== undefined) {
     if (!['purchase', 'refund'].includes(kind)) throw new Error('Bitte Einkauf oder Rückerstattung auswählen.');
     fields.kind = kind;
+  }
+  if (categoryId !== undefined) {
+    if (categoryId !== null && (typeof categoryId !== 'string' || !categoryId || categoryId.length > 2048)) throw new Error('Bitte eine gültige Kategorie auswählen.');
+    fields.categoryId = categoryId;
   }
   if (buyerId !== undefined) {
     if (buyerId && !validMemberId(buyerId)) throw new Error('Bitte eine gültige Person auswählen.');
@@ -214,7 +218,7 @@ export function budgetStatus(spent, budget) {
 // Benutzereingaben sind Text, auch wenn ein Name mit einem Tabellen-Formelzeichen beginnt.
 export function spendingCsv(rows, stores = [], members = []) {
   const text = value => { let field = String(value ?? ''); if (/^[\s]*[=+\-@\t\r]/.test(field)) field = `'${field}`; return `"${field.replace(/"/g, '""')}"`; };
-  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Notiz'].map(text).join(';');
+  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie'].map(text).join(';');
   const lines = rows.map(row => [text(row.date), text(row.kind === 'refund' ? 'Rückerstattung' : 'Einkauf'), text(buyerNameOf(row, members)),
     text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(row.note)].join(';'));
   return '\ufeff' + [header, ...lines].join('\r\n') + '\r\n';

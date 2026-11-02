@@ -1,5 +1,8 @@
 import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion } from './ui-controls.js';
 import { createDraftStore } from './drafts.js';
+import { categorizedPurchases, defaultExpenseCategory } from './expense-categories.js';
+import { mountExpenseCategoryPicker } from './expense-category-view.js';
+import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds } from './store-order.js';
@@ -42,7 +45,7 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required } from './cookable.js';
-import { DEFAULT_NOTE, budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, noteSuggestions, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -54,7 +57,7 @@ const imagesOn = () => config.productImages !== false;
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let restoring = false, restoreController = null;
-let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null;
+let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null, expenseCategoryPicker = null;
 const storeReorders = [];
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
@@ -220,6 +223,7 @@ function commit(ops, notice = '') {
 }
 
 function tab(name) {
+  closeRecipeStock();
   for (const id of ['shopping', 'recipes', 'plan', 'spending', 'settings']) $(`#${id}`).hidden = name !== id;
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === name) node.setAttribute('aria-current', 'page');
@@ -351,7 +355,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
   if ($('#plan-recipe-dialog').open) renderPlanRecipe();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
@@ -1099,6 +1103,7 @@ function renderRecipes() {
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
       (!tagFilter || recipe.tags.includes(tagFilter)) && (!favoritesOnly || recipe.favorite);
   }).sort(order)) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
+  refreshRecipeStock();
   if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
   hydratePhotos();
 }
@@ -1123,13 +1128,10 @@ function recipeCard(recipe, ingredients, options = {}) {
   }
   const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required);
   const showStock=stock.have.length>0;
+  let stockView=null;
   if(showStock && tracked.length) {
-    const have=tracked.filter(row=>availability(row.name,stockIndex)==='have').length, missing=tracked.length-have;
-    const badge=element('div',undefined,`recipe-stock ${have===tracked.length?'complete':have?'partial':'empty'}`);
-    badge.append(element('span',`${have} von ${tracked.length} Zutaten da · ${missing} fehlen`));
-    const progress=element('span',undefined,'recipe-stock-track'), fill=element('span'); fill.style.width=`${have/tracked.length*100}%`; progress.append(fill);
-    progress.setAttribute('role','progressbar'); progress.setAttribute('aria-label','Zutaten im Vorrat'); progress.setAttribute('aria-valuemin','0'); progress.setAttribute('aria-valuemax',String(tracked.length)); progress.setAttribute('aria-valuenow',String(have));
-    badge.append(progress);card.append(badge);
+    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel});
+    card.append(stockView.element);
   }
   const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);
   details.addEventListener('toggle', () => { if (options.isolated) return; if (details.open) openRecipes.add(recipe.id); else openRecipes.delete(recipe.id); });
@@ -1139,6 +1141,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   servingInput.setAttribute('aria-label', `Portionen für ${recipe.name}`);
   const updateAmounts = () => {
     const count = positive(servingInput.value); if (!options.isolated) portions.set(recipe.id, count);
+    stockView?.updateAmounts(count);
     list.replaceChildren(...ingredients.map(row => {
       const li=element('li'), label=element('span',ingredientLabel(row,count/recipe.servings)); li.append(label);
       if(showStock) { const have=!required(row) || availability(row.name,stockIndex)==='have', status=element('span',have?'Vorhanden':'Fehlt',`ingredient-stock ${have?'have':'missing'}`); status.prepend(icon(have?'check':'minus')); li.append(status); }
@@ -1594,6 +1597,7 @@ function toggleMeal(id) {
 }
 let plannedRecipe = null;
 function showRecipe(id, mealId) {
+  closeRecipeStock();
   const meal=state.meals.find(row=>row.id===mealId&&!row.deletedAt);
   if(!meal||meal.recipeId!==id)throw new Error('Dieses Gericht wurde inzwischen geändert. Bitte den Wochenplan erneut öffnen.');
   plannedRecipe={recipeId:id,mealId,signature:'',servings:meal.servings,scope:namespace()};
@@ -1604,7 +1608,7 @@ function renderPlanRecipe() {
   const meal=state.meals.find(row=>row.id===plannedRecipe.mealId&&!row.deletedAt);
   const recipe=active(state.recipes).find(row=>row.id===plannedRecipe.recipeId);
   const ingredients=active(state.ingredients).filter(row=>row.recipeId===plannedRecipe.recipeId);
-  const signature=JSON.stringify([meal,recipe,ingredients]);
+  const signature=JSON.stringify([meal,recipe,ingredients,state.pantry]);
   if(signature===plannedRecipe.signature)return;
   const dialog=$('#plan-recipe-dialog'),content=$('#plan-recipe-content'),scroll=dialog.scrollTop;
   let servings=meal?.servings;
@@ -2900,7 +2904,8 @@ function finishShopping(amount = '') {
   const checked = finishItems(), ids = checked.map(item => item.id), typed = amount.trim();
   const storeId = shopStore === ALL_STORES && typed ? currentStore($('#finish-form').elements.expenseStoreId.value) : shopStore === ALL_STORES ? '' : shopStore;
   const buyer = typed ? purchaseBuyer($('#finish-form').elements.buyerId.value) : null;
-  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: DEFAULT_NOTE,
+  const category = defaultExpenseCategory(state);
+  const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: category?.name || '', categoryId: category?.id || null,
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
   if (fields) duplicateWarning(fields, '', 'tippe auf „+“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
@@ -3221,27 +3226,12 @@ function openPurchase(id = '') {
   form.elements.id.value = row?.id || '';
   form.elements.amount.value = row ? formatAmount(row.cents) : '';
   form.elements.date.value = row?.date || isoDate();
-  // Neue Einträge beginnen mit „Wocheneinkauf“ (Vorschläge zum Austauschen erscheinen beim Tippen ins Feld); beim Ändern bleibt die Notiz, wie sie ist.
-  form.elements.note.value = row ? row.note || '' : DEFAULT_NOTE; showNotePicks(false);
+  expenseCategoryPicker.open(row || null);
   $('#purchase-title').textContent = row ? 'Ausgabe bearbeiten' : 'Ausgabe eintragen';
   $('#purchase-delete').hidden = !row;
 
   $('#purchase-dialog').showModal();
   if (!row) form.elements.amount.focus();
-}
-// Vorschläge für die Notiz: Der Knopf rechts im Feld klappt eine scrollbare Liste auf; ein Tipp auf einen Eintrag übernimmt ihn und klappt sie wieder zu.
-function showNotePicks(open) {
-  $('#purchase-note-picks').hidden = !open; $('#purchase-note-toggle').setAttribute('aria-expanded', String(open));
-}
-function renderNotePicks() {
-  const form = $('#purchase-form'), box = $('#purchase-note-picks'), storeId = form.elements.storeId.value;
-  const store = active(state.stores).find(entry => entry.id === storeId)?.name || (purchaseEditing?.storeId === storeId ? purchaseEditing.storeName || '' : '');
-  box.replaceChildren();
-  for (const text of noteSuggestions(purchaseRows(), store)) {
-    const pick = element('button', text); pick.type = 'button'; pick.setAttribute('aria-pressed', String(text === form.elements.note.value.trim()));
-    pick.addEventListener('click', () => { form.elements.note.value = text; showNotePicks(false); });
-    box.append(pick);
-  }
 }
 // Foto oder Screenshot eines Kassenbons: Text erkennen, Summe/Datum/Geschäft als Vorschlag in die Felder eintragen. Gespeichert wird erst mit „Speichern“.
 async function readPurchasePhoto(files) {
@@ -3287,13 +3277,14 @@ function savePurchase() {
   const buyer = purchaseBuyer(form.elements.buyerId.value, editing);
   const storeName = active(state.stores).find(store => store.id === storeId)?.name || (editing?.storeId === storeId ? editing.storeName || '' : '');
   const fields = { storeId: '', storeName: '', ...purchaseFields({ amount: form.elements.amount.value, date: form.elements.date.value, storeId, storeName,
-    note: form.elements.note.value, source: purchaseSource, kind: form.elements.kind.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate()) };
+    ...expenseCategoryPicker.fields(), source: purchaseSource, kind: form.elements.kind.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate()) };
   // Nur tatsächlich bearbeitete Felder senden: Ein fremdes Gerät kann währenddessen
   // z. B. die Person korrigieren, ohne dass unsere reine Betragsänderung sie überschreibt.
   let patch = fields;
   if (editing) {
     const prior = { storeId: '', storeName: '', source: 'hand', note: '', kind: 'purchase', ...editing, buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
     patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => key !== 'buyerName' && value !== prior[key]));
+    if (!expenseCategoryPicker.changed()) { delete patch.note; delete patch.categoryId; }
     if (fields.storeId === prior.storeId) delete patch.storeName;
     if (fields.buyerId !== prior.buyerId) patch.buyerName = fields.buyerName;
     if (!Object.keys(patch).length) { $('#purchase-dialog').close(); return; }
@@ -3471,6 +3462,7 @@ itemQuantity = mountQuantityControls($('#item-form'), { getHistory:itemHistory }
 editQuantity = mountQuantityControls($('#edit-item-form'), { getHistory:itemHistory });
 document.querySelectorAll('[data-tab]').forEach(node => node.addEventListener('click', () => tab(node.dataset.tab)));
 function requestDialogClose(dialog) {
+  if (dialog.id === 'expense-category-delete-dialog' && expenseCategoryPicker?.busy()) return;
   if (dialog.id === 'restore-dialog' && restoreController?.busy()) return;
   if (dialog.id === 'recipe-dialog' && !canCloseRecipe()) return;
   dialog.close();
@@ -3831,7 +3823,7 @@ pantryBuyer = mountPantryBuy({
   getHistory:itemHistory,onBuy:(rows,storeId)=>addRows(rows,currentStore(storeId))
 });
 spendingView = mountSpending({
-  getData: () => ({ purchases: state.purchases || [], members: state.members || [], stores: state.stores }), getScope: namespace,
+  getData: () => ({ purchases: categorizedPurchases(state), members: state.members || [], stores: state.stores }), getScope: namespace,
   getMonth: () => spendMonth, setMonth: month => { spendMonth = month; }, today: isoDate, getOwn: ownExpenseMember,
   onEdit: id => guard(() => openPurchase(id)), onBudget: renderBudget, onMessage: showNotice,
   onExport: (csv, name) => deliverFile(new File([csv], name, { type: 'text/csv;charset=utf-8' })),
@@ -3922,7 +3914,7 @@ for(const field of ['servings','date'])$('#meal-form').elements[field].addEventL
 $('#plan-adjust-apply').addEventListener('click',()=>finishPlanAdjustment(true));
 $('#plan-adjust-keep').addEventListener('click',()=>finishPlanAdjustment(false));
 $('#plan-adjust-dialog').addEventListener('close',()=>{planAdjustment=null;});
-$('#plan-recipe-dialog').addEventListener('close',()=>{if(!$('#plan-recipe-dialog').open){plannedRecipe=null;$('#plan-recipe-content').replaceChildren();}});
+$('#plan-recipe-dialog').addEventListener('close',()=>{if(!$('#plan-recipe-dialog').open){closeRecipeStock();plannedRecipe=null;$('#plan-recipe-content').replaceChildren();}});
 $('#week-form').elements.skipDone.addEventListener('change', renderWeekRows);
 $('#week-form').elements.skipListed.addEventListener('change', renderWeekRows);
 $('#week-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
@@ -4026,6 +4018,17 @@ $('#palette').addEventListener('click', event => guard(() => {
   const choice = event.target.closest('button[data-palette]')?.dataset.palette;
   if (choice) { saveConfig({ ...config, palette: choice }); applyTheme(); }
 }));
+expenseCategoryPicker = mountExpenseCategoryPicker({
+  getData:()=>state,getScope:namespace,makeIcon:icon,
+  onCommit:changes=>{
+    if(!ready)throw new Error('Bitte die Daten zuerst öffnen oder verbinden.');
+    const ops=changes.map(change=>nextOp(change.collection,change.id,change.patch));
+    if(sizeOf(merge(state,ops))>LIMIT_BYTES)throw new Error('Die Änderung wäre für den Datenspeicher zu groß. Bitte zuerst eine Sicherung erstellen und alte Daten aufräumen. Es wurde nichts geändert.');
+    commit(ops);
+  },
+  beforeDelete:async()=>{if(connected()){if(busy)throw new Error('Bitte den laufenden Abgleich kurz abwarten.');await freshSync();}},
+  onOrder:(getRows,onChange)=>openOrderControls({title:'Kategorien sortieren',scope:namespace(),getScope:namespace,getRows,onChange})
+});
 $('#export').addEventListener('click', () => guard(backup));
 $('#export-full').addEventListener('click', () => guard(backupFull));
 $('#cook-awake').addEventListener('change', event => guard(async () => { awake.cook.failed = false; saveConfig({ ...config, cookAwake: event.target.checked }); await keepAwake('cook', event.target.checked); }));
@@ -4067,18 +4070,6 @@ $('#purchase-form').addEventListener('submit', event => {
   if (Date.now() - purchasePlus < 1500) document.activeElement?.blur?.();
   purchasePlus = 0; guard(savePurchase);
 });
-{
-  const note = $('#purchase-form').elements.note, box = $('#purchase-note-picks');
-  $('#purchase-note-toggle').addEventListener('click', () => {
-    if (!box.hidden) { showNotePicks(false); return; }
-    note.blur();   // die Tastatur würde die Liste verdecken
-    renderNotePicks(); showNotePicks(true);
-    box.querySelector('[aria-pressed=true]')?.scrollIntoView({ block: 'nearest' });
-  });
-  // Wer ins Feld tippt, will schreiben: Die Liste klappt zu, der Text ist ausgewählt (Tippen ersetzt ihn).
-  note.addEventListener('focus', () => { showNotePicks(false); });
-  $('#purchase-form').elements.storeId.addEventListener('change', () => { if (!box.hidden) renderNotePicks(); });
-}
 // Einträge wie Artikel löschen: Zeile lange halten und nach rechts in den roten Mülleimer schieben (statt nachträglich zu bearbeiten).
 dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
   const row = purchaseRows().find(entry => entry.id === id);

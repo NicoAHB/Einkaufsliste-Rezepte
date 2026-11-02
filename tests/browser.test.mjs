@@ -1160,12 +1160,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const monthsAgo = (count, day = 15) => new Date(new Date().getFullYear(), new Date().getMonth() - count, day, 12);
   const monthWord = date => new Intl.DateTimeFormat('de-DE', { month: 'long' }).format(date);
+  const chooseExpenseCategory = async (page,name) => {
+    if(await page.locator('#purchase-note-picks').isHidden())await page.click('#purchase-note-toggle');
+    if(!name){await page.click('#purchase-category-none');return;}
+    const option=page.locator('#purchase-category-list').getByRole('button',{name,exact:true});
+    if(await option.count()){await option.click();return;}
+    await page.click('#purchase-category-add');await page.fill('#expense-category-name',name);await page.click('#expense-category-add-form button[type=submit]');await page.waitForSelector('#expense-category-add-dialog[open]',{state:'detached'});
+  };
   const addPurchase = async (page, { amount, date, store = '', note = '' }) => {
     await page.click('#add-purchase'); await sheetOpen(page);
     await page.fill('#purchase-form input[name=amount]', amount);
     if (date) await page.fill('#purchase-form input[name=date]', date);
     await page.selectOption('#purchase-form select[name=storeId]', store ? { label: store } : '');
-    if (note) await page.fill('#purchase-form input[name=note]', note);
+    if (note) await chooseExpenseCategory(page,note);
     await page.click('#purchase-save');
   };
 
@@ -1246,7 +1253,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.textContent('#purchase-title'), 'Ausgabe bearbeiten');
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '23,45');
     assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
-    await page.fill('#purchase-form input[name=amount]', '30'); await page.selectOption('#purchase-form select[name=storeId]', { label: 'Edeka' }); await page.fill('#purchase-form input[name=note]', '');
+    await page.fill('#purchase-form input[name=amount]', '30'); await page.selectOption('#purchase-form select[name=storeId]', { label: 'Edeka' }); await chooseExpenseCategory(page,'');
     await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe/);
     assert.match(await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).textContent(), /Edeka[\s\S]*30,00\s€/);
@@ -1349,103 +1356,22 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
-  for (const width of [280, 320, 390]) {
-    test(`Ausgaben: Notiz mit Aufklapp-Knopf rechts im Feld, scrollbare Vorschlagsliste, ein Tipp übernimmt (${width} px)`, async () => {
-      const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
-      await open(page);
-      await page.click('[data-tab=spending]');
-      const note = page.locator('#purchase-form input[name=note]'), toggle = page.locator('#purchase-note-toggle'), menu = page.locator('#purchase-note-picks');
-      const items = () => menu.locator('button').allTextContents();
-      const focusedName = () => page.evaluate(() => document.activeElement?.name || document.activeElement?.tagName);
-      // iOS-Safari gibt Knöpfen beim Antippen keinen Fokus
-      await page.evaluate(() => document.addEventListener('mousedown', event => { if (event.target.closest('button')) event.preventDefault(); }, true));
-      await page.click('#add-purchase'); await sheetOpen(page);
-      assert.equal(await note.inputValue(), 'Wocheneinkauf');
-      // Der Knopf sitzt immer rechts im Feld (auch mit Text), die Liste ist zu
-      const box = await toggle.boundingBox(), field = await note.boundingBox();
-      assert.ok(await toggle.isVisible());
-      assert.ok(box.x >= field.x && box.x + box.width <= field.x + field.width && box.y >= field.y && box.y + box.height <= field.y + field.height, 'der Knopf liegt im Feld');
-      assert.ok(field.x + field.width - (box.x + box.width) < 10, 'ganz rechts');
-      assert.ok(box.width >= 40 && box.height >= 36, 'groß genug zum Tippen');
-      assert.ok(await note.evaluate(node => parseFloat(getComputedStyle(node).paddingRight)) >= box.width + 6, 'der Text endet vor dem Knopf');
-      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
-      assert.equal(await menu.isVisible(), false, 'ohne Tipp auf den Knopf keine Liste');
-      // Tipp auf den Knopf: Liste klappt auf (Standard markiert), die Tastatur ist zu, die Liste scrollt
-      await note.focus();
-      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
-      await page.waitForSelector('#purchase-note-picks:not([hidden])');
-      assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-      assert.notEqual(await focusedName(), 'note', 'die Tastatur ist zu, damit die Liste nicht verdeckt wird');
-      assert.deepEqual((await items()).slice(0, 4), ['Wocheneinkauf', 'Großeinkauf', 'Zwischendurch', 'Getränke']);
-      assert.equal(await menu.locator('button[aria-pressed=true]').textContent(), 'Wocheneinkauf');
-      const scroll = await menu.evaluate(node => ({ scrollable: node.scrollHeight > node.clientHeight + 4, overflowY: getComputedStyle(node).overflowY, height: node.clientHeight }));
-      assert.ok(scroll.scrollable && scroll.overflowY === 'auto', 'mehr Vorschläge als sichtbar: die Liste scrollt');
-      assert.ok(scroll.height <= 220, 'die Liste bleibt kompakt');
-      assert.equal(await horizontalOverflow(page), 0);
-      assert.ok(await page.evaluate(() => { const dialog = document.querySelector('dialog[open]'); return dialog.scrollWidth <= dialog.clientWidth; }), 'Dialog läuft nicht über');
-      // Bis zum Ende scrollen und dort etwas wählen
-      await menu.evaluate(node => { node.scrollTop = node.scrollHeight; });
-      assert.ok(await menu.locator('button', { hasText: 'Geschenk' }).evaluate(node => { const list = node.parentElement.getBoundingClientRect(), item = node.getBoundingClientRect(); return item.bottom <= list.bottom + 1 && item.top >= list.top - 1; }), 'der letzte Vorschlag ist erreichbar');
-      await page.touchscreen.tap(...Object.values(await spendCenter(menu.locator('button', { hasText: 'Geschenk' }))));
-      assert.equal(await note.inputValue(), 'Geschenk');
-      assert.equal(await menu.isVisible(), false, 'nach dem Wählen klappt die Liste zu');
-      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
-      // Der Knopf klappt auch wieder zu; ein Tipp ins Feld klappt zu und wählt den Text aus
-      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
-      await page.waitForSelector('#purchase-note-picks:not([hidden])');
-      assert.equal(await menu.locator('button[aria-pressed=true]').textContent(), 'Geschenk', 'die aktuelle Notiz ist markiert');
-      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
-      assert.equal(await menu.isVisible(), false);
-      await page.touchscreen.tap(...Object.values(await spendCenter(toggle)));
-      await page.waitForSelector('#purchase-note-picks:not([hidden])');
-      await page.touchscreen.tap(...Object.values(await spendCenter(note)));
-      assert.equal(await focusedName(), 'note');
-      assert.equal(await menu.isVisible(), false, 'Tippen ins Feld klappt die Liste zu');
-      await page.waitForFunction(() => { const node = document.querySelector('#purchase-form input[name=note]'); return node.selectionEnd === node.selectionStart; });
-      assert.deepEqual(problems, []);
-      await ctx.close();
-    });
-  }
-
-  test('Ausgaben: Notiz beginnt mit „Wocheneinkauf“; eigene Notizen werden mitgelernt und in der Aufklappliste vorgeschlagen; beim Ändern gibt es keinen Standard', async () => {
-    const { ctx, page, problems } = await context();
-    await open(page);
-    await page.click('[data-tab=spending]');
-    const note = page.locator('#purchase-form input[name=note]'), toggle = page.locator('#purchase-note-toggle'), menu = page.locator('#purchase-note-picks');
-    const items = async () => { if (await menu.isHidden()) await toggle.click(); return menu.locator('button').allTextContents(); };
-    await page.click('#add-purchase'); await sheetOpen(page);
-    assert.equal(await note.inputValue(), 'Wocheneinkauf');
-    // Vorschlag wählen und speichern
-    await toggle.click(); await menu.locator('button', { hasText: 'Getränke' }).click();
-    assert.equal(await note.inputValue(), 'Getränke');
-    await page.fill('#purchase-form input[name=amount]', '5'); await page.click('#purchase-save');
-    assert.match(await page.textContent('#purchase-list'), /Getränke[\s\S]*5,00\s€/);
-    // Eigene Notiz tippen: wird beim nächsten Mal vorgeschlagen (häufigste zuerst, nach dem Standard)
-    for (const amount of ['6', '7']) {
-      await page.click('#add-purchase'); await sheetOpen(page);
-      assert.equal(await note.inputValue(), 'Wocheneinkauf', 'jeder neue Eintrag beginnt wieder mit dem Standard');
-      assert.equal(await menu.isVisible(), false, 'die Liste ist beim Öffnen zu');
-      await note.fill('Grillabend'); await page.fill('#purchase-form input[name=amount]', amount); await page.click('#purchase-save');
-    }
-    await page.click('#add-purchase'); await sheetOpen(page);
-    const list = await items();
-    assert.deepEqual(list.slice(0, 4), ['Wocheneinkauf', 'Grillabend', 'Getränke', 'Großeinkauf']);
-    assert.equal(new Set(list).size, list.length, 'keine doppelten Vorschläge');
-    assert.equal(list.length, 12);
-    await menu.locator('button', { hasText: 'Grillabend' }).click();
-    assert.equal(await note.inputValue(), 'Grillabend');
-    await page.keyboard.press('Escape');
-    // Beim Ändern bleibt die Notiz, wie sie ist: leer bleibt leer, es gibt keinen Standard; die Liste gibt es trotzdem
-    await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
-    assert.equal(await note.inputValue(), 'Getränke');
-    assert.equal(await menu.isVisible(), false);
-    await note.fill(''); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
-    await page.locator('#purchase-list .spend-row', { hasText: '5,00' }).click(); await sheetOpen(page);
-    assert.equal(await note.inputValue(), '', 'geleerte Notiz bleibt leer');
-    assert.ok((await items()).includes('Wocheneinkauf'), 'auch beim Ändern gibt es Vorschläge');
-    assert.equal(await menu.locator('button[aria-pressed=true]').count(), 0, 'bei leerer Notiz ist nichts markiert');
-    assert.deepEqual(problems, []);
-    await ctx.close();
+  for(const width of [280,320,390])test(`Ausgaben: Kategorie öffnet ohne Tastatur; erst Plus fokussiert die Eingabe (${width}px)`,async()=>{
+    const {ctx,page,problems}=await context({context:{viewport:{width,height:760}}});await open(page);await goTab(page,'spending');await page.click('#add-purchase');await sheetOpen(page);
+    const toggle=page.locator('#purchase-note-toggle'),list=page.locator('#purchase-category-list');assert.equal(await page.inputValue('#purchase-form [name=note]'),'Wocheneinkauf');assert.equal(await toggle.evaluate(n=>n.tagName),'BUTTON');
+    await page.evaluate(()=>document.addEventListener('mousedown',event=>{if(event.target.closest('button'))event.preventDefault();},true));
+    await page.click('#purchase-category-value');assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.equal(await page.evaluate(()=>document.activeElement.matches('input:not([type=hidden]),textarea')),false);
+    assert.deepEqual((await list.locator('.expense-category-choice').allTextContents()).slice(0,4),['Wocheneinkauf','Großeinkauf','Zwischendurch','Getränke']);assert.equal(await list.locator('[aria-pressed=true]').textContent(),'Wocheneinkauf');
+    const scroll=await list.evaluate(n=>({overflow:getComputedStyle(n).overflowY,height:n.clientHeight,scroll:n.scrollHeight}));assert.equal(scroll.overflow,'auto');assert.ok(scroll.scroll>scroll.height&&scroll.height<=260);
+    await list.getByRole('button',{name:'Geschenk',exact:true}).click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'Geschenk');assert.equal(await page.locator('#purchase-note-picks').isHidden(),true);
+    await toggle.click();await page.click('#purchase-category-add');await page.waitForSelector('#expense-category-add-dialog[open]');assert.equal(await page.evaluate(()=>document.activeElement.id),'expense-category-name');await page.fill('#expense-category-name','Neue Kategorie');await page.click('#expense-category-add-form button[type=submit]');assert.equal(await page.textContent('#purchase-category-value'),'Neue Kategorie');
+    assert.equal(await horizontalOverflow(page),0);assert.equal(await page.locator('#purchase-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('Ausgaben: Kategorien bleiben sortiert und eigene Einträge stehen bei weiteren Buchungen bereit; ohne Kategorie bleibt möglich',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');await addPurchase(page,{amount:'5',note:'Getränke'});
+    for(const amount of ['6','7'])await addPurchase(page,{amount,note:'Grillabend'});
+    await page.click('#add-purchase');await page.click('#purchase-note-toggle');const names=await page.locator('#purchase-category-list .expense-category-choice').allTextContents();assert.equal(names[0],'Wocheneinkauf');assert.equal(names.at(-1),'Grillabend');assert.equal(new Set(names).size,names.length);await page.keyboard.press('Escape');
+    await page.locator('#purchase-list .spend-row',{hasText:'5,00'}).click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'Getränke');await chooseExpenseCategory(page,'');await page.click('#purchase-save');await page.locator('#purchase-list .spend-row',{hasText:'5,00'}).click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'');assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('Ausgaben: Eintrag lange halten und in den roten Mülleimer ziehen löscht ihn; kurzer Tipp ändert weiter, Loslassen daneben und Escape löschen nichts', async () => {
@@ -8702,7 +8628,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(widths[0].w,widths[1].w);assert.ok(widths.every(row=>row.overflow<=1&&row.icon!=='none'));
       await goTab(page,'recipes');assert.ok((await page.locator('.recipe-actions button').evaluateAll(nodes=>nodes.map(n=>n.scrollWidth-n.clientWidth))).every(n=>n<=1));
       await goTab(page,'spending');await page.click('#spending-details>summary');
-      assert.deepEqual(await page.locator('#spending-notes .spend-store-head strong').allTextContents(),['Wocheneinkauf','Ohne Notiz']);
+      assert.deepEqual(await page.locator('#spending-notes .spend-store-head strong').allTextContents(),['Wocheneinkauf','Ohne Kategorie']);
       const layout=await page.evaluate(()=>{const card=document.querySelector('#spending-details'),list=document.querySelector('#purchase-list'),style=getComputedStyle(card);return {gap:card.getBoundingClientRect().top-list.getBoundingClientRect().bottom,blur:style.backdropFilter,background:style.backgroundColor};});
       assert.ok(layout.gap>=20);assert.equal(layout.blur,'none');assert.ok(!layout.background.startsWith('rgba'));assert.ok(await horizontalOverflow(page)<=1);
       if(width===390) {await page.locator('#spending-details').scrollIntoViewIfNeeded();await page.screenshot({path:'/workspace/exports/Sattplan-2.86-Ausgaben.png'});}
@@ -9504,4 +9430,74 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const sizes=await page.locator('#spending-frequency .spend-store-head').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,scroll:node.scrollWidth})));assert.ok(sizes.every(row=>row.scroll<=row.width+1),JSON.stringify(sizes));assert.equal(await page.locator('#spending-analysis').evaluate(n=>n.getBoundingClientRect().height>=44),true);await page.click('#spending-period');await sheetOpen(page);assert.equal(await page.locator('#spending-period-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.deepEqual(problems,[]);await ctx.close();
   });
 
+  function categoryData2106(){const data=familyExpenseData();data.purchases.forEach((row,i)=>row.note=i===2?'Haushalt':'Grillen');data.purchases.push({...data.purchases[0],id:'deleted-category-booking',cents:9900,deletedAt:data.updatedAt});return data;}
+  const openCategoryManager2106=async page=>{await page.click('#add-purchase');await page.fill('#purchase-form [name=amount]','52');await page.click('#purchase-note-toggle');await page.click('#purchase-category-edit');};
+  const removeCategory2106=(page,name)=>page.getByRole('button',{name:`${name}: Kategorie löschen`,exact:true}).click();
+  test('2.106: Kategorie mit Buchungen verlangt Ersatz; alle Beträge und Buchungsdaten bleiben erhalten',async()=>{
+    const {ctx,page,problems}=await localExpenses({},categoryData2106()),before=await expenseStored(page);await openCategoryManager2106(page);await removeCategory2106(page,'Grillen');
+    assert.equal(await page.locator('#expense-category-delete-apply').isDisabled(),true);assert.match(await page.textContent('#expense-category-delete-usage'),/4 gespeicherte Buchungen.*davon 1 bereits entfernt/);assert.ok(!(await page.locator('#expense-category-replacement option').allTextContents()).includes('Grillen'));
+    await page.click('#expense-category-delete-dialog .sheet-actions [data-close]');assert.deepEqual(await expenseStored(page),before);await removeCategory2106(page,'Grillen');await page.selectOption('#expense-category-replacement',{label:'Haushalt'});await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-dialog[open]',{state:'detached'});
+    const after=await expenseStored(page),keep=row=>Object.fromEntries(['id','date','cents','storeId','buyerId','buyerName','source','kind','deletedAt'].map(key=>[key,row[key]]));assert.deepEqual(after.purchases.map(keep),before.purchases.map(keep));assert.ok(after.purchases.every(row=>row.note==='Haushalt'));assert.equal(await page.inputValue('#purchase-form [name=amount]'),'52');assert.equal(await page.getByRole('button',{name:'Grillen: Kategorie löschen',exact:true}).count(),0);
+    await page.click('#purchase-dialog [data-close]');await page.locator('#spending-details>summary').click();assert.deepEqual(await page.locator('#spending-notes .spend-store-head strong').allTextContents(),['Haushalt']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: unbenutzte Kategorie wird erst nach Bestätigung gelöscht und lässt sich neu anlegen',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');await openCategoryManager2106(page);await removeCategory2106(page,'Grillen');assert.equal(await page.locator('#expense-category-replacement-field').isHidden(),true);await page.click('#expense-category-delete-dialog .sheet-actions [data-close]');assert.equal(await page.getByRole('button',{name:'Grillen: Kategorie löschen',exact:true}).count(),1);
+    await removeCategory2106(page,'Grillen');await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-dialog[open]',{state:'detached'});await page.click('#purchase-dialog [data-close]');await page.reload();await goTab(page,'spending');await page.click('#add-purchase');await page.click('#purchase-note-toggle');assert.equal(await page.locator('#purchase-category-list').getByRole('button',{name:'Grillen',exact:true}).count(),0);
+    await page.click('#purchase-category-add');await page.fill('#expense-category-name','Grillen');await page.click('#expense-category-add-form button[type=submit]');assert.equal(await page.textContent('#purchase-category-value'),'Grillen');assert.equal((await expenseStored(page)).purchases.length,0);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: Speicherfehler lässt Kategorie und Buchungen unverändert; erneutes Bestätigen verschiebt ohne Duplikate',async()=>{
+    const {ctx,page,problems}=await localExpenses({},categoryData2106());await openCategoryManager2106(page);await removeCategory2106(page,'Grillen');await page.selectOption('#expense-category-replacement',{label:'Haushalt'});const before=await expenseStored(page);
+    await page.evaluate(()=>{const real=Storage.prototype.setItem;window.categoryQuota2106=true;Storage.prototype.setItem=function(key,value){if(window.categoryQuota2106&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-error:not([hidden])');assert.deepEqual(await expenseStored(page),before);assert.equal(await page.locator('#expense-category-delete-dialog').evaluate(n=>n.open),true);
+    await page.evaluate(()=>window.categoryQuota2106=false);await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-dialog[open]',{state:'detached'});assert.equal((await expenseStored(page)).purchases.length,before.purchases.length);assert.ok((await expenseStored(page)).purchases.every(row=>row.note==='Haushalt'));assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: vor dem Löschen frisch abgeglichene Buchungen verlangen eine erneute Bestätigung; späte alte Zuordnungen folgen dem Ersatz',async()=>{
+    const api=github(categoryData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'spending');await openCategoryManager2106(page);await removeCategory2106(page,'Grillen');await page.selectOption('#expense-category-replacement',{label:'Haushalt'});
+    api.remoteChange(data=>data.purchases.push({...data.purchases[0],id:'new-in-the-meantime'}));await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-error:not([hidden])');assert.match(await page.textContent('#expense-category-delete-error'),/Zuordnung.*geändert/);assert.equal(api.content.expenseCategories?.length||0,0);await page.click('#expense-category-delete-apply');await page.waitForSelector('#expense-category-delete-dialog[open]',{state:'detached'});await synced(page);assert.ok(api.content.purchases.every(row=>row.note==='Haushalt'));
+    const oldCategory=await page.evaluate(()=>import('./expense-categories.js').then(m=>m.expenseCategoryId('Grillen')));api.remoteChange(data=>data.purchases.push({...data.purchases[0],id:'late-old-category',note:'Grillen',categoryId:oldCategory}));await page.click('#purchase-dialog [data-close]');await pollNow(page);await synced(page);await page.waitForFunction(()=>document.querySelectorAll('#purchase-list .spend-row').length===6);assert.ok(!(await page.textContent('#purchase-list')).includes('Grillen'));assert.match(await page.textContent('#purchase-list'),/Haushalt/);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: fremde Kategorieänderung bleibt bei eigener reiner Betragsänderung erhalten',async()=>{
+    const api=github(categoryData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'spending');await page.locator('#purchase-list .spend-item[data-id=nico-buy] .spend-row').click();await page.fill('#purchase-form [name=amount]','27');
+    api.remoteChange(data=>{data.purchases.find(row=>row.id==='nico-buy').note='Haushalt';});await pollNow(page);await synced(page);await page.waitForFunction(()=>document.querySelector('#purchase-category-value').textContent==='Haushalt');await page.click('#purchase-save');await synced(page);assert.equal(api.content.purchases.find(row=>row.id==='nico-buy').note,'Haushalt');assert.equal(api.content.purchases.find(row=>row.id==='nico-buy').cents,2700);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const touch of [false,true])test(`2.106: Kategorien lassen sich per ${touch?'Touch':'Maus'} am Griff verschieben und bleiben nach Neustart sortiert`,async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');await openCategoryManager2106(page);const handles=page.locator('#purchase-category-list .expense-category-drag');await handles.nth(2).scrollIntoViewIfNeeded();const from=await handles.nth(2).boundingBox(),to=await handles.first().boundingBox();
+    if(touch){const cdp=await ctx.newCDPSession(page);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:from.x+20,y:from.y+20,id:1}]});await page.waitForTimeout(50);await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:to.x+20,y:to.y+4,id:1}]});await page.waitForTimeout(150);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}
+    else{await page.mouse.move(from.x+20,from.y+20);await page.mouse.down();await page.waitForTimeout(50);await page.mouse.move(to.x+20,to.y+4,{steps:8});await page.waitForTimeout(150);await page.mouse.up();}
+    await page.waitForFunction(()=>document.querySelector('#purchase-category-list .expense-category-choice').textContent==='Zwischendurch');await page.reload();await goTab(page,'spending');await page.click('#add-purchase');await page.click('#purchase-note-toggle');assert.equal(await page.locator('#purchase-category-list .expense-category-choice').first().textContent(),'Zwischendurch');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const [width,theme] of [[280,'light'],[390,'dark']])test(`2.106: Kategorieverwaltung und Pflichtzuordnung passen bei ${width}px ${theme}`,async()=>{
+    const {ctx,page,problems}=await localExpenses({config:{theme},context:{viewport:{width,height:844},colorScheme:theme}},categoryData2106());await openCategoryManager2106(page);assert.equal(await horizontalOverflow(page),0);await removeCategory2106(page,'Grillen');assert.equal(await page.locator('#expense-category-delete-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);const buttons=await page.locator('#expense-category-delete-dialog button').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().height>=44));assert.equal(buttons,true);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.106: Antippen des Sortiergriffs bietet sichtbare Pfeile ohne Tastatur',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');await openCategoryManager2106(page);await page.locator('#purchase-category-list .expense-category-drag').nth(1).click();await page.waitForSelector('#order-dialog[open]');assert.equal(await page.evaluate(()=>document.activeElement.matches('input,textarea')),false);await page.getByRole('button',{name:'Großeinkauf nach oben',exact:true}).click();await page.click('#order-dialog [data-close]');assert.equal(await page.locator('#purchase-category-list .expense-category-choice').first().textContent(),'Großeinkauf');assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  function stockData2106(){
+    const data=pantryData278([{name:'Äpfel',available:true},{name:'Mehl',available:false},{name:'Reis',available:true}]);data.items=[];
+    data.recipes=['Apfel-Pfannkuchen','Zweites Apfelgericht'].map((name,i)=>({...demo.recipes[0],id:`stock2106-${i}`,name,servings:2,tags:[],favorite:false}));
+    data.ingredients=data.recipes.flatMap(recipe=>[['Äpfel',100,'g'],['Milch',200,'ml'],['Mehl',150,'g'],['Salz',1,'g'],['Wasser',100,'ml']].map(([name,quantity,unit],i)=>({...demo.ingredients[0],id:`${recipe.id}-i${i}`,recipeId:recipe.id,name,quantity,unit})));return data;
+  }
+  test('2.106: Vorratszeile klappt fehlende rote Zutaten vor vorhandenen grünen aus; Mengen folgen Portionen, beide Einklappwege schreiben keine Daten',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,stockData2106());await open(page);await goTab(page,'recipes');const before=await storedDemo(page),card=page.locator('#recipe-list [data-recipe-id=stock2106-0]'),toggle=card.locator('.recipe-stock-toggle');
+    assert.match(await toggle.textContent(),/1 von 3 Zutaten da · 2 fehlen/);assert.equal(await toggle.locator('use[href="#i-info"]').count(),1);assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['200 ml Milch','150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel']);assert.deepEqual(await card.locator('.recipe-stock-group').evaluateAll(nodes=>nodes.map(n=>n.classList.contains('missing')?'missing':'have')),['missing','have']);
+    assert.equal(await card.locator('.recipe-stock-group.have li').evaluate(n=>getComputedStyle(n).color),'rgb(20, 108, 67)');assert.equal(await card.locator('.recipe-stock-group.missing li').first().evaluate(n=>{const [r,g,b]=getComputedStyle(n).color.match(/\d+/g).map(Number);return r>g*1.4&&r>b*1.4;}),true);
+    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>n.inert),true);await toggle.focus();await page.keyboard.press('Enter');assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+    await card.locator('.recipe-details>summary').click();await card.getByRole('button',{name:'Eine Portion mehr',exact:true}).click();assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['300 ml Milch','225 g Mehl']);await card.locator('.recipe-stock-collapse').click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await toggle.evaluate(n=>n===document.activeElement),true);assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: Vorratsdetails schließen beim anderen Rezept und Ansichtswechsel; normale Neuzeichnung erhält die offene Anzeige',async()=>{
+    const {ctx,page,problems}=await context();await seedLocal(ctx,stockData2106());await open(page);await goTab(page,'recipes');const first=page.locator('#recipe-list [data-recipe-id=stock2106-0]'),second=page.locator('#recipe-list [data-recipe-id=stock2106-1]');
+    await first.locator('.recipe-stock-toggle').click();await first.locator('.fav').click();assert.equal(await first.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');await second.locator('h3').click();assert.equal(await first.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'false');
+    await first.locator('.recipe-stock-toggle').click();await second.locator('.recipe-stock-toggle').click();assert.equal(await first.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'false');assert.equal(await second.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');
+    await goTab(page,'shopping');await goTab(page,'recipes');assert.equal(await second.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'false');await first.locator('.recipe-stock-toggle').click();await first.getByRole('button',{name:'Einkaufen',exact:true}).click();assert.equal(await first.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'false');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.106: offener Vorratsabgleich aktualisiert sich bei Änderungen vom zweiten Gerät',async()=>{
+    const api=github(stockData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',api.handler);await open(page);await synced(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();
+    api.remoteChange(data=>{data.pantry.push({...data.pantry[0],id:'stock2106-new',name:'Milch'});});await pollNow(page);await page.waitForFunction(()=>document.querySelector('[data-recipe-id=stock2106-0] .recipe-stock-toggle').textContent.includes('2 von 3'));
+    assert.equal(await card.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel','200 ml Milch']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+  for(const [width,theme]of [[280,'light'],[390,'dark'],[390,'auto']])test(`2.106: Vorratsakkordeon bleibt bei ${width}px ${theme} lesbar und ohne seitlichen Überlauf`,async()=>{
+    const data=stockData2106();data.ingredients[0].name='Äpfel mit einer sehr langen eigenen Beschreibung';const {ctx,page,problems}=await context({config:{theme},context:{viewport:{width,height:844},colorScheme:theme==='auto'?'dark':theme,reducedMotion:'reduce'}});await seedLocal(ctx,data);await open(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();assert.equal(await horizontalOverflow(page),0);assert.equal(await card.locator('.recipe-stock').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.ok((await card.locator('.recipe-stock-toggle').boundingBox()).height>=44);assert.ok((await card.locator('.recipe-stock-collapse').boundingBox()).height>=44);assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>getComputedStyle(n).transitionDuration),'0s');assert.equal(await card.locator('.recipe-stock-group.have').evaluate(n=>getComputedStyle(n).color),theme==='light'?'rgb(20, 108, 67)':'rgb(126, 224, 173)');assert.deepEqual(problems,[]);await ctx.close();
+  });
 });

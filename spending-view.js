@@ -116,7 +116,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     const box = $(`spending-${type}`); box.replaceChildren(); const max = Math.max(1, ...groups.map(row => Math.abs(row.total)));
     for (const group of groups) {
       const li = node('li', undefined, 'spend-store'), head = node('div', undefined, 'spend-store-head'), track = node('div', undefined, 'spend-share'), bar = node('span');
-      head.append(node('strong', group.name), node('span', euros(group.total))); bar.style.width = `${Math.max(2, Math.round(Math.abs(group.total) / max * 100))}%`; track.append(bar);
+      head.append(node('strong', type==='notes'&&group.name==='Ohne Notiz'?'Ohne Kategorie':group.name), node('span', euros(group.total))); bar.style.width = `${Math.max(2, Math.round(Math.abs(group.total) / max * 100))}%`; track.append(bar);
       li.append(head, track, node('small', plural(group.count, 'Eintrag', 'Einträge'))); box.append(li);
     }
   }

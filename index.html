@@ -61,6 +61,7 @@
     <symbol id="i-secret-open" viewBox="0 0 32 32"><rect x="5" y="13" width="22" height="17" rx="4" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="5" y="13" width="22" height="17" rx="4" fill="#e0eedf" stroke="#275a45" stroke-width="1.4"/><path d="M10 13V9a6 6 0 0 1 11-3" fill="none" stroke="#fff" stroke-width="5"/><path d="M10 13V9a6 6 0 0 1 11-3" fill="none" stroke="#275a45" stroke-width="2.5"/><circle cx="16" cy="21" r="2.5" fill="#275a45"/></symbol>
     <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/></symbol>
     <symbol id="i-pot" viewBox="0 0 24 24"><path d="M5 10h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3zM2 12h3m14 0h3M4 10h16M9 7V4m6 3V3M8 10h8"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></symbol>
     <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v11l-9 4-9-4zM3 7l9 4 9-4M12 11v11M7.5 5l9 4"/></symbol>
     <symbol id="i-pharmacy" viewBox="0 0 32 32"><rect x="4" y="8" width="24" height="22" rx="5" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="4" y="8" width="24" height="22" rx="5" fill="#daf2e6" stroke="#225f47" stroke-width="1.4"/><path d="M11 8V5a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v3" fill="none" stroke="#fff" stroke-width="4"/><path d="M11 8V5a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v3" fill="none" stroke="#225f47" stroke-width="1.8"/><path d="M13 13h6v4h4v6h-4v4h-6v-4H9v-6h4z" fill="#21764f"/></symbol>
     <symbol id="i-travel" viewBox="0 0 32 32"><rect x="5" y="7" width="22" height="22" rx="5" fill="#fff" stroke="#fff" stroke-width="3"/><rect x="5" y="7" width="22" height="22" rx="5" fill="#cee6f2" stroke="#24526a" stroke-width="1.4"/><path d="M12 7V4h8v3M10 11v14m12-14v14" fill="none" stroke="#24526a" stroke-width="1.8"/><path d="m11 19 4-1 4-6 2 1-2 6 4 3-1 2-5-2-4 2-1-2 3-2z" fill="#276a7b"/><circle cx="10" cy="29" r="2" fill="#24526a"/><circle cx="22" cy="29" r="2" fill="#24526a"/></symbol>
@@ -178,7 +179,7 @@
         <p id="spending-breakdown" class="hint"></p>
         <div id="spending-chart-card"><h3>Letzte Monate</h3><ol id="spending-chart" class="spend-chart"></ol></div>
         <div id="spending-stores-card" hidden><h3>Nach Geschäft</h3><ul id="spending-stores" class="spend-stores"></ul></div>
-        <div id="spending-notes-card" hidden><h3>Nach Notiz</h3><ul id="spending-notes" class="spend-stores"></ul></div>
+        <div id="spending-notes-card" hidden><h3>Nach Kategorie</h3><ul id="spending-notes" class="spend-stores"></ul></div>
         <button id="spending-export" type="button" class="secondary">Diese Auswahl als CSV herunterladen</button>
       </div></details>
       <p class="hint spend-hint">Eure Einträge sind gemeinsam. Ältere Ausgaben bleiben erhalten. Einträge ohne gespeicherte Person stehen unter „Nicht zugeordnet“; antippen zum Zuordnen.</p>
@@ -227,7 +228,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.105 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.106 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -459,14 +460,32 @@
     <label>Betrag (€)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Betrag in Euro"><button id="purchase-plus" class="add-button" type="submit" aria-label="Einkauf hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <div class="purchase-person-field"><label>Eingekauft von<select name="buyerId" aria-label="Person für diesen Betrag"></select></label><button id="purchase-person-add" type="button" class="icon-button secondary" aria-label="Person hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
     <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
-    <label>Notiz (optional)<span class="name-field"><input name="note" maxlength="120" placeholder="z. B. Getränke" autocomplete="off" aria-label="Notiz"><button id="purchase-note-toggle" class="field-button" type="button" aria-label="Vorschläge für die Notiz anzeigen" aria-expanded="false" aria-controls="purchase-note-picks"><svg class="icon"><use href="#i-chevron"/></svg></button></span></label>
-    <div id="purchase-note-picks" class="note-menu" role="group" aria-label="Vorschläge für die Notiz: antippen zum Übernehmen" hidden></div>
+    <div class="expense-category-field"><label id="purchase-category-label" for="purchase-note-toggle">Kategorie (optional)</label><input name="note" type="hidden"><input name="categoryId" type="hidden">
+      <button id="purchase-note-toggle" type="button" class="expense-category-trigger" aria-labelledby="purchase-category-label purchase-category-value" aria-expanded="false" aria-controls="purchase-note-picks"><span id="purchase-category-value">Wocheneinkauf</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <div id="purchase-note-picks" class="expense-category-menu" role="group" aria-label="Ausgabenkategorien" hidden>
+        <div id="purchase-category-list" class="expense-category-list"></div><button id="purchase-category-none" type="button" class="text-button">Ohne Kategorie</button>
+        <div class="expense-category-actions"><button id="purchase-category-add" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Kategorie hinzufügen</button><button id="purchase-category-edit" type="button" class="text-button" aria-pressed="false">Bearbeiten</button></div>
+        <p id="purchase-category-feedback" class="hint" role="status"></p><p id="purchase-category-error" class="dialog-error" role="alert" hidden></p>
+      </div>
+    </div>
     <label class="file-drop compact"><input name="images" type="file" accept="image/*" multiple class="visually-hidden"><svg class="icon"><use href="#i-camera"/></svg><span>Kassenbon lesen (optional)</span></label>
     <progress id="purchase-progress" max="100" value="0" hidden></progress><p id="purchase-status" class="hint" role="status"></p>
     <details id="purchase-more" class="purchase-more"><summary>Weitere Angaben</summary><label>Art<select name="kind"><option value="purchase">Einkauf</option><option value="refund">Rückerstattung / Retoure</option></select></label><p class="hint">Rückerstattungen verringern die Ausgaben. Den Betrag immer ohne Minus eingeben.</p></details>
     <button type="submit" id="purchase-save">Speichern</button>
     <button id="purchase-delete" type="button" class="danger" hidden>Eintrag löschen</button>
     <p class="hint">Die Texterkennung läuft auf deinem Gerät, das Bild wird nirgends hochgeladen. Fotos von Kassenzetteln werden oft ungenau gelesen, deshalb steht der erkannte Betrag nur als Vorschlag im Feld: Bitte vor dem Speichern prüfen. Digitale Bons und Screenshots klappen besser.</p>
+  </form></dialog>
+  <dialog id="expense-category-add-dialog" aria-labelledby="expense-category-add-title"><form id="expense-category-add-form" class="stack">
+    <div class="sheet-head"><h2 id="expense-category-add-title">Kategorie hinzufügen</h2><button type="button" class="icon-button round" data-close="expense-category-add-dialog" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <label>Name der Kategorie<input id="expense-category-name" required maxlength="120" autocomplete="off"></label><p id="expense-category-add-error" class="dialog-error" role="alert" hidden></p><button type="submit">Kategorie hinzufügen</button>
+  </form></dialog>
+  <dialog id="expense-category-delete-dialog" aria-labelledby="expense-category-delete-title"><form id="expense-category-delete-form" class="stack">
+    <div class="sheet-head"><h2 id="expense-category-delete-title">Kategorie löschen</h2><button type="button" class="icon-button round" data-close="expense-category-delete-dialog" aria-label="Abbrechen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p id="expense-category-delete-copy"></p><p id="expense-category-delete-usage"></p>
+    <label id="expense-category-replacement-field" hidden>Buchungen verschieben nach<select id="expense-category-replacement"></select></label>
+    <p id="expense-category-no-target" class="hint" hidden>Bitte zuerst eine weitere Kategorie anlegen, damit alle Buchungen zugeordnet bleiben.</p>
+    <p id="expense-category-delete-error" class="dialog-error" role="alert" hidden></p>
+    <div class="sheet-actions"><button id="expense-category-delete-apply" type="submit" class="danger">Kategorie löschen</button><button type="button" class="secondary" data-close="expense-category-delete-dialog">Abbrechen</button></div>
   </form></dialog>
   <dialog id="spending-period-dialog" aria-labelledby="spending-period-title"><form id="spending-period-form" class="stack" novalidate>
     <div class="sheet-head"><h2 id="spending-period-title">Zeitraum wählen</h2><button type="button" data-close="spending-period-dialog" class="icon-button round" aria-label="Zeitraum schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

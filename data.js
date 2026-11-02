@@ -9,17 +9,18 @@ import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './
 import { validMemberId } from './family.js';
 import { LIST_SYMBOL_IDS } from './list-symbols.js';
 import { restoredState, revisionKey } from './restore-state.js';
+import { expenseCategoryId } from './expense-categories.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members'];
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt && !row._planEmpty);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], expenseCategories: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -38,6 +39,10 @@ export function validateRow(key, row) {
       (row._clock !== undefined && (!row._clock || typeof row._clock !== 'object' || Array.isArray(row._clock)))) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
+  if (key === 'expenseCategories' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 200 || !Number.isSafeInteger(Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) || row.id !== expenseCategoryId(row.name,Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) ||
+      (row.sortOrder !== undefined && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) ||
+      (row.replacementId !== undefined && row.replacementId !== null && (typeof row.replacementId !== 'string' || !row.replacementId || row.replacementId.length > 2048 || row.replacementId === row.id)))) throw new Error('Ungültige Ausgabenkategorie.');
+  if (key === 'purchases' && row.categoryId !== undefined && row.categoryId !== null && (typeof row.categoryId !== 'string' || !row.categoryId || row.categoryId.length > 2048)) throw new Error('Ungültige Ausgabenkategorie einer Buchung.');
   if (key === 'stores' && typeof row.name !== 'string') throw new Error('Geschäft ohne Namen.');
   if (key === 'stores' && row.sortOrder != null && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) throw new Error('Ungültige Geschäftsreihenfolge.');
   if (key === 'members' && (!validMemberId(row.id) || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 30 ||
@@ -167,7 +172,8 @@ export function validateRow(key, row) {
 // Revision 13 (2.91): Schloss-Symbol für eigene Listen; Geheimdaten bleiben rein lokal.
 // Revision 14: Wiederherstellungen besitzen eine gemeinsame Grenze. Ältere
 // Offline-Änderungen dürfen den ausdrücklich zurückgesetzten Stand nicht ersetzen.
-export const SCHEMA_REV = 14;
+// Revision 15: gemeinsame Ausgabenkategorien und Weiterleitungen nach dem Löschen.
+export const SCHEMA_REV = 15;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -240,7 +246,7 @@ export function foldOldAdds(row, cutoff) {
 
 export function merge(data, operations) {
   let next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= [];
   const applied = new Set(next.sync.applied); let created = [], touched = new Set();
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
@@ -336,6 +342,7 @@ export function merge(data, operations) {
   if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
   if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
   if (next.meals.some(row=>row.listedParts?.length) || next.items.some(row=>row._planCuts?.length || row.purchaseAmount === null)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,10);
+  if (next.expenseCategories.length || next.purchases.some(row=>row.categoryId!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,15);
   return validate(next);
 }
 

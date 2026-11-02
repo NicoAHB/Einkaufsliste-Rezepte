@@ -4449,7 +4449,24 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 .wish-image-editor .text-button { min-height:44px; padding:6px 0; text-align:left }
 .wish-no-image { display:flex; align-items:center; justify-content:center; color:var(--muted); background:var(--accent-soft) }
 
-.recipe-stock { display:grid; gap:8px; padding:11px 13px; margin:12px 0; border-radius:12px; background:var(--accent-soft); color:var(--accent); font-size:.85rem; font-weight:650 }
+.recipe-stock { padding:0 13px; margin:12px 0; border-radius:12px; background:var(--accent-soft); color:var(--accent); font-size:.85rem; font-weight:650 }
+.recipe-stock .recipe-stock-toggle { display:grid; grid-template-columns:minmax(0,1fr); justify-content:stretch; gap:8px; width:100%; min-height:52px; padding:11px 0; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:left; white-space:normal }
+.recipe-stock-heading { display:flex; align-items:center; justify-content:space-between; gap:12px }
+.recipe-stock-heading>span { min-width:0; overflow-wrap:anywhere }
+.recipe-stock-heading>.icon { width:19px; height:19px; flex:none; opacity:.8 }
+.recipe-stock-expansion { display:grid; grid-template-rows:0fr; opacity:0; visibility:hidden; transition:grid-template-rows .24s ease,opacity .2s ease,visibility .24s step-end }
+.recipe-stock.expanded>.recipe-stock-expansion { grid-template-rows:1fr; opacity:1; visibility:visible; transition:grid-template-rows .24s ease,opacity .2s ease,visibility 0s }
+.recipe-stock-content { min-height:0; overflow:hidden }
+.recipe-stock-inner { padding:4px 0 10px; display:grid; gap:14px }
+.recipe-stock-group h4 { margin:0 0 6px; font-size:inherit }
+.recipe-stock-group ul { padding-left:20px; margin:0; display:grid; gap:6px; font-weight:550; overflow-wrap:anywhere }
+.recipe-stock-group.missing { color:var(--danger) }
+.recipe-stock-group.have { color:#146c43 }
+.recipe-stock-inner>.hint,.recipe-stock-group>.hint { margin:0; font-weight:400 }
+.recipe-stock .recipe-stock-collapse { display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:8px; background:transparent; color:inherit; border:1px solid currentColor; font:inherit }
+.recipe-stock-collapse>.icon { width:18px; height:18px; transform:rotate(180deg) }
+:root[data-theme=dark] .recipe-stock-group.have { color:#7ee0ad }
+@media(prefers-reduced-motion:reduce) { .recipe-stock-expansion,.recipe-stock.expanded>.recipe-stock-expansion { transition:none } }
 .recipe-stock.partial { background:#fff3de; color:#825313 }
 .recipe-stock.empty { background:var(--input-bg,var(--bg)); color:var(--muted) }
 .recipe-stock-track { display:block; height:5px; border-radius:9px; background:var(--line); background:color-mix(in srgb,currentColor 16%,transparent); overflow:hidden }
@@ -4461,6 +4478,10 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 .ingredient-stock.missing { color:#966119 }
 :root[data-theme=dark] .recipe-stock.partial { background:#3f3220; color:#f6c477 }
 :root[data-theme=dark] .ingredient-stock.missing { color:#f6c477 }
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) .recipe-stock.partial { background:#3f3220; color:#f6c477 }
+  :root:not([data-theme=light]) .recipe-stock-group.have { color:#7ee0ad }
+}
 
 .import-warning { display:flex; align-items:flex-start; gap:12px; padding:16px; margin:0 0 18px; border:1px solid #d69d3a; border-radius:16px; background:#fff2d7; color:#684411; font-size:.95rem; line-height:1.5 }
 .import-warning p { margin:0 }
@@ -4651,3 +4672,27 @@ button.recipe-delete { color:var(--danger) }
 #spending-frequency .spend-store-head span { white-space:nowrap }
 #spending-frequency>.hint { margin:16px 0 0 }
 #purchase-list>.spend-item,#spending-frequency-stores>.spend-store { scroll-margin-bottom:calc(var(--tabs-h) + 24px + env(safe-area-inset-bottom)) }
+
+/* Ausgabenkategorien: nur ein Button im Hauptfeld; Texteingabe ausschließlich im Plus-Dialog. */
+.expense-category-field { min-width:0 }
+.expense-category-field>label { display:block; margin-bottom:6px }
+:root .expense-category-trigger { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; width:100%; padding:12px; border:1px solid var(--line-strong); border-radius:12px; background:var(--card); color:var(--text); text-align:left; font:inherit; line-height:1.4; white-space:normal }
+.expense-category-trigger>span { min-width:0; overflow-wrap:anywhere }
+.expense-category-trigger>.icon { flex:none; width:20px; height:20px; transition:transform .15s }
+.expense-category-trigger[aria-expanded=true]>.icon { transform:rotate(180deg) }
+.expense-category-menu { margin-top:8px; border:1px solid var(--line-strong); border-radius:14px; padding:0 10px 8px; background:var(--card) }
+.expense-category-list { max-height:240px; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; margin:0 -10px }
+.expense-category-row { display:flex; align-items:center; gap:4px; min-height:48px; padding:4px 8px; border-bottom:1px solid var(--line) }
+:root .expense-category-choice { display:block; flex:1; min-width:0; min-height:44px; padding:8px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; line-height:1.4; font-weight:550; white-space:normal; overflow-wrap:anywhere }
+:root .expense-category-choice[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); font-weight:700 }
+:root .expense-category-row>.icon-button { flex:none; width:44px; height:44px; padding:8px }
+:root .expense-category-remove { color:var(--danger) }
+.expense-category-drag { touch-action:none; user-select:none; cursor:grab }
+.expense-category-row.moving-store { opacity:.65; outline:2px solid var(--accent); background:var(--accent-soft) }
+.expense-category-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:8px }
+.expense-category-actions>button { flex:1; min-width:0; white-space:normal }
+.expense-category-actions .icon { flex:none; width:18px; height:18px }
+#purchase-category-feedback:empty { display:none }
+#expense-category-add-dialog .sheet-head h2,#expense-category-delete-dialog .sheet-head h2 { min-width:0; overflow-wrap:anywhere }
+#expense-category-add-dialog .sheet-head>.icon-button,#expense-category-delete-dialog .sheet-head>.icon-button { flex:none }
+#expense-category-delete-apply { white-space:normal }

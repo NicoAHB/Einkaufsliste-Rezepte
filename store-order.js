@@ -15,15 +15,16 @@ export function reorderedStoreIds(rows, visibleIds) {
   return current.map(id => selected.has(id) ? moving[index++] : id);
 }
 
-/* Erst langes Halten aktiviert die Geste. Normales Touch-Scrollen bleibt nativ.
+/* Langes Halten aktiviert die Geste; eigene Griffe können mit `immediate`
+   direkt reagieren. Normales Touch-Scrollen bleibt außerhalb der Griffe nativ.
    Abbruch stellt die ursprüngliche Reihenfolge wieder her; erst Loslassen speichert. */
 export function mountStoreOrder(root, { horizontal = false, itemSelector, handleSelector = itemSelector,
-  getVersion, onChange, announce, onError, enabled = () => true, canDrag = () => true }) {
+  getVersion, onChange, announce, onError, scrollContainer = null, immediate = false, enabled = () => true, canDrag = () => true }) {
   let press = null, frame = 0, swallowUntil = 0;
   const items = () => [...root.querySelectorAll(itemSelector)];
   const ids = () => items().map(node => node.dataset.storeId);
   const coordinate = point => horizontal ? point.clientX : point.clientY;
-  const scroller = horizontal ? root : root.closest('dialog') || root;
+  const scroller = scrollContainer || (horizontal ? root : root.closest('dialog') || root);
   const scrollValue = () => horizontal ? scroller.scrollLeft : scroller.scrollTop;
   const setScroll = value => { if (horizontal) scroller.scrollLeft = value; else scroller.scrollTop = value; };
   const label = node => node.getAttribute('aria-label') || node.textContent.trim();
@@ -40,6 +41,7 @@ export function mountStoreOrder(root, { horizontal = false, itemSelector, handle
     root.classList.remove('stores-reordering'); ended.item.classList.remove('moving-store');
     if (!ended.touch && root.hasPointerCapture(ended.pointer)) root.releasePointerCapture(ended.pointer);
     if (!ended.active) return;
+    if (immediate && commit && !ended.moved) return;
     swallowUntil = Date.now() + 800;
     const order = ids();
     if (!commit || ended.version !== getVersion()) {
@@ -81,15 +83,16 @@ export function mountStoreOrder(root, { horizontal = false, itemSelector, handle
       x: point.clientX, y: point.clientY, position: coordinate(point), order: ids(), scroll: scrollValue(),
       version: getVersion(), trailing: items().at(-1)?.nextElementSibling || null, active: false, moved: false };
     press = started;
-    started.timer = setTimeout(() => {
+    const activate = () => {
       if (press !== started || !enabled() || !canDrag(handle) || document.hidden || started.version !== getVersion()) { finish(false); return; }
       started.active = true; getSelection()?.removeAllRanges();
       root.classList.add('stores-reordering'); item.classList.add('moving-store');
       if (touch) root.addEventListener('touchmove', dragTouch, { passive: false });
-      else root.setPointerCapture(started.pointer);
+      else if (!immediate) root.setPointerCapture(started.pointer);
       announce(`${label(handle)} verschieben: ${horizontal ? 'nach links oder rechts' : 'nach oben oder unten'} ziehen und loslassen.`);
       frame = requestAnimationFrame(autoScroll);
-    }, 500);
+    };
+    if(immediate)activate();else started.timer=setTimeout(activate,500);
   }
   function dragTouch(event) {
     if (!press?.active || !press.touch) return;
