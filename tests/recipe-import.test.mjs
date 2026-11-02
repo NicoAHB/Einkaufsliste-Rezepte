@@ -4,6 +4,10 @@ import { NO_AMOUNT, decodeEntities, firstUrl, htmlToText, parseDuration, parseIn
   recipeFromAnyText, recipeFromHtml, webUrl } from '../recipe-import.js';
 
 const line = text => parseIngredientLine(text);
+test('Importierte Rezeptgruppen werden vor dem Sechser-Limit unabhängig von Schreibweise und Leerzeichen zusammengelegt',()=>{
+ const node={'@context':'https://schema.org','@type':'Recipe',name:'Gruppentest',recipeYield:'2',recipeIngredient:['1 l Milch'],recipeInstructions:'Kochen.',keywords:'vegan, Vegan, Low  Carb, LOW\u00a0CARB',recipeCategory:['Vegetarisch','vegetarisch'],recipeCuisine:['Öko','O\u0308KO']};
+ const imported=recipeFromHtml(`<script type="application/ld+json">${JSON.stringify(node)}</script>`);assert.deepEqual(imported.tags,['vegan','Low Carb','Vegetarisch','Öko']);
+});
 
 test('Zutatenzeilen: Mengen, Einheiten und Namen', () => {
   assert.deepEqual(line('400 g Spaghetti'), { name: 'Spaghetti', quantity: 400, unit: 'g' });

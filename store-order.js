@@ -1,5 +1,6 @@
 /* Eine gemeinsame Geschäftsreihenfolge für Dialog, Einkauf, Vorrat und Im Laden.
    Alte Geschäfte behalten ohne sortOrder ihre bisherige Reihenfolge. */
+export const isStoreVisible = store => !store.deletedAt && store.listEnabled !== false && store.wishlistEnabled !== false;
 export function orderedStores(rows) {
   return rows.filter(row => !row.deletedAt).map((row, index) => ({ row, index }))
     .sort((a, b) => (a.row.sortOrder ?? Infinity) - (b.row.sortOrder ?? Infinity) ||

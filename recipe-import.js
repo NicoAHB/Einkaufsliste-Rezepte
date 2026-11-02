@@ -3,6 +3,11 @@
    bevor etwas gespeichert wird. Eingaben stammen aus fremden Webseiten und
    Texterkennung; deshalb wird nie HTML eingefügt, sondern nur Text erzeugt. */
 export const NO_AMOUNT = 'nach Bedarf';
+const cleanRecipeTag = value => typeof value==='string'?value.normalize('NFKC').trim().replace(/\s+/gu,' '):'';
+export const recipeTagKey = value => cleanRecipeTag(value).toLocaleLowerCase('de');
+export function uniqueRecipeTags(values) {
+  const seen=new Set();return (Array.isArray(values)?values:[]).map(cleanRecipeTag).filter(tag=>{const key=recipeTagKey(tag);if(!key||seen.has(key))return false;seen.add(key);return true;});
+}
 
 const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', shy: '', auml: 'ä', ouml: 'ö', uuml: 'ü',
   Auml: 'Ä', Ouml: 'Ö', Uuml: 'Ü', szlig: 'ß', deg: '°', frac12: '½', frac14: '¼', frac34: '¾', ndash: '–', mdash: '—',
@@ -203,12 +208,7 @@ function formatSteps(lines) {
 function tagsFrom(node) {
   const raw = [...asList(node.keywords), ...asList(node.recipeCategory), ...asList(node.recipeCuisine)]
     .flatMap(entry => typeof entry === 'string' ? plainText(entry).split(',') : []);
-  const seen = new Set(), tags = [];
-  for (const tag of raw.map(entry => entry.trim()).filter(entry => entry && entry.length <= 30)) {
-    const key = tag.toLocaleLowerCase('de');
-    if (!seen.has(key)) { seen.add(key); tags.push(tag); }
-  }
-  return tags.slice(0, 6);
+  return uniqueRecipeTags(raw).filter(tag=>tag.length<=30).slice(0,6);
 }
 
 export function recipeFromSchema(node) {

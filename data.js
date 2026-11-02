@@ -107,6 +107,7 @@ export function validateRow(key, row) {
       (typeof row.wishNote !== 'string' || row.wishNote.length > WISH_NOTE_LIMIT)) throw new Error('Ungültige Notiz zum Wunsch.');
   if (key === 'items' && row.wishImageHidden !== undefined && typeof row.wishImageHidden !== 'boolean') throw new Error('Ungültige Wunschbild-Einstellung.');
   if (key === 'stores' && row.wishlistEnabled !== undefined && typeof row.wishlistEnabled !== 'boolean') throw new Error('Ungültige Wunschlisten-Einstellung.');
+  if (key === 'stores' && row.listEnabled !== undefined && typeof row.listEnabled !== 'boolean') throw new Error('Ungültige Sichtbarkeit der Liste.');
   if (key === 'items' && row.planLinked !== undefined && typeof row.planLinked !== 'boolean') throw new Error('Ungültige Wochenplan-Zuordnung.');
   if (key === 'items' && row._planCuts !== undefined && (!Array.isArray(row._planCuts) || !row._base || row._planCuts.some(cut => !cut || typeof cut.sourceId !== 'string' || !Number.isFinite(Date.parse(cut.at)) || !Number.isFinite(cut.quantity) || cut.quantity < 0 || !Number.isFinite(cut.originalQuantity) || cut.quantity > cut.originalQuantity || typeof cut.unit !== 'string'))) throw new Error('Ungültige Wochenplan-Korrektur.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().

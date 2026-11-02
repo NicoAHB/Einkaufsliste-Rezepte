@@ -52,6 +52,7 @@ export function mountPrivateList({getScope,onChange,onError,makeId,makeIcon,make
   }
   function renameList(id,name){return mutate(data=>{const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');current.name=name;current.updatedAt=new Date().toISOString();return data;});}
   function removeList(id){return mutate(data=>{data.lists=data.lists.filter(row=>row.id!==id);data.items=data.items.filter(row=>row.listId!==id);data.enabled=data.lists.some(row=>row.enabled);return data;});}
+  function setEnabled(id,enabled){return mutate(data=>{const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');current.enabled=enabled;current.updatedAt=new Date().toISOString();data.enabled=data.lists.some(row=>row.enabled);return data;});}
   function prepareShare(id){
     if(!mutate(data=>{
       const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');
@@ -78,5 +79,5 @@ export function mountPrivateList({getScope,onChange,onError,makeId,makeIcon,make
   return {refresh,createList,renameList,removeList,prepareShare,
     get lists(){return structuredClone(lists());},count:id=>items(id).filter(row=>!row.checked).length,size:id=>items(id).length,
     has:id=>Boolean(list(id)?.enabled),select:id=>{selected=id;render();},
-    enable:id=>mutate(data=>{const current=data.lists.find(row=>row.id===id);if(current)current.enabled=true;data.enabled=data.lists.some(row=>row.enabled);return data;})};
+    setEnabled,enable:id=>setEnabled(id,true)};
 }

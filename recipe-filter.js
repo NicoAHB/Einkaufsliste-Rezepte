@@ -2,12 +2,12 @@
    Die Einträge des Auswahlfelds: alle Rezepte, Favoriten, „Lange nicht gekocht“ und jedes Stichwort, das mindestens ein Rezept trägt
    (Groß- und Kleinschreibung egal: „vegan“ und „Vegan“ sind ein Eintrag). Einträge ohne Rezept gibt es nicht. */
 import { daysBetween } from './plan.js';
+import { recipeTagKey as tagKey, uniqueRecipeTags } from './recipe-import.js';
 
 export const LONG_AGO_DAYS = 28;   // so lange darf ein Rezept höchstens nicht gekocht worden sein; wer noch nie gekocht wurde, zählt mit
 export const ALL = '', FAVORITES = 'favorites', LONG_AGO = 'long-ago', WITH_PANTRY='available-pantry', WITH_SHOPPING='available-shopping';
 const TAG = 'tag:';
 
-const tagKey = tag => String(tag ?? '').trim().toLocaleLowerCase('de');
 const tagsOf = recipe => (Array.isArray(recipe.tags) ? recipe.tags : []).map(tagKey).filter(Boolean);
 const capital = text => text.charAt(0).toLocaleUpperCase('de') + text.slice(1);
 const byName = (a, b) => String(a.name).localeCompare(String(b.name), 'de');
@@ -28,7 +28,7 @@ export function filterOptions(recipes, today, available) {
   const tags = new Map();   // Schlüssel (klein) → { label, count }
   for (const recipe of recipes) {
     const seen = new Set();
-    for (const raw of Array.isArray(recipe.tags) ? recipe.tags : []) {
+    for (const raw of uniqueRecipeTags(recipe.tags)) {
       const key = tagKey(raw);
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -48,7 +48,7 @@ export function pickRecipes(recipes, value, { today, keep = '', available } = {}
     return recipes.filter(recipe => recipe.id === keep || cookedLongAgo(recipe, today))
       .sort((a, b) => String(a.lastCookedAt || '').slice(0, 10).localeCompare(String(b.lastCookedAt || '').slice(0, 10)) || byName(a, b));
   }
-  const wanted = String(value).startsWith(TAG) ? String(value).slice(TAG.length) : '';
+  const wanted = String(value).startsWith(TAG) ? tagKey(String(value).slice(TAG.length)) : '';
   const matches = [WITH_PANTRY,WITH_SHOPPING].includes(value) ? recipe=>Boolean(available?.(recipe,value)) : value === FAVORITES ? recipe => Boolean(recipe.favorite) : wanted ? recipe => tagsOf(recipe).includes(wanted) : () => true;
   return recipes.filter(recipe => recipe.id === keep || matches(recipe))
     .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byName(a, b));

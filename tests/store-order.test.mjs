@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emptyData, merge, operation, validate } from '../data.js';
-import { orderedStores, reorderedStoreIds } from '../store-order.js';
+import { orderedStores, reorderedStoreIds, isStoreVisible } from '../store-order.js';
 
 const at = '2026-11-01T12:00:00.000Z';
 const store = (id, extra = {}) => ({ id, name: id, createdAt: at, updatedAt: at, deletedAt: null, ...extra });
 const ids = rows => orderedStores(rows).map(row => row.id);
+test('Listen einblenden: alte Wünsche-Vorgaben und einzelne Supermärkte bleiben ohne Löschen steuerbar',()=>{
+ const rows=[store('edeka'),store('reise',{separate:true,listEnabled:false}),store('wünsche',{wishlistEnabled:false}),store('weg',{deletedAt:at})],before=structuredClone(rows);
+ assert.deepEqual(orderedStores(rows).filter(isStoreVisible).map(row=>row.id),['edeka']);assert.deepEqual(rows,before);assert.equal(isStoreVisible(store('ja',{listEnabled:true})),true);
+ assert.equal(isStoreVisible(store('alt',{listEnabled:true,wishlistEnabled:false})),false);
+});
+test('Sichtbarkeit wird feldweise abgeglichen; Umbenennen und Reihenfolge überschreiben sie nicht',()=>{
+ const data=emptyData();data.stores=[store('edeka'),store('lidl')];const off=operation('stores','edeka',{listEnabled:false},'Nico','2026-11-02T12:00:00.000Z'),rename=operation('stores','edeka',{name:'Edeka Nord',sortOrder:1},'Anna','2026-11-02T12:00:01.000Z');
+ const a=merge(merge(data,[off]),[rename]),b=merge(merge(data,[rename]),[off]);assert.deepEqual(a.stores,b.stores);assert.equal(isStoreVisible(a.stores[0]),false);assert.equal(a.stores[0].name,'Edeka Nord');assert.equal(validate(JSON.parse(JSON.stringify(a))).stores[0].listEnabled,false);
+ const invalid=structuredClone(data);invalid.stores[0].listEnabled='nein';assert.throws(()=>validate(invalid),/Sichtbarkeit/);
+});
 
 test('Geschäftsreihenfolge: alte Daten bleiben unverändert; neue Geschäfte werden angehängt', () => {
   const rows = [store('edeka'), store('lidl'), store('rewe'), store('weg', { deletedAt: at })];

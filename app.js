@@ -6,7 +6,7 @@ import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBound
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
-import { mountStoreOrder, orderedStores, reorderedStoreIds } from './store-order.js';
+import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
 import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
@@ -28,7 +28,7 @@ import { wishGroup, wishImage } from './wish-images.js';
 import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
-import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl } from './recipe-import.js';
+import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl, recipeTagKey, uniqueRecipeTags } from './recipe-import.js';
 import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
@@ -251,10 +251,10 @@ function tab(name) {
   syncShopAwake(); syncChrome();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
-function storeOptions(select, preferred = select.value, allowNone = false) {
+function storeOptions(select, preferred = select.value, allowNone = false, keepHidden = false) {
   select.replaceChildren();
   if (allowNone) select.add(new Option('Kein Geschäft', ''));
-  for (const store of orderedStores(state.stores)) select.add(new Option(store.name, store.id));
+  for (const store of orderedStores(state.stores).filter(store=>visibleStore(store)||(keepHidden&&store.id===preferred))) select.add(new Option(store.name, store.id));
   select.value = [...select.options].some(option => option.value === preferred) ? preferred : allowNone ? '' : select.options[0]?.value ?? '';
 }
 function currentStore(id) {
@@ -266,7 +266,7 @@ function currentStore(id) {
    Artikel eines gelöschten Geschäfts bleiben überall verborgen; Artikel ohne Geschäft (storeId '') gehören zu keinem Geschäft. */
 // Artikel einer eigenen Liste (Geschäft mit „separate“, z. B. „Wünsche“) fehlen hier, außer `including` ist dieses Geschäft; `true` nimmt alle mit (für die Zähler an den Geschäften).
 const visibleItems = (including = '') => {
-  const live = new Set(orderedStores(state.stores).map(store => store.id)), rows = active(state.items).filter(item => !item.storeId || live.has(item.storeId));
+  const live = new Set(orderedStores(state.stores).filter(visibleStore).map(store => store.id)), rows = active(state.items).filter(item => !item.storeId || live.has(item.storeId));
   return including === true ? rows : withoutSeparate(rows, orderedStores(state.stores), including);
 };
 // „Alle“ zeigt eine eigene Liste nicht mit; sie erscheint nur unter ihrem Geschäft.
@@ -280,7 +280,7 @@ function showView(next) {
   if(privateId&&!privateList?.has(privateId))return;
   if(privateId){if(selecting)setSelecting(false);privateList.select(privateId);}
   view = next;
-  renderWishOptions();
+  renderListVisibility();
   const form = $('#item-form');
   // Wer ein einzelnes Geschäft ansieht, legt neue Artikel meist dort an (sonst verschwänden sie aus der Liste).
   // In „Alle“ bleibt die letzte Auswahl stehen (außer eine eigene Liste wie „Wünsche“: dort verschwänden neue Artikel unbemerkt); „Ohne Geschäft“ wählt keines.
@@ -295,47 +295,56 @@ function syncPrivateView() {
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
-// Die Wunschliste wird gemeinsam aktiviert. Ausschalten löscht weder Liste noch Einträge.
+// Gemeinsame Listen werden gemeinsam ein-/ausgeblendet. Ihre Einträge bleiben erhalten.
 const isWishStore = store => store.wishlist === true || (isSeparate(store) && defaultSymbol(store.name) === 'gift');
 const wishStores = () => orderedStores(state.stores).filter(isWishStore);
-const visibleStore = store => !wishStores().some(wish=>wish.id===store.id) || store.wishlistEnabled!==false;
-function renderWishOptions() {
-  const stores = wishStores(), enabled = stores.some(store => store.wishlistEnabled !== false);
-  $('#wishlist-enabled').checked = enabled;
-  $('#wishlist-enabled').disabled = !ready;
-  $('#wishlist-state').textContent = enabled ? 'Eingeblendet' : 'Ausgeblendet';
+function renderListVisibility() {
   // Geöffnete Bearbeitungsfelder behalten ihre noch nicht gespeicherten Werte.
   for (const row of $('#store-editor').children) {
-    const store = stores.find(store => store.id === row.dataset.id); if (!store) continue;
-    const badge = row.firstElementChild?.querySelector('.store-pill');
-    if (badge) badge.textContent = store.wishlistEnabled === false ? 'Ausgeblendet' : 'Eigene Liste';
-    const open = row.querySelector('.store-wishes-open'); if (open) open.disabled = store.wishlistEnabled === false;
+    const store = active(state.stores).find(store => store.id === row.dataset.id),list=privateList?.lists.find(list=>list.id===row.dataset.privateListId);
+    if(!store&&!list)continue;
+    const enabled=store?visibleStore(store):list.enabled,name=store?.name||list.name;
+    const toggle=row.querySelector('.store-visibility');if(toggle)updateVisibilityButton(toggle,name,enabled);
+    const badge=row.querySelector('summary .store-pill');if(badge){badge.textContent=list?(enabled?'Geheim':'Geheim · ausgeblendet'):enabled?'Eigene Liste':'Ausgeblendet';badge.hidden=Boolean(store&&enabled&&!isSeparate(store));}
+    const open = row.querySelector('.store-wishes-open'); if (open) open.disabled = !enabled;
   }
+  const shown=new Set(visibleItems(true).map(item=>item.id));for(const id of selected)if(!shown.has(id))selected.delete(id);
+}
+function updateVisibilityButton(button,name,enabled){
+  button.textContent=enabled?'Ausblenden':'Einblenden';button.setAttribute('aria-label',`${name} ${enabled?'ausblenden':'einblenden'}`);button.setAttribute('aria-pressed',String(enabled));button.disabled=!ready;
+}
+function listVisibilityButton(name,enabled,onToggle){
+  const scope=namespace(),toggle=element('button',undefined,'secondary store-visibility');toggle.type='button';updateVisibilityButton(toggle,name,enabled);
+  for(const type of ['pointerdown','touchstart','keydown'])toggle.addEventListener(type,event=>event.stopPropagation());
+  toggle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();guard(()=>{if(scope!==namespace())throw new Error('Bitte die Listenverwaltung erneut öffnen.');onToggle();});});return toggle;
+}
+function setStoreVisibility(id){
+  const store=active(state.stores).find(store=>store.id===id);if(!ready||!store)throw new Error('Bitte die Listenverwaltung erneut öffnen.');
+  const enabled=!visibleStore(store),patch={listEnabled:enabled,...(isWishStore(store)||store.wishlistEnabled!==undefined?{wishlistEnabled:enabled}:{})};
+  commit([nextOp('stores',id,patch)],`${store.name} ${enabled?'eingeblendet':'ausgeblendet · alle Einträge bleiben erhalten'}`);
+  message();
 }
 function openWishlist(id) {
   if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
-  const store = wishStores().find(store => store.id === id && store.wishlistEnabled !== false);
+  const store = wishStores().find(store => store.id === id && visibleStore(store));
   if (!store) throw new Error('Bitte Wünsche zuerst unter Geschäfte einblenden.');
   $('#stores-dialog').close();
   if (shopOn()) setShopMode(false);
   tab('shopping'); showView(store.id);
 }
-function setWishesEnabled(enabled) {
+function enableMissingWishes() {
   const stores = wishStores();
+  if(stores.length){renderStores();return;}
   const removed = !stores.length && state.stores.filter(row => row.deletedAt && isWishStore(row))
     .sort((a,b) => b.deletedAt.localeCompare(a.deletedAt))[0];
   const id = removed?.id || 'wishlist-default';
-  const ops = stores.length ? stores.filter(store => (store.wishlistEnabled !== false) !== enabled)
-    .map(store => nextOp('stores', store.id, { wishlistEnabled: enabled })) :
-    enabled ? [nextOp('stores', id, { name: removed?.name || 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true, symbol: removed?.symbol || 'gift', deletedAt: null })] : [];
-  if (ops.length) commit(ops, enabled ? 'Wünsche eingeblendet' : 'Wünsche ausgeblendet · alle Einträge bleiben erhalten');
-  else renderWishOptions();
-  if (enabled && !stores.length && $('#stores-dialog').open) renderStores();
+  commit([nextOp('stores', id, { name: removed?.name || 'Wünsche', separate: true, wishlist: true, wishlistEnabled: true,listEnabled:true, symbol: removed?.symbol || 'gift', deletedAt: null })],'Wünsche eingeblendet');
+  if ($('#stores-dialog').open) renderStores();
 }
 function renderStorePick() {
   const form = $('#item-form'), box = $('#store-pick');
   queueMicrotask(() => { form.elements.name.placeholder = 'Was brauchst du?'; });
-  if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value)) form.elements.storeId.value = '';
+  if (form.elements.storeId.value && !active(state.stores).some(store => store.id === form.elements.storeId.value&&visibleStore(store))) form.elements.storeId.value = '';
   const current = form.elements.storeId.value;
   box.hidden=isSeparate(viewStore());
   box.replaceChildren();
@@ -349,7 +358,7 @@ function renderStorePick() {
     box.append(chip);
   };
   add('', 'Kein Geschäft');
-  for (const store of orderedStores(state.stores).filter(store=>!isSeparate(store))) add(store.id, store.name, true);
+  for (const store of orderedStores(state.stores).filter(store=>visibleStore(store)&&!isSeparate(store))) add(store.id, store.name, true);
   $('#open-products').hidden = isSeparate(viewStore()) || isSeparate(active(state.stores).find(store => store.id === current));
   $('#open-pantry').hidden = $('#open-products').hidden;
 }
@@ -362,7 +371,7 @@ function storeChanged() {
 function render() {
   resetSaveFeedback(namespace());
   privateList?.refresh();
-  renderWishOptions();
+  renderListVisibility();
   if(viewStore() && !visibleStore(viewStore())) { view='all'; $('#item-form').elements.storeId.value=''; }
   $('#identity').textContent = config.actor || '';
   if (view !== 'all' && view !== 'none' && !viewStore() && !privateList?.has(privateViewId(view))) view = 'all';
@@ -595,6 +604,7 @@ function renderSelectBar() {
   if (selecting) document.documentElement.style.setProperty('--select-h', `${bar.offsetHeight}px`);   // Platz unter der Liste: sie bleibt bis zum Ende erreichbar
 }
 function setSelecting(on) {
+  if(on&&$('#select-mode').disabled)return;
   selecting=on;
   if(!on) { selected.clear();clearTimeout(noticeTimer);noticeUndo=null;$('#notice').hidden=true; }
   renderItems(); renderSelectBar();
@@ -608,6 +618,7 @@ function renderItems() {
   ensureSeen();
   const news = seen ? newFromOthers(rows, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const open = rows.filter(item => !item.checked && !newIds.has(item.id)), done = rows.filter(item => item.checked).sort(byName);
+  $('#select-mode').disabled=!selecting&&!rows.some(item=>item.checked||!newIds.has(item.id));
   $('#clear-checked').disabled = !done.length;
   if (!rows.length && !news.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
   if (news.length) {
@@ -796,7 +807,7 @@ function editItem(id) {
   for (const key of ['id', 'name']) form.elements[key].value = item[key];
   editQuantity.load(item);
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
-  storeOptions(form.elements.storeId, item.storeId || '', true);
+  storeOptions(form.elements.storeId, item.storeId || '', true, true);
   setQuoteFields(form, itemQuote(item), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice, item.saleUntil);
@@ -881,11 +892,16 @@ function renderStoreTemplate() {
 }
 function renderStores() {
   storeReorders.forEach(order => order.cancel());
-  renderWishOptions();
+  renderListVisibility();
   const editor = $('#store-editor'); editor.replaceChildren();
   for (const store of orderedStores(state.stores)) {
     const row=storeEditorRow(store);editor.append(row);
     if(store.id===storeFresh){row.classList.add('fresh');row.scrollIntoView({block:'nearest'});}
+  }
+  if(!wishStores().length){
+    const row=element('details',undefined,'store-row store-wishes-placeholder'),summary=element('summary'),heading=element('span',undefined,'store-heading'),title=element('span','Wünsche','store-name');
+    heading.append(title,element('span','Ausgeblendet','store-pill'));summary.append(heading,listVisibilityButton('Wünsche',false,enableMissingWishes));
+    row.append(summary,element('p','Einblenden richtet die Wünsche-Liste ein oder holt die bisherige Liste mit ihren Einträgen zurück.','hint store-body'));editor.append(row);
   }
   for(const list of privateList?.lists||[])editor.append(privateStoreEditorRow(list));
 }
@@ -938,7 +954,10 @@ function replaceStoreEditorRow(old,replacement) {
 }
 function privateStoreEditorRow(list) {
   const row=element('details',undefined,'store-row private-store-row'),summary=element('summary'),title=element('span',undefined,'store-name'),body=element('div',undefined,'store-body'),form=element('form');
-  row.dataset.privateListId=list.id;title.append(symbolNode('secret',list.name),element('span',list.name));summary.append(title,element('span',list.enabled?'Geheim':'Geheim · ausgeblendet','store-pill'));row.append(summary,body);
+  const heading=element('span',undefined,'store-heading');row.dataset.privateListId=list.id;title.append(symbolNode('secret',list.name),element('span',list.name));heading.append(title,element('span',list.enabled?'Geheim':'Geheim · ausgeblendet','store-pill'));summary.setAttribute('aria-label',list.name);summary.append(heading,listVisibilityButton(list.name,list.enabled,()=>{
+    const latest=privateList.lists.find(row=>row.id===list.id);if(!latest)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');
+    if(privateList.setEnabled(list.id,!latest.enabled)){message();showNotice(`${latest.name} ${latest.enabled?'ausgeblendet · alle Einträge bleiben erhalten':'eingeblendet'}`);}
+  }));row.append(summary,body);
   const label=element('label','Listenname'),name=element('input');name.name='name';name.required=true;name.maxLength=80;name.value=list.name;label.append(name);
   const picker=storeSymbolPicker('secret'),privacy=listPrivacyField(picker,()=>true,true),warning=element('p','Beim Speichern wird die Freigabe dieser bisher privaten Liste für die Familie abgefragt.','hint'),save=element('button',undefined,'store-save');save.type='submit';
   const update=()=>{
@@ -953,7 +972,7 @@ function privateStoreEditorRow(list) {
     if(privacy.input.checked){if(privateList.renameList(list.id,title))replaceStoreEditorRow(row,privateStoreEditorRow(privateList.lists.find(item=>item.id===list.id)));}
     else {const id=sharePrivateList(list.id,title,picker.querySelector('input:checked')?.value||'name');if(id)replaceStoreEditorRow(row,storeEditorRow(active(state.stores).find(store=>store.id===id)));}
   });});
-  const open=button('Liste öffnen',()=>{if(!list.enabled&&!privateList.enable(list.id))return;$('#stores-dialog').close();tab('shopping');showView(privateView(list.id));},'secondary store-private-open');open.prepend(icon('lock'));
+  const open=button('Liste öffnen',()=>{if(!privateList.has(list.id)&&!privateList.enable(list.id))return;$('#stores-dialog').close();tab('shopping');showView(privateView(list.id));},'secondary store-private-open');open.prepend(icon('lock'));
   const remove=button('Geheime Liste auf diesem Gerät löschen',()=>{if(confirm(`„${list.name}“ und alle darin enthaltenen privaten Einträge auf diesem Gerät löschen?`)&&privateList.removeList(list.id))row.remove();},'danger store-delete');
   body.append(form,open,remove);return row;
 }
@@ -966,8 +985,8 @@ function storeEditorRow(store) {
     summary.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
     summary.setAttribute('aria-description', 'Lange halten und nach oben oder unten ziehen. Mit der Tastatur: Alt und Pfeil oben oder unten.');
     row.addEventListener('toggle', () => { if (row.open) storesOpen.add(store.id); else storesOpen.delete(store.id); });
-    const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name));if(isSeparate(store)&&symbolOf(store))title.append(element('span',store.name));summary.append(title);
-    if (isSeparate(store)) summary.append(element('span', wishList && store.wishlistEnabled === false ? 'Ausgeblendet' : 'Eigene Liste', 'store-pill'));
+    const title = element('span', undefined, 'store-name'); title.append(storeLabel(store.name));if(isSeparate(store)&&symbolOf(store))title.append(element('span',store.name));
+    const heading=element('span',undefined,'store-heading'),badge=element('span',visibleStore(store)?'Eigene Liste':'Ausgeblendet','store-pill');badge.hidden=visibleStore(store)&&!isSeparate(store);heading.append(title,badge);summary.append(heading,listVisibilityButton(store.name,visibleStore(store),()=>setStoreVisibility(store.id)));
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
     input.name = 'name';
@@ -1074,7 +1093,7 @@ function storeEditorRow(store) {
     remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form);
     if (wishList) {
       const open = button('Wünsche öffnen', () => openWishlist(store.id), 'secondary store-wishes-open');
-      open.disabled = store.wishlistEnabled === false; open.prepend(icon('gift')); body.append(open);
+      open.disabled = !visibleStore(store); open.prepend(icon('gift')); body.append(open);
     }
     body.append(remove); row.append(summary, body);
     return row;
@@ -1101,12 +1120,12 @@ function chip(text, pressed, action) {
 function renderRecipes() {
   const search = $('#recipe-search').value.trim().toLocaleLowerCase('de');
   const recipes = active(state.recipes);
-  const tags = [...new Set(recipes.flatMap(recipe => recipe.tags))].sort((a, b) => a.localeCompare(b, 'de'));
-  if (tagFilter && !tags.includes(tagFilter)) tagFilter = '';
+  const tags = uniqueRecipeTags(recipes.flatMap(recipe => recipe.tags)).sort((a, b) => a.localeCompare(b, 'de'));
+  if (tagFilter && !tags.some(tag=>recipeTagKey(tag)===tagFilter)) tagFilter = '';
   const chips = $('#tag-chips'); chips.replaceChildren(); chips.hidden = !recipes.length;
   chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }),
     chip('Lange nicht gekocht', oldestFirst, () => { oldestFirst = !oldestFirst; renderRecipes(); }));
-  for (const tag of tags) chips.append(chip(tag, tag === tagFilter, () => { tagFilter = tagFilter === tag ? '' : tag; renderRecipes(); }));
+  for (const tag of tags){const key=recipeTagKey(tag);chips.append(chip(tag, key === tagFilter, () => { tagFilter = tagFilter === key ? '' : key; renderRecipes(); }));}
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
   const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
@@ -1116,7 +1135,7 @@ function renderRecipes() {
   for (const recipe of recipes.filter(recipe => {
     const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
-      (!tagFilter || recipe.tags.includes(tagFilter)) && (!favoritesOnly || recipe.favorite);
+      (!tagFilter || recipe.tags.some(tag=>recipeTagKey(tag)===tagFilter)) && (!favoritesOnly || recipe.favorite);
   }).sort(order)) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
   refreshRecipeStock();
   if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
@@ -1139,7 +1158,7 @@ function recipeCard(recipe, ingredients, options = {}) {
     cooked && cooked !== 'geplant' && `gekocht ${cooked}`].filter(Boolean).join(' · '), 'recipe-meta'));
   if (recipe.tags.length) {
     const tags = element('div', undefined, 'tags');
-    recipe.tags.forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
+    uniqueRecipeTags(recipe.tags).forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
   }
   const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required);
   const showStock=stock.have.length>0;
@@ -1347,7 +1366,7 @@ function saveRecipe(event) {
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
     const patch = { name: form.elements.name.value.trim(), servings: positive(form.elements.servings.value),
-      instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: [...new Set(form.elements.tags.value.split(',').map(tag => tag.trim()).filter(Boolean))] };
+      instructions: form.elements.instructions.value.trim(), notes: form.elements.notes.value.trim(), tags: uniqueRecipeTags(form.elements.tags.value.split(',')) };
     if (sourceUrl || beforeRecipe?.sourceUrl) patch.sourceUrl = sourceUrl;
     if (patch.notes.length > 10000) throw new Error('Meine Notizen dürfen höchstens 10.000 Zeichen enthalten.');
     if (!patch.name) throw new Error('Bitte dem Rezept einen Namen geben.');
@@ -2267,7 +2286,7 @@ function addDailyRecipe() {
   if (!draft?.ingredients.length) return false;
   if (dailyKnown(item, draft)) return false;
   const id = uid(), name = (draft.name || item.title).trim().slice(0, 120);
-  const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags: draft.tags || [] };
+  const patch = { name, servings: positive(draft.servings || 2), instructions: draft.instructions || '', tags: uniqueRecipeTags(draft.tags) };
   if (draft.sourceUrl || item.url) patch.sourceUrl = draft.sourceUrl || item.url;
   const ops = [nextOp('recipes', id, patch), ...draft.ingredients.map(row => nextOp('ingredients', uid(), { recipeId: id, name: row.name.slice(0, 120), quantity: row.quantity, unit: String(row.unit).slice(0, 30) }))];
   commit(ops, `„${name}“ zu deinen Rezepten hinzugefügt`); return true;
@@ -2972,7 +2991,7 @@ async function recipeLayout(recipeId, servings) {
   const count = servings > 0 ? servings : recipe.servings, source = webUrl(recipe.sourceUrl);
   const rows = active(state.ingredients).filter(row => row.recipeId === recipeId);
   const photo = recipe.photoId ? await photoForPdf(recipe.photoId) : null;
-  return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: recipe.tags, sourceHost: source ? hostLabel(source) : '', sourceUrl: source, notes: recipe.notes || '' },
+  return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: uniqueRecipeTags(recipe.tags), sourceHost: source ? hostLabel(source) : '', sourceUrl: source, notes: recipe.notes || '' },
     ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo });
 }
 let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
@@ -3238,7 +3257,7 @@ function openPurchase(id = '') {
   purchaseEditing = row ? clone(row) : null; purchaseSource = row?.source || 'hand'; purchaseScope = namespace();
   // Der ausgewählte Laden geht vor; andernfalls den letzten eigenen Einkauf vorschlagen.
   const ownId = spendingView.defaultBuyer(), latest = purchaseRows().filter(entry => entry.buyerId === ownId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  storeOptions(select, row ? row.storeId || '' : viewStore()?.id || latest?.storeId || '', true);
+  storeOptions(select, row ? row.storeId || '' : viewStore()?.id || latest?.storeId || '', true, Boolean(row));
   spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : ownId, row?.buyerName || '');
   form.elements.kind.value = row?.kind || 'purchase'; $('#purchase-more').open = row?.kind === 'refund';
   // Geschäft inzwischen gelöscht: der gemerkte Name bleibt wählbar, damit er beim Ändern nicht verloren geht.
@@ -3644,7 +3663,7 @@ const moveBar = {
       const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
     };
     add('', document.createTextNode('Ohne Geschäft'));
-    for (const store of orderedStores(state.stores)) add(store.id, storeLabel(store.name));
+    for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, storeLabel(store.name));
     bar.hidden = false;
     return bar.getBoundingClientRect().bottom;
   },
@@ -3744,7 +3763,7 @@ function moveSelected(storeId) {
 }
 function fillMoveChoices(choice) {
   choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
-  for (const store of orderedStores(state.stores)) choice(store.id, storeLabel(store.name), store.name);
+  for (const store of orderedStores(state.stores).filter(visibleStore)) choice(store.id, storeLabel(store.name), store.name);
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
@@ -3800,7 +3819,6 @@ $('#select-delete').addEventListener('click', () => guard(() => {
   removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
 }));
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
-$('#wishlist-enabled').addEventListener('change',event=>guard(()=>setWishesEnabled(event.target.checked)));
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
 function saveStoreOrder(visibleIds) {
   const order = reorderedStoreIds(state.stores, visibleIds);
@@ -3808,7 +3826,7 @@ function saveStoreOrder(visibleIds) {
   commit(order.map((id, sortOrder) => nextOp('stores', id, { sortOrder })), 'Geschäftsreihenfolge gespeichert');
   // Offene Bearbeitungsfelder samt noch nicht gespeicherten Eingaben erhalten.
   const editor = $('#store-editor'), rows = [...editor.children];
-  const trailing = editor.querySelector('.private-store-row');
+  const trailing = editor.querySelector('.store-wishes-placeholder,.private-store-row');
   for (const row of order.map(id => rows.find(row => row.dataset.storeId === id)).filter(Boolean)) editor.insertBefore(row, trailing);
 }
 for (const [selector, horizontal, itemSelector, handleSelector] of [
@@ -3830,7 +3848,7 @@ for (const [selector, horizontal, itemSelector, handleSelector] of [
 
 productPicker = mountProductPicker({
   getScope: namespace,
-  getStores: () => orderedStores(state.stores).filter(store => !isSeparate(store)),
+  getStores: () => orderedStores(state.stores).filter(store => visibleStore(store)&&!isSeparate(store)),
   getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [], stockSettings:state.stockSettings||[],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
@@ -3850,7 +3868,7 @@ productPicker = mountProductPicker({
   }
 });
 pantryBuyer = mountPantryBuy({
-  getScope:namespace,getStores:()=>orderedStores(state.stores).filter(store=>!isSeparate(store)),
+  getScope:namespace,getStores:()=>orderedStores(state.stores).filter(store=>visibleStore(store)&&!isSeparate(store)),
   getPreferredStore:()=>$('#open-products').hidden?'':$('#item-form').elements.storeId.value,
   getHistory:itemHistory,onBuy:(rows,storeId)=>addRows(rows,currentStore(storeId))
 });

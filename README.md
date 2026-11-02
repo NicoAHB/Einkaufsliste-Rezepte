@@ -1,6 +1,14 @@
-# Sattplan – Version 2.116
+# Sattplan – Version 2.117
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.117: Listen einblenden, leere Auswahl und einheitliche Rezeptgruppen
+
+Unter **Geschäfte & Angebote** steht direkt in jeder Listenzeile ein kompakter Button **Ausblenden** bzw. **Einblenden** – auch bei zugeklappten Supermärkten, eigenen Listen, Wünschen und geheimen Listen. Die große separate Wünsche-Karte entfällt. Ausgeblendete Listen verschwinden aus den Einkaufsreitern, der Gesamtliste, der Ansicht **Im Laden** und den Auswahlen für neue Einkaufsartikel. Die Verwaltung zeigt sie weiterhin an. Beim Einblenden erscheinen alle Einträge und die bisherige Reihenfolge wieder; offene Bearbeitungsentwürfe bleiben beim Umschalten erhalten.
+
+Die Sichtbarkeit gemeinsamer Listen wird abgeglichen. Geheime Listen und ihre Sichtbarkeit bleiben ausschließlich auf dem jeweiligen Gerät. Historie, Ausgaben und gespeicherte Inhalte werden nicht gelöscht. Vorhandene Wünsche-Einstellungen bleiben wirksam; eine noch nicht eingerichtete oder früher entfernte Wünsche-Liste lässt sich direkt in ihrer Zeile einblenden. **Auswählen** ist bei einer leeren aktuellen Einkaufsliste grau und deaktiviert und wird nach dem Hinzufügen wieder aktiv. Eine laufende Auswahl lässt sich auch nach dem Entfernen des letzten Artikels noch beenden. Offline-Paket **einkauf-shell-v129**.
+
+Rezeptgruppen werden unabhängig von Groß-/Kleinschreibung, zusätzlichen Leerzeichen und gleichwertigen Unicode-Schreibweisen erkannt: **vegan/Vegan** und **vegetarisch/Vegetarisch** erscheinen jeweils nur einmal. Der gemeinsame Filter umfasst alle zugehörigen Rezepte und bleibt beim Abgleich erhalten. Das gilt auch für Gruppen auf Rezeptkarten, die Planung, neue Eingaben, Importe und das Rezeptblatt. Unterschiedliche Gruppen wie vegan und vegetarisch bleiben eigenständig.
 
 ## Neu in Version 2.116: Sichtbarer Rahmen für Schließen
 

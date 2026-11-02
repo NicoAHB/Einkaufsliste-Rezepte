@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ALL, WITH_PANTRY, WITH_SHOPPING, FAVORITES, LONG_AGO, LONG_AGO_DAYS, cookedLongAgo, filterOptions, pickRecipes } from '../recipe-filter.js';
+import {recipeTagKey,uniqueRecipeTags} from '../recipe-import.js';
 
 const TODAY = '2026-10-28';
 const recipe = (id, name, extra = {}) => ({ id, name, tags: [], servings: 2, favorite: false, lastCookedAt: '', ...extra });
 const ids = list => list.map(row => row.id);
+test('Gleiche Rezeptgruppen werden über Großschreibung, Leerzeichen und Unicode-Schreibweisen gemeinsam erkannt',()=>{
+ const input=['vegan',' Vegan ','VEGAN',' Low  Carb ','low\u00a0carb','Su\u0308ß','süß','vegetarisch','Vegetarisch','','   '],before=[...input];
+ assert.deepEqual(uniqueRecipeTags(input),['vegan','Low Carb','Süß','vegetarisch']);assert.deepEqual(input,before);assert.equal(recipeTagKey('ＶＥＧＡＮ'),'vegan');assert.notEqual(recipeTagKey('vegan'),recipeTagKey('vegetarisch'));
+ const recipes=[recipe('a','A',{tags:[' Low  Carb ','Vegetarisch']}),recipe('b','B',{tags:['low\u00a0carb','vegetarisch']})];assert.equal(filterOptions(recipes,TODAY).filter(row=>row.value==='tag:low carb').length,1);assert.equal(filterOptions(recipes,TODAY).find(row=>row.value==='tag:low carb').count,2);assert.deepEqual(ids(pickRecipes(recipes,'tag: LOW   CARB ',{today:TODAY})),['a','b']);
+});
 
 test('„Lange nicht gekocht“: noch nie oder seit mindestens 28 Tagen nicht; ein Datum mit Uhrzeit zählt nach dem Tag', () => {
   assert.equal(LONG_AGO_DAYS, 28);
