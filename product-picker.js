@@ -27,25 +27,24 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE;
   const helpToggle=$('product-picker-help-toggle'),help=$('product-picker-help');
   function showHelp(open,restoreFocus=false) {
-    const expanded=target==='pantry'&&open;
-    help.hidden=target==='pantry'&&!expanded;helpToggle.hidden=target!=='pantry';
+    const expanded=Boolean(open);
+    help.hidden=!expanded;
     helpToggle.setAttribute('aria-expanded',String(expanded));
-    helpToggle.setAttribute('aria-label',`Hilfe zur Vorratsauswahl ${expanded?'ausblenden':'anzeigen'}`);
-    $('product-picker-help-close').hidden=target!=='pantry';
-    if(restoreFocus&&!helpToggle.hidden){document.activeElement?.blur?.();helpToggle.focus({preventScroll:true});}
+    helpToggle.setAttribute('aria-label',`Hilfe zur ${target==='pantry'?'Vorratsauswahl':'Produktauswahl'} ${expanded?'ausblenden':'anzeigen'}`);
+    if(restoreFocus){document.activeElement?.blur?.();helpToggle.focus({preventScroll:true});}
   }
   function resetHelp() {
-    const hint=$('product-picker-hint');
-    if(target==='pantry'){
-      const list=node('ul');
-      for(const text of ['Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat.','★ merkt Favoriten.','„Nachkaufen“ öffnet die Einkaufsauswahl.','Die Reihenfolge änderst du mit dem Button unter den Reitern.'])list.append(node('li',text));
-      hint.replaceChildren(list);
-    }else hint.textContent='Antippen zum Auswählen · Mit dem Stern als Favorit merken.';
+    const hint=$('product-picker-hint'),list=node('ul');
+    const texts=target==='pantry'
+      ?['Antippen: aktivieren oder ausgrauen. Erst „Änderungen speichern“ übernimmt den Vorrat.','★ merkt Favoriten.','„Nachkaufen“ öffnet die Einkaufsauswahl.','Die Reihenfolge änderst du mit dem Button unter den Reitern.']
+      :['Antippen zum Auswählen - Mit dem Stern als Favorit merken.','Wähle die gewünschten Produkte aus und füge sie mit dem Button unten schnell zur Einkaufsliste hinzu.'];
+    for(const text of texts)list.append(node('li',text));
+    hint.replaceChildren(list);
     showHelp(false);
   }
   helpToggle.addEventListener('click',()=>showHelp(help.hidden,true));
   $('product-picker-help-close').addEventListener('click',()=>showHelp(false,true));
-  dialog.addEventListener('cancel',event=>{if(target==='pantry'&&!help.hidden){event.preventDefault();showHelp(false,true);}});
+  dialog.addEventListener('cancel',event=>{if(!help.hidden){event.preventDefault();showHelp(false,true);}});
   const fail = error => { $('product-picker-error').textContent = error.message; $('product-picker-error').hidden = false; $('product-picker-error').scrollIntoView({ block: 'nearest' }); };
   const clearError = () => { $('product-picker-error').hidden = true; };
   const tabOrder = mountProductTabOrder(dialog.querySelector('.product-modes'), {

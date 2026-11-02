@@ -516,8 +516,8 @@ main {
 .product-picker-head-actions { display:flex; align-items:center; gap:8px; flex:none }
 #product-picker-dialog .sheet-head h2 { flex:1; min-width:0; overflow-wrap:anywhere }
 .product-picker-head-actions>.icon-button { flex:none }
-#product-picker-dialog[data-target=pantry] .product-picker-help { padding:12px; margin:0 0 12px; border:1px solid var(--line-strong); border-radius:12px; background:var(--accent-soft) }
-#product-picker-dialog[data-target=pantry] .product-picker-hint { margin:0 }
+#product-picker-dialog .product-picker-help { padding:12px; margin:0 0 12px; border:1px solid var(--line-strong); border-radius:12px; background:var(--accent-soft) }
+#product-picker-dialog .product-picker-hint { margin:0 }
 .product-picker-help ul { display:grid; gap:8px; margin:0; padding-left:20px; overflow-wrap:anywhere }
 :root #product-picker-help-close { margin-top:8px; min-height:44px; padding:8px 0; border:0; background:transparent; box-shadow:none; color:var(--accent); font-size:.85rem }
 .list-shortcuts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:10px }
