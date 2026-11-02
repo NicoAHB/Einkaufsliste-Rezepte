@@ -27,6 +27,16 @@ export function parseAmount(input) {
   return value;
 }
 
+// Das Monatsbudget wird in vollen Euro eingegeben; Trennzeichen niemals entfernen oder als Tausenderpunkte deuten.
+export function parseBudgetAmount(input) {
+  const text = String(input ?? '').trim();
+  if (!/^\d+$/.test(text)) throw new Error('Bitte einen vollen Eurobetrag ohne Nachkommastellen eingeben, zum Beispiel 400.');
+  const value = Number(text);
+  if (value < 1) throw new Error('Der Betrag muss größer als 0 sein.');
+  if (!Number.isSafeInteger(value) || value > Math.floor(MAX_CENTS / 100)) throw new Error('Das Budget ist zu groß. Bitte prüfen (höchstens 99.999 €).');
+  return value * 100;
+}
+
 // Cent als Text für ein Eingabefeld: 2345 → „23,45“ (ohne Tausenderpunkt, sonst würde „1.234“ später als 1,234 gelesen).
 export const formatAmount = cents => (cents / 100).toFixed(2).replace('.', ',');
 

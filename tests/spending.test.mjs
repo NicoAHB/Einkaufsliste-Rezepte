@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, purchaseFrequency, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, purchaseFrequency, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, parseBudgetAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -239,6 +239,13 @@ describe('Alte Schätzwerte ohne neue Berechnung', () => {
 });
 
 describe('Monatsbudget', () => {
+  test('nur volle Euro werden als Budget gespeichert, Ausgaben unterstützen weiterhin Cent', () => {
+    for (const [input, cents] of [['1', 100], ['400', 40000], [' 650 ', 65000], ['00400', 40000], ['99999', 9999900]]) assert.equal(parseBudgetAmount(input), cents, input);
+    for (const input of ['', ' ', null, undefined, '400,50', '400.50', '400,00', '400.00', '1.000', '1,000', '1e3', '-5', '+5', '400 €', 'abc', '4 00']) assert.throws(() => parseBudgetAmount(input), /vollen Eurobetrag ohne Nachkommastellen/, String(input));
+    assert.throws(() => parseBudgetAmount('0'), /größer als 0/);
+    for (const input of ['100000', '999999999999999999999999999999999999']) assert.throws(() => parseBudgetAmount(input), /zu groß/);
+    assert.equal(parseAmount('400,50'), 40050, 'die Eingabe eines Einkaufsbetrags bleibt unverändert');
+  });
   test('Stand: ohne Budget null, ok unter 80 %, Warnung ab 80 %, überschritten über 100 %', () => {
     assert.equal(budgetStatus(5000, 0), null);
     assert.equal(budgetStatus(5000, undefined), null);

@@ -46,7 +46,7 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required } from './cookable.js';
-import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const CONFIG_KEY = 'einkauf-settings-v1';
@@ -3228,13 +3228,16 @@ function renderBudget(spent) {
 function openBudget() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   const form = $('#budget-form'), budget = budgetCents();
-  form.reset(); message(); budgetScope = namespace(); form.elements.amount.value = budget ? String(budget % 100 ? formatAmount(budget) : budget / 100) : '';
+  form.reset(); message(); budgetScope = namespace(); form.elements.amount.value = budget && budget % 100 === 0 ? String(budget / 100) : '';
+  const previous = $('#budget-existing-hint');
+  previous.hidden = budget % 100 === 0;
+  previous.textContent = previous.hidden ? '' : `Bisheriges Budget: ${euros(budget)}. Bitte lege einen vollen Eurobetrag fest.`;
   $('#budget-remove').hidden = !budget;
-  $('#budget-dialog').showModal(); form.elements.amount.focus();
+  $('#budget-dialog').showModal();
 }
 function saveBudget() {
   if (budgetScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte das Budget erneut öffnen.');
-  const cents = parseAmount($('#budget-form').elements.amount.value);
+  const cents = parseBudgetAmount($('#budget-form').elements.amount.value);
   commit([nextOp('budgets', 'monthly', { cents })], `Monatsbudget ${euros(cents)} gespeichert`);
   $('#budget-dialog').close();
 }

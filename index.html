@@ -229,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.121 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.122 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -502,9 +502,10 @@
     <button id="member-cancel-edit" type="button" class="text-button" hidden>Ändern abbrechen</button><p id="members-error" class="dialog-error" role="alert" hidden></p><ul id="members-list" class="members-list"></ul>
     <details id="members-archived" hidden><summary>Ausgeblendete Personen</summary><ul id="members-archived-list" class="members-list"></ul></details>
   </div></dialog>
-  <dialog id="budget-dialog"><form id="budget-form" class="stack" novalidate><div class="sheet-head"><h2>Monatsbudget</h2><button type="button" data-close="budget-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+  <dialog id="budget-dialog"><form id="budget-form" class="stack" novalidate><div class="sheet-head"><h2>Monatsbudget</h2><button type="button" data-close="budget-dialog" class="icon-button round" aria-label="Schließen" autofocus><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p class="hint">Wie viel möchtet ihr als Familie im Monat ausgeben? Die Übersicht zeigt, wie viel davon verbraucht ist, und warnt ab 80 %. Das gemeinsame Budget gilt für jeden vollständigen Kalendermonat und erscheint bei der Auswahl „Alle“.</p>
-    <label>Budget pro Monat (€)<input name="amount" inputmode="decimal" placeholder="z. B. 400" maxlength="14" autocomplete="off"></label>
+    <label>Budget pro Monat (€)<input name="amount" inputmode="numeric" pattern="[0-9]+" enterkeyhint="done" placeholder="z. B. 400" autocomplete="off" aria-describedby="budget-amount-hint budget-existing-hint"><small id="budget-amount-hint" class="hint">Nur volle Euro, ohne Cent.</small></label>
+    <p id="budget-existing-hint" class="hint" hidden></p>
     <button type="submit">Speichern</button>
     <button id="budget-remove" type="button" class="danger" hidden>Budget entfernen</button>
   </form></dialog>

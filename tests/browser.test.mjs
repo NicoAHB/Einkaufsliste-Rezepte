@@ -1573,8 +1573,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.spend-share').count(), 0);
     // Ungültige Eingaben
     await card.getByRole('button', { name: 'Monatsbudget festlegen' }).click(); await sheetOpen(page);
+    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'öffnet ohne Fokus auf einem Eingabefeld');
+    assert.equal(await page.getAttribute('#budget-form input[name=amount]', 'inputmode'), 'numeric', 'Zifferntastatur ohne Komma');
+    await page.click('#budget-form input[name=amount]');
+    assert.equal(await page.locator('#budget-form input[name=amount]').evaluate(node => node === document.activeElement), true, 'Betrag erst nach Antippen im Fokus');
     assert.equal(await page.locator('#budget-remove').isHidden(), true, 'noch nichts zu entfernen');
-    for (const [value, pattern] of [['', /Betrag in Euro eingeben/], ['0', /größer als 0/], ['abc', /Betrag in Euro eingeben/], ['100.000,00', /zu groß/]]) {
+    for (const [value, pattern] of [['', /vollen Eurobetrag/], ['0', /größer als 0/], ['abc', /vollen Eurobetrag/], ['100000', /zu groß/], ['100,50', /ohne Nachkommastellen/], ['100.50', /ohne Nachkommastellen/], ['100,00', /ohne Nachkommastellen/]]) {
       await page.fill('#budget-form input[name=amount]', value); await page.click('#budget-form button[type=submit]');
       assert.match(await page.textContent('#budget-dialog [data-dialog-error]'), pattern, value);
     }
@@ -1605,15 +1609,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('small.budget-over').count(), 1);
     // Ändern: 500 → wieder normal; das Fenster zeigt den bisherigen Wert
     await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'Bearbeiten öffnet ohne Tastatur');
     assert.equal(await page.inputValue('#budget-form input[name=amount]'), '100');
     assert.equal(await page.locator('#budget-remove').isVisible(), true);
     await page.fill('#budget-form input[name=amount]', '500,50'); await page.click('#budget-form button[type=submit]');
+    assert.match(await page.textContent('#budget-dialog [data-dialog-error]'), /ohne Nachkommastellen/);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets[0].cents), 10000, 'Nachkommastellen verändern das gespeicherte Budget nicht');
+    await page.fill('#budget-form input[name=amount]', '500'); await page.click('#budget-form button[type=submit]');
     await page.waitForSelector('#budget-dialog', { state: 'hidden' });
-    assert.match(await card.textContent(), /Budget 500,50\s€[\s\S]*23 % verbraucht/);
+    assert.match(await card.textContent(), /Budget 500,00\s€[\s\S]*23 % verbraucht/);
     // Der Vormonat bekommt dasselbe Budget (gilt für jeden Monat)
     await add('1');
     await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.click('[data-tab=spending]');
-    assert.match(await card.textContent(), /Budget 500,50\s€/, 'bleibt nach dem Neuladen');
+    assert.match(await card.textContent(), /Budget 500,00\s€/, 'bleibt nach dem Neuladen');
     // Entfernen
     await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
     await page.click('#budget-remove'); await page.waitForSelector('#budget-dialog', { state: 'hidden' });
@@ -1623,6 +1631,31 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
+  });
+
+  test('Monatsbudget: alte Centbeträge bleiben bis zum ausdrücklichen Speichern erhalten; wiederholtes Öffnen fokussiert kein Eingabefeld', async () => {
+    const { ctx, page, problems } = await context();
+    const old = structuredClone(demo); old.budgets = [{ id: 'monthly', cents: 50050, createdAt: '2026-05-01T10:00:00.000Z', updatedAt: '2026-05-01T10:00:00.000Z', deletedAt: null }];
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, old);
+    await open(page); await page.click('[data-tab=spending]');
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets[0].cents);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+      assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.inputValue('#budget-form input[name=amount]'), '');
+      assert.match(await page.textContent('#budget-existing-hint'), /Bisheriges Budget: 500,50\s€[\s\S]*vollen Eurobetrag/);
+      await page.fill('#budget-form input[name=amount]', '501');
+      await page.keyboard.press('Escape');
+      assert.equal(await stored(), 50050, 'Schließen rundet ein bestehendes Budget nicht im Hintergrund');
+    }
+    await page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+    await page.fill('#budget-form input[name=amount]', '500'); await page.click('#budget-form button[type=submit]');
+    await page.waitForSelector('#budget-dialog', { state: 'hidden' });
+    assert.equal(await stored(), 50000);
+    await page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#budget-form input[name=amount]'), '500');
+    assert.equal(await page.locator('#budget-existing-hint').isHidden(), true);
+    assert.deepEqual(problems, []); await ctx.close();
   });
 
   test('Monatsbudget auf zwei Geräten: beide sehen dasselbe, der spätere Wert gilt; Layout bei 280 px ohne Überlauf', async () => {

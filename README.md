@@ -1,6 +1,10 @@
-# Sattplan – Version 2.121
+# Sattplan – Version 2.122
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.122: Monatsbudget ohne automatische Tastatur und nur in vollen Euro
+
+Beim Festlegen und Bearbeiten des Monatsbudgets bleibt die Tastatur geschlossen, bis das Betragsfeld angetippt wird. Das Feld nutzt eine Zifferntastatur und speichert ausschließlich volle Eurobeträge, zum Beispiel **400**. Auch eingefügte Komma- und Punktbeträge werden mit einem verständlichen Hinweis abgelehnt. Bestehende Budgets mit Centbeträgen bleiben unverändert; beim Bearbeiten wird der bisherige Betrag angezeigt und ein neuer voller Eurobetrag angefordert. Einkaufsbeträge unterstützen weiterhin Cent. Offline-Paket **einkauf-shell-v134**.
 
 ## Neu in Version 2.121: Produkte und Vorrat ohne Zähler
 
