@@ -114,7 +114,7 @@
         <div class="card private-list-intro"><h2 id="private-list-title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span id="private-list-name">Geheime Liste</span></h2><p>Wird nur auf diesem Gerät geführt und nicht mit der Familie geteilt.</p><p id="private-list-count" class="hint" role="status"></p></div>
         <form id="private-add-form" class="card private-add" novalidate><label for="private-item-name">Privater Eintrag<input id="private-item-name" name="name" required maxlength="120" autocomplete="off" placeholder="Was möchtest du notieren?"></label><button id="private-add" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Privat hinzufügen</button></form>
         <p id="private-list-empty" class="empty"></p><ul id="private-items" class="item-list private-items"></ul>
-        <details id="private-done" class="card private-done" hidden><summary id="private-done-count"></summary><ul id="private-done-items" class="private-items"></ul></details><button class="trash-link" type="button" data-trash-kind="private" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Kürzlich gelöschte private Einträge</span><span class="trash-link-count"></span></button>
+        <details id="private-done" class="card private-done" hidden><summary id="private-done-count"></summary><ul id="private-done-items" class="private-items"></ul></details><button class="trash-link" type="button" data-trash-kind="private" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Kürzlich gelöscht</span><span class="trash-link-count"></span></button>
         <p class="hint private-list-note">Wird nicht mit GitHub abgeglichen und nicht in gemeinsame Sicherungen übernommen. Beim Löschen der Browserdaten geht diese Liste verloren. Ausschalten blendet sie nur aus.</p>
       </section>
       </div>
@@ -312,7 +312,7 @@
     <p id="trash-status" class="trash-status" role="status" hidden><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span id="trash-status-text"></span><button id="trash-undo" type="button" class="text-button">Rückgängig</button></p>
     <div id="trash-list" class="trash-list"></div>
     <div id="trash-empty" class="trash-empty" hidden><span class="trash-empty-icon"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></span><strong>Der Papierkorb ist leer</strong><p class="hint">Was du löschst, bleibt 14 Tage hier und lässt sich mit einem Tipp zurückholen.</p></div>
-    <p class="hint trash-foot">Gekaufte Artikel stehen nicht hier, sondern unter <strong>Vorrat → Letzte 7 Tage gekauft</strong>. Nach 14 Tagen räumt die App gelöschte Einträge endgültig auf.</p>
+    <p class="hint trash-foot">Was mit „Einkauf beenden“ oder „Erledigte entfernen“ weggeräumt wurde, steht nicht hier, sondern unter <strong>Vorrat → Letzte 7 Tage gekauft</strong>. Nach 14 Tagen räumt die App gelöschte Einträge endgültig auf.</p>
     <div class="trash-purge"><button id="trash-purge" type="button" class="text-button trash-purge-button" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Papierkorb leeren</span></button></div>
   </div></dialog>
   <dialog id="storage-recovery" aria-labelledby="storage-recovery-title"><div class="stack"><div class="sheet-head"><h2 id="storage-recovery-title">Lokaler Speicher beschädigt</h2><button type="button" data-close="storage-recovery" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

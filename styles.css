@@ -5073,7 +5073,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
   text-transform:uppercase;
 }
 .trash-day:first-child {
-  margin-top:0;
+  margin-top:6px;
 }
 .trash-row {
   display:grid;

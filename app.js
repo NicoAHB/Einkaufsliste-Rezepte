@@ -3460,6 +3460,8 @@ function openBudget() {
   previous.textContent = previous.hidden ? '' : `Bisheriges Budget: ${euros(budget)}. Bitte lege einen vollen Eurobetrag fest.`;
   $('#budget-remove').hidden = !budget;
   $('#budget-dialog').showModal();
+  // Bestehendes Budget (2.147): Speichern erst nach einer Änderung; ein neues Budget wie bisher.
+  if (budget) armDirty(form, { savedAt: (state.budgets || []).find(row => row.id === 'monthly')?.updatedAt }); else disarmDirty(form);
 }
 function saveBudget() {
   if (budgetScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte das Budget erneut öffnen.');

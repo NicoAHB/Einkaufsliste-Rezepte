@@ -13,15 +13,17 @@ Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md
 **„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben und in geheimen Listen. Auch **Erledigte entfernen** lässt sich so sofort zurücknehmen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
 
 **Papierkorb.**
-- **Geheime Listen** haben jetzt einen eigenen Papierkorb auf diesem Gerät: Gelöschte private Einträge bleiben 14 Tage wiederherstellbar, mit dem Hinweis **Kürzlich gelöschte private Einträge (n)** am Ende der Liste und unter **Optionen → Kürzlich gelöscht** („nur auf diesem Gerät“). **Papierkorb leeren** entfernt auch sie endgültig. Das Löschen eines einzelnen privaten Eintrags fragt deshalb nicht mehr nach.
+- **Geheime Listen** haben jetzt einen eigenen Papierkorb auf diesem Gerät: Gelöschte private Einträge bleiben 14 Tage wiederherstellbar, mit dem Hinweis **Kürzlich gelöscht (n)** am Ende der geheimen Liste und unter **Optionen → Kürzlich gelöscht** („nur auf diesem Gerät“). **Papierkorb leeren** entfernt auch sie endgültig. Das Löschen eines einzelnen privaten Eintrags fragt deshalb nicht mehr nach.
 - In der geheimen Liste steht nicht mehr der Hinweis auf gelöschte gemeinsame Artikel.
 - Ein **abgehakter Artikel, der einzeln gelöscht wird** (Wischen, Bearbeiten, Auswahl), steht jetzt im Papierkorb. Was mit **Einkauf beenden** oder **Erledigte entfernen** weggeräumt wird, bleibt wie bisher draußen (es ist gekauft).
 
-**Speichern erst nach einer Änderung.** In den Bearbeiten-Fenstern für Artikel, Wünsche, private Einträge, Rezepte und Ausgaben ist der grüne Knopf grau, solange nichts geändert ist, und zeigt die letzte Speicherung (**Gespeichert um 14:05 Uhr**, an anderen Tagen **Gespeichert am 02.11. um 14:05 Uhr**). Sobald sich etwas unterscheidet, wird er grün und heißt **Änderungen speichern**; wer die Änderung zurücknimmt, sieht wieder den grauen Knopf. Auch Zutatenzeilen, Fotos und „Bild entfernen“ zählen. Nach dem Speichern bestätigt unten **„…“ gespeichert um … Uhr**. Neue Einträge (neues Rezept, neue Ausgabe) speichern wie bisher. Neues Modul `dirty-save.js`.
+**Speichern erst nach einer Änderung.** In den Bearbeiten-Fenstern für Artikel, Wünsche, private Einträge, Rezepte, Ausgaben und das Monatsbudget ist der grüne Knopf grau, solange nichts geändert ist, und zeigt die letzte Speicherung (**Gespeichert um 14:05 Uhr**, an anderen Tagen **Gespeichert am 02.11. um 14:05 Uhr**). Sobald sich etwas unterscheidet, wird er grün und heißt **Änderungen speichern**; wer die Änderung zurücknimmt, sieht wieder den grauen Knopf. Auch Zutatenzeilen, Fotos und „Bild entfernen“ zählen. Nach dem Speichern bestätigt unten **„…“ gespeichert um … Uhr**. Neue Einträge (neues Rezept, neue Ausgabe) speichern wie bisher. Neues Modul `dirty-save.js`.
 
 **Geheime Liste: Tastatur schließt nach dem Hinzufügen.** Nach **Privat hinzufügen** ist der neue Eintrag sofort zu sehen und nicht mehr von der Tastatur verdeckt.
 
-**Tests.** Neue Browsertests für das Wischen bei Wünschen, im Laden und in geheimen Listen, den privaten Papierkorb, einzeln gelöschte abgehakte Artikel und die Speichern-Knöpfe. Tests, die bisher ohne Änderung speicherten, prüfen jetzt den grauen Knopf.
+Im Papierkorb heißt der Hinweis unten jetzt genauer: Was mit „Einkauf beenden“ oder „Erledigte entfernen“ weggeräumt wurde, steht unter **Vorrat → Letzte 7 Tage gekauft**.
+
+**Tests.** Neue Logiktests (`tests/dirty-save-private-trash.test.mjs`) und Browsertests für das Wischen bei Wünschen, im Laden und in geheimen Listen, den privaten Papierkorb, einzeln gelöschte abgehakte Artikel und die Speichern-Knöpfe. Tests, die bisher ohne Änderung speicherten, prüfen jetzt den grauen Knopf.
 
 Offline-Paket `einkauf-shell-v159`.
 

@@ -10834,7 +10834,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await noticeText147(page), '„Reisepass2147“ gelöscht');
     assert.equal(await page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }).count(), 0);
     assert.ok((await stored()).find(row => row.name === 'Reisepass2147').deletedAt, 'Löschmarke, nur auf diesem Gerät');
-    assert.match(await panelLink.textContent(), /Kürzlich gelöschte private Einträge\s*\(1\)/);
+    assert.match(await panelLink.textContent(), /^Kürzlich gelöscht\s*\(1\)$/);
     assert.equal(await page.locator('#shopping-trash-link').isVisible(), false, 'kein Hinweis auf gemeinsame Artikel in der geheimen Liste');
     await page.click('#notice-undo'); await page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }).waitFor();
     assert.equal((await stored()).find(row => row.name === 'Reisepass2147').deletedAt, undefined);
