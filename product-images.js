@@ -1,7 +1,7 @@
 /* Ein Bildbestand für Schnellauswahl, Planen, Im Laden und Vorrat (2.65).
    Alle Bilder sind selbst erzeugte, lokale Beispielmotive. Keine Händler-/Suchdienste.
    Produktnamen werden hier nur für das Bild geprüft, niemals umbenannt oder in den Daten zusammengelegt. */
-import { productGroup } from './product-groups.js';
+import { cannedProductName, productGroup } from './product-groups.js';
 import { GROCERY_PRODUCTS, PRODUCT_PHOTOS } from './product-catalog.js';
 
 export const GROUP_PHOTO = 'assets/products/groups.webp';
@@ -31,7 +31,8 @@ for (const product of GROCERY_PRODUCTS) {
 export const productImageById = id => products.get(id) || null;
 // Gespeichert werden nur lokale Kennungen, niemals frei eingebbare Bild-URLs.
 export const imageByKey = key => products.get(key) || PRODUCT_GROUP_IMAGES.find(group => group.key === key) || null;
-export const imageForProduct = row => imageByKey(row?.imageKey) || productImageById(productGroup(row?.name)?.id) || resolveProductImage(row?.name,row?.category);
+// Ohne eigenes Bild entscheidet der Name, bei Dosen das Konservenprodukt („1 Dose Tomaten“ zeigt die Tomatendose, nicht frische Tomaten).
+export const imageForProduct = row => { const name = cannedProductName(row?.name, row?.unit) || row?.name; return imageByKey(row?.imageKey) || productImageById(productGroup(name)?.id) || resolveProductImage(name,row?.category); };
 // Ausschließlich geprüfte, ganze Schreibweisen; kein beliebiges Abschneiden von Mehrzahlendungen oder Teilwortsuche.
 const aliases = [
   ['apfel', 'aepfel'], ['aepfel', 'aepfel'], ['birne', 'birnen'], ['banane', 'bananen'], ['orange', 'orangen'],

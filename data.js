@@ -2,7 +2,7 @@
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
-import { ingredientProductName, spellingStem } from './product-groups.js';
+import { ingredientMatchName, ingredientProductName, spellingStem } from './product-groups.js';
 export { spellingStem };
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
@@ -536,8 +536,9 @@ export function pantryRows(rows = [], now = Date.now()) {
     return {...selected,ids:group.map(row=>row.id)};
   });
 }
-export const pantryKeys = (rows,now=Date.now()) => new Set(pantryRows(rows || [],now).filter(row => row.available !== false).map(row => pantryKey(row.name)));
-export const inPantry = (keys, name) => { const parts = nameParts(name); return isCookingWater(name) || keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => isCookingWater(part) || keys.has(pantryKey(part)))); };
+// Vorrat und Zutaten werden unter ihrem Abgleichsnamen verglichen (z. B. „Tomaten“ in der Einheit Dose = „Tomaten (Konserve)“).
+export const pantryKeys = (rows,now=Date.now()) => new Set(pantryRows(rows || [],now).filter(row => row.available !== false).map(row => pantryKey(ingredientMatchName(row))));
+export const inPantry = (keys, entry) => { const name = entry && typeof entry === 'object' ? ingredientMatchName(entry) : entry, parts = nameParts(name); return isCookingWater(name) || keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => isCookingWater(part) || keys.has(pantryKey(part)))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.
 export function pantryAdditions(names, keys) {
   const found = new Map();

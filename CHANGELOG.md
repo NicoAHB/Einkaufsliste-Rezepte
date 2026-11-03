@@ -2,6 +2,12 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.138: Knoblauch aus dem Vorrat und Dosen als Konserve erkennen
+
+**Zubereitungsangaben und Knoblauchzehen.** Rezeptzeilen wie „1 Zehe Knoblauch, gepresst“, „2 Knoblauchzehen“, „Knoblauch (fein gehackt)“ oder „1 Zwiebel, geschält und gewürfelt“ gelten als vorhanden, wenn Knoblauch bzw. Zwiebeln im Vorrat stehen. Bisher machte der Zusatz hinter dem Komma aus der Zutat ein unbekanntes Produkt, sodass sie auf den Einkaufszettel kam. Übergangen werden nur bekannte Zubereitungen (gehackt, gepresst, gewürfelt, in Scheiben, geschält, gerieben, zum Anbraten …); Zusätze, die ein anderes Produkt meinen (getrocknet, gemahlen, laktosefrei), bleiben bedeutend. „2 Knoblauchzehen“ wird beim Import als „2 Zehen Knoblauch“ eingelesen; neue Listenzeilen tragen den reinen Produktnamen.
+
+**Dosen.** „1 Dose Tomaten“, „Tomaten aus der Dose“ oder „stückige Tomaten“ meinen die Konserve, nicht frische Tomaten. Sie kommen als **Tomaten (Konserve)** mit Dosenbild und im Gang „Vorrat & Konserven“ auf den Einkaufszettel und werden durch Tomaten-Konserven im Vorrat oder auf dem Zettel gedeckt, nicht durch frische Tomaten. Die Zuordnung stammt aus dem Produktkatalog (Familien „… (Konserve)“ und Produkte „… in der Dose“, z. B. Erbsen, Bohnen, Ananas, Pfirsiche). Produkte, die es ohnehin nur als Dose gibt (Mais, Kichererbsen, Kokosmilch), bleiben unverändert. Bereits notierte Artikel „Tomaten“ in der Einheit Dose zeigen ebenfalls das Dosenbild. Offline-Paket **einkauf-shell-v150**.
+
 ## Neu in Version 2.137: Prüfbericht umgesetzt – zuverlässiger, schneller, sicherer
 
 **Einmalig nach dem Update:** Die App auf jedem Gerät ganz schließen und neu öffnen. Ab dieser Version wartet eine neue Version, bis oben **Neu laden** angetippt wird.

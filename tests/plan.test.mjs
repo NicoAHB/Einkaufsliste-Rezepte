@@ -360,3 +360,14 @@ test('Einkaufsbedarf: Packungsinhalt wird einmal verteilt und Reservierungen ble
   assert.equal(shoppingDeficits([rows[0]],[],items,[{name:'Tomate',quantity:3,unit:'Stück'}])[0].quantity,1);
   assert.equal(shoppingDeficits([rows[0]],[],[{...items[0],quantity:1,purchaseUnit:null}])[0].quantity,3,'bewusste Stückwahl wird nicht auf eine Packung aufgerundet');
 });
+
+test('Fehlmengen: Knoblauch im Vorrat und Tomaten-Konserven decken passende Rezeptzeilen, frische Tomaten keine Dose', async () => {
+  const { shoppingDeficits } = await import('../plan.js');
+  const at = '2026-11-03T10:00:00.000Z', row = (name, extra = {}) => ({ id: name, name, createdAt: at, updatedAt: at, deletedAt: null, ...extra });
+  const pantry = [row('Knoblauch')], rows = [{ id: 'a', name: 'Knoblauch, gepresst', quantity: 1, unit: 'Zehe' }, { id: 'b', name: 'Knoblauchzehen', quantity: 2, unit: 'Stück' }, { id: 'c', name: 'Tomaten', quantity: 1, unit: 'Dose' }];
+  assert.deepEqual(shoppingDeficits(rows, pantry, []).map(entry => entry.id), ['c'], 'nur die Dose Tomaten fehlt');
+  const fresh = [row('Tomaten', { quantity: 500, unit: 'g', storeId: '', checked: false, createdBy: 'Nico' })];
+  assert.deepEqual(shoppingDeficits(rows, pantry, fresh).map(entry => entry.id), ['c'], 'frische Tomaten auf dem Zettel decken keine Dose');
+  const canned = [row('Tomaten (Konserve)', { quantity: 1, unit: 'Dose', storeId: '', checked: false, createdBy: 'Nico' })];
+  assert.deepEqual(shoppingDeficits(rows, pantry, canned).map(entry => entry.id), [], 'eine Dose auf dem Zettel deckt die Dose im Rezept');
+});

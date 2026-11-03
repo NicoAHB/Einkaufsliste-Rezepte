@@ -211,3 +211,8 @@ test('Chefkoch-Schreibweisen: Pluralendungen, Packungsgrößen, „2 x 200 g“,
   ];
   for (const [input, expected] of cases) assert.deepEqual(parseIngredientLine(input), expected, input);
 });
+
+test('Knoblauchzehen werden als Zehen Knoblauch eingelesen', () => {
+  assert.deepEqual(parseIngredientLine('1 Knoblauchzehe'), { name: 'Knoblauch', quantity: 1, unit: 'Zehe' });
+  assert.deepEqual(parseIngredientLine('3 Knoblauchzehen, gepresst'), { name: 'Knoblauch, gepresst', quantity: 3, unit: 'Zehen' });
+});

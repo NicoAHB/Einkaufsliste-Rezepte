@@ -1220,7 +1220,7 @@ function recipeCard(recipe, ingredients, options = {}) {
     list.replaceChildren(...ingredients.map(row => {
       const li=element('li'), label=element('span',ingredientLabel(row,count/recipe.servings)); li.append(label);
       if(showStock||shopping.length) {
-        const have=!required(row)||availability(row.name,stockIndex)==='have',need=missing.get(row.id),listed=!have&&!need;
+        const have=!required(row)||availability(row,stockIndex)==='have',need=missing.get(row.id),listed=!have&&!need;
         const partial=need&&shopping.some(item=>sameIngredient(item.name,row.name));
         const text=have?'Vorhanden':listed?'Auf Einkaufszettel':partial?`Noch ${format(need.quantity)} ${need.unit} fehlen`:'Fehlt';
         const status=element('span',text,`ingredient-stock ${have?'have':listed?'soon':'missing'}`);status.prepend(icon(have?'check':listed?'cart':'minus'));li.append(status);
@@ -1492,7 +1492,7 @@ function updateTransfer() {
   const candidates=labels.filter(label=>!isCookingWater(label._ingredient.name)&&(label._dirty?label.querySelector('input').checked:label._eligible)).map(label=>label._ingredient);
   const missing=new Map(recipeNeeds(candidates,factor).map(row=>[row.id,row]));
   for(const label of labels) {
-    const row=label._ingredient,check=label.querySelector('input'),stocked=inPantry(keys,row.name),need=missing.get(row.id);
+    const row=label._ingredient,check=label.querySelector('input'),stocked=inPantry(keys,row),need=missing.get(row.id);
     label._shoppingCovered=!stocked&&!need&&active(withoutSeparate(state.items,state.stores)).some(item=>!item.checked&&sameIngredient(item.name,row.name));
     if(!label._dirty)check.checked=label._eligible&&!stocked&&Boolean(need);
     label.querySelector('span').textContent=need?ingredientLabel(need):ingredientLabel(row,factor);
@@ -1750,7 +1750,7 @@ function openMeal(options = {}) {
 }
 function recipeStockMissing(recipe,mode='pantry') {
   const index=indexNames(cookableNames(mode));
-  return active(state.ingredients).filter(row=>row.recipeId===recipe.id&&required(row)&&availability(row.name,index)==='missing');
+  return active(state.ingredients).filter(row=>row.recipeId===recipe.id&&required(row)&&availability(row,index)==='missing');
 }
 const recipeAvailable=(recipe,filter)=>canCookRecipe(active(state.ingredients).filter(row=>row.recipeId===recipe.id),indexNames(cookableNames(filter===WITH_SHOPPING?'shopping':'pantry')));
 function weekShoppingNeeds(plan,snapshot=state) {
@@ -1843,7 +1843,7 @@ function withMealShopping(ops,mealId) {
   if(!meal?.recipeId)throw new Error('Dieses Gericht hat kein verfügbares Rezept.');
   if(!active(snapshot.recipes).some(recipe=>recipe.id===meal.recipeId))throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const basket=weekBasket([meal]),rows=aggregateIngredients(basket.use,active(snapshot.recipes),active(snapshot.ingredients));
-  const keys=pantryKeys(snapshot.pantry),selected=rows.filter(row=>required(row)&&!inPantry(keys,row.name));
+  const keys=pantryKeys(snapshot.pantry),selected=rows.filter(row=>required(row)&&!inPantry(keys,row));
   if(!basket.use.length)return {ops,notice:'Gericht gespeichert · Zutaten sind bereits auf dem Einkaufszettel berücksichtigt'};
 
   // Dieselbe Übernahme wie beim normalen Wochen-Einkauf erkennen, auch wenn
@@ -1991,7 +1991,7 @@ function renderWeekRows() {
   for (const row of rows) {
     const missing=deficits.find(needed=>sameIngredient(needed.name,row.name)&&unitSpec(needed.unit).group===unitSpec(row.unit).group);
     const label = element('label', undefined, 'transfer-row'), check = element('input'), text = element('span', ingredientLabel(missing||row));
-    const stocked = inPantry(keys, row.name);
+    const stocked = inPantry(keys, row);
     check.type = 'checkbox'; check.checked = required(row) && !stocked && Boolean(missing);
     check.disabled = isCookingWater(row.name);
     label._row = row;
@@ -2476,7 +2476,7 @@ function cookableNames(mode = cookableMode()) {
 }
 function cookableMissing(rows) {
   const index=indexNames(cookableNames('shopping'));
-  return rows.filter(row=>availability(row.name,index)==='missing');
+  return rows.filter(row=>availability(row,index)==='missing');
 }
 function renderCookable() {
   const recipes = active(state.recipes), ingredients = active(state.ingredients), mode=cookableMode(), names=cookableNames(mode);
