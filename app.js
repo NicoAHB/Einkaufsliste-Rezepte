@@ -45,6 +45,7 @@ import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, removePhoto, 
 import { makeZip } from './zip.js';
 import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
+import { APP_VERSION } from './version.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
@@ -60,6 +61,7 @@ const CONFIG_KEY = 'einkauf-settings-v1';
 const DISPLAY_DEFAULTS = Object.freeze({theme:'light',storeStyle:'text',palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65,groupItems:true,productImages:true});
 watchSaveForms();
 scrollHints();
+document.querySelectorAll('[data-app-version]').forEach(node => { node.textContent = `Version ${APP_VERSION}`; });
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
 const imagesOn = () => config.productImages !== false;

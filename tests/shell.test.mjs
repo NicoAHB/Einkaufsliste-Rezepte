@@ -51,3 +51,15 @@ test('die README nennt jede Skriptdatei der App in der Liste zum Hochladen', () 
   assert.ok(upload.length > 100, 'Abschnitt zum Hochladen nicht gefunden');
   for (const file of [...scripts, 'sw.js', ...files.filter(file => file.endsWith('.json') && file !== 'manifest.webmanifest')]) assert.ok(upload.includes(`\`${file}\``), `${file} fehlt in der Upload-Liste der README`);
 });
+
+test('Versionsnummer: version.js, Seite und Änderungsprotokoll passen zusammen; das Offline-Paket hat eine Versionsnummer', async () => {
+  const { APP_VERSION } = await import('../version.js');
+  assert.match(APP_VERSION, /^\d+\.\d+$/);
+  const changelog = await read('CHANGELOG.md');
+  assert.equal(changelog.match(/^## Neu in Version (\d+\.\d+)/m)?.[1], APP_VERSION, 'oberster Abschnitt in CHANGELOG.md');
+  for (const text of html.match(/data-app-version>[^<]*</g) || []) assert.equal(text, `data-app-version>Version ${APP_VERSION}<`);
+  assert.ok((html.match(/data-app-version/g) || []).length >= 2, 'Version steht in den Einstellungen');
+  const shell = sw.match(/const CACHE = 'einkauf-shell-v(\d+)'/)?.[1];
+  assert.ok(Number(shell) > 0, 'CACHE in sw.js');
+  assert.match(changelog.slice(0, changelog.indexOf('\n## ', changelog.indexOf('## Neu in Version') + 5)), new RegExp(`einkauf-shell-v${shell}\\b`), 'der neueste Abschnitt nennt das aktuelle Offline-Paket');
+});

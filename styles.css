@@ -4920,3 +4920,10 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .empty-budget-text {
   margin:0;
 }
+.app-identity .app-version {
+  display:block;
+  color:var(--muted);
+  font-size:.75rem;
+  font-weight:600;
+  line-height:1.2;
+}
