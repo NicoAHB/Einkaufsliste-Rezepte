@@ -2231,14 +2231,19 @@ function renderDailyDays(day=localDay()){
   $('#daily-day-prev').disabled=!records.some(row=>row.day<day&&row.queue.length);
   $('#daily-day-next').disabled=day>=localDay();
 }
+function dailyRecipeNavigation(record,index,review=false){
+  $('#daily-review-nav').hidden=!review&&!record.queue.length;
+  $('#daily-review-prev').disabled=index<=0;
+  $('#daily-review-next').disabled=index>=record.queue.length-1;
+  $('#daily-review-finish').hidden=!review;
+}
 async function showDailyReview() {
   const review = dailyReview, record = review?.record;
   if (!review || review.scope !== namespace() || record.day>localDay()) { dailyReview = null; return showDaily(); }
   const ticket = ++dailyTicket, item = record.queue[review.index]; dailyButtons(); $('#daily-dialog').scrollTop = 0;
   renderDailyDays(record.day);
-  $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = false;
-  $('#daily-review-prev').disabled = review.index <= 0; $('#daily-review-next').disabled = review.index >= record.queue.length - 1;
-  $('#daily-progress').textContent = `${dailyDayTitle(record.day)} erneut${item?` · Rezept ${review.index + 1} von ${record.queue.length}`:''}`;
+  $('#daily-review-choices').hidden = true;dailyRecipeNavigation(record,review.index,true);
+  $('#daily-progress').textContent = `${dailyDayTitle(record.day)}${record.day<localDay()||record.index>=record.queue.length?' erneut':''}${item?` · Rezept ${review.index + 1} von ${record.queue.length}`:''}`;
   $('#daily-note').textContent = '';
   if(!item){$('#daily-card').replaceChildren(element('h3','Keine gespeicherte Auswahl'),element('p','Für diesen Tag sind auf diesem Gerät keine Tagesrezepte gespeichert. Mit den Tagespfeilen kannst du weiterblättern.'));return;}
   $('#daily-card').replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
@@ -2249,11 +2254,11 @@ async function showDailyReview() {
     if (known) $('#daily-note').textContent = 'Dieses Rezept steht bereits in deinen Rezepten.';
   } catch (error) { if (ticket !== dailyTicket) return; $('#daily-note').textContent = error.message; dailyButtons({ retry: true }); }
 }
-function openDailyReview(day) {
+function openDailyReview(day,index=0) {
   if(day>localDay())return;
   const record = dailyHistory(loadDaily(), localDay()).find(row => row.day === day);
   if(day===localDay()&&!record?.queue.length){dailyReview=null;return showDaily();}
-  dailyReview = { record:record||{day,queue:[],drafts:{},outcome:{}}, index: 0, scope: namespace() }; return showDailyReview();
+  dailyReview = { record:record||{day,queue:[],drafts:{},outcome:{}}, index:Math.max(0,Math.min(index,(record?.queue.length||1)-1)), scope: namespace() }; return showDailyReview();
 }
 function dailyButtons({ add = false, skip = false, retry = false } = {}) {
   $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
@@ -2305,6 +2310,7 @@ async function showDaily() {
       dailyButtons(); dailyReviewChoices(); return;
     }
     const item = d.queue[d.index];
+    dailyRecipeNavigation(d,d.index);
     progress.textContent = `Rezept ${d.index + 1} von ${d.queue.length}`;
     card.replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
     const draft = await dailyDraft(item, d);
@@ -2368,8 +2374,14 @@ $('#daily-review-today').addEventListener('click', () => guard(() => openDailyRe
 $('#daily-review-yesterday').addEventListener('click', () => guard(() => openDailyReview(addDays(localDay(), -1))));
 $('#daily-day-prev').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-prev').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),-1));}));
 $('#daily-day-next').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-next').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),1));}));
-$('#daily-review-prev').addEventListener('click', () => { if (dailyReview?.index > 0) { dailyReview.index--; showDailyReview(); } });
-$('#daily-review-next').addEventListener('click', () => { if (dailyReview && dailyReview.index < dailyReview.record.queue.length - 1) { dailyReview.index++; showDailyReview(); } });
+function moveDailyRecipe(delta){
+  const record=shownDaily(),index=(dailyReview?dailyReview.index:record.index)+delta;
+  if(index<0||index>=record.queue.length)return;
+  if(dailyReview){dailyReview.index=index;return showDailyReview();}
+  return openDailyReview(localDay(),index);
+}
+$('#daily-review-prev').addEventListener('click',()=>guard(()=>moveDailyRecipe(-1)));
+$('#daily-review-next').addEventListener('click',()=>guard(()=>moveDailyRecipe(1)));
 $('#daily-review-finish').addEventListener('click', () => { dailyReview = null; showDaily(); });
 
 /* ---------- Was kann ich kochen? ---------- */
