@@ -1892,7 +1892,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await count(), 5);
     // Beim Ändern eines Eintrags zählt er selbst nicht
     await page.locator('#purchase-list .spend-row', { hasText: '41,00' }).click(); await sheetOpen(page);
-    await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    // Seit 2.147 speichert erst eine Änderung; „41“ statt „41,00“ ist dieselbe Summe
+    await page.fill('#purchase-form input[name=amount]', '41'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.equal(await count(), 5);
     // „Einkauf beenden“ mit Betrag: derselbe Schutz („+“ noch einmal)
     await page.click('[data-tab=shopping]'); await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
@@ -7819,7 +7820,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#item-dialog[open]').count(), 0, 'nicht das Artikel-Fenster');
     const visible = await page.evaluate(() => [...document.querySelectorAll('#wish-dialog input:not([type=hidden]), #wish-dialog textarea, #wish-dialog select, #wish-dialog button')]
       .filter(node => node.getClientRects().length).map(node => node.name || node.id || node.getAttribute('aria-label') || node.textContent.trim()));
-    assert.deepEqual(visible, ['Schließen', 'name', 'wishUrl', 'wishNote', 'wish-remove-image', 'delete-wish', 'Wunschdetails speichern'], `sichtbar: ${visible}`);
+    // Seit 2.147 ist der Speichern-Knopf erst nach einer Änderung aktiv und nennt bis dahin die letzte Speicherung.
+    assert.deepEqual(visible.slice(0, -1), ['Schließen', 'name', 'wishUrl', 'wishNote', 'wish-remove-image', 'delete-wish'], `sichtbar: ${visible}`);
+    assert.match(visible.at(-1), /^Gespeichert (um|am) /);
     for (const label of ['Menge', 'Einheit', 'Kategorie', 'Preis & Angebot', 'Normaler Preis']) assert.ok(!(await page.textContent('#wish-dialog')).includes(label), `„${label}“ gehört nicht ins Wunschfenster`);
     assert.equal(await page.locator('#wish-dialog [name=quantity], #wish-dialog [name=unit], #wish-dialog [name=category], #wish-dialog [name=priceEuros]').count(), 0);
     // umbenennen und Details speichern; die Menge bleibt unberührt
@@ -7834,7 +7837,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#wish-form [name=name]', '  '); await page.click('#wish-form button[type=submit]');
     assert.match(await page.textContent('#wish-dialog [data-dialog-error]'), /Namen/);
     assert.equal(await page.locator('#wish-form [name=storeId]').count(),0);
-    await page.fill('#wish-form [name=name]','Springseil Profi');await page.click('#wish-form button[type=submit]');
+    // Name wieder wie gespeichert: seit 2.147 gibt es dann nichts zu speichern (grauer Knopf), Schließen genügt
+    await page.fill('#wish-form [name=name]','Springseil Profi');await page.waitForFunction(()=>document.querySelector('#wish-form .sheet-actions button[type=submit]').disabled);await page.click('#wish-dialog [data-close]');
     saved=await row();assert.deepEqual([saved.storeId,saved.wishNote],['store-wishes','Schwarz']);
     await page.locator('#items .item[data-id="wish-rope"] .item-copy').click();await page.waitForSelector('#wish-dialog[open]');await sheetOpen(page);
     await page.click('#delete-wish'); await page.waitForSelector('#wish-dialog', { state: 'hidden' });
@@ -8489,7 +8493,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Einkaufsmengen: zwei Rezepte ergeben zwei Packungen, Bearbeiten erhält exakten Bedarf und andere Größe zeigt drei Flaschen',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,jointRecipeWeek(milkRecipes()));await open(page);await transferJointRecipeWeek(page);await goTab(page,'shopping');
     let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch');assert.equal(row.quantity,1.4);assert.equal(row.unit,'l');assert.equal(await page.locator('#items .item').count(),1);assert.match(await page.textContent('#items'),/2 Packungen à 1 l/);
-    await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'2');await page.click('#edit-item-form button[type=submit]');row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4,'unverändertes Speichern rundet den Bedarf nicht auf');
+    await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'2');assert.equal(await page.locator('#edit-item-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: ohne Änderung nichts zu speichern');await page.click('#item-dialog [data-close]');row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4,'unverändertes Bearbeiten rundet den Bedarf nicht auf');
     await page.locator('#items .item-copy').click();await choosePack(page,'#edit-item-form','Flasche','500','ml');assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'3');await page.click('#edit-item-form button[type=submit]');
     row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.equal(row.purchaseUnit.quantity,500);assert.match(await page.textContent('#items'),/3 Flaschen à 500 ml/);
     await page.click('#mode-shop');assert.match(await page.textContent('#shop-list'),/3 Flaschen à 500 ml/);assert.deepEqual(problems,[]);await ctx.close();
@@ -8522,8 +8526,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');await page.fill('#item-form [name=quantity]','800');await page.click('#item-form button[type=submit]');
     let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');assert.match(await page.textContent('#items'),/1.400 g/);assert.ok((await storedDemo(page)).sync.minRev>=9);
     await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');
-    await page.fill('#item-form [name=name]','');await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'1400');await page.click('#edit-item-form button[type=submit]');
-    row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg','unverändertes Speichern erhält die Rechenmenge');
+    await page.fill('#item-form [name=name]','');await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'1400');assert.equal(await page.locator('#edit-item-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: ohne Änderung nichts zu speichern');await page.click('#item-dialog [data-close]');
+    row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg','unverändertes Bearbeiten erhält die Rechenmenge');
     await page.locator('#items .item-copy').click();await chooseUnit(page,'#edit-item-form [name=unit]','kg');await page.click('#edit-item-form button[type=submit]');
     await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'kg');await chooseUnit(page,'#item-form [name=unit]','g');await page.fill('#item-form [name=quantity]','100');await page.click('#item-form button[type=submit]');
     await page.fill('#item-form [name=name]','Mandeln');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');assert.deepEqual(problems,[]);await ctx.close();
@@ -8541,7 +8545,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Einheiten merken: zweites Gerät übernimmt die Änderung und unverändertes Bearbeiten erhält parallele Mengen',async()=>{
     const api=github(milkRecipes()),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});for(const d of [a,b]){await d.ctx.route('https://api.github.com/**',api.handler);await open(d.page);await synced(d.page);}
     await a.page.fill('#item-form [name=name]','Mandeln');await chooseUnit(a.page,'#item-form [name=unit]','g');await a.page.fill('#item-form [name=quantity]','600');await a.page.click('#item-form button[type=submit]');await synced(a.page);await pollNow(b.page);await synced(b.page);
-    await a.page.locator('#items .item-copy').click();await b.page.fill('#item-form [name=name]','Mandeln');assert.equal(await b.page.inputValue('#item-form [name=unit]'),'g');await b.page.fill('#item-form [name=quantity]','800');await b.page.click('#item-form button[type=submit]');await synced(b.page);await pollNow(a.page);await synced(a.page);await a.page.click('#edit-item-form button[type=submit]');await synced(a.page);
+    await a.page.locator('#items .item-copy').click();await b.page.fill('#item-form [name=name]','Mandeln');assert.equal(await b.page.inputValue('#item-form [name=unit]'),'g');await b.page.fill('#item-form [name=quantity]','800');await b.page.click('#item-form button[type=submit]');await synced(b.page);await pollNow(a.page);await synced(a.page);assert.equal(await a.page.locator('#edit-item-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: ohne Änderung nichts zu speichern');await a.page.click('#item-dialog [data-close]');await synced(a.page);
     let row=api.content.items.find(r=>!r.deletedAt&&r.name==='Mandeln');assert.equal(row.quantity,1.4);assert.equal(row.unit,'kg');assert.equal(row.purchaseMeasure,'g');
     await a.page.locator('#items .item-copy').click();await chooseUnit(a.page,'#edit-item-form [name=unit]','kg');await a.page.click('#edit-item-form button[type=submit]');await synced(a.page);await pollNow(b.page);await synced(b.page);
     await b.page.fill('#item-form [name=name]','Mandeln');assert.equal(await b.page.inputValue('#item-form [name=unit]'),'kg');row=api.content.items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
@@ -10574,7 +10578,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context();
     await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
     await open(page);
-    const link = page.locator('#shopping .trash-link');
+    const link = page.locator('#shopping-trash-link');
     assert.equal(await link.isHidden(), true, 'gekaufte Artikel zählen nicht als gelöscht');
     await page.getByRole('button', { name: /^Tomaten, .*bearbeiten$/ }).click(); await sheetOpen(page);
     await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
@@ -10672,7 +10676,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(purchase.deletedAt && purchase.purgedAt, 'die Ausgabe bleibt als Löschmarke, damit ein Gerät ohne Netz sie nicht neu einträgt');
     await page.click('#trash-dialog [data-close]');
     assert.match(await page.textContent('#trash-summary'), /^Leer/);
-    await goTab(page, 'shopping'); assert.equal(await page.locator('#shopping .trash-link').isHidden(), true);
+    await goTab(page, 'shopping'); assert.equal(await page.locator('#shopping-trash-link').isHidden(), true);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -10760,6 +10764,172 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Äpfel');assert.equal(await page.locator('.product-delete').count(),0);
     await page.fill('#product-picker-search','');await page.selectOption('#product-picker-category','international');assert.equal(await page.locator('.product-group h3').count(),14);for(const id of ['mie-nudeln','udon-nudeln','sesamoel','schwarze-bohnen','pesto-rot'])assert.equal(await page.locator(`.product-card[data-product=${id}] [data-photo-key=${id}]`).first().count(),1,`${id}: eigenes Variantenbild`);assert.match(await page.textContent('#product-picker-list'),/Ukraine/);const buckwheat=page.locator('.product-card[data-product=buchweizen]');assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(),1);assert.equal(await page.locator('.product-delete').count(),0);
     await buckwheat.locator('.product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  // ---- 2.147: Wischen in den Mülleimer in allen Listen, Rückgängig, Papierkorb der geheimen Liste, Speichern erst nach Änderung ----
+  // Zeile lange halten und nach rechts in die rote Fläche ziehen (Maus wie Finger: echte Zeigerereignisse).
+  const dragToTrash147 = async (page, locator) => {
+    await locator.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const box = await locator.boundingBox(), at = { x: box.x + 30, y: box.y + box.height / 2 };
+    await page.mouse.move(at.x, at.y); await page.mouse.down();
+    await page.waitForSelector('.drag-ghost');
+    assert.equal(await page.locator('#trash-zone.show').count(), 1, 'rote Fläche erscheint');
+    const width = page.viewportSize().width;
+    await page.mouse.move(width - 20, at.y, { steps: 8 });
+    assert.equal(await page.locator('#trash-zone.hot').count(), 1, 'Mülleimer getroffen');
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+  };
+  const noticeText147 = page => page.textContent('#notice-text');
+
+  test('2.147: Wünsche lassen sich in den Mülleimer ziehen; Halten und Loslassen öffnet weiter die Details; „Rückgängig“ holt den Wunsch zurück', async () => {
+    const { ctx, page, problems } = await localWishes({ config: { shopLock: 0 } });
+    const row = page.locator('#items .item[data-id="wish-rope"]');
+    await dragToTrash147(page, row);
+    assert.equal(await row.count(), 0, 'Wunsch ist aus der Liste');
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0, 'Ziehen öffnet keine Details');
+    assert.equal(await noticeText147(page), '„Springseil“ gelöscht');
+    assert.equal(await page.locator('#notice-icon').isVisible(), true, 'kleiner Mülleimer in der Meldung');
+    assert.equal(await page.locator('#shopping-trash-link').isVisible(), true, 'Hinweis „Kürzlich gelöscht“ unter der Liste');
+    await page.click('#notice-undo');
+    await row.waitFor(); assert.equal(await noticeText147(page), '„Springseil“ ist wieder da');
+    assert.equal(await page.locator('#notice-icon').isVisible(), false);
+    // Halten und Loslassen ohne Ziehen: Details wie bisher
+    await holdWish(page); assert.equal(await page.locator('#wish-title').textContent(), 'Springseil'); await page.click('#wish-dialog [data-close]');
+    // Im Laden ebenso über Name und Menge; der Abhak-Kreis hebt die Zeile nicht an
+    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Wünsche').click();
+    const circle = page.locator('#shop-list .shop-tap').first(), box = await circle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0, 'Kreis hebt nichts an'); await page.mouse.up();
+    // Der Kreis hakt wie gewohnt ab (auch langsam angetippt); zurücknehmen
+    assert.equal(await noticeText147(page), '„Springseil“ abgehakt'); await page.click('#notice-undo');
+    await page.locator('#shop-list .shop-item:not(.checked)[data-id="wish-rope"]').waitFor();
+    await dragToTrash147(page, page.locator('#shop-list .shop-item[data-id="wish-rope"] .shop-text'));
+    assert.equal(await noticeText147(page), '„Springseil“ gelöscht');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.id === 'wish-rope'));
+    assert.ok(saved.deletedAt, 'gelöscht gespeichert');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.147: Im Laden gesperrt lässt sich nichts in den Mülleimer ziehen', async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 60 } });
+    await open(page); await page.click('#mode-shop'); await page.click('#shop-lock');
+    const text = page.locator('#shop-list .shop-item .shop-text').first(), box = await text.boundingBox();
+    await page.mouse.move(box.x + 30, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650);
+    assert.equal(await page.locator('.drag-ghost').count(), 0, 'gesperrt hebt nichts ab'); await page.mouse.up();
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.147: geheime Liste: Tastatur schließt nach dem Hinzufügen; Wischen und „Löschen“ legen in den eigenen Papierkorb; wiederherstellen und leeren', async () => {
+    const { ctx, page, problems } = await context(); await seedPrivate2117(ctx); await open(page);
+    const key = 'einkauf-private-list-v1:einkauf-demo-v1', stored = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)).items, key);
+    await page.locator('#store-chips [data-private=private-a]').click(); await page.waitForSelector('#private-list-panel:not([hidden])');
+    await page.fill('#private-add-form [name=name]', 'Reisepass2147'); await page.click('#private-add');
+    await page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.id === 'private-item-name'), false, 'Eingabefeld hat keinen Fokus mehr (Tastatur zu)');
+    assert.equal(await page.inputValue('#private-add-form [name=name]'), '');
+    const panelLink = page.locator('#private-list-panel .trash-link');
+    assert.equal(await panelLink.isVisible(), false, 'noch nichts gelöscht');
+    // Wischen in den Mülleimer
+    await dragToTrash147(page, page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }));
+    assert.equal(await noticeText147(page), '„Reisepass2147“ gelöscht');
+    assert.equal(await page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }).count(), 0);
+    assert.ok((await stored()).find(row => row.name === 'Reisepass2147').deletedAt, 'Löschmarke, nur auf diesem Gerät');
+    assert.match(await panelLink.textContent(), /Kürzlich gelöschte private Einträge\s*\(1\)/);
+    assert.equal(await page.locator('#shopping-trash-link').isVisible(), false, 'kein Hinweis auf gemeinsame Artikel in der geheimen Liste');
+    await page.click('#notice-undo'); await page.locator('#private-items .private-row', { hasText: 'Reisepass2147' }).waitFor();
+    assert.equal((await stored()).find(row => row.name === 'Reisepass2147').deletedAt, undefined);
+    // Halten und Loslassen öffnet den Eintrag; „Löschen“ ohne Rückfrage, mit Rückgängig
+    const row = page.locator('#private-items .private-row', { hasText: 'PrivatesReiseziel2117' });
+    await row.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const box = await row.locator('.private-copy').boundingBox();
+    await page.mouse.move(box.x + 30, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(600); await page.mouse.up();
+    await page.waitForSelector('#private-item-dialog[open]'); await sheetOpen(page);
+    await page.click('#private-item-delete'); await page.waitForSelector('#private-item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#ask-dialog[open]').count(), 0, 'keine Rückfrage, dafür Rückgängig und Papierkorb');
+    assert.equal(await noticeText147(page), '„PrivatesReiseziel2117“ gelöscht');
+    // Papierkorb: Eintrag mit Hinweis „nur auf diesem Gerät“, wiederherstellen, Rückgängig, leeren
+    await panelLink.click(); await page.locator('#trash-dialog[open]').waitFor();
+    const trashRow = page.locator('.trash-row', { hasText: 'PrivatesReiseziel2117' });
+    assert.match(await trashRow.textContent(), /Geheime Liste · Reise privat · nur auf diesem Gerät/);
+    await trashRow.locator('.trash-restore').click();
+    assert.equal(await page.textContent('#trash-status-text'), '„PrivatesReiseziel2117“ steht wieder in der geheimen Liste');
+    assert.equal((await stored()).find(row => row.id === 'secret-a').deletedAt, undefined);
+    await page.click('#trash-undo'); assert.ok((await stored()).find(row => row.id === 'secret-a').deletedAt, 'wieder im Papierkorb');
+    await page.click('#trash-purge'); await answerAsk(page, true, /Papierkorb leeren/);
+    assert.equal((await stored()).some(row => row.id === 'secret-a'), false, 'endgültig vom Gerät entfernt');
+    assert.equal(await page.isVisible('#trash-empty'), true);
+    await page.click('#trash-dialog [data-close]');
+    assert.equal(await panelLink.isVisible(), false);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.147: einzeln gelöschte abgehakte Artikel stehen im Papierkorb, „Erledigte entfernen“ räumt still weg; beides mit „Rückgängig“', async () => {
+    const data = structuredClone(demo); data.items.forEach((row, index) => { row.checked = index < 2; });
+    const [first, second] = data.items;
+    const { ctx, page, problems } = await context(); await seedLocal(ctx, data); await open(page);
+    const deleted = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => row.deletedAt).map(row => row.id));
+    await dragToTrash147(page, page.locator(`#items .item[data-id="${first.id}"]`));
+    assert.equal(await noticeText147(page), `„${first.name}“ gelöscht`);
+    assert.match(await page.textContent('#shopping-trash-link'), /Kürzlich gelöscht\s*\(1\)/, 'abgehakt, aber bewusst gelöscht');
+    await page.click('#clear-checked');
+    assert.equal(await noticeText147(page), '1 erledigter Artikel entfernt');
+    assert.deepEqual((await deleted()).sort(), [first.id, second.id].sort());
+    assert.match(await page.textContent('#shopping-trash-link'), /\(1\)/, 'Erledigte entfernen füllt den Papierkorb nicht');
+    await page.click('#notice-undo'); await page.locator(`#items .item[data-id="${second.id}"]`).waitFor();
+    assert.deepEqual(await deleted(), [first.id]);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.147: Bearbeiten-Fenster: Speichern erst nach einer Änderung („Änderungen speichern“), sonst grau „Gespeichert um …“', async () => {
+    const data = wishData();
+    data.purchases = [{ id: 'purchase-2147', date: isoDate(), cents: 1234, storeId: 'store-edeka', source: 'hand', note: '', createdAt: '2026-10-29T09:00:00.000Z', updatedAt: '2026-10-29T09:15:00.000Z', deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context(); await seedLocal(ctx, data); await seedPrivate2117(ctx); await open(page);
+    const state = async selector => { await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0))); const button = page.locator(selector); return [await button.textContent(), await button.isDisabled()]; };
+    // Artikel
+    await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]'); await sheetOpen(page);
+    const itemSave = '#edit-item-form .sheet-actions button[type=submit]';
+    const [label, disabled] = await state(itemSave); assert.match(label, /^Gespeichert (um|am) /); assert.equal(disabled, true);
+    const name = await page.inputValue('#edit-item-form [name=name]');
+    await page.fill('#edit-item-form [name=name]', `${name} groß`); assert.deepEqual(await state(itemSave), ['Änderungen speichern', false]);
+    await page.fill('#edit-item-form [name=name]', name); assert.equal((await state(itemSave))[1], true, 'zurückgenommen: wieder grau');
+    await page.keyboard.press('Enter'); assert.equal(await page.locator('#item-dialog[open]').count(), 1, 'Eingabetaste speichert nichts ohne Änderung');
+    await page.fill('#edit-item-form [name=name]', `${name} groß`); await page.click(itemSave);
+    await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.match(await noticeText147(page), new RegExp(`^„${name} groß“ gespeichert um \\d\\d:\\d\\d Uhr$`));
+    await page.locator('#items .item-copy', { hasText: `${name} groß` }).click(); await page.waitForSelector('#item-dialog[open]');
+    assert.match((await state(itemSave))[0], /^Gespeichert um \d\d:\d\d Uhr$/, 'heute gespeichert'); await page.click('#item-dialog [data-close]');
+    // Wunsch: auch „Bild entfernen“ zählt als Änderung
+    await openWishlist(page); await page.locator('#items .item[data-id="wish-rope"] .item-copy').click(); await page.waitForSelector('#wish-dialog[open]'); await sheetOpen(page);
+    const wishSave = '#wish-form .sheet-actions button[type=submit]';
+    assert.deepEqual(await state(wishSave), ['Gespeichert am 29.10. um ' + new Date('2026-10-29T09:00:00.000Z').toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr', true]);
+    await page.fill('#wish-form [name=wishNote]', 'Blau'); assert.deepEqual(await state(wishSave), ['Änderungen speichern', false]);
+    await page.fill('#wish-form [name=wishNote]', ''); assert.equal((await state(wishSave))[1], true);
+    if (await page.locator('#wish-remove-image').isVisible()) { await page.click('#wish-remove-image'); assert.deepEqual(await state(wishSave), ['Änderungen speichern', false]); }
+    await page.click('#wish-dialog [data-close]');
+    // Privater Eintrag
+    await page.locator('#store-chips [data-private=private-a]').click(); await page.locator('#private-items .private-copy').first().click(); await page.waitForSelector('#private-item-dialog[open]');
+    const privateSave = '#private-item-form .sheet-actions button[type=submit]';
+    assert.equal((await state(privateSave))[1], true);
+    await page.fill('#private-item-form [name=note]', 'Neue Notiz'); assert.deepEqual(await state(privateSave), ['Änderungen speichern', false]);
+    await page.click(privateSave); await page.waitForSelector('#private-item-dialog', { state: 'hidden' });
+    assert.match(await noticeText147(page), /^„PrivatesReiseziel2117“ gespeichert um \d\d:\d\d Uhr$/);
+    await page.locator('#private-items .private-copy').first().click(); await page.waitForSelector('#private-item-dialog[open]');
+    assert.match((await state(privateSave))[0], /^Gespeichert um \d\d:\d\d Uhr$/); await page.click('#private-item-dialog [data-close]');
+    // Ausgabe bearbeiten: beide Absende-Knöpfe grau; neue Ausgabe wie bisher
+    await goTab(page, 'spending'); await page.locator('#purchase-list .spend-item[data-id="purchase-2147"] .spend-row').click(); await page.waitForSelector('#purchase-dialog[open]');
+    assert.equal((await state('#purchase-save'))[1], true); assert.equal(await page.locator('#purchase-plus').isDisabled(), true);
+    await page.fill('#purchase-form [name=amount]', '13,34'); assert.deepEqual(await state('#purchase-save'), ['Änderungen speichern', false]);
+    await page.click('#purchase-dialog [data-close]');
+    await page.click('#add-purchase'); await page.waitForSelector('#purchase-dialog[open]');
+    assert.deepEqual(await state('#purchase-save'), ['Speichern', false], 'neue Ausgabe: wie bisher');
+    await page.click('#purchase-dialog [data-close]');
+    // Rezept bearbeiten: eine weitere Zutat zählt als Änderung; neues Rezept wie bisher
+    await goTab(page, 'recipes'); const card = page.locator('#recipe-list > [data-recipe-id]').first();
+    await card.locator('.recipe-details > summary').click(); await card.locator('.recipe-edit').click(); await page.waitForSelector('#recipe-dialog[open]'); await sheetOpen(page);
+    const recipeSave = '#recipe-form .sheet-actions button[type=submit]';
+    assert.equal((await state(recipeSave))[1], true);
+    await page.click('#add-ingredient'); assert.deepEqual(await state(recipeSave), ['Änderungen speichern', false]);
+    assert.deepEqual(problems, []); await ctx.close();
   });
 
 });

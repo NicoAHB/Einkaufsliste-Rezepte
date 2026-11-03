@@ -26,6 +26,7 @@ export function validatePrivateList(value) {
     if(!row||typeof row.id!=='string'||!row.id||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>120||typeof row.note!=='string'||row.note.length>1000||typeof row.checked!=='boolean'||!Number.isFinite(Date.parse(row.createdAt)))throw new Error('Ein Eintrag der geheimen Liste auf diesem Gerät ist beschädigt.');
     ids.add(row.id);
     if((row.listId!==undefined&&(typeof row.listId!=='string'||!privateLists(value).some(list=>list.id===row.listId)))||(row.sharedId!==undefined&&typeof row.sharedId!=='string')||(row.source!==undefined&&(!row.source||typeof row.source!=='object'||Array.isArray(row.source))))throw new Error('Die Zuordnung eines privaten Eintrags ist beschädigt.');
+    for(const field of ['deletedAt','updatedAt'])if(row[field]!==undefined&&(typeof row[field]!=='string'||!Number.isFinite(Date.parse(row[field]))))throw new Error('Ein Eintrag der geheimen Liste auf diesem Gerät ist beschädigt.');
   }
   return value;
 }
@@ -40,4 +41,17 @@ export function updatePrivateList(storage,scope,change) {
   // Gerätespeicher gibt es keine falsche Bestätigung oder verlorene Altwerte.
   const next=validatePrivateList(change(structuredClone(readPrivateList(storage,scope))));
   storage.setItem(privateListKey(scope),JSON.stringify(next));return next;
+}
+
+/* Papierkorb der geheimen Liste (2.147): Gelöschte Einträge behalten eine Löschmarke (deletedAt) und bleiben 14 Tage auf diesem Gerät
+   wiederherstellbar, wie alles andere unter „Kürzlich gelöscht“. Danach (oder mit „Papierkorb leeren“) verschwinden sie beim nächsten
+   Speichern endgültig. Auch diese Einträge verlassen das Gerät nie. */
+export const PRIVATE_TRASH_DAYS = 14;
+const trashSince = now => now - PRIVATE_TRASH_DAYS * 86400000;
+export const privateDeleted = row => Boolean(row?.deletedAt);
+export const privateTrash = (data, now = Date.now()) => data.items.filter(row => privateDeleted(row) && Date.parse(row.deletedAt) >= trashSince(now));
+// Abgelaufene Löschungen entfernen (beim Schreiben, nie beim bloßen Lesen).
+export function prunePrivateTrash(data, now = Date.now()) {
+  data.items = data.items.filter(row => !privateDeleted(row) || Date.parse(row.deletedAt) >= trashSince(now));
+  return data;
 }

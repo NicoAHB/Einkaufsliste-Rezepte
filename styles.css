@@ -1623,6 +1623,9 @@ button.link-button {
   text-decoration:underline;
   font-weight:700
 }
+/* Gelöscht-Meldung (2.147): kleiner Mülleimer vor dem Text, „Rückgängig“ rechts */
+.toast .toast-icon { flex:none; width:20px; height:20px; opacity:.85 }
+.toast.toast-trash #notice-text { flex:1; min-width:0 }
 [hidden] {
   display:none!important
 }

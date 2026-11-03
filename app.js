@@ -47,7 +47,8 @@ import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
-import { TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges } from './trash.js';
+import { armDirty, disarmDirty } from './dirty-save.js';
+import { SINGLE_DELETE, TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
@@ -263,11 +264,15 @@ function stockRemovalOperations(products){
 }
 // Kurzer Hinweis; verschwindet von selbst. Mit `undo` steht ein Knopf „Rückgängig“ dabei (etwas länger sichtbar).
 let noticeUndo = null;
-function showNotice(text, undo = null) {
+function showNotice(text, undo = null, { trash = false } = {}) {
   $('#notice-text').textContent = text; $('#notice').hidden = false;
+  // Gelöschtes (2.147): kleiner Mülleimer vor dem Text, „Rückgängig“ daneben; was nicht zurückgenommen wird, liegt danach im Papierkorb.
+  $('#notice').classList.toggle('toast-trash', trash); $('#notice-icon').toggleAttribute('hidden', !trash);   // SVG kennt .hidden nicht
   noticeUndo = undo; $('#notice-undo').hidden = !undo;
   clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; noticeUndo = null; }, undo ? 6000 : 4000);
 }
+// Nach dem Speichern eines Bearbeiten-Fensters (2.147): kurze Bestätigung mit Uhrzeit; beim nächsten Öffnen steht sie grau auf dem Knopf.
+const savedNotice = (name = '') => showNotice(`${name ? `„${name}“ gespeichert` : 'Änderungen gespeichert'} um ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`);
 $('#notice-undo').addEventListener('click', () => { const undo = noticeUndo; noticeUndo = null; $('#notice').hidden = true; clearTimeout(noticeTimer); if (undo) guard(undo); });
 function commit(ops, notice = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -337,6 +342,7 @@ function syncPrivateView() {
   const own=privateViewId(view)&&privateList?.has(privateViewId(view));
   $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own);$('#items').hidden=Boolean(own);
   $('#shared-list-actions').hidden=Boolean(own);$('#mode-shop').disabled=Boolean(own);
+  renderTrashLinks();   // in der geheimen Liste nur deren eigener Papierkorb-Hinweis
 }
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
@@ -868,6 +874,7 @@ function editItem(id) {
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
   $('#remembered-amount-editor').hidden = true; renderRememberedAmount();
   message(); $('#item-dialog').showModal();
+  armDirty(form, { savedAt: item.updatedAt, buttons: [form.querySelector('.sheet-actions button[type=submit]')] });
 }
 
 // Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und ein lokales Gruppenbild – ohne Menge, Einheit, Kategorie und
@@ -889,6 +896,7 @@ function openWish(id) {
   form.elements.wishUrl.value = wishBaseline.wishUrl; form.elements.wishNote.value = wishBaseline.wishNote;
   $('#wish-title').textContent = item.name;
   showWishProductLink(); renderWishImage(); message(); $('#wish-dialog').showModal();
+  armDirty(form, { savedAt: item.updatedAt, extra: () => form.dataset.imageHidden });
 }
 function renderWishImage() {
   const form=$('#wish-form'),group=wishGroup(form.elements.name.value),hidden=form.dataset.imageHidden==='true',preview=$('#wish-image-preview');
@@ -904,6 +912,28 @@ function deleteOps(collection, ids, extra = {}) {
   return rows.map(row => nextOp(collection, row.id, { deletedAt: at, ...extra }));
 }
 function removeRows(collection, ids) { commit(deleteOps(collection, ids)); }
+/* Artikel löschen mit „Rückgängig“ (2.147). Alles Gelöschte liegt danach 14 Tage unter „Kürzlich gelöscht“.
+   `single`: bewusst gelöscht (Wischen, Bearbeiten, Auswahl). Abgehakte Artikel bekommen dann die Kennung SINGLE_DELETE und
+   erscheinen ebenfalls im Papierkorb; „Erledigte entfernen“ und „Einkauf abschließen“ räumen Gekauftes dagegen still weg. */
+function deleteItems(ids, { notice = '', single = true } = {}) {
+  const rows = active(state.items).filter(row => ids.includes(row.id));
+  if (!rows.length) return [];
+  const at = new Date().toISOString();
+  commit(rows.map(row => { const op = nextOp('items', row.id, { deletedAt: at }); return single && row.checked ? { ...op, id: `${SINGLE_DELETE}${op.id}` } : op; }));
+  const removed = rows.map(row => row.id), scope = namespace();
+  showNotice(notice || (rows.length === 1 ? `„${rows[0].name}“ gelöscht` : `${rows.length} Artikel gelöscht`), () => undoDelete(removed, scope), { trash: true });
+  return removed;
+}
+function undoDelete(ids, scope, collection = 'items') {
+  if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte unter „Kürzlich gelöscht“ wiederherstellen.');
+  const at = new Date().toISOString(), changes = ids.flatMap(id => restoreChanges(state, collection, id, at)).filter(change => change.collection === collection);
+  if (!changes.length) { showNotice('Schon wiederhergestellt'); return; }
+  commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
+  if (collection === 'purchases') { renderSpending(); showNotice(changes.length === 1 ? 'Die Ausgabe ist wieder eingetragen' : `${changes.length} Ausgaben sind wieder eingetragen`); return; }
+  if (collection === 'recipes') { showNotice(`„${state.recipes.find(row => row.id === changes[0].id)?.name || 'Rezept'}“ ist wieder im Rezeptbuch`); return; }
+  const first = state.items.find(row => row.id === changes[0].id);
+  showNotice(changes.length === 1 ? `„${first?.name || 'Artikel'}“ ist wieder da` : `${changes.length} Artikel sind wieder da`);
+}
 // Geschäfte-Dialog: Jedes vorhandene Geschäft ist eine zugeklappte Karte (Pfeil rechts); welche aufgeklappt sind, merkt sich nur das geöffnete Fenster.
 // Das Anlegen öffnet ausschließlich das Plus nach dem letzten Eintrag.
 const storesOpen = new Set();
@@ -1300,8 +1330,8 @@ async function deleteRecipe(id) {
   removeSavedRecipe(id);
 }
 function removeSavedRecipe(id) {
-  if(!active(state.recipes).some(row=>row.id===id))return;
-  removeRows('recipes',[id]);
+  const recipe=active(state.recipes).find(row=>row.id===id);if(!recipe)return;
+  removeRows('recipes',[id]);const scope=namespace();showNotice(`„${recipe.name}“ gelöscht`,()=>undoDelete([id],scope,'recipes'),{trash:true});
   if($('#recipe-dialog').open && $('#recipe-form').elements.rowId.value===id) { dropRecipeDraft();$('#recipe-dialog').close(); }
 }
 function ingredientRow(value = {}) {
@@ -1417,6 +1447,9 @@ function editRecipe(id = '', draft = null) {
   if (draft) saveRecipeDraft(); else offerRecipeDraft();
   if (draft) { $('#recipe-draft-note').replaceChildren(); $('#recipe-draft-note').hidden = true; }
   $('#recipe-dialog').showModal();
+  // Vorhandenes Rezept: Speichern erst nach einer Änderung (Zutatenzeilen und Foto zählen mit). Neue und importierte Rezepte wie bisher.
+  if (recipeBaseline) armDirty(form, { savedAt: recipeBaseline.updatedAt, extra: () => [recipeFormState(), Boolean(pendingPhoto), photoRemoved], buttons: [form.querySelector('.sheet-actions button[type=submit]')] });
+  else disarmDirty(form);
 }
 function discardImportedRecipe() {
   if($('#discard-imported-recipe').hidden || recipeBaseline) return;
@@ -3474,6 +3507,7 @@ function openPurchase(id = '') {
   $('#purchase-delete').hidden = !row;
 
   $('#purchase-dialog').showModal();
+  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#purchase-save'), $('#purchase-plus')] }); else disarmDirty(form);
   // Wie beim Monatsbudget: Die Tastatur öffnet sich erst, wenn das Betragsfeld angetippt wird.
   $('#purchase-dialog [data-close]').focus({ preventScroll: true });
 }
@@ -3534,7 +3568,7 @@ function savePurchase() {
     if (!Object.keys(patch).length) { $('#purchase-dialog').close(); return; }
   }
   const effective = { ...current, ...patch };
-  duplicateWarning(effective, id, 'tippe auf „Speichern“');
+  duplicateWarning(effective, id, editing ? 'tippe auf „Änderungen speichern“' : 'tippe auf „Speichern“');
   const ops = [...(buyer.change && effective.buyerId === buyer.id ? [nextOp('members', buyer.id, buyer.change.patch)] : []), nextOp('purchases', id || uid(), patch)];
   const notice = `${euros(purchaseValue(effective))} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(effective.date), purchaseValue(effective), current))}`;
   if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
@@ -3878,7 +3912,7 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
 $('#delete-item').addEventListener('click', () => guard(() => {
   const id = $('#edit-item-form').elements.rowId.value;
   if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
-  removeRows('items', [id]); $('#item-dialog').close();
+  $('#item-dialog').close(); deleteItems([id]);
 }));
 // Zeile lange halten und über den Bildschirm auf ein Geschäft ziehen: oben erscheint eine Leiste mit allen Geschäften (und „Ohne Geschäft“); außerdem zählt jeder
 // sichtbare Abschnitt der Gesamtliste unter „Planen“ als Ziel. Beim Loslassen über einem Ziel landet der Artikel dort (siehe moveItem).
@@ -3922,13 +3956,20 @@ const moveBar = {
   drop(id, key) { guard(() => moveItem(id, key)); }
 };
 // Zeile lange halten und nach rechts in den roten Mülleimer schieben löscht den Artikel (nur in der Planungsansicht, nicht „Im Laden“).
-dragDelete($('#items'), $('#trash-zone'), id => guard(() => {
-  const item = state.items.find(row => row.id === id && !row.deletedAt);
-  if (!item) return;
-  removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`);
-}), '.item[data-id]:not([data-wish])', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint'), target: moveBar, disabled: () => selecting });
-bindWishHold($('#items'), '.item[data-wish] .item-copy', id => guard(() => openWish(id)), () => selecting);
-bindWishHold($('#shop-list'), '.shop-item[data-wish] .shop-text', id => guard(() => openWish(id)), () => isLocked());
+dragDelete($('#items'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.item[data-id]:not([data-wish])', { onHold: id => guard(() => openMove(id)), hint: $('#drag-hint'), target: moveBar, disabled: () => selecting });
+// Wünsche (2.147): ebenfalls lange halten und nach rechts in den Mülleimer ziehen. Halten und Loslassen ohne Ziehen öffnet die Wunschdetails;
+// verschieben lassen sich Wünsche nicht (sie gehören zu ihrer Wunschliste).
+dragDelete($('#items'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.item[data-wish][data-id]', { onHold: id => guard(() => openWish(id)), disabled: () => selecting });
+// Geheime Liste (2.147): genauso lange halten und nach rechts in den Mülleimer ziehen; Halten und Loslassen öffnet den Eintrag.
+for (const list of [$('#private-items'), $('#private-done-items')]) dragDelete(list, $('#trash-zone'), id => guard(() => privateList?.remove(id)), '.private-row[data-id]', { onHold: id => guard(() => privateList?.edit(id)) });
+$('#items').addEventListener('keydown', event => {
+  const node = event.target.closest?.('.item[data-wish] .item-copy');
+  if (node && !selecting && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) { event.preventDefault(); guard(() => openWish(node.closest('[data-id]').dataset.id)); }
+});
+// Im Laden (2.147) ebenso: lange halten und nach rechts in den Mülleimer ziehen, solange der Laden nicht gesperrt ist. Bei Wünschen öffnet
+// Halten und Loslassen die Details (vorher öffneten sie schon beim Halten); bei Artikeln passiert beim bloßen Halten nichts.
+// Der Abhak-Kreis bleibt dabei unberührt: Wer ihn langsam antippt, hakt weiterhin ab.
+dragDelete($('#shop-list'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.shop-item[data-id]:not(.news)', { handle: '.shop-text', onHold: id => guard(() => { if (state.items.some(row => row.id === id && !row.deletedAt && isWish(row))) openWish(id); }), disabled: () => isLocked() });
 // Lange halten und loslassen, ohne zu ziehen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
 let moveDeleteIds = [], moveScope = '';
 function openMove(id) {
@@ -3969,8 +4010,8 @@ $('#move-delete').addEventListener('click', () => guard(async () => {
   if (ids.length > 1 && !await ask({ title: `${ids.length} Artikel löschen?`, message: '14 Tage lang lassen sie sich unter „Kürzlich gelöscht“ zurückholen.', confirmLabel: 'Löschen', danger: true })) return;
   if (!$('#move-dialog').open) return;
   const still = ids.filter(id => active(state.items).some(row => row.id === id)); if (!still.length) return;
-  removeRows('items', still); selected.clear(); setSelecting(false); $('#move-dialog').close();
-  showNotice(ids.length === 1 ? 'Artikel gelöscht' : `${ids.length} Artikel gelöscht`);
+  selected.clear(); setSelecting(false); $('#move-dialog').close();
+  deleteItems(still, { notice: still.length === 1 ? 'Artikel gelöscht' : `${still.length} Artikel gelöscht` });
 }));
 function moveSelected(storeId) {
   const target = currentStore(storeId), label = target ? storeName(target) : 'ohne Geschäft', rows = selectedItems(), ops = [];
@@ -4019,7 +4060,7 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   if(editQuantity.preferenceChanged())Object.assign(delta,unitChoice(patch));
   if(patch.purchaseAmount!==undefined)Object.assign(delta,amountChoice(patch));
   const ops = Object.keys(delta).length ? [nextOp('items', item.id, delta)] : [];
-  commit(ops); $('#item-dialog').close();
+  commit(ops); $('#item-dialog').close(); if (ops.length) savedNotice(patch.name);
 }); });
 $('#wish-form').elements.name.addEventListener('input',renderWishImage);
 $('#wish-remove-image').addEventListener('click',()=>{ $('#wish-form').dataset.imageHidden='true'; renderWishImage(); });
@@ -4031,14 +4072,17 @@ $('#wish-form').addEventListener('submit', event => { event.preventDefault(); gu
   if (!patch.name) throw new Error('Bitte einen Namen eingeben.');
   const delta = changed(patch, wishBaseline);
   if (Object.keys(delta).length) commit([nextOp('items', item.id, delta)]);
-  $('#wish-dialog').close();
+  $('#wish-dialog').close(); if (Object.keys(delta).length) savedNotice(patch.name);
 }); });
 $('#delete-wish').addEventListener('click', () => guard(() => {
   const id = $('#wish-form').elements.rowId.value, item = active(state.items).find(row => row.id === id);
-  if (item) { removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`); }
   $('#wish-dialog').close();
+  if (item) deleteItems([id]);
 }));
-$('#clear-checked').addEventListener('click', () => guard(() => removeRows('items', visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id))));
+$('#clear-checked').addEventListener('click', () => guard(() => {
+  const ids = visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id);
+  if (ids.length) deleteItems(ids, { single: false, notice: ids.length === 1 ? '1 erledigter Artikel entfernt' : `${ids.length} erledigte Artikel entfernt` });
+}));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });
 $('#select-done').addEventListener('click', () => guard(()=>setSelecting(false)));
@@ -4047,7 +4091,7 @@ $('#select-delete').addEventListener('click', () => guard(async () => {
   const chosen = selectedItems(); if (!chosen.length) return;
   if (!await ask({ title: `${chosen.length} Artikel löschen?`, message: '14 Tage lang lassen sie sich unter „Kürzlich gelöscht“ zurückholen.', confirmLabel: 'Löschen', danger: true })) return;
   const rows = selectedItems(); if (!rows.length) return;
-  removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
+  selected.clear(); deleteItems(rows.map(row => row.id), { notice: `${rows.length} Artikel gelöscht` }); renderItems();
 }));
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
 $('#manage-stores').addEventListener('click', () => openStoresDialog());
@@ -4286,11 +4330,17 @@ const TRASH_ICON = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entr
 const TRASH_LABEL = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entry.label]));
 const timeOf = at => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 // Die Hinweise unter Einkaufsliste, Rezepten, Wochenplan und Ausgaben erscheinen nur, wenn dort etwas zurückzuholen ist.
+// Alles Wiederherstellbare: gemeinsame Daten (trash.js) und die geheime Liste dieses Geräts (private-list-view.js), neueste zuerst.
+function allTrash() {
+  if (!ready) return [];
+  const entries = [...trashEntries(state), ...(privateList?.trash() || [])];
+  return entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.title.localeCompare(b.title, 'de'));
+}
 function renderTrashLinks() {
-  const entries = ready ? trashEntries(state) : [], counts = trashCounts(entries);
+  const entries = allTrash(), counts = trashCounts(entries), privateOpen = !$('#private-list-panel').hidden;
   for (const node of document.querySelectorAll('[data-trash-kind]')) {
     const count = node.dataset.trashKind.split(' ').reduce((sum, kind) => sum + (counts[kind] || 0), 0);
-    node.hidden = !count; node.querySelector('.trash-link-count').textContent = count ? `(${count})` : '';
+    node.hidden = !count || (privateOpen && node.id === 'shopping-trash-link'); node.querySelector('.trash-link-count').textContent = count ? `(${count})` : '';
     node.setAttribute('aria-label', `${node.querySelector('span').textContent}: ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} wiederherstellbar`);
   }
   $('#trash-summary').textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} aus den letzten ${TRASH_DAYS} Tagen wiederherstellbar` : `Leer · Gelöschtes bleibt hier ${TRASH_DAYS} Tage`;
@@ -4298,12 +4348,12 @@ function renderTrashLinks() {
 function openTrash(kind = 'all') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   // Ein Hinweis kann mehrere Arten zusammenfassen (Einkaufsliste: Artikel und Listen); markiert wird die erste vorhandene.
-  const counts = trashCounts(trashEntries(state));
+  const counts = trashCounts(allTrash());
   trashFilter = kind === 'all' ? 'all' : kind.split(' ').find(entry => counts[entry]) || 'all'; trashUndo = null; $('#trash-status').hidden = true;
   renderTrash(); if (!$('#trash-dialog').open) $('#trash-dialog').showModal();
 }
 function renderTrash() {
-  const entries = trashEntries(state), counts = trashCounts(entries);
+  const entries = allTrash(), counts = trashCounts(entries);
   const kinds = trashFilter.split(' ').filter(kind => counts[kind]);
   if (trashFilter !== 'all' && !kinds.length) trashFilter = 'all';
   const shown = trashFilter === 'all' ? entries : entries.filter(entry => trashFilter.split(' ').includes(entry.kind));
@@ -4346,9 +4396,16 @@ function restoredWhere(entry, changes) {
   if (entry.kind === 'ownProducts') return `${name} ist wieder bei den eigenen Produkten${changes.length > 1 ? ', samt Stern' : ''}`;
   if (entry.kind === 'aliases') return `Die Schreibweise ${name} gilt wieder`;
   if (entry.kind === 'expenseCategories') return `Die Kategorie ${name} ist wieder wählbar`;
+  if (entry.kind === 'private') return `${name} steht wieder in der geheimen Liste`;
   return `Vorlage ${name} ist wieder da`;
 }
 function restoreFromTrash(entry) {
+  if (entry.kind === 'private') {
+    if (!privateList?.restore(entry.id)) return;
+    trashUndo = [{ collection: 'private', id: entry.id }];
+    $('#trash-status-text').textContent = restoredWhere(entry, []); $('#trash-status').hidden = false; $('#trash-undo').hidden = false;
+    renderTrash(); return;
+  }
   const changes = restoreChanges(state, entry.collection, entry.id, new Date().toISOString());
   if (!changes.length) throw new Error('Dieser Eintrag ist nicht mehr im Papierkorb.');
   commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
@@ -4358,6 +4415,7 @@ function restoreFromTrash(entry) {
 }
 $('#trash-undo').addEventListener('click', () => guard(() => {
   const undo = trashUndo; trashUndo = null; if (!undo) return;
+  if (undo[0]?.collection === 'private') { privateList?.remove(undo[0].id, { quiet: true }); $('#trash-status-text').textContent = 'Wieder in den Papierkorb gelegt'; $('#trash-undo').hidden = true; renderTrash(); return; }
   // Nur zurücknehmen, was noch im wiederhergestellten Zustand ist (eigene Produkte: Löschmarke aufgehoben, sonst: nicht gelöscht).
   const restored = ({ collection, id }) => (state[collection] || []).some(row => row.id === id && (collection === 'productRemovals' ? row.deletedAt : !row.deletedAt));
   commit(undoRestoreChanges(undo.filter(restored)).map(change => nextOp(change.collection, change.id, change.patch)));
@@ -4366,16 +4424,18 @@ $('#trash-undo').addEventListener('click', () => guard(() => {
 /* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
    „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
 $('#trash-purge').addEventListener('click', () => guard(async () => {
-  const before = purgeChanges(state).length;
+  const before = purgeChanges(state).length + (privateList?.trash().length || 0);
   if (!before) return;
   const what = before === 1 ? 'Den Eintrag' : `Alle ${before} Einträge`;
   if (!await ask({ title: 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
   // Erst nach der Rückfrage bestimmen, was gelöscht wird: Ein Abgleich kann den Papierkorb inzwischen verändert haben.
-  const changes = purgeChanges(state), count = changes.length;
+  const changes = purgeChanges(state), own = privateList?.purge() || 0, count = changes.length + own;
   if (!count) return;
-  if (connected()) compactRequested = true;
-  commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
-  if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
+  if (changes.length) {
+    if (connected()) compactRequested = true;
+    commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
+    if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
+  }
   trashUndo = null; trashFilter = 'all';
   $('#trash-status-text').textContent = `Papierkorb geleert · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} endgültig gelöscht`;
   $('#trash-status').hidden = false; $('#trash-undo').hidden = true;
@@ -4520,14 +4580,14 @@ $('#purchase-form').addEventListener('submit', event => {
 dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
   const row = purchaseRows().find(entry => entry.id === id);
   if (!row) return;
-  removeRows('purchases', [id]); showNotice(`${euros(row.cents)} gelöscht`);
+  removeRows('purchases', [id]); const scope = namespace(); showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([id], scope, 'purchases'), { trash: true });
 }), '.spend-item[data-id]');
 $('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
 $('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
 $('#purchase-delete').addEventListener('click', () => guard(() => {
-  const id = $('#purchase-form').elements.rowId.value;
-  if (id) removeRows('purchases', [id]);
+  const id = $('#purchase-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
   $('#purchase-dialog').close();
+  if (row) { removeRows('purchases', [id]); const scope = namespace(); showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([id], scope, 'purchases'), { trash: true }); }
 }));
 $('#purchase-dialog').addEventListener('close', () => { purchaseAbort?.abort(); duplicateWarned = ''; });
 $('#finish-dialog').addEventListener('close', () => { duplicateWarned = '';finishSaveIntent=0; });
@@ -4605,6 +4665,9 @@ async function start() {
       onRestore:restoreBackup,onSuccess:()=>showNotice(connected()?'Stand auf diesem Gerät wiederhergestellt. Der gemeinsame Abgleich läuft.':'Stand auf diesem Gerät wiederhergestellt.')});
     privateList=mountPrivateList({
       getScope:namespace,makeId:uid,makeIcon:icon,imagesOn,onError:message,
+      // Gelöscht (2.147): Meldung mit „Rückgängig“; danach 14 Tage unter „Kürzlich gelöscht“ (nur auf diesem Gerät).
+      onDeleted:removed=>{const scope=namespace();showNotice(`„${removed.name}“ gelöscht`,()=>{if(scope!==namespace())throw new Error('Die Datenverbindung hat sich geändert. Bitte unter „Kürzlich gelöscht“ wiederherstellen.');if(privateList.restore(removed.id))showNotice(`„${removed.name}“ ist wieder da`);},{trash:true});},
+      onEdit:(form,item)=>armDirty(form,{savedAt:item.updatedAt||item.createdAt}),onSaved:name=>savedNotice(name),
       onChange:()=>{if(privateViewId(view)&&!privateList.has(privateViewId(view)))view='all';render();},
       makeThumb:item=>{const box=element('span',undefined,'item-thumb');box.setAttribute('aria-hidden','true');const image=wishImage({...item.source,...item});if(image)box.append(paintProductImage(element('span'),image));return box;}
     });

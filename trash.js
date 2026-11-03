@@ -26,7 +26,9 @@ export const TRASH_KINDS = Object.freeze([
   { kind: 'templates', label: 'Vorlagen', icon: 'bookmark' },
   { kind: 'ownProducts', label: 'Eigene Produkte', icon: 'box' },
   { kind: 'aliases', label: 'Schreibweisen', icon: 'text' },
-  { kind: 'expenseCategories', label: 'Kategorien', icon: 'tag' }
+  { kind: 'expenseCategories', label: 'Kategorien', icon: 'tag' },
+  // Geheime Liste: liegt nur auf diesem Gerät (private-list.js); app.js ergänzt diese Einträge selbst.
+  { kind: 'private', label: 'Geheime Liste', icon: 'lock' }
 ]);
 const categoryKey = name => String(name || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
 // Wann ein eigenes Produkt gelöscht wurde: als die Löschmarke zuletzt gesetzt (deletedAt auf null) wurde.
@@ -44,6 +46,11 @@ const recent = (row, since) => Boolean(row?.deletedAt) && !isPurged(row) && Date
 
 // Wurde der Artikel als Doppel zusammengeführt oder zu einem gleichen Artikel gezählt, ist nichts verloren.
 const foldedAway = row => Boolean(row.mergedInto) || String(row._clock?.deletedAt?.id || '').startsWith('fold-del-');
+/* Abgehakte Artikel verschwinden normalerweise mit „Einkauf abschließen“ oder „Erledigte entfernen“: Sie sind gekauft und gehören nicht in den
+   Papierkorb. Wer aber einen einzelnen abgehakten Artikel bewusst löscht (Wischen, Bearbeiten, Auswahl), bekommt ihn hier zurück (2.147).
+   Solche Löschungen tragen eine eigene Änderungskennung („one-del-…“, siehe SINGLE_DELETE). */
+export const SINGLE_DELETE = 'one-del-';
+const deletedOnPurpose = row => String(row._clock?.deletedAt?.id || '').startsWith(SINGLE_DELETE);
 
 /* Alle wiederherstellbaren Einträge, neueste zuerst: { kind, collection, id, title, detail, deletedAt }. */
 export function trashEntries(data, now = Date.now()) {
@@ -51,7 +58,7 @@ export function trashEntries(data, now = Date.now()) {
   const stores = byId(data.stores), recipes = byId(data.recipes);
   const storeLabel = id => { const store = stores.get(id); return !id ? '' : !store ? '' : store.deletedAt ? `${store.name} (gelöscht)` : store.name; };
   for (const row of data.items || []) {
-    if (!recent(row, since) || row.checked || row._planEmpty || foldedAway(row)) continue;
+    if (!recent(row, since) || (row.checked && !deletedOnPurpose(row)) || row._planEmpty || foldedAway(row)) continue;
     const amount = Number.isFinite(row.quantity) && row.unit ? `${number(row.quantity)} ${row.unit}` : '';
     entries.push({ kind: 'items', collection: 'items', id: row.id, title: row.name, detail: [amount, storeLabel(row.storeId)].filter(Boolean).join(' · '), deletedAt: row.deletedAt });
   }
