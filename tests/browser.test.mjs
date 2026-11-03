@@ -9742,7 +9742,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     a.page.once('dialog',dialog=>{assert.match(dialog.message(),/für die Familie freigeben/);dialog.accept();});await local.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
     const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,13);
     const rows=api.content.items.filter(row=>!row.deletedAt&&row.storeId===target.id);assert.equal(rows.length,4);const copied=rows.find(row=>row.name==='Milch');assert.deepEqual([copied.quantity,copied.unit,copied.checked,copied.wishNote,copied.wishImageHidden],[2,'l',true,'Bisher geteilte Notiz',true]);assert.equal(rows.find(row=>row.name==='NurIch7291').wishNote,'NochGeheimeNotiz7291');
-    assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]').count(),1);
+    // Gerät B: Ein Abgleich ohne eigene Änderungen setzt den Status nicht auf „gleicht ab“; `synced` kann deshalb schon vor dem Laden zurückkehren.
+    // Also auf die Liste selbst warten (sie kommt mit diesem oder dem nächsten regulären Abgleich), statt sofort zu zählen.
+    const sharedChip=b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]');await sharedChip.waitFor({timeout:20000});
+    assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await sharedChip.count(),1);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
   test('2.91: bisherige geheime Geräteliste bleibt mit Einträgen und Notizen erhalten und ist über die Verwaltung erreichbar',async()=>{
