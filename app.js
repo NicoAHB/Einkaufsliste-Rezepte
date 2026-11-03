@@ -820,7 +820,7 @@ function renderRememberedAmount() {
   $('#reset-remembered-amount').disabled = !memory?.purchaseAmount;
 }
 function saveRememberedAmount(amount) {
-  const form = $('#edit-item-form'), item = active(state.items).find(row => row.id === form.elements.id.value);
+  const form = $('#edit-item-form'), item = active(state.items).find(row => row.id === form.elements.rowId.value);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen entfernt.');
   if (form.elements.name.value.trim() !== item.name) throw new Error('Bitte den geänderten Artikelnamen zuerst speichern.');
   if (amount !== null && !validPurchaseAmount(amount)) throw new Error('Bitte eine gültige Menge und Einheit eingeben (höchstens 1.000.000).');
@@ -862,7 +862,7 @@ function openWish(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch ist nicht mehr in einer Wunschliste. Bitte die Liste aktualisieren.');
   const form = $('#wish-form'); form.reset();
-  form.elements.id.value = id;
+  form.elements.rowId.value = id;
   wishBaseline = {name:item.name,wishUrl:item.wishUrl || '',wishNote:item.wishNote || '',wishImageHidden:item.wishImageHidden===true};
   form.dataset.imageHidden=String(wishBaseline.wishImageHidden);
   form.elements.name.value = wishBaseline.name;
@@ -1268,7 +1268,7 @@ function deleteRecipe(id) {
 function removeSavedRecipe(id) {
   if(!active(state.recipes).some(row=>row.id===id))return;
   removeRows('recipes',[id]);
-  if($('#recipe-dialog').open && $('#recipe-form').elements.id.value===id) { dropRecipeDraft();$('#recipe-dialog').close(); }
+  if($('#recipe-dialog').open && $('#recipe-form').elements.rowId.value===id) { dropRecipeDraft();$('#recipe-dialog').close(); }
 }
 function ingredientRow(value = {}) {
   const row = element('div', undefined, 'ingredient-row'); row.dataset.id = value.id || uid();
@@ -1354,7 +1354,7 @@ function editRecipe(id = '', draft = null) {
   if (id && !recipeBaseline) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   if (recipeBaseline) recipeBaseline.notes ??= '';
   ingredientBaseline = id ? clone(active(state.ingredients).filter(row => row.recipeId === id)) : [];
-  form.elements.id.value = id;
+  form.elements.rowId.value = id;
   $('#recipe-editor-title').textContent = id ? 'Rezept bearbeiten' : draft ? 'Importiertes Rezept prüfen' : 'Neues Rezept';
   $('#discard-imported-recipe').hidden=!draft;
   $('#delete-recipe').hidden=!id;
@@ -1388,7 +1388,7 @@ function discardImportedRecipe() {
   if($('#discard-imported-recipe').hidden || recipeBaseline) return;
   dropRecipeDraft();++photoEditVersion;
   pendingPhoto=null;photoRemoved=false;showPhotoPreview('');
-  const form=$('#recipe-form');form.reset();form.elements.id.value='';form.elements.tags.value='';recipeTagPicker.reset();
+  const form=$('#recipe-form');form.reset();form.elements.rowId.value='';form.elements.tags.value='';recipeTagPicker.reset();
   $('#ingredient-editor').replaceChildren();
   for(const id of ['recipe-import-note','recipe-draft-note']) { $('#'+id).replaceChildren();$('#'+id).hidden=true; }
   $('#recipe-raw-text').textContent='';$('#recipe-raw').open=false;$('#recipe-raw').hidden=true;
@@ -1412,8 +1412,8 @@ function saveRecipe(event) {
     try {
     const scope = namespace(), editorVersion = photoEditVersion, uploadKey = queueKey();
     const beforeRecipe = recipeBaseline && clone(recipeBaseline), beforeIngredients = clone(ingredientBaseline), removedPhoto = photoRemoved;
-    const id = form.elements.id.value || uid();
-    form.elements.id.value = id;
+    const id = form.elements.rowId.value || uid();
+    form.elements.rowId.value = id;
     if (beforeRecipe && !active(state.recipes).some(row => row.id === id)) throw new Error('Dieses Rezept wurde inzwischen gelöscht. Bitte schließen und neu anlegen.');
     const sourceText = form.elements.sourceUrl.value.trim(), sourceUrl = webUrl(sourceText);
     if (sourceText && !sourceUrl) throw new Error('Bitte bei der Quelle einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
@@ -1731,7 +1731,7 @@ function openMeal(options = {}) {
   mealBaseline = meal ? clone(meal) : null;
   const recipes = active(state.recipes).sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'de'));
   fillRecipePick(recipes);
-  form.elements.id.value = options.id || '';
+  form.elements.rowId.value = options.id || '';
   form.elements.date.value = meal?.date || options.date || isoDate(); form.elements.date.min = meal ? '' : isoDate();   // neue Gerichte nur ab heute
   let choice = meal ? (meal.recipeId || '__custom') : options.recipeId || '';
   if (choice && choice !== '__custom' && !recipes.some(recipe => recipe.id === choice)) choice = meal ? '__custom' : '';   // das Rezept gibt es nicht mehr
@@ -1787,7 +1787,7 @@ function saveMeal(event) {
     if (custom && !title) throw new Error('Bitte einen Namen für das eigene Gericht eingeben.');
     if(alsoAdd&&custom)throw new Error('Für ein eigenes Gericht ohne Rezept sind keine Zutaten hinterlegt. Bitte nur speichern oder ein Rezept wählen.');
     if (!custom) currentRecipe(choice);
-    const id = form.elements.id.value || uid();
+    const id = form.elements.rowId.value || uid();
     const patch = { date, servings: positive(form.elements.servings.value), recipeId: custom ? '' : choice, title: custom ? title : '' };
     if (!mealBaseline) patch.done = false;
     else if (mealBaseline.listedServings && patch.recipeId !== (mealBaseline.recipeId || '')) Object.assign(patch, { listedServings: null, listedAt: null, listedRows: null, listedParts: null, listedUntracked: false });   // ein anderes Rezept: die Übernahme gilt nicht mehr
@@ -3434,7 +3434,7 @@ function openPurchase(id = '') {
   form.elements.kind.value = row?.kind || 'purchase'; $('#purchase-more').open = row?.kind === 'refund';
   // Geschäft inzwischen gelöscht: der gemerkte Name bleibt wählbar, damit er beim Ändern nicht verloren geht.
   if (row?.storeId && row.storeName && ![...select.options].some(option => option.value === row.storeId)) { select.add(new Option(`${row.storeName} (gelöscht)`, row.storeId)); select.value = row.storeId; }
-  form.elements.id.value = row?.id || '';
+  form.elements.rowId.value = row?.id || '';
   form.elements.amount.value = row ? formatAmount(row.cents) : '';
   form.elements.date.value = row?.date || isoDate();
   expenseCategoryPicker.open(row || null);
@@ -3481,7 +3481,7 @@ function duplicateWarning(fields, ignoreId, how) {
   throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.buyerId ? ` (von ${buyerNameOf(twin, state.members)})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
 }
 function savePurchase() {
-  const form = $('#purchase-form'), id = form.elements.id.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
+  const form = $('#purchase-form'), id = form.elements.rowId.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
   if (purchaseScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Eintrag erneut öffnen.');
   if (purchaseAbort) throw new Error('Die Texterkennung läuft noch. Bitte kurz warten.');
   const current = id ? purchaseRows().find(row => row.id === id) : null;
@@ -3844,7 +3844,7 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   clearItemDraft();
 }); });
 $('#delete-item').addEventListener('click', () => guard(() => {
-  const id = $('#edit-item-form').elements.id.value;
+  const id = $('#edit-item-form').elements.rowId.value;
   if (!active(state.items).some(row => row.id === id)) { $('#item-dialog').close(); return; }
   removeRows('items', [id]); $('#item-dialog').close();
 }));
@@ -3976,7 +3976,7 @@ function moveItem(id, storeId) {
   $('#move-dialog').close();
 }
 $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.id.value && !row.deletedAt);
+  const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.rowId.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), ...editQuantity.read(),
     category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value), ...readPricing(form) };
@@ -3991,7 +3991,7 @@ $('#wish-form').elements.name.addEventListener('input',renderWishImage);
 $('#wish-remove-image').addEventListener('click',()=>{ $('#wish-form').dataset.imageHidden='true'; renderWishImage(); });
 $('#wish-form').elements.wishUrl.addEventListener('input', showWishProductLink);
 $('#wish-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, item = active(state.items).find(row => row.id === form.elements.id.value);
+  const form = event.currentTarget, item = active(state.items).find(row => row.id === form.elements.rowId.value);
   if (!item || !isWish(item)) throw new Error('Dieser Wunsch wurde inzwischen gelöscht oder verschoben. Bitte schließen und die Liste aktualisieren.');
   const patch = { name: form.elements.name.value.trim(), wishUrl: productLink(form.elements.wishUrl.value), wishNote: form.elements.wishNote.value.trim(), wishImageHidden:form.dataset.imageHidden==='true' };
   if (!patch.name) throw new Error('Bitte einen Namen eingeben.');
@@ -4000,7 +4000,7 @@ $('#wish-form').addEventListener('submit', event => { event.preventDefault(); gu
   $('#wish-dialog').close();
 }); });
 $('#delete-wish').addEventListener('click', () => guard(() => {
-  const id = $('#wish-form').elements.id.value, item = active(state.items).find(row => row.id === id);
+  const id = $('#wish-form').elements.rowId.value, item = active(state.items).find(row => row.id === id);
   if (item) { removeRows('items', [id]); showNotice(`„${item.name}“ gelöscht`); }
   $('#wish-dialog').close();
 }));
@@ -4124,7 +4124,7 @@ $('#import-recipe').addEventListener('click', () => guard(() => openImport()));
 $('#add-ingredient').addEventListener('click', () => ingredientRow());
 $('#recipe-form').addEventListener('submit', saveRecipe);
 $('#discard-imported-recipe').addEventListener('click',()=>guard(discardImportedRecipe));
-$('#delete-recipe').addEventListener('click',()=>guard(()=>deleteRecipe($('#recipe-form').elements.id.value)));
+$('#delete-recipe').addEventListener('click',()=>guard(()=>deleteRecipe($('#recipe-form').elements.rowId.value)));
 $('#recipe-form').addEventListener('input', scheduleRecipeDraft);
 $('#recipe-form').addEventListener('click', scheduleRecipeDraft);   // Zutat hinzufügen oder entfernen
 $('#recipe-dialog').addEventListener('cancel', event => { if (!canCloseRecipe()) event.preventDefault(); });
@@ -4357,7 +4357,7 @@ dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
 $('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
 $('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
 $('#purchase-delete').addEventListener('click', () => guard(() => {
-  const id = $('#purchase-form').elements.id.value;
+  const id = $('#purchase-form').elements.rowId.value;
   if (id) removeRows('purchases', [id]);
   $('#purchase-dialog').close();
 }));

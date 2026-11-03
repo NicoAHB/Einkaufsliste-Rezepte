@@ -1,12 +1,12 @@
 /* Wochenplan: Datumsrechnung und Zutaten über mehrere Gerichte zusammenzählen. Reine Logik ohne DOM.
    Tage sind lokale Kalendertage im Format JJJJ-MM-TT; gerechnet wird um 12 Uhr, damit Zeitumstellungen nie einen Tag verschieben. */
 import { sameIngredient, pantryKey, pantryKeys, inPantry } from './data.js';
-import { productKey, unitSpec } from './prices.js';
+import { localDay, productKey, unitSpec } from './prices.js';
 import { NO_AMOUNT } from './recipe-import.js';
 import { withKnownPack } from './buying.js';
 
-const pad = number => String(number).padStart(2, '0');
-export const isoDate = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+// Lokaler Kalendertag JJJJ-MM-TT; dieselbe Funktion wie localDay in prices.js (eine Umsetzung für die ganze App).
+export const isoDate = (date = new Date()) => localDay(date);
 const parse = iso => new Date(`${iso}T12:00:00`);
 export function addDays(iso, days) { const date = parse(iso); date.setDate(date.getDate() + days); return isoDate(date); }
 // Wochen beginnen montags.

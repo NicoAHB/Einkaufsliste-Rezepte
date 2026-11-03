@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: Syntax aller App-Dateien prüfen
+        run: for file in *.js worker/*.js; do node --check "$file" || exit 1; done
       - name: Logiktests
         run: npm run test:logic
       - name: Playwright installieren (Chromium)

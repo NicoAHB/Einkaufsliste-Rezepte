@@ -258,6 +258,23 @@ export function foldOldAdds(row, cutoff) {
   return old.length;
 }
 
+/* Ab welcher Datenrevision eine Datei gelesen werden darf, sobald sie bestimmte Felder enthält. Ältere App-Versionen, die die Felder nicht
+   kennen, lehnen das Schreiben dann ab (siehe validate). Revision 3 entsteht direkt in merge, weil sie an einzelnen Änderungen hängt. */
+const REVISION_RULES = [
+  [4, data => data.items.some(hasWishDetails)],
+  [5, data => data.pantry.some(row => row.available === false)],
+  [6, data => data.purchases.length > 0 || data.members.length > 0],
+  [7, data => data.items.some(row => row.purchaseUnit !== undefined) || Boolean(data.names?.some(row => row.purchaseUnit !== undefined))],
+  [8, data => data.items.some(row => row.purchaseMeasure !== undefined) || Boolean(data.names?.some(row => row.purchaseMeasure !== undefined))],
+  [9, data => data.items.some(row => row.purchaseAmount !== undefined) || Boolean(data.names?.some(row => row.purchaseAmount !== undefined))],
+  [10, data => data.meals.some(row => row.listedParts?.length) || data.items.some(row => row._planCuts?.length || row.purchaseAmount === null)],
+  [11, data => collections.some(key => data[key]?.some(row => row.productOriginalName))],
+  [11, data => data.items.some(row => row.wishImageHidden !== undefined) || data.stores.some(row => row.wishlistEnabled !== undefined)],
+  [12, data => data.stores.some(row => LIST_SYMBOL_IDS.includes(row.symbol) && row.symbol !== 'gift')],
+  [13, data => data.stores.some(row => row.symbol === 'secret')],
+  [15, data => data.expenseCategories.length > 0 || data.purchases.some(row => row.categoryId !== undefined)],
+  [16, data => data.stockSettings.length > 0 || data.pantry.some(row => row.autoStock) || data.items.some(row => row.stockConsumedAt !== undefined)],
+];
 export function merge(data, operations) {
   let next = clone(validate(data));
   next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= []; next.stockSettings ||= [];
@@ -351,19 +368,7 @@ export function merge(data, operations) {
     try { validateRow(collection, row); } catch { next[collection].splice(next[collection].indexOf(row), 1); }
   }
   next.sync.applied = [...applied];
-  if (collections.some(key => next[key]?.some(row=>row.productOriginalName))) next.sync.minRev = Math.max(Number(next.sync.minRev)||1,11);
-  if(next.items.some(row=>row.wishImageHidden!==undefined) || next.stores.some(row=>row.wishlistEnabled!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,11);
-  if(next.stores.some(row=>LIST_SYMBOL_IDS.includes(row.symbol)&&row.symbol!=='gift'))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,12);
-  if(next.stores.some(row=>row.symbol==='secret'))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,13);
-  if (next.items.some(hasWishDetails)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 4);
-  if (next.pantry.some(row => row.available === false)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 5);
-  if (next.purchases.length || next.members.length) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 6);
-  if (next.items.some(row => row.purchaseUnit !== undefined) || next.names?.some(row => row.purchaseUnit !== undefined)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 7);
-  if(next.items.some(row=>row.purchaseMeasure!==undefined)||next.names?.some(row=>row.purchaseMeasure!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,8);
-  if(next.items.some(row=>row.purchaseAmount!==undefined)||next.names?.some(row=>row.purchaseAmount!==undefined))next.sync.minRev=Math.max(Number(next.sync.minRev)||1,9);
-  if (next.meals.some(row=>row.listedParts?.length) || next.items.some(row=>row._planCuts?.length || row.purchaseAmount === null)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,10);
-  if (next.expenseCategories.length || next.purchases.some(row=>row.categoryId!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,15);
-  if (next.stockSettings.length || next.pantry.some(row=>row.autoStock) || next.items.some(row=>row.stockConsumedAt!==undefined)) next.sync.minRev=Math.max(Number(next.sync.minRev)||1,16);
+  for (const [revision, applies] of REVISION_RULES) if (applies(next)) next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, revision);
   return validate(next);
 }
 
