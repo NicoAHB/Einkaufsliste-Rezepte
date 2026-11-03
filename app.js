@@ -43,6 +43,7 @@ import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName
 import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, removePhoto, retainedPhotoIds, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
+import { parseQuantity } from './numbers.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
@@ -1734,10 +1735,10 @@ function syncMealForm(changedRecipe) {
   $('#meal-save-shopping').disabled = !recipe || !ready || form.elements.date.value < isoDate();
   const hint=$('#meal-save-shopping small');
   hint.hidden=!recipe;
-  $('#meal-portions-down').disabled=Number(form.elements.servings.value.replace(',','.'))<=1;
+  $('#meal-portions-down').disabled=parseQuantity(form.elements.servings.value)<=1;
   if(recipe){
     const stock=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size;
-    const servings=Number(form.elements.servings.value.replace(',','.'))||recipe.servings;
+    const servings=parseQuantity(form.elements.servings.value)||recipe.servings;
     const rows=aggregateIngredients([{recipeId:recipe.id,servings}],[recipe],active(state.ingredients)).filter(required);
     const remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
     hint.textContent=`Nur Vorrat: ${stock} ${stock===1?'Produkt fehlt':'Produkte fehlen'} · ${remaining} noch auf den Einkaufszettel`;

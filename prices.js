@@ -1,6 +1,7 @@
 /* Reine Preislogik: Euro werden als ganze Cent gespeichert. Es werden keine
    Händlerdaten abgerufen; alle Preise stammen aus euren eigenen Eingaben. Der Verlauf bezahlter Preise steht in history.js. */
 import { chainForStore } from './brand.js';
+import { euroCents } from './numbers.js';
 export const productKey = name => String(name).normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' ');
 
 export function unitSpec(unit) {
@@ -21,10 +22,9 @@ export function validQuote(quote) {
 }
 
 export function parseCents(value) {
-  const text = String(value).trim();
-  if (!/^\d{1,7}(?:[,.]\d{1,2})?$/.test(text)) throw new Error('Bitte einen Preis in Euro mit höchstens zwei Nachkommastellen eingeben, zum Beispiel 1,99.');
-  const [euros, cents = ''] = text.replace(',', '.').split('.');
-  return Number(euros) * 100 + Number(cents.padEnd(2, '0'));
+  const cents = euroCents(value);
+  if (cents === null) throw new Error('Bitte einen Preis in Euro mit höchstens zwei Nachkommastellen eingeben, zum Beispiel 1,99.');
+  return cents;
 }
 
 // Preis in Cent je einer Zieleinheit, z. B. 199 Cent / 500 g = 398 Cent / kg.
