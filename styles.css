@@ -5380,3 +5380,6 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 @media (prefers-reduced-motion:reduce) {
   #ask-dialog[open] { animation:none }
 }
+
+/* 2.145: „Kürzlich gelöschte eigene Produkte“ nur im Reiter „Eigene“ der Einkaufsauswahl */
+#product-picker-trash.picker-trash-off { display:none }

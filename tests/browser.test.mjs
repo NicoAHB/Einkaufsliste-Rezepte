@@ -10488,6 +10488,45 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- 2.145: Papierkorb für alles: eigene Produkte, Schreibweisen und Kategorien ----
+  test('2.145: gelöschtes eigenes Produkt und entfernte Schreibweise stehen im Papierkorb und kommen samt Stern zurück', async () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 86400000).toISOString();
+    data.aliases = [{ id: 'alias-2145', from: 'tomatn', name: 'Tomaten', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page);
+    // Eigenes Produkt mit Stern anlegen und unter „Eigene“ löschen
+    await page.click('#open-products'); await sheetOpen(page);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Keckd');
+    await page.locator('.product-card .product-star').click(); await page.fill('#product-picker-search', ''); await page.click('[data-product-mode=own]');
+    const trashLink = page.locator('#product-picker-trash');
+    assert.equal(await trashLink.isVisible(), false, 'noch nichts gelöscht');
+    await page.locator('.product-card', { hasText: 'Keckd' }).locator('.product-delete').click(); await answerAsk(page, true, /Kürzlich gelöscht/);
+    await trashLink.waitFor(); assert.match(await trashLink.textContent(), /Kürzlich gelöschte eigene Produkte\s*\(1\)/);
+    await page.click('[data-product-mode=all]'); assert.equal(await trashLink.isVisible(), false, 'nur im Reiter „Eigene“');
+    await page.click('[data-product-mode=own]'); await trashLink.click(); await page.locator('#trash-dialog[open]').waitFor();
+    const row = page.locator('.trash-row', { hasText: 'Keckd' });
+    assert.match(await row.textContent(), /Eigene Produkte/);
+    await row.locator('.trash-restore').click();
+    assert.match(await page.textContent('#trash-status-text'), /„Keckd“ ist wieder bei den eigenen Produkten, samt Stern/);
+    await page.click('#trash-dialog [data-close]');
+    const card = page.locator('.product-card', { hasText: 'Keckd' }); await card.waitFor();
+    assert.equal(await card.locator('.product-star').getAttribute('aria-pressed'), 'true');
+    await page.click('#product-picker-dialog [data-close]');
+    // Schreibweise in den Optionen entfernen und über den Hinweis zurückholen
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Zuordnung tomatn zu Tomaten entfernen' }).click();
+    const aliasLink = page.locator('#alias-card .trash-link'); await aliasLink.waitFor();
+    assert.match(await aliasLink.textContent(), /Kürzlich gelöschte Schreibweisen\s*\(1\)/);
+    await aliasLink.click(); await page.locator('#trash-dialog[open]').waitFor();
+    await page.locator('.trash-row', { hasText: 'tomatn → Tomaten' }).locator('.trash-restore').click();
+    assert.match(await page.textContent('#trash-status-text'), /Schreibweise „tomatn → Tomaten“ gilt wieder/);
+    const saved = await storedDemo(page);
+    assert.equal(saved.aliases.find(row => row.id === 'alias-2145').deletedAt, null);
+    assert.ok(saved.productRemovals.every(row => row.deletedAt), 'Löschmarke aufgehoben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   // ---- 2.139 (E1): Papierkorb „Kürzlich gelöscht“ ----
   test('2.139: gelöschter Artikel landet im Papierkorb, lässt sich wiederherstellen und rückgängig machen; Gekauftes erscheint nicht', async () => {
     const data = structuredClone(demo);

@@ -183,6 +183,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       if (!(getData().productRemovals||[]).some(row=>!row.deletedAt&&productKey(row.name)===productKey(own.name)) && (!category.value || category.value === own.category) && (target !== 'pantry' || pantryProductAllowed(own))) visible.push(own);
     }
     grid.replaceChildren();
+    // Der Hinweis auf gelöschte eigene Produkte gehört nur zum Reiter „Eigene“ der Einkaufsauswahl (die App setzt Anzahl und Sichtbarkeit).
+    $('product-picker-trash')?.classList.toggle('picker-trash-off', !(target==='list'&&mode==='own'));
     if(category.value===INTERNATIONAL_CATEGORY)grid.append(node('p','Länder und Küchen als Orientierung. Verfügbarkeit und Packungsgrößen hängen vom Geschäft ab.','hint product-international-hint'));
     // Favoriten und häufige Käufe bleiben ein kompaktes Raster, auch wenn sie aus vielen Gängen stammen.
     const shown = visible.slice(0, visibleLimit);

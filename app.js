@@ -47,7 +47,7 @@ import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
-import { TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries } from './trash.js';
+import { TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
@@ -4349,10 +4349,13 @@ function restoredWhere(entry, changes) {
   if (entry.kind === 'meals') return `${name} steht wieder im Wochenplan${changes.length > 1 ? ', das Rezept ebenfalls wieder im Rezeptbuch' : ''}`;
   if (entry.kind === 'purchases') return 'Die Ausgabe ist wieder eingetragen';
   if (entry.kind === 'stores') return `${name} ist wieder da`;
+  if (entry.kind === 'ownProducts') return `${name} ist wieder bei den eigenen Produkten${changes.length > 1 ? ', samt Stern' : ''}`;
+  if (entry.kind === 'aliases') return `Die Schreibweise ${name} gilt wieder`;
+  if (entry.kind === 'expenseCategories') return `Die Kategorie ${name} ist wieder wählbar`;
   return `Vorlage ${name} ist wieder da`;
 }
 function restoreFromTrash(entry) {
-  const changes = restoreChanges(state, entry.collection, entry.id);
+  const changes = restoreChanges(state, entry.collection, entry.id, new Date().toISOString());
   if (!changes.length) throw new Error('Dieser Eintrag ist nicht mehr im Papierkorb.');
   commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
   trashUndo = changes.map(change => ({ collection: change.collection, id: change.id }));
@@ -4361,8 +4364,9 @@ function restoreFromTrash(entry) {
 }
 $('#trash-undo').addEventListener('click', () => guard(() => {
   const undo = trashUndo; trashUndo = null; if (!undo) return;
-  const at = new Date().toISOString();
-  commit(undo.filter(change => active(state[change.collection] || []).some(row => row.id === change.id)).map(change => nextOp(change.collection, change.id, { deletedAt: at })));
+  // Nur zurücknehmen, was noch im wiederhergestellten Zustand ist (eigene Produkte: Löschmarke aufgehoben, sonst: nicht gelöscht).
+  const restored = ({ collection, id }) => (state[collection] || []).some(row => row.id === id && (collection === 'productRemovals' ? row.deletedAt : !row.deletedAt));
+  commit(undoRestoreChanges(undo.filter(restored)).map(change => nextOp(change.collection, change.id, change.patch)));
   $('#trash-status-text').textContent = 'Wieder in den Papierkorb gelegt'; $('#trash-undo').hidden = true; renderTrash();
 }));
 /* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
