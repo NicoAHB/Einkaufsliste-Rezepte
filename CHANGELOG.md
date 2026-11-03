@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.145: passende Bilder für internationale Varianten
+
+- Internationale Produkte verwenden das Foto der genauen Sorte: Mie-Nudeln statt des allgemeinen Nudelbildes, Sesamöl statt Olivenöl, rotes Pesto statt grünem Pesto und schwarze statt rote Bohnen. Die vorhandenen Einzelbilder werden weiterverwendet.
+- Bewusst gewählte Favoritenbilder bleiben erhalten. Die normalen Produktgruppen, vorhandene Einkäufe und Bilder werden nicht umsortiert.
+- Die Prüfung kontrolliert jetzt die genaue Bildkennung aller 97 internationalen Produkte und die sichtbaren Variantenbilder in der mobilen Auswahl.
+- Fehlgeschlagene Browsertests sind zusätzlich in der GitHub-Actions-Zusammenfassung lesbar.
+
+Offline-Paket `einkauf-shell-v157`.
+
 ## Neu in Version 2.144: Vorrat mit internationalen Produkten, klarer Speichern-Knopf, Mülleimer mit „Rückgängig“
 
 **Vorrat.**

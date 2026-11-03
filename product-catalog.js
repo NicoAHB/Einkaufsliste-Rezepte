@@ -71,7 +71,9 @@ export function internationalProductLibrary(history=[],favorites=[]) {
   return GROCERY_PRODUCTS.filter(isInternationalProduct).map(raw=>{
     const entries=history.filter(row=>productKey(row.name)===productKey(raw.name));
     const fav=favorites.filter(row=>!row.deletedAt&&(row.productId===raw.id||productKey(row.name)===productKey(raw.name))).sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))).at(-1);
-    return {...raw,count:entries.reduce((n,row)=>n+(Number(row.weight)||1)+(row._adds?.length||0),0),...(fav?{favorite:{...fav,ids:[fav.id]},quantity:fav.quantity,unit:fav.unit,...fav.imageKey?{imageKey:fav.imageKey}:{}}:{})};
+    // Keep the exact variant's photo when the normal grocery catalog groups it
+    // under e.g. noodles, oil or rice. A deliberately chosen favorite image wins.
+    return {...raw,imageKey:raw.id,count:entries.reduce((n,row)=>n+(Number(row.weight)||1)+(row._adds?.length||0),0),...(fav?{favorite:{...fav,ids:[fav.id]},quantity:fav.quantity,unit:fav.unit,...fav.imageKey?{imageKey:fav.imageKey}:{}}:{})};
   });
 }
 export function filterProducts(products, { mode = 'all', query = '', category = '', includeOwn = false } = {}) {
