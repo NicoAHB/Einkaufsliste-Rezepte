@@ -11,6 +11,7 @@ import { validMemberId } from './family.js';
 import { LIST_SYMBOL_IDS } from './list-symbols.js';
 import { restoredState, revisionKey } from './restore-state.js';
 import { expenseCategoryId } from './expense-categories.js';
+import { parseQuantity } from './numbers.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
 export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings'];
@@ -364,8 +365,8 @@ export function merge(data, operations) {
 }
 
 export function positive(value) {
-  const number = Number(String(value).trim().replace(',', '.'));
-  if (!Number.isFinite(number) || number <= 0) throw new Error('Bitte eine Menge größer als 0 eingeben, zum Beispiel 1 oder 0,5.');
+  const number = parseQuantity(value);
+  if (!Number.isFinite(number) || number <= 0) throw new Error('Bitte eine Menge größer als 0 eingeben, zum Beispiel 1, 0,5 oder ½.');
   return number;
 }
 

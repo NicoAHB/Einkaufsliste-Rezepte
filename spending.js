@@ -2,6 +2,7 @@
    ganze Cent, kind=refund zieht sie ab. Optionale buyerId/buyerName ordnen Personen
    fest zu. Tage: JJJJ-MM-TT, Monate: JJJJ-MM; alte Zeilen bleiben lesbar. */
 import { validDay } from './data.js';
+import { euroCents } from './numbers.js';
 import { chainOf } from './brand.js';
 import { buyerKey, buyerNameOf, validMemberId } from './family.js';
 import { isSeparate } from './shop.js';
@@ -15,13 +16,8 @@ const AMOUNT_ERROR = 'Bitte einen Betrag in Euro eingeben, zum Beispiel 23,45.';
    gilt als Tausendertrenner. Ergebnis in Cent; alles andere (leer, null, negativ, mehr als zwei Nachkommastellen, „12,345“) ist ein Fehler:
    lieber nachfragen, als aus einem Tippfehler 12.345 € zu machen. */
 export function parseAmount(input) {
-  const text = String(input ?? '').replace(/[\s ]/g, '').replace(/€|euro|eur/gi, '');
-  let normal;
-  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(text)) normal = text.replace(/\./g, '').replace(',', '.');       // 1.234,56 oder 1.234
-  else if (/^\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(text)) normal = text.replace(/,/g, '');                           // 1,234.56 (ohne Nachkommastellen wäre „1,234“ nicht von 1,23 mit Tippfehler zu unterscheiden)
-  else if (/^\d{1,7}(?:[.,]\d{1,2})?$/.test(text)) normal = text.replace(',', '.');                               // 23,45 oder 23.45
-  else throw new Error(AMOUNT_ERROR);
-  const [euros, cents = ''] = normal.split('.'), value = Number(euros) * 100 + Number(cents.padEnd(2, '0'));
+  const value = euroCents(input);
+  if (value === null) throw new Error(AMOUNT_ERROR);
   if (!Number.isSafeInteger(value) || value < 1) throw new Error('Der Betrag muss größer als 0 sein.');
   if (value > MAX_CENTS) throw new Error('Der Betrag ist zu groß. Bitte prüfen (höchstens 99.999,99 €).');
   return value;

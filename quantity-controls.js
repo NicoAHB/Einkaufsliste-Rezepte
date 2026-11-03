@@ -2,9 +2,10 @@
    Die Tastatur erscheint nur beim bewussten Antippen der Zahl oder eigener Angaben. */
 import { preferredPurchase, purchaseView, purchaseSizeText, rawPurchase, validPurchaseUnit, hasUnitChoice, unitChoice, packOptions, countAmount, needsPackSize, startQuantity, preferredQuantity, rememberedAmount, amountChoice, minimumQuantity, stepQuantity } from './buying.js';
 import { unitSpec } from './prices.js';
+import { parseQuantity } from './numbers.js';
 const clone = value => value ? { ...value } : null;
 const plain = value => String(value).replace('.',',');
-const parse = value => Number(String(value).trim().replace(',','.'));
+const parse = parseQuantity;
 const node = (tag,text,cls) => { const el=document.createElement(tag); if(text!==undefined)el.textContent=text; if(cls)el.className=cls; return el; };
 let picker = null, choose = null, owner = null;
 function unitPicker() {
