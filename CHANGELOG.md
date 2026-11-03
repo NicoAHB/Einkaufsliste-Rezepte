@@ -2,6 +2,24 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.137: Prüfbericht umgesetzt – zuverlässiger, schneller, sicherer
+
+**Einmalig nach dem Update:** Die App auf jedem Gerät ganz schließen und neu öffnen. Ab dieser Version wartet eine neue Version, bis oben **Neu laden** angetippt wird.
+
+**Rezept-Import und Vorrat.** Chefkoch-Schreibweisen wie „2 Ei(er)“, „1 Zwiebel(n)“, „2 Zehe/n Knoblauch“, „1 Dose (400 g) Tomaten“, „2 x 200 g Joghurt“, „n. B. Salz“, „1 EL, gehäuft Mehl“ und „1 kleine Dose Mais“ werden richtig eingelesen. Vorrat, **Was kann ich kochen?** und die Einkaufsliste erkennen auch bereits gespeicherte Rezepte mit „Ei(er)“ & Co.; „Ei(er)“ landet bei vorhandenen „Eiern“ statt in einer zweiten Zeile. Beschreibende Zusätze wie „(laktosefrei)“ bleiben bedeutend.
+
+**Zahlen.** Mengenfelder lesen „1.000“ als 1000 (wie der Import) und verstehen „½“, „1½“, „1 1/2“ und „3/4“. Preis- und Ausgabenfelder akzeptieren dieselben Schreibweisen, z. B. „1.234,56“. Neues Modul `numbers.js`.
+
+**Abgleich und Speicher.** Eine Änderung, die sich nicht mit dem gemeinsamen Stand zusammenführen lässt, blockiert den Abgleich nicht mehr: Sie wird beiseitegelegt und erscheint oben in den Einstellungen unter **Nicht übernommene Änderungen** (Als Datei sichern / Verwerfen). Ein unlesbarer lokaler Speicher öffnet eine **Notfallansicht** zum Sichern und Neuladen. Der Tagesrezept-Verlauf behält höchstens ein Jahr bzw. etwa 400 KB. **Datenumfang** zeigt die Belegung auf dem Gerät und kann den älteren Tagesverlauf löschen. Die App bittet den Browser um dauerhaften Speicher. Neues Modul `pending-guard.js`.
+
+**Geschwindigkeit.** Namensabgleiche werden zwischengespeichert, und die Rezeptliste wird erst beim Öffnen ihres Reiters neu gezeichnet. Mit 300 Rezepten und 400 Artikeln dauert das Abhaken eines Artikels rund 0,15 s statt rund 22 s.
+
+**Sicherheit und Datenschutz.** Öffentliche Import-Dienste (allorigins.win, codetabs.com) sind auf neuen Geräten aus, bis du sie erlaubst; eine früher gespeicherte Wahl bleibt. Links mit `?add=` zeigen die Artikel und fügen erst nach **Hinzufügen** etwas hinzu. Der eigene Import-Worker prüft jede Weiterleitung und unterstützt einen optionalen Schlüssel (`ACCESS_KEY`, in der App als `…workers.dev/?key=…`). Die Einstellungen weisen darauf hin, dass sich alle Pages-Seiten eines github.io-Kontos den Browserspeicher teilen (README, Abschnitt 4).
+
+**Oberfläche.** Waagerecht scrollende Leisten zeigen mit weichem Rand, dass es weitergeht. Ein Punkt am Reiter **Einstellungen** zeigt wartende Änderungen (gelb) oder Abgleichprobleme (rot). Der heutige Tag im Wochenplan trägt **Heute**. Tagesrezepte lassen sich zusätzlich per Wischen durchblättern. Einheitliche Aufklapp-Pfeile, leerer Budgetbereich mit Erklärung, **Ausgabe eintragen** ohne automatische Tastatur, Namensvorschläge nur aus den eigenen Daten, Startfarbe passend zu Grün, Versionsnummer neben dem App-Namen. Die Anleitung erklärt Aufgaben statt Gestaltung und hat neue Hilfe unter **Wenn etwas nicht klappt**.
+
+**Entwicklung.** Die Browsertests schreiben keine Dateien mehr in feste Ordner einer Arbeitsumgebung (das ließ seit 2.78 jeden GitHub-Lauf scheitern). `test:logic` nimmt neue Testdateien automatisch auf. Versionsnummer zentral in `version.js`. GitHub-Zugriff in `github.js`. Optionaler Workflow `pages.yml` veröffentlicht erst nach grünen Tests. Das Änderungsprotokoll steht jetzt in dieser Datei statt in der README. Offline-Paket **einkauf-shell-v149**.
+
 ## Neu in Version 2.136: Dezentere Farben für Tagesrezept-Aktionen
 
 **Hinzufügen** und **Hinzugefügtes Rezept entfernen** haben zart getönte Flächen, farbige Schrift und einen dünnen passenden Rahmen. Die Farben passen sich an die helle und dunkle Ansicht an. Auch die Bestätigung **Entfernen** verwendet die dezente rote Darstellung. Offline-Paket **einkauf-shell-v148**.
