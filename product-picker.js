@@ -8,7 +8,7 @@ import { CATEGORIES } from './categories.js';
 import { GROCERY_PRODUCTS, internationalProductLibrary, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic, pantryProductsForMode } from './product-catalog.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
-import { pantryKey, pantryKeys, pantryRows } from './data.js';
+import { pantryKey, pantryKeys, pantryRows, stockKey, stockKeys } from './data.js';
 import {isOptionalBasic,smartStockSaved,smartStockSettings} from './smart-stock.js';
 import { recentPurchases, purchaseLabel, purchaseBuyer } from './recent-purchases.js';
 import { bindWishHold } from './wishes.js';
@@ -89,10 +89,11 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const data=getData(),source=international?internationalProductLibrary:target==='pantry'?pantryProductLibrary:productLibrary;
     let products=source(data.history,data.favorites,data.pantry,data.productRemovals);
     if(international&&target==='pantry')products=products.filter(pantryProductAllowed);
-    if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
+    if(target==='pantry')for(const product of selection.values())if(!products.some(row=>stockKey(row.name)===stockKey(product.name)))products.push(product);
     return products;
   };
-  const stockedKeys = () => {const keys=pantryKeys(getData().pantry||[]);for(const product of selection.values()){if(product.pantryAvailable===false)keys.delete(pantryKey(product.name));else keys.add(pantryKey(product.name));}return keys;};
+  // Vorrat nach Sorten (2.145): „Basmati-Reis“ ist nur vorhanden, wenn genau diese Sorte im Vorrat steht.
+  const stockedKeys = () => {const keys=stockKeys(getData().pantry||[]);for(const product of selection.values()){if(product.pantryAvailable===false)keys.delete(stockKey(product.name));else keys.add(stockKey(product.name));}return keys;};
 
   function photo(product) {
     const frame = node('span', undefined, 'product-photo'); frame.setAttribute('aria-hidden', 'true');
@@ -153,14 +154,16 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     $('product-picker-title').textContent=target==='pantry'?'Vorrat auswählen':'Produkte auswählen';
     const focused=dialog.contains(document.activeElement)?document.activeElement:null;
     const focusKey=focused?.dataset.productAction,focusId=focused?.dataset.product;
-    const available=target==='pantry'?stockedKeys():pantryKeys(getData().pantry||[]);
-    const inventory=new Map(pantryRows(getData().pantry||[]).map(row=>[pantryKey(row.name),row]));
+    const available=target==='pantry'?stockedKeys():stockKeys(getData().pantry||[]);
+    const stockRows=pantryRows(getData().pantry||[]),inventory=new Map(stockRows.map(row=>[stockKey(row.name),row]));
+    // Andere Sorten derselben Gruppe im Vorrat: „Basmati-Reis vorhanden“ auf der Kachel „Reis“ (und umgekehrt).
+    const sameGroup=new Map();for(const row of stockRows)if(row.available!==false){const key=pantryKey(row.name);if(!sameGroup.has(key))sameGroup.set(key,[]);sameGroup.get(key).push(row);}
     renderStockControls();
     const allProducts=library();
     // Gespeicherte Vorräte bleiben bis zum Speichern an ihrem Platz, auch abgewählte.
-    const currentViewKeys=new Set([...pantryKeys(getData().pantry||[]),...[...selection.values()].map(product=>pantryKey(product.name))]);
+    const currentViewKeys=new Set([...stockKeys(getData().pantry||[]),...[...selection.values()].map(product=>stockKey(product.name))]);
     const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
-    const forMode = all => target === 'pantry' ? mode==='recent'?purchases.map(row=>({...all.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(all, mode, currentViewKeys) : all;
+    const forMode = all => target === 'pantry' ? mode==='recent'?purchases.map(row=>({...all.find(product=>stockKey(product.name)===stockKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(all, mode, currentViewKeys) : all;
     const products = forMode(allProducts);
     // In „Aktuell“, „Grundvorrat“ und „Gekauft“ sind nur Kategorien wählbar, in denen etwas steht. Gezählt wird immer im passenden Bestand:
     // die Gänge in der normalen Auswahl, „Internationale Produkte“ in den genauen Sorten.
@@ -196,8 +199,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       for (const product of matches) {
         const chosen=selection.get(product.id),picked=Boolean(chosen);
         const amount = shoppingAmount(chosen || purchaseStart(product));
-        const stocked = available.has(pantryKey(product.name));
-        const stock=inventory.get(pantryKey(product.name)),consumed=mode==='recent'&&!stocked&&Boolean(product.stockConsumedAt);
+        const stocked = available.has(stockKey(product.name));
+        const stock=inventory.get(stockKey(product.name)),consumed=mode==='recent'&&!stocked&&Boolean(product.stockConsumedAt);
         const card=node('div',undefined,`product-card${picked?' picked':''}${target==='pantry'&&stocked?' in-stock':''}${target==='pantry'&&chosen?.pantryAvailable===false?' pending-removal':''}`);
         if(consumed)card.classList.add('consumed-recent');
         card.dataset.product = product.id; card.dataset.id = product.id;
@@ -211,9 +214,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         if (target === 'list') pick.append(node('small', amount, 'product-amount'));
         pick.append(check);
         const inList = exactOnList.get(productKey(product.name));
-        // Der Vorrat fasst Sorten zusammen (Sushi-Reis zählt als Reis). Steht die Sorte unter anderem Namen im Vorrat, sagt die Kachel unter welchem.
-        const stockedAs=category.value===INTERNATIONAL_CATEGORY&&stocked&&stock&&productKey(stock.name)!==productKey(product.name)?stock.name:'';
-        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?(stockedAs?`${stockedAs} wird entfernt`:'Wird entfernt'):'Wird dem Vorrat hinzugefügt'):stockedAs?`Vorhanden als ${stockedAs}`:'Vorhanden','product-on-list'));
+        // Sorten stehen getrennt (2.145). Ist eine andere Sorte derselben Gruppe da, nennt die Kachel sie – Rezepte zählen sie ohnehin mit.
+        const siblings=target==='pantry'&&!stocked&&!chosen?(sameGroup.get(pantryKey(product.name))||[]).filter(row=>stockKey(row.name)!==stockKey(product.name)).map(row=>row.name):[];
+        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird dem Vorrat hinzugefügt'):'Vorhanden','product-on-list'));
+        else if(siblings.length)pick.append(node('small',`${siblings.slice(0,2).join(', ')}${siblings.length>2?' …':''} vorhanden`,'product-on-list product-sibling'));
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
         if(mode==='recent')pick.append(node('small',`${purchaseLabel(product.shopBoughtAt)}${product.boughtBy?` von ${product.boughtBy}`:' · Käufer unbekannt'}`,'product-on-list product-purchase'));
@@ -253,7 +257,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
 
         if(target==='pantry'&&mode==='recent'&&!consumed&&onConsume){
           const consume=node('button',isOptionalBasic(product.name)?'Aufgebraucht & nachkaufen':'Aufgebraucht','secondary pantry-consume');consume.type='button';consume.dataset.productAction='consume';consume.dataset.product=product.id;consume.setAttribute('aria-label',`${product.name} als aufgebraucht markieren`);if(isOptionalBasic(product.name))consume.setAttribute('aria-description','Wird automatisch auf den Einkaufszettel gesetzt.');
-          consume.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');const restocked=onConsume(purchaseStart(product));for(const [id,selected]of selection)if(pantryKey(selected.name)===pantryKey(product.name))selection.delete(id);renderCart();renderProducts();$('product-picker-feedback').textContent=restocked?`${product.name} ist aufgebraucht und steht auf dem Einkaufszettel.`:`${product.name} ist aufgebraucht. Der Einkauf bleibt in der Historie.`;$('product-picker-feedback').hidden=false;}catch(error){fail(error);}});card.append(consume);
+          consume.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');const restocked=onConsume(purchaseStart(product));for(const [id,selected]of selection)if(stockKey(selected.name)===stockKey(product.name))selection.delete(id);renderCart();renderProducts();$('product-picker-feedback').textContent=restocked?`${product.name} ist aufgebraucht und steht auf dem Einkaufszettel.`:`${product.name} ist aufgebraucht. Der Einkauf bleibt in der Historie.`;$('product-picker-feedback').hidden=false;}catch(error){fail(error);}});card.append(consume);
         }
         if (target === 'pantry' && onQuickBuy) {
           const buy = node('button', 'Nachkaufen', 'secondary pantry-quick-buy'); buy.type = 'button';
@@ -267,7 +271,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         cards.append(card);
       }
     }
-    const count = target==='pantry'&&mode==='current'?visible.filter(product=>available.has(pantryKey(product.name))).length:visible.length;
+    const count = target==='pantry'&&mode==='current'?visible.filter(product=>available.has(stockKey(product.name))).length:visible.length;
     $('product-picker-status').textContent=mode==='current'?`${count} ${count===1?'Produkt':'Produkte'} im aktuellen Vorrat${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:count?`${count} ${count===1?'Produkt':'Produkte'}${mode==='favorites'?' in Favoriten':mode==='frequent'?' häufig gekauft':mode==='basics'?' im Grundvorrat':mode==='recent'?' in den letzten 7 Tagen gekauft':''}${count>visibleLimit?` · ${shown.length} angezeigt`:''}`:
       search.value.trim()?'Keine passenden Produkte in dieser Auswahl.':mode==='favorites'?'Noch keine Favoriten. Merke Produkte unter „Alle“ mit dem Stern.':mode==='frequent'?'Hier erscheinen Produkte, die du mindestens zweimal eingetragen hast.':mode==='own'?'Hier findest du eure eigenen Artikel. Oder suche einen neuen Namen.':'Keine Produkte in dieser Kategorie.';
     if(!count&&mode==='recent')grid.append(node('p','Noch keine Einkäufe aus den letzten 7 Tagen. Hier erscheinen Produkte, die ihr unter „Im Laden“ abhakt.','empty'));
@@ -292,8 +296,8 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
       const typed=ownForm.elements.name.value.trim().replace(/\s+/g,' '),name=keepName===typed?typed:recognizeName?.(typed).name||typed;
       if(!name||name.length>120)throw new Error('Bitte einen Produktnamen mit 1 bis 120 Zeichen eingeben.');
       if(!pantryProductAllowed({name}))throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht.');
-      const known=library().find(product=>pantryKey(product.name)===pantryKey(name)),product=known?{...known,name}:ownProduct(name);
-      if(!pantryKeys(getData().pantry||[]).has(pantryKey(name)))selection.set(product.id,{...product,pantryAvailable:true});
+      const known=library().find(product=>stockKey(product.name)===stockKey(name)),product=known?{...known,name}:ownProduct(name);
+      if(!stockKeys(getData().pantry||[]).has(stockKey(name)))selection.set(product.id,{...product,pantryAvailable:true});
       else selection.delete(product.id);
       mode='current';search.value=name;category.value='';visibleLimit=PAGE_SIZE;clearError();$('product-picker-feedback').hidden=true;renderCart();renderProducts();ownDialog.close();
       dialog.querySelector('[data-product-mode][aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
@@ -303,7 +307,9 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     if(target!=='pantry')return;
     const available=pantryKeys(getData().pantry||[]),products=library();let added=0;
     for(const basic of GROCERY_PRODUCTS.filter(isPantryBasic)){
-      const product=products.find(row=>pantryKey(row.name)===pantryKey(basic.name))||basic;
+      // Grundvorrat: Ist irgendeine Sorte der Gruppe da (z. B. Basmati-Reis für „Reis“), muss nichts dazu.
+      // Je Gruppe eine Kachel: genau diese Sorte, sonst die Gruppenkachel („Reis“ für Basmati-Reis), sonst das Katalogprodukt.
+      const product=products.find(row=>stockKey(row.name)===stockKey(basic.name))||products.find(row=>pantryKey(row.name)===pantryKey(basic.name)&&stockKey(row.name)===pantryKey(row.name))||basic;
       if(available.has(pantryKey(product.name)))selection.delete(product.id);
       else{selection.set(product.id,{...product,pantryAvailable:true});added++;}
     }

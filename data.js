@@ -2,7 +2,7 @@
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
-import { ingredientMatchName, ingredientProductName, spellingStem } from './product-groups.js';
+import { ingredientMatchName, ingredientProductName, spellingStem, varietyName } from './product-groups.js';
 export { spellingStem };
 import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
@@ -523,13 +523,18 @@ export function isCookingWater(name) {
 const nameParts = name => String(name).split(/\s*(?:,|;|\bund\b)\s*/i).map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean);
 // Der Vorrat vergleicht die Grundform (siehe sameProduct): Steht „Zwiebeln“ im Vorrat, ist das Rezept „Zwiebel“ abgedeckt.
 export const pantryKey = name => spellingStem(ingredientProductName(name)) || productKey(ingredientProductName(name));
-// Ein Eintrag pro Name: die jüngste manuelle Fassung entscheidet. Automatische
+/* Zwei Schlüssel für den Vorrat (2.145):
+   - pantryKey: die Gruppe („Reis“). Damit prüfen Rezepte, Wochenplan und Einkaufszettel, ob etwas da ist: jede Reissorte zählt.
+   - stockKey: die Sorte („Basmati-Reis“). Damit führt der Vorrat seine Einträge: Sorten stehen getrennt, werden getrennt
+     hinzugefügt, entfernt und aufgebraucht. Gleiche Wörter bleiben gleich („Äpfel“/„Apfel“, „Knoblauchzehen“/„Knoblauch“). */
+export const stockKey = name => spellingStem(varietyName(name)) || productKey(varietyName(name));
+// Ein Eintrag pro Sorte (stockKey): die jüngste manuelle Fassung entscheidet. Automatische
 // Einträge laufen separat ab und verdrängen keinen vorhandenen manuellen Vorrat.
 // Alle IDs bleiben zum gemeinsamen Aufbrauchen/Entfernen erhalten.
 export function pantryRows(rows = [], now = Date.now()) {
   const byName = new Map();
   for (const row of active(rows).sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')))) {
-    const key = pantryKey(row.name);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(row);
+    const key = stockKey(row.name);if(!byName.has(key))byName.set(key,[]);byName.get(key).push(row);
   }
   return [...byName.values()].map(group=>{
     let selected=group.at(-1);
@@ -544,6 +549,8 @@ export function pantryRows(rows = [], now = Date.now()) {
   });
 }
 // Vorrat und Zutaten werden unter ihrem Abgleichsnamen verglichen (z. B. „Tomaten“ in der Einheit Dose = „Tomaten (Konserve)“).
+// Sorten, die gerade im Vorrat sind (für die Vorratsauswahl); pantryKeys darunter liefert die Gruppen für Rezepte.
+export const stockKeys = (rows,now=Date.now()) => new Set(pantryRows(rows || [],now).filter(row => row.available !== false).map(row => stockKey(row.name)));
 export const pantryKeys = (rows,now=Date.now()) => new Set(pantryRows(rows || [],now).filter(row => row.available !== false).map(row => pantryKey(ingredientMatchName(row))));
 export const inPantry = (keys, entry) => { const name = entry && typeof entry === 'object' ? ingredientMatchName(entry) : entry, parts = nameParts(name); return isCookingWater(name) || keys.has(pantryKey(name)) || (parts.length > 0 && parts.every(part => isCookingWater(part) || keys.has(pantryKey(part)))); };
 // Teile der Namen, die noch nicht im Vorrat stehen (ohne Doppelte), zum Merken.

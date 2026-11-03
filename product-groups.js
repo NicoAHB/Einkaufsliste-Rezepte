@@ -155,6 +155,11 @@ export function recipeNameCore(name) {
   return core||text;
 }
 export const ingredientProductName = memoText(productNameOf);
+/* Sorte statt Gruppe (2.145, Vorrat): „Basmati-Reis“ bleibt Basmati-Reis, „Reis“ bleibt Reis. Steht der Name (ohne Zubereitung,
+   Plural egal) genau so im Katalog, gilt die Katalogsorte; sonst die übliche Zuordnung („Knoblauchzehen“ → Knoblauch). */
+const catalogVarieties = new Map();
+for (const row of PRODUCT_ROWS) { const key = spellingStem(row[1]), previous = catalogVarieties.get(key); catalogVarieties.set(key, previous === undefined || previous === row[1] ? row[1] : null); }
+export const varietyName = memoText(original => catalogVarieties.get(spellingStem(recipeNameCore(original))) || ingredientProductName(original));
 function productNameOf(original) {
   const name=recipeNameCore(original);
   // Leitungswasser im Rezept ist kein Mineralwasser/Getränk aus der Katalogfamilie „Wasser“.

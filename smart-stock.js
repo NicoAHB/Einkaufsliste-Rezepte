@@ -1,6 +1,8 @@
 // Automatische Vorräte besitzen eine eigene Herkunft und Ablaufzeit. Manuell
 // gepflegter Vorrat und Kaufhistorie werden niemals durch Ablauf gelöscht.
-import {addToList,pantryKey,pantryRows} from './data.js';
+import {addToList,pantryKey,pantryRows,stockKey} from './data.js';
+// Seit 2.145 nach Sorten (stockKey): Übernahme, Aufbrauchen und Nachkaufen betreffen genau die gekaufte Sorte.
+// Ob etwas zum Grundvorrat zählt, bleibt eine Frage der Gruppe (pantryKey): Basmati-Reis ist Grundvorrat wie Reis.
 import {itemCategory,suggestCategory} from './categories.js';
 import {isRecentPurchase,PURCHASE_DAYS} from './recent-purchases.js';
 import {GROCERY_PRODUCTS,isPantryBasic,OPTIONAL_PANTRY_BASIC_IDS} from './product-catalog.js';
@@ -36,8 +38,8 @@ export function stockTransferNotice(data,items,now=Date.now()){
   if(!smartStockSettings(data).enabled)return '';
   const history=[...(data.names||[]),...(data.items||[])],bought=items.filter(item=>item.checked&&item.shopBoughtAt&&!item.deletedAt&&!isSeparate((data.stores||[]).find(store=>store.id===item.storeId))&&autoStockEligible(item,history));
   const available=pantryRows(data.pantry||[],now).filter(row=>row.available!==false),transferred=[],already=[];
-  for(const key of new Set(bought.map(item=>pantryKey(item.name)))){
-    const stock=available.find(row=>pantryKey(row.name)===key);if(!stock)continue;
+  for(const key of new Set(bought.map(item=>stockKey(item.name)))){
+    const stock=available.find(row=>stockKey(row.name)===key);if(!stock)continue;
     const matches=stock.autoStock&&bought.some(item=>item.id===stock.autoStock.purchaseId&&item.shopBoughtAt===stock.autoStock.boughtAt);
     (matches?transferred:already).push(stock.name);
   }
@@ -46,7 +48,7 @@ export function stockTransferNotice(data,items,now=Date.now()){
 export function automaticStockChanges(data,item,boughtAt){
   const settings=smartStockSettings(data),time=Date.parse(boughtAt);
   if(!settings.enabled||!Number.isFinite(time)||!autoStockEligible(item,[...(data.names||[]),...(data.items||[])]))return [];
-  const key=pantryKey(item.name),rows=data.pantry||[],manual=pantryRows(rows.filter(row=>!row.autoStock),time).find(row=>pantryKey(row.name)===key);
+  const key=stockKey(item.name),rows=data.pantry||[],manual=pantryRows(rows.filter(row=>!row.autoStock),time).find(row=>stockKey(row.name)===key);
   if(manual&&manual.available!==false)return [];
   const id=`pantry-auto-${encodeURIComponent(key)}`;
   const basic=isAutomaticBasic(item.name);
@@ -54,22 +56,22 @@ export function automaticStockChanges(data,item,boughtAt){
 }
 export function undoAutomaticStockChanges(data,item){return (data.pantry||[]).filter(row=>!row.deletedAt&&row.autoStock?.purchaseId===item.id&&row.autoStock.boughtAt===item.shopBoughtAt).map(row=>({collection:'pantry',id:row.id,patch:{available:false}}));}
 export function consumeStockChanges(data,name,at=new Date().toISOString()){
-  const key=pantryKey(name),changes=[];
+  const key=stockKey(name),changes=[];
   if(!Number.isFinite(Date.parse(at)))throw new Error('Der Zeitpunkt zum Aufbrauchen ist ungültig.');
-  for(const row of data.pantry||[])if(!row.deletedAt&&pantryKey(row.name)===key&&row.available!==false)changes.push({collection:'pantry',id:row.id,patch:{available:false}});
-  for(const row of data.items||data.recentItems||[])if(pantryKey(row.name)===key&&isRecentPurchase(row,Date.parse(at)))changes.push({collection:'items',id:row.id,patch:{stockConsumedAt:at}});
+  for(const row of data.pantry||[])if(!row.deletedAt&&stockKey(row.name)===key&&row.available!==false)changes.push({collection:'pantry',id:row.id,patch:{available:false}});
+  for(const row of data.items||data.recentItems||[])if(stockKey(row.name)===key&&isRecentPurchase(row,Date.parse(at)))changes.push({collection:'items',id:row.id,patch:{stockConsumedAt:at}});
   return changes;
 }
 export function optionalRestockOperations(data,product,actor,at=new Date().toISOString()){
   if(!isOptionalBasic(product.name))return [];
-  const key=pantryKey(product.name),normal=row=>!isSeparate((data.stores||[]).find(store=>store.id===row.storeId));
-  if((data.items||[]).some(row=>!row.deletedAt&&!row._planEmpty&&!row.checked&&normal(row)&&pantryKey(row.name)===key))return [];
-  const stock=pantryRows(data.pantry||[]).find(row=>pantryKey(row.name)===key);
-  const latest=(data.items||[]).filter(row=>pantryKey(row.name)===key&&normal(row)&&row.shopBoughtAt).sort((a,b)=>String(b.shopBoughtAt).localeCompare(String(a.shopBoughtAt)))[0];
+  const key=stockKey(product.name),normal=row=>!isSeparate((data.stores||[]).find(store=>store.id===row.storeId));
+  if((data.items||[]).some(row=>!row.deletedAt&&!row._planEmpty&&!row.checked&&normal(row)&&stockKey(row.name)===key))return [];
+  const stock=pantryRows(data.pantry||[]).find(row=>stockKey(row.name)===key);
+  const latest=(data.items||[]).filter(row=>stockKey(row.name)===key&&normal(row)&&row.shopBoughtAt).sort((a,b)=>String(b.shopBoughtAt).localeCompare(String(a.shopBoughtAt)))[0];
   const store=(data.stores||[]).find(row=>!row.deletedAt&&!isSeparate(row)&&row.id===(latest?.storeId||stock?.autoStock?.storeId));
   const clock=stock?._clock?.available||stock?._clock?.['*'];
   const cycle=stock?.autoStock?`${stock.autoStock.purchaseId}|${stock.autoStock.boughtAt}`:stock?`${stock.id}|${clock?.at||stock.createdAt}|${clock?.id||''}`:`${latest?.id||key}|${latest?.shopBoughtAt||''}`;
-  const catalog=GROCERY_PRODUCTS.find(row=>pantryKey(row.name)===key);
+  const catalog=GROCERY_PRODUCTS.find(row=>stockKey(row.name)===key)||GROCERY_PRODUCTS.find(row=>pantryKey(row.name)===pantryKey(product.name));
   const row={...catalog,...product,quantity:product.quantity||catalog?.quantity||1,unit:product.unit||catalog?.unit||'Stück',key:encodeURIComponent(key)};
   return addToList([row],store?.id||'',actor,at,data.items||[],data.names||data.items||[],`stock-${encodeURIComponent(cycle)}`).ops;
 }

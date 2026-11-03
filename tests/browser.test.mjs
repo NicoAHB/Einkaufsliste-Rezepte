@@ -81,6 +81,8 @@ const answerAsk = async (page, accept = true, ...patterns) => {
   for (const pattern of patterns) assert.match(text, pattern);
   await page.click(accept ? '#ask-ok' : '#ask-cancel');
   await page.locator('#ask-dialog[open]').waitFor({ state: 'detached' });
+  // Die App setzt ihre Aktion nach der Antwort fort (await); einen Takt abwarten, bis sie fertig gezeichnet hat.
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
   return text;
 };
 // Der Planungsdialog ändert Portionen bewusst ausschließlich über seine Pfeile.
@@ -10390,7 +10392,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
   // ---- 2.144: Internationale Produkte auch im Vorrat, klarer Speichern-Knopf, Mülleimer mit „Rückgängig“ für eigene Produkte ----
-  test('2.144: Vorrat: „Internationale Produkte“ wählbar, Sorten mit Bild, „Vorhanden als Reis“, Knopf sagt hinzufügen, entfernen oder aktualisieren', async () => {
+  test('2.144: Vorrat: „Internationale Produkte“ wählbar, Sorten mit Bild, „Reis vorhanden“ (seit 2.145 Sorten getrennt), Knopf sagt hinzufügen, entfernen oder aktualisieren', async () => {
     const data = pantryData278([{ name: 'Reis', available: true }]);
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
     await seedLocal(ctx, data); await open(page); await openPantry(page, 'all');
@@ -10400,7 +10402,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const buckwheat = page.locator('.product-card[data-product=buchweizen]').first();
     assert.equal(await buckwheat.locator('.product-pick').isEnabled(), true);
     assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(), 1, 'eigenes Buchweizenbild');
-    assert.match(await page.locator('.product-card[data-product=sushi-reis]').first().textContent(), /Vorhanden als Reis/);
+    const sushi = page.locator('.product-card[data-product=sushi-reis]').first();
+    assert.match(await sushi.textContent(), /Reis vorhanden/, 'eine andere Sorte der Gruppe ist da');
+    assert.equal(await sushi.locator('.product-pick').getAttribute('aria-pressed'), 'false', 'Sushi-Reis selbst steht nicht im Vorrat');
     const add = page.locator('#product-picker-add');
     await buckwheat.locator('.product-pick').click();
     assert.equal((await add.textContent()).trim(), 'Produkt dem Vorrat hinzufügen');
@@ -10523,6 +10527,36 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const saved = await storedDemo(page);
     assert.equal(saved.aliases.find(row => row.id === 'alias-2145').deletedAt, null);
     assert.ok(saved.productRemovals.every(row => row.deletedAt), 'Löschmarke aufgehoben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.145: Vorrat führt Sorten getrennt; Rezepte zählen jede Sorte der Gruppe ----
+  test('2.145: Basmati-Reis und Reis stehen getrennt im Vorrat; Entfernen trifft nur die Sorte, das Rezept mit „Reis“ zählt den Basmati-Reis', async () => {
+    const data = pantryData278([{ name: 'Reis', available: true }]);
+    data.recipes.push({ id: 'recipe-reis-2145', name: 'Reispfanne', servings: 2, tags: [], instructions: 'Kochen.', createdAt: '2026-10-29T09:00:00.000Z', updatedAt: '2026-10-29T09:00:00.000Z', deletedAt: null, _clock: {} });
+    data.ingredients.push({ id: 'ing-reis-2145', recipeId: 'recipe-reis-2145', name: 'Reis', quantity: 200, unit: 'g', createdAt: '2026-10-29T09:00:00.000Z', updatedAt: '2026-10-29T09:00:00.000Z', deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await openPantry(page, 'all');
+    await page.selectOption('#product-picker-category', 'international');
+    await page.locator('.product-card[data-product=basmati-reis] .product-pick').first().click();
+    await page.click('#product-picker-add'); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    const live = async () => (await storedDemo(page)).pantry.filter(row => !row.deletedAt && row.available !== false).map(row => row.name).sort();
+    assert.deepEqual(await live(), ['Basmati-Reis', 'Reis'], 'zwei Einträge statt einer überschriebenen Gruppe');
+    // Aktueller Vorrat: beide Sorten als eigene Kacheln mit eigenem Bild
+    await page.selectOption('#product-picker-category', ''); await page.click('[data-product-mode=current]');
+    const names = await page.locator('.product-card .product-name').allTextContents();
+    assert.ok(names.includes('Basmati-Reis') && names.includes('Reis'), names.join(', '));
+    assert.equal(await page.locator('.product-card', { hasText: 'Basmati-Reis' }).locator('[data-photo-key=basmati-reis]').count(), 1, 'Katalogbild der Sorte');
+    // Nur „Reis“ entfernen: der Basmati-Reis bleibt
+    await page.locator('.product-card').filter({ has: page.locator('.product-name', { hasText: /^Reis$/ }) }).locator('.product-pick').click();
+    assert.equal((await page.textContent('#product-picker-add')).trim(), 'Aus dem Vorrat entfernen');
+    await page.click('#product-picker-add'); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    assert.deepEqual(await live(), ['Basmati-Reis']);
+    await page.click('#product-picker-dialog [data-close]');
+    // Das Rezept mit „Reis“ zählt den Basmati-Reis mit (Gruppe)
+    await goTab(page, 'recipes');
+    assert.match(await page.locator('.recipe-card', { hasText: 'Reispfanne' }).textContent(), /1 von 1 Zutaten da/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

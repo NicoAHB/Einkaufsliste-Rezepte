@@ -4,7 +4,7 @@
 import { CATEGORIES, isCategory, suggestCategory } from './categories.js';
 import { matchProductName } from './product-names.js';
 import { productKey } from './prices.js';
-import { pantryKey, pantryRows } from './data.js';
+import { pantryKey, pantryRows, stockKey } from './data.js';
 import { amountChoice } from './buying.js';
 
 import { canonicalProductName, productGroup, productGroupById } from './product-groups.js';
@@ -71,7 +71,8 @@ export function internationalProductLibrary(history=[],favorites=[]) {
   return GROCERY_PRODUCTS.filter(isInternationalProduct).map(raw=>{
     const entries=history.filter(row=>productKey(row.name)===productKey(raw.name));
     const fav=favorites.filter(row=>!row.deletedAt&&(row.productId===raw.id||productKey(row.name)===productKey(raw.name))).sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))).at(-1);
-    return {...raw,count:entries.reduce((n,row)=>n+(Number(row.weight)||1)+(row._adds?.length||0),0),...(fav?{favorite:{...fav,ids:[fav.id]},quantity:fav.quantity,unit:fav.unit,...fav.imageKey?{imageKey:fav.imageKey}:{}}:{})};
+    // Genaue Sorten zeigen ihr eigenes Katalogfoto (Sushi-Reis statt des allgemeinen Reisbilds), bis ein Stern ein anderes Bild trägt.
+    return {...raw,imageKey:raw.id,count:entries.reduce((n,row)=>n+(Number(row.weight)||1)+(row._adds?.length||0),0),...(fav?{favorite:{...fav,ids:[fav.id]},quantity:fav.quantity,unit:fav.unit,...fav.imageKey?{imageKey:fav.imageKey}:{}}:{})};
   });
 }
 export function filterProducts(products, { mode = 'all', query = '', category = '', includeOwn = false } = {}) {
@@ -108,25 +109,31 @@ export function pantryProductAllowed(product) {
   // Eindeutige Nicht-Vorräte auch bei selbst eingegebenen Namen ausschließen.
   return !/(?:^| )(?:tv|fernseher|smart ?tv|television|laptop|notebook|computer|monitor|smartphone|handy|tablet|konsole|playstation|xbox|kopfhorer|ladekabel|drucker|blumenerde|rasenmaher|gartenmobel|sofa|sessel|regal|springseil)(?: |$)/.test(searchProductText(product.name));
 }
+/* Vorratsauswahl. Seit 2.145 ist jede Sorte im Vorrat eine eigene Kachel (stockKey): Neben „Reis“ steht „Basmati-Reis“ mit seinem
+   Katalogbild, statt dass die Sorte die Gruppenkachel umbenennt. Häufigkeit und Sterne zählen weiter je Gruppe bzw. Name. */
+const catalogByStock = new Map();
+for (const raw of GROCERY_PRODUCTS) if (!catalogByStock.has(stockKey(raw.name))) catalogByStock.set(stockKey(raw.name), raw);
 export function pantryProductLibrary(history = [], favorites = [], pantry = [], removals = []) {
-  const inventory=new Map(pantryRows(pantry).map(row=>[pantryKey(row.name),row]));
-  const allowed=product=>inventory.has(pantryKey(product.name)) || (pantryProductAllowed(product)&&(catalogNames.has(productKey(product.name))||product.favorite||(product.category&&product.category!=='sonstiges')));
+  const inventory=new Map(pantryRows(pantry).map(row=>[stockKey(row.name),row]));
+  const allowed=product=>inventory.has(stockKey(product.name)) || (pantryProductAllowed(product)&&(catalogNames.has(productKey(product.name))||product.favorite||(product.category&&product.category!=='sonstiges')));
   const merged=new Map();
-  for(const product of productLibrary(history.filter(allowed),favorites.filter(product=>inventory.has(pantryKey(product.name))||pantryProductAllowed(product)),pantry,removals).filter(allowed)){
-    const key=pantryKey(product.name),previous=merged.get(key);
+  for(const product of productLibrary(history.filter(allowed),favorites.filter(product=>inventory.has(stockKey(product.name))||pantryProductAllowed(product)),[],removals).filter(allowed)){
+    const key=stockKey(product.name),previous=merged.get(key);
     if(previous){previous.count+=product.count;previous.favorite ||= product.favorite;if(product.imageKey)previous.imageKey=product.imageKey;}
     else merged.set(key,{...product});
   }
-  return [...merged.entries()].map(([key,product])=>{
-    const row=inventory.get(key);
-    return row?{...product,name:row.name,category:isCategory(row.category)?row.category:product.category,...(row.imageKey?{imageKey:row.imageKey}:{})}:product;
-  });
+  for(const [key,row] of inventory){
+    // Eine Sorte aus dem Katalog zeigt ihr eigenes Foto (imageKey = Katalogkennung), nicht das Bild ihrer Gruppe.
+    const known=merged.get(key)||(catalogByStock.has(key)?{...catalogByStock.get(key),imageKey:catalogByStock.get(key).id,count:0}:{...ownProduct(row.name,row),count:0});
+    merged.set(key,{...known,name:row.name,category:isCategory(row.category)?row.category:known.category,...(row.imageKey?{imageKey:row.imageKey}:{})});
+  }
+  return [...merged.values()];
 }
 export const isPantryBasic = product => basicIds.has(product.id) || productGroupById(product.id)?.ids.some(id=>basicIds.has(id));
 
 // Kategorien und Raster verwenden dieselbe Sammlung, noch ohne Such-/Kategorie-Filter.
 export function pantryProductsForMode(products, mode, available = new Set()) {
-  return products.filter(product => mode === 'current' ? available.has(pantryKey(product.name)) :
+  return products.filter(product => mode === 'current' ? available.has(stockKey(product.name)) :
     mode === 'favorites' ? Boolean(product.favorite) : mode === 'frequent' ? product.count >= 2 :
     mode === 'basics' ? isPantryBasic(product) : true);
 }
