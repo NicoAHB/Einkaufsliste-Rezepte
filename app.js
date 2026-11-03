@@ -392,6 +392,7 @@ function render() {
   if($('#finish-dialog').open)renderFinishStockHint();
   scheduleStockRefresh();
   renderDailyButton();
+  refreshDailyActions();
   form.querySelector('button[type=submit]').disabled = !ready;
   $('#add-recipe').disabled = !ready;
   $('#import-recipe').disabled = !ready;
@@ -2138,7 +2139,7 @@ const knownRecipeKeys = () => new Set(active(state.recipes).flatMap(row => [row.
 // Wie viele sind heute noch offen? null = heute noch nicht geladen.
 // Ein heute geladener, aber leerer Stand der Sammlung (aus der Zeit vor den neuen Rezepten) gilt als veraltet und wird neu geplant.
 const dailyFresh = d => d.day === localDay() && d.source === dailySourceKey() && !(d.builtin && !d.queue.length);
-const dailyLeft = () => { const d = loadDaily(); return dailyFresh(d) ? Math.max(0, d.queue.length - d.index) : null; };
+const dailyLeft = () => { const d = loadDaily(); return dailyFresh(d) ? d.queue.filter(item=>!d.outcome[item.key]).length : null; };
 function renderDailyButton() {
   const left = dailyLeft();
   $('#daily-label').textContent = left === null ? 'Rezepte des Tages' : left === 0 ? 'Rezepte des Tages: alles gesehen' : `Rezepte des Tages · ${left} offen`;
@@ -2237,22 +2238,27 @@ function dailyRecipeNavigation(record,index,review=false){
   $('#daily-review-prev').disabled=index<=0;
   $('#daily-review-next').disabled=index>=record.queue.length-1;
 }
+function rememberDailyView(review){
+  const record=review.record,current=loadDaily(),item=record.queue[review.index];
+  if(!item||record.day!==localDay()||current.day!==record.day||current.source!==record.source)return;
+  current.outcome[item.key]||='seen';
+  if(item.gen===undefined&&!current.decided.includes(item.key))current.decided.push(item.key);
+  while(current.index<current.queue.length&&current.outcome[current.queue[current.index].key])current.index++;
+  record.outcome={...current.outcome};record.index=current.index;saveDaily();renderDailyButton();
+}
 async function showDailyReview() {
   const review = dailyReview, record = review?.record;
   if (!review || review.scope !== namespace() || record.day>localDay()) { dailyReview = null; return showDaily(); }
-  const ticket = ++dailyTicket, item = record.queue[review.index]; dailyButtons(); $('#daily-dialog').scrollTop = 0;
+  const ticket = ++dailyTicket, item = record.queue[review.index];setDailyNote();dailyButtons();$('#daily-content').scrollTop=0;
   renderDailyDays(record.day);
   $('#daily-review-choices').hidden = true;dailyRecipeNavigation(record,review.index,true);
   $('#daily-progress').textContent = `${dailyDayTitle(record.day)}${record.day<localDay()||record.index>=record.queue.length?' erneut':''}${item?` · Rezept ${review.index + 1} von ${record.queue.length}`:''}`;
-  $('#daily-note').textContent = '';
   if(!item){$('#daily-card').replaceChildren(element('h3','Keine gespeicherte Auswahl'),element('p','Für diesen Tag sind auf diesem Gerät keine Tagesrezepte gespeichert. Mit den Tagespfeilen kannst du weiterblättern.'));return;}
   $('#daily-card').replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
   try {
     const draft = await dailyDraft(item, record); if (ticket !== dailyTicket) return;
-    fillDailyCard(draft, item, true); const known = dailyKnown(item, draft);
-    dailyButtons({ add: !known }); $('#daily-add').disabled = !draft.ingredients.length;
-    if (known) $('#daily-note').textContent = 'Dieses Rezept steht bereits in deinen Rezepten.';
-  } catch (error) { if (ticket !== dailyTicket) return; $('#daily-note').textContent = error.message; dailyButtons({ retry: true }); }
+    fillDailyCard(draft, item, true);rememberDailyView(review);refreshDailyActions();
+  } catch (error) { if (ticket !== dailyTicket) return;setDailyNote(error.message);dailyButtons({ retry: true }); }
 }
 function openDailyReview(day,index=0) {
   if(day>localDay())return;
@@ -2260,15 +2266,29 @@ function openDailyReview(day,index=0) {
   if(day===localDay()&&!record?.queue.length){dailyReview=null;return showDaily();}
   dailyReview = { record:record||{day,queue:[],drafts:{},outcome:{}}, index:Math.max(0,Math.min(index,(record?.queue.length||1)-1)), scope: namespace() }; return showDailyReview();
 }
-function dailyButtons({ add = false, skip = false, retry = false } = {}) {
-  $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
-  $('#daily-add').disabled = $('#daily-skip').disabled = false;
+function dailyButtons({ add = false, retry = false } = {}) {
+  $('#daily-add').hidden = !add; $('#daily-retry').hidden = !retry;
+  $('#daily-add').disabled = false;
+  syncDailyFooter();
+}
+function syncDailyFooter(){
+  const note=$('#daily-note');note.hidden=!note.textContent.trim();
+  $('#daily-footer').hidden=note.hidden&&['daily-add','daily-retry'].every(id=>$('#'+id).hidden);
+}
+function setDailyNote(text=''){$('#daily-note').textContent=text;syncDailyFooter();}
+function refreshDailyActions(){
+  if(!$('#daily-dialog').open)return;
+  loadDaily();if(!$('#daily-dialog').open)return;
+  const record=shownDaily(),item=record.queue[dailyReview?dailyReview.index:record.index],draft=item&&dailyDrafts.get(dailyCacheKey(item,record));
+  if(!draft||!$('#daily-card .daily-ingredients'))return;
+  const known=dailyKnown(item,draft);dailyButtons({add:!known});$('#daily-add').disabled=!draft.ingredients.length;
+  setDailyNote(known?'Dieses Rezept wurde bereits hinzugefügt.':'');
 }
 function fillDailyCard(draft, item, full = false) {
   const card = $('#daily-card'); card.replaceChildren();
   card.append(element('h3', draft.name || item.title));
   const time = /Gesamtzeit:\s*([^\n]+)/.exec(draft.instructions || '')?.[1];
-  const facts = [time, draft.servings ? `${format(draft.servings)} Portionen` : '', draft.ingredients.length ? `${draft.ingredients.length} Zutaten` : ''].filter(Boolean);
+  const facts = [time, draft.servings ? `${format(draft.servings)} Portionen` : '', draft.ingredients.length ? `${draft.ingredients.length} ${draft.ingredients.length===1?'Zutat':'Zutaten'}` : ''].filter(Boolean);
   if (facts.length) card.append(element('p', facts.join(' · '), 'daily-facts'));
   if (draft.via === 'text') card.append(element('p', 'Keine strukturierten Rezeptdaten: Zutaten und Schritte sind geschätzt.', 'warn'));
   if (draft.ingredients.length) {
@@ -2288,9 +2308,9 @@ async function showDaily() {
   loadDaily(); if (dailyReview) return showDailyReview();
   renderDailyDays();
   $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = true;
-  const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress'), note = $('#daily-note');
-  note.textContent = ''; dailyButtons();
-  $('#daily-add').disabled = $('#daily-skip').disabled = true;
+  const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress');
+  setDailyNote();dailyButtons();$('#daily-content').scrollTop=0;
+  $('#daily-add').disabled = true;
   try {
     card.replaceChildren(element('p', 'Rezepte werden geladen …', 'hint')); progress.textContent = '';
     const d = await loadDailyList();
@@ -2306,35 +2326,27 @@ async function showDaily() {
     if (d.index >= d.queue.length) {
       const added = Object.values(d.outcome).filter(value => value === 'added').length;
       progress.textContent = '';
-      card.replaceChildren(element('h3', 'Für heute geschafft'), element('p', `${added} von ${d.queue.length} Rezepten hinzugefügt, ${d.queue.length - added} übersprungen oder schon vorhanden. Morgen gibt es neue Vorschläge.`));
+      card.replaceChildren(element('h3', 'Für heute geschafft'), element('p', `${added} von ${d.queue.length} Rezepten hinzugefügt. Alle Vorschläge angesehen. Morgen gibt es neue Vorschläge.`));
       dailyButtons(); dailyReviewChoices(); return;
     }
     const item = d.queue[d.index];
-    dailyRecipeNavigation(d,d.index);
-    progress.textContent = `Rezept ${d.index + 1} von ${d.queue.length}`;
+    const review={record:d,index:d.index,scope:namespace(),fromQueue:true};dailyReview=review;
+    dailyRecipeNavigation(d,review.index);
+    progress.textContent = `Rezept ${review.index + 1} von ${d.queue.length}`;
     card.replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
     const draft = await dailyDraft(item, d);
     if (ticket !== dailyTicket) return;
-    fillDailyCard(draft, item);
-    dailyButtons({ add: true, skip: true });
-    $('#daily-add').disabled = !draft.ingredients.length;
-    const next = d.queue[d.index + 1];
+    fillDailyCard(draft, item,true);rememberDailyView(review);
+    refreshDailyActions();
+    const next = d.queue[review.index + 1];
     if (next) dailyDraft(next, d).catch(() => { /* beim Anzeigen erneut versuchen */ });
   } catch (error) {
     if (ticket !== dailyTicket || error?.name === 'AbortError') return;
-    note.textContent = error.message;
+    setDailyNote(error.message);
     const d = loadDaily(), item = d.queue[d.index];
-    if (item && d.day === localDay()) { card.replaceChildren(element('h3', item.title)); dailyButtons({ skip: true, retry: true }); }
+    if (item && d.day === localDay()) { card.replaceChildren(element('h3', item.title)); dailyButtons({ retry: true }); }
     else { card.replaceChildren(); dailyButtons({ retry: true }); }
   }
-}
-function decideDaily(outcome) {
-  const d = loadDaily(), item = d.queue[d.index];
-  if (!item) return;
-  d.outcome[item.key] = outcome;
-  if (item.gen === undefined && !d.decided.includes(item.key)) d.decided.push(item.key);   // gemerkt wird nur die Sammlung; neu zusammengestellte Rezepte kommen von selbst nicht wieder
-  d.index += 1; saveDaily(); renderDailyButton();
-  return showDaily();
 }
 function addDailyRecipe() {
   const d = shownDaily(), item = d.queue[dailyReview ? dailyReview.index : d.index], draft = item && dailyDrafts.get(dailyCacheKey(item, d));
@@ -2356,7 +2368,6 @@ $('#daily-open').addEventListener('click', () => guard(() => {
 }));
 function confirmDailyRecipe() {
   const added=addDailyRecipe();if(added===null)return;
-  if (!dailyReview) return decideDaily(added ? 'added' : 'known');
   if (added) {
     const record = dailyReview.record, item = record.queue[dailyReview.index], current = loadDaily();
     record.outcome[item.key] = 'added';
@@ -2364,10 +2375,10 @@ function confirmDailyRecipe() {
     else current.history = [...dailyHistory(current, localDay()).filter(row => row.day !== record.day), dailyRecord(record)];
     saveDaily();
   }
-  return showDailyReview();
+  if(dailyReview?.fromQueue){dailyReview=null;return showDaily();}
+  refreshDailyActions();
 }
 $('#daily-add').addEventListener('click', () => guard(confirmDailyRecipe));
-$('#daily-skip').addEventListener('click', () => guard(() => decideDaily('skipped')));
 $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
 $('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; });
 $('#daily-review-today').addEventListener('click', () => guard(() => openDailyReview(localDay())));

@@ -2861,13 +2861,29 @@ body.in-store .tabs {
 }
 .daily-actions button {
   flex:1 1 9rem;
-  min-width:0
+  min-width:0;
+  white-space:normal;
+  flex-wrap:wrap
 }
 /* Der Dialog lässt sich nur auf und ab bewegen, nie zur Seite: Lange Wörter brechen um, nichts darf breiter sein als der Dialog. */
 #daily-dialog {
-  overflow-x:hidden;
+  --daily-max-height:min(92dvh,calc(100dvh - env(safe-area-inset-top) - 12px));
+  max-height:var(--daily-max-height);
+  padding:0;
+  overflow:hidden;
   touch-action:pan-y pinch-zoom
 }
+.daily-shell { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; max-height:var(--daily-max-height); min-height:0; min-width:0; width:100% }
+.daily-header { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; min-width:0; padding:8px 18px 12px; border-bottom:1px solid var(--line); background:var(--card) }
+.daily-header>* { min-width:0 }
+#daily-dialog .sheet-head { margin:0; padding:8px 0 }
+#daily-dialog .daily-header .icon-button,#daily-dialog .daily-day-nav>button { border:2px solid var(--line-strong); background:var(--card); color:var(--accent); box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none }
+#daily-dialog #daily-progress { margin:0 }
+#daily-dialog #daily-review-nav { position:static; margin:0 }
+.daily-content { min-height:0; overflow:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; padding:12px 18px 16px; scroll-padding:12px }
+.daily-footer { padding:12px 18px calc(14px + env(safe-area-inset-bottom)); border-top:1px solid var(--line-strong); background:var(--card) }
+.daily-footer #daily-note { margin:0; font-size:.9rem; line-height:1.4; overflow-wrap:anywhere }
+@media(min-width:700px) { #daily-dialog { --daily-max-height:86dvh } }
 .daily-card,.daily-card * {
   min-width:0;
   max-width:100%;
