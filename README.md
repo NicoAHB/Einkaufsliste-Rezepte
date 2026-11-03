@@ -1,8 +1,8 @@
 # Sattplan
 
-Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Optionen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
-Was sich in den einzelnen Versionen geändert hat, steht im [Änderungsprotokoll](CHANGELOG.md). Die Versionsnummer steht in der App oben unter **Einstellungen**.
+Was sich in den einzelnen Versionen geändert hat, steht im [Änderungsprotokoll](CHANGELOG.md). Die Versionsnummer steht in der App oben unter **Optionen**.
 
 ## 1. Was die App kann
 
@@ -51,9 +51,9 @@ Du kannst Textdateien auch einzeln über **Add file → Create new file** anlege
 4. Branch **main**, Ordner **/ (root)** auswählen und **Save** drücken.
 5. Warten, bis unter **Actions** der Pages-Lauf erfolgreich ist; das kann einige Minuten dauern.
 6. Unter **Settings → Pages** den angezeigten Link öffnen. Für das persönliche Repo lautet er normalerweise `https://nicoahb.github.io/Einkaufsliste-Rezepte/`.
-7. Deinen Namen auswählen. Zunächst läuft die App im **Beispielmodus** (oben steht dann „Nur auf diesem Gerät“; ein Tipp darauf öffnet die Einstellungen zum Verbinden). Hier kannst du gefahrlos ausprobieren. Diese Änderungen werden beim Verbinden **nicht** automatisch ins private Repo kopiert.
+7. Deinen Namen auswählen. Zunächst läuft die App im **Beispielmodus** (oben steht dann „Nur auf diesem Gerät“; ein Tipp darauf öffnet die Optionen zum Verbinden). Hier kannst du gefahrlos ausprobieren. Diese Änderungen werden beim Verbinden **nicht** automatisch ins private Repo kopiert.
 
-**Sicherheit: eine eigene Adresse für die App.** Alle GitHub-Pages-Seiten eines Kontos laufen unter derselben Adresse `https://<konto>.github.io`. Der Pfad dahinter (`/Einkaufsliste-Rezepte/`) trennt den Browserspeicher nicht. Jede andere Pages-Seite unter demselben Konto könnte deshalb den GitHub-Token und die Familiendaten lesen, die die App im Browser speichert. Veröffentliche unter diesem Konto keine weiteren Pages-Seiten. Am sichersten ist eine eigene GitHub-Organisation nur für die App (z. B. `sattplan-familie`, Adresse `https://sattplan-familie.github.io/…`) oder eine eigene Domain unter **Settings → Pages → Custom domain**. Nach einem Umzug ändert sich die Adresse: Die App auf jedem Gerät neu zum Home-Bildschirm hinzufügen, einmal verbinden und im eigenen Hilfsdienst (`worker/recipe-proxy.js`) `ALLOWED_ORIGINS` anpassen. Die App zeigt diesen Hinweis auch unter **Einstellungen → Gemeinsame Liste**, solange sie unter einer `github.io`-Adresse läuft.
+**Sicherheit: eine eigene Adresse für die App.** Alle GitHub-Pages-Seiten eines Kontos laufen unter derselben Adresse `https://<konto>.github.io`. Der Pfad dahinter (`/Einkaufsliste-Rezepte/`) trennt den Browserspeicher nicht. Jede andere Pages-Seite unter demselben Konto könnte deshalb den GitHub-Token und die Familiendaten lesen, die die App im Browser speichert. Veröffentliche unter diesem Konto keine weiteren Pages-Seiten. Am sichersten ist eine eigene GitHub-Organisation nur für die App (z. B. `sattplan-familie`, Adresse `https://sattplan-familie.github.io/…`) oder eine eigene Domain unter **Settings → Pages → Custom domain**. Nach einem Umzug ändert sich die Adresse: Die App auf jedem Gerät neu zum Home-Bildschirm hinzufügen, einmal verbinden und im eigenen Hilfsdienst (`worker/recipe-proxy.js`) `ALLOWED_ORIGINS` anpassen. Die App zeigt diesen Hinweis auch unter **Optionen → Gemeinsame Liste**, solange sie unter einer `github.io`-Adresse läuft.
 
 **Veröffentlichen erst nach grünen Tests (optional, empfohlen).** Der Workflow `.github/workflows/pages.yml` veröffentlicht die App nur, wenn der Workflow „Tests“ auf `main` erfolgreich war. Zum Einschalten unter **Settings → Pages → Build and deployment → Source** „GitHub Actions“ wählen und unter **Settings → Secrets and variables → Actions → Variables** die Variable `PAGES_VIA_ACTIONS` mit dem Wert `true` anlegen. Ohne die Variable bleibt alles wie in Schritt 3 und 4 beschrieben.
 
@@ -93,7 +93,7 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 
 ## 7. App auf jedem Gerät verbinden
 
-1. Auf dem iPhone den Pages-Link öffnen, **Einstellungen** wählen.
+1. Auf dem iPhone den Pages-Link öffnen, **Optionen** wählen.
 2. Den eigenen Namen eintragen (frei wählbar, z. B. **Nico** bzw. den Namen deiner Partnerin). Er erscheint bei deinen Artikeln.
 3. Eigentümer: der **Organisationsname**, z. B. `eure-kueche`, nicht automatisch Nico.
 4. Daten-Repository: `einkauf-daten` (ohne URL).
@@ -108,17 +108,17 @@ Die Repo-Rolle und der Token müssen beide Schreiben erlauben. Geschützte Branc
 ## 8. Speichern, offline arbeiten und Fehler verstehen
 
 - Jede Änderung wird **zuerst lokal gespeichert**. Im GitHub-Modus werden ausstehende Änderungen zusätzlich in einer dauerhaften Warteschlange gespeichert. Bei vollem oder gesperrtem Browserspeicher erscheint ein Fehler; die Änderung wird dann nicht als übernommen dargestellt.
-- Der Status steht oben in einer schmalen Zeile (ein Tipp darauf gleicht ab oder, ohne Verbindung, öffnet die Einstellungen), mit farbigem Punkt: **Gleiche ab …** (blinkend): ein GitHub-Abgleich läuft. **Mit GitHub abgeglichen** (grün): keine ausstehenden lokalen Änderungen. **n Änderung(en) warten** (orange) oder **Fehler · lokal gesichert** (rot): GitHub hat die Änderung noch nicht bestätigt. **Nur auf diesem Gerät**: Beispielmodus.
+- Der Status steht oben in einer schmalen Zeile (ein Tipp darauf gleicht ab oder, ohne Verbindung, öffnet die Optionen), mit farbigem Punkt: **Gleiche ab …** (blinkend): ein GitHub-Abgleich läuft. **Mit GitHub abgeglichen** (grün): keine ausstehenden lokalen Änderungen. **n Änderung(en) warten** (orange) oder **Fehler · lokal gesichert** (rot): GitHub hat die Änderung noch nicht bestätigt. **Nur auf diesem Gerät**: Beispielmodus.
 - Ohne Empfang kannst du nach einem vorherigen erfolgreichen Laden weiterarbeiten. Lass die App bei wiederhergestelltem Empfang geöffnet oder öffne sie erneut. **iOS synchronisiert diese App nicht zuverlässig im Hintergrund.**
 - Die App lädt bei sichtbarer Seite alle acht Sekunden neu. Bei Fehlern wartet sie länger; GitHubs Wartezeit und API-Limits werden berücksichtigt. Manuelles Aktualisieren löst einen erneuten Versuch aus.
-- **Ungültiger/abgelaufener Token (401):** über die Anleitung in Abschnitt 6 einen neuen erstellen und auf dem Gerät unter Einstellungen ersetzen. Die Datenadresse dabei unverändert lassen; dann bleibt die Warteschlange erhalten. Nicht den Browser-Speicher löschen.
+- **Ungültiger/abgelaufener Token (401):** über die Anleitung in Abschnitt 6 einen neuen erstellen und auf dem Gerät unter Optionen ersetzen. Die Datenadresse dabei unverändert lassen; dann bleibt die Warteschlange erhalten. Nicht den Browser-Speicher löschen.
 - **Kein Zugriff (403):** Mitgliedschaft, Write-Rolle, Contents-Berechtigung und Token-Freigabe prüfen. GitHub kann auch wegen eines API-Limits 403 melden. Dann abwarten. Beim Daten-Repo keine erzwungenen Pull Requests für App-Schreibzugriffe voraussetzen.
 - **Nicht gefunden (404):** Eigentümer, Repo, `main` und `daten.json` einschließlich Groß-/Kleinschreibung prüfen. GitHub versteckt private Repos auch bei fehlenden Token-Rechten hinter 404; es ist nicht automatisch eine fehlende Datei.
 - **Schreibkonflikt (409/422):** Die App lädt und mischt bis zu viermal erneut. Bleibt der Fehler, später aktualisieren und Branch-Regeln prüfen. Lokale Änderungen bleiben erhalten.
 - **Versehentlich gelöscht:** Ein gerade abgehakter Artikel lässt sich über **Rückgängig** im kurzen Hinweis wieder öffnen; ein Häkchen setzt man auch durch erneutes Antippen zurück. Gelöschtes legt man neu an. Gelöschte Einkaufsartikel bleiben noch 14 Tage in der Datei (danach räumt die App auf); ältere Stände liegen im Verlauf des privaten Daten-Repositorys.
-- **Nicht übernommene Änderungen (ab 2.137):** Lässt sich eine wartende Änderung nicht mit dem gemeinsamen Stand zusammenführen (z. B. weil ein anderes Gerät inzwischen etwas Unvereinbares gespeichert hat), legt die App sie beiseite und gleicht alle übrigen Änderungen ab. Oben in den Einstellungen erscheint dann **Nicht übernommene Änderungen** mit **Als Datei sichern** und **Verwerfen**.
+- **Nicht übernommene Änderungen (ab 2.137):** Lässt sich eine wartende Änderung nicht mit dem gemeinsamen Stand zusammenführen (z. B. weil ein anderes Gerät inzwischen etwas Unvereinbares gespeichert hat), legt die App sie beiseite und gleicht alle übrigen Änderungen ab. Oben in den Optionen erscheint dann **Nicht übernommene Änderungen** mit **Als Datei sichern** und **Verwerfen**.
 - **Lokaler Speicher beschädigt (ab 2.137):** Lässt sich der Speicher dieses Geräts nicht lesen, öffnet die App eine Notfallansicht. Erst **Lokalen Speicher als Datei sichern**, dann **Lokalen Stand verwerfen und neu laden**. Der gemeinsame Stand auf GitHub bleibt unberührt.
-- **Browserspeicher voll:** **Einstellungen → Datenumfang** zeigt, was auf dem Gerät Platz belegt, und kann den älteren Tagesverlauf löschen. Der Tagesverlauf ist ohnehin auf ein Jahr bzw. rund 400 KB begrenzt.
+- **Browserspeicher voll:** **Optionen → Datenumfang** zeigt, was auf dem Gerät Platz belegt, und kann den älteren Tagesverlauf löschen. Der Tagesverlauf ist ohnehin auf ein Jahr bzw. rund 400 KB begrenzt.
 - **Zweiter Tab:** pro Browser-Ursprung darf nur ein App-Tab aktiv sein, damit zwei Tabs nicht dieselbe lokale Warteschlange überschreiben. Den ersten Tab schließen und den zweiten neu laden. Zwei Geräte sind ausdrücklich unterstützt.
 
 Token und private Daten liegen unverschlüsselt im `localStorage` dieses Browsers. Es werden keine externen Skripte, Analysewerkzeuge oder Schriften geladen. Trotzdem nur auf vertrauenswürdigen Geräten verwenden und Browserdaten nicht löschen, solange Änderungen ausstehen. Andere Seiten unter demselben Pages-Ursprung gehören ebenfalls zu dieser Vertrauensgrenze. **Token entfernen** entfernt die Zugangsdaten; lokale Daten und Warteschlangen bleiben für die spätere erneute Verbindung erhalten. Für vollständiges Entfernen erst synchronisieren und sichern, dann die Website-Daten in den Geräteeinstellungen löschen. Safari im privaten Modus ist für dauerhafte Daten ungeeignet.
@@ -158,7 +158,7 @@ Diese Version ist für einen kleinen gemeinsamen Haushalt gedacht: **maximal 900
 
 ## 10. Backup und Wiederherstellung
 
-Unter **Einstellungen → Datensicherung** sichert **Datensicherung erstellen (JSON)** den aktuellen sichtbaren Stand einschließlich ausstehender Änderungen. **Mit Fotos sichern (ZIP)** enthält zusätzlich erreichbare Rezeptfotos. Fehlende Fotos werden genannt. Backups vertraulich und möglichst außerhalb des Geräts aufbewahren. Token, Verbindungseinstellungen, Rezeptentwürfe und geheime Listen sind nicht enthalten.
+Unter **Optionen → Datensicherung** sichert **Datensicherung erstellen (JSON)** den aktuellen sichtbaren Stand einschließlich ausstehender Änderungen. **Mit Fotos sichern (ZIP)** enthält zusätzlich erreichbare Rezeptfotos. Fehlende Fotos werden genannt. Backups vertraulich und möglichst außerhalb des Geräts aufbewahren. Token, Verbindungseinstellungen, Rezeptentwürfe und geheime Listen sind nicht enthalten.
 
 **Datensicherung wiederherstellen** öffnet eine Datei aus „Dateien“. Die Vorschau zeigt das Ziel und die Zahlen **Aktuell → Sicherung**. Erst nach ausdrücklicher Bestätigung wird der gesamte gemeinsame Stand ersetzt. JSON-Dateien enthalten keine Fotos; bereits auf dem Gerät oder im aktuellen Repository erreichbare Fotos können weiterverwendet werden. Ohne fehlende Fotos fortzufahren braucht eine zusätzliche Bestätigung. Unveränderte ZIP-Dateien aus Sattplan werden unterstützt, neu komprimierte Archive nicht.
 
@@ -197,37 +197,37 @@ Weitere Testpunkte für Version 2.11:
 Weitere Testpunkte für Version 2.9:
 
 - [ ] Rezepte → „Rezepte des Tages · 3 offen“: ohne weitere Einstellung erscheinen drei Rezepte; **Hinzufügen** übernimmt eins mit Zutaten, am zweiten Handy stehen am selben Tag dieselben drei.
-- [ ] Einstellungen: Die Seite lässt sich nicht nach links oder rechts schieben (auch mit verbundener Liste und eingeklappten oder offenen Bereichen).
+- [ ] Optionen: Die Seite lässt sich nicht nach links oder rechts schieben (auch mit verbundener Liste und eingeklappten oder offenen Bereichen).
 
 Weitere Testpunkte für Version 2.8:
 
-- [ ] Link der Tagesrezepte-Seite in den Einstellungen eintragen und speichern. Rezepte → „Rezepte des Tages“: Karten erscheinen, **Hinzufügen** legt ein Rezept an, **Weiter** zeigt den nächsten Vorschlag. (Wenn „keine Rezept-Links gefunden“ erscheint: siehe README, 2.8.)
+- [ ] Link der Tagesrezepte-Seite in den Optionen eintragen und speichern. Rezepte → „Rezepte des Tages“: Karten erscheinen, **Hinzufügen** legt ein Rezept an, **Weiter** zeigt den nächsten Vorschlag. (Wenn „keine Rezept-Links gefunden“ erscheint: siehe README, 2.8.)
 - [ ] Am nächsten Tag erscheinen andere Rezepte; schon entschiedene kommen nicht wieder.
 
 Weitere Testpunkte für Version 2.7:
 
-- [ ] Einstellungen → Gemeinsame Liste: Der Knopf ist grau mit „Gespeichert am …“. Ein Feld ändern: Der Knopf heißt „Speichern“. Mit falschem Token speichern: Fehler, Knopf bleibt aktiv.
+- [ ] Optionen → Gemeinsame Liste: Der Knopf ist grau mit „Gespeichert am …“. Ein Feld ändern: Der Knopf heißt „Speichern“. Mit falschem Token speichern: Fehler, Knopf bleibt aktiv.
 - [ ] Token-Datum auf übermorgen stellen: oben steht „Token läuft in 2 Tagen ab · neuen anlegen“.
 
 Weitere Testpunkte für Version 2.6:
 
 - [ ] Im Laden bei Rossmann: Ein Artikel ohne Geschäft steht dort nicht, bei Edeka schon. Unter „Geschäfte“ lässt es sich pro Geschäft umstellen. Planen → Rossmann: „Angebote“ öffnet die Rossmann-Angebotsseite.
-- [ ] Einstellungen → „Geschäfte anzeigen als“ → Logo: Reiter und Überschriften zeigen die Schriftzüge in Kettenfarben; zurück auf Text.
+- [ ] Optionen → „Geschäfte anzeigen als“ → Logo: Reiter und Überschriften zeigen die Schriftzüge in Kettenfarben; zurück auf Text.
 
 Weitere Testpunkte für Version 2.5:
 
 - [ ] Ins Namensfeld tippen → **Vorlagen**: Liste als Vorlage speichern, einen Artikel löschen, Vorlage auf die Liste setzen. Auf dem zweiten Handy erscheint die Vorlage ebenfalls.
-- [ ] Einstellungen: Bereich aufklappen, App schließen und neu öffnen: derselbe Bereich ist offen.
+- [ ] Optionen: Bereich aufklappen, App schließen und neu öffnen: derselbe Bereich ist offen.
 - [ ] Android: Zeile lange halten und in den roten Mülleimer ziehen; die Seite scrollt dabei nicht, es erscheint kein Kontextmenü.
 
 Weitere Testpunkte für Version 2.3:
 
-- [ ] Einkauf → Planen: oben nur eine schmale Statuszeile, keine Banner; ohne Verbindung öffnet ein Tipp auf „Nur auf diesem Gerät“ die Einstellungen. „Im Laden“ und die Summe brechen nicht um, nichts überlappt (auch bei großer Schrift oder „Zoom“-Anzeige des iPhones).
+- [ ] Einkauf → Planen: oben nur eine schmale Statuszeile, keine Banner; ohne Verbindung öffnet ein Tipp auf „Nur auf diesem Gerät“ die Optionen. „Im Laden“ und die Summe brechen nicht um, nichts überlappt (auch bei großer Schrift oder „Zoom“-Anzeige des iPhones).
 - [ ] Im Laden: ganz oben die Geschäfte und „Planen“, direkt darunter die Artikel; „Planen“ bringt die Planungsansicht zurück. In „Rezepte“ und „Plan“ ist die Kopfzeile wieder da.
 
 Weitere Testpunkte für Version 2.2:
 
-- [ ] Einstellungen → Farbe: Rosé antippen. Alles färbt sich sofort um, auch die Statusleiste oben (iPhone: Hell- und Dunkelmodus prüfen). App schließen und neu öffnen: Die Farbe ist von Anfang an da.
+- [ ] Optionen → Farbe: Rosé antippen. Alles färbt sich sofort um, auch die Statusleiste oben (iPhone: Hell- und Dunkelmodus prüfen). App schließen und neu öffnen: Die Farbe ist von Anfang an da.
 - [ ] Dunkelmodus auf Blau: Text auf Karten, Knöpfen und in den Reitern ist gut lesbar; „Neu von …“ bleibt gelb, der Mülleimer beim Ziehen bleibt rot.
 
 Weitere Testpunkte für Version 2.1:
@@ -240,7 +240,7 @@ Weitere Testpunkte für Version 2.0:
 
 - [ ] Einkauf → Planen: Es steht nur das Namensfeld (das „+“ erscheint rechts im Feld, sobald etwas getippt ist). Hineintippen klappt Geschäft, Menge und Einheit auf; ein Tipp daneben klappt wieder zu. Die erste Artikelzeile ist ohne Scrollen sichtbar.
 - [ ] Einen Artikel antippen: „Artikel & Preis“ öffnet sich; unten „Artikel löschen“ entfernt ihn.
-- [ ] Einstellungen: Nach dem Verbinden steht „Gemeinsame Liste“ unten und eingeklappt; Vorrat und Darstellung stehen oben.
+- [ ] Optionen: Nach dem Verbinden steht „Gemeinsame Liste“ unten und eingeklappt; Vorrat und Darstellung stehen oben.
 - [ ] Optional: Siri-Kurzbefehl „Einkaufsliste“ (siehe oben): „Hey Siri, Einkaufsliste“, „Milch und Eier“. Danach sind beide in der App (in Safari und, falls dort verbunden, auch in GitHub).
 
 Weitere Testpunkte für Version 1.9:
@@ -261,11 +261,11 @@ Weitere Testpunkte für Version 1.8 (auf beiden Geräten aktualisieren):
 
 Weitere Testpunkte für Version 1.6 (auf beiden Geräten aktualisieren):
 
-- [ ] Einstellungen → Datenumfang zeigt einen kleinen Prozentwert. **Jetzt aufräumen** meldet „nichts aufzuräumen“ oder die Zahl entfernter Einträge; die Liste bleibt unverändert, Vorschläge funktionieren weiter (z. B. einen vor Wochen gelöschten Artikel eintippen).
+- [ ] Optionen → Datenumfang zeigt einen kleinen Prozentwert. **Jetzt aufräumen** meldet „nichts aufzuräumen“ oder die Zahl entfernter Einträge; die Liste bleibt unverändert, Vorschläge funktionieren weiter (z. B. einen vor Wochen gelöschten Artikel eintippen).
 - [ ] „Bananen 2 Stück“ und noch einmal „Bananen 3 Stück“ hinzufügen: ein Eintrag mit 5 Stück. Ein Hinweis nennt die neue Menge. „Bananen 1 kg“ ergibt einen zweiten Eintrag.
 - [ ] Ein Rezept auf die Liste übernehmen, dessen Zutat schon auf der Liste steht: Die Menge wird addiert („dazugezählt“).
-- [ ] Einstellungen → Vorrat: „Salz“ und „Olivenöl“ eintragen. Rezept „Auf die Liste“: diese Zutaten sind abgewählt und mit „Vorrat“ gekennzeichnet. Auf dem zweiten Gerät erscheint der Vorrat nach dem Abgleich.
-- [ ] Optional im verbundenen Modus: Ein Rezeptfoto ersetzen, dann Einstellungen → „Nicht mehr genutzte Fotos löschen“ (beide Geräte vorher abgleichen).
+- [ ] Optionen → Vorrat: „Salz“ und „Olivenöl“ eintragen. Rezept „Auf die Liste“: diese Zutaten sind abgewählt und mit „Vorrat“ gekennzeichnet. Auf dem zweiten Gerät erscheint der Vorrat nach dem Abgleich.
+- [ ] Optional im verbundenen Modus: Ein Rezeptfoto ersetzen, dann Optionen → „Nicht mehr genutzte Fotos löschen“ (beide Geräte vorher abgleichen).
 
 Weitere Testpunkte für Version 1.5 (auf beiden Geräten):
 
@@ -290,7 +290,7 @@ Weitere Testpunkte für Version 1.3 (auf dem iPhone):
 - [ ] Rezepte → Import → **Link** mit erlaubten öffentlichen Hilfsdiensten oder mit eurem eigenen Hilfsdienst (Abschnitt 13). Wenn eine Seite sich nicht laden lässt, muss ein verständlicher Hinweis auf „Text“ erscheinen.
 - [ ] Importiertes Rezept auf die Liste übernehmen: „nach Bedarf“-Zutaten sind abgewählt, Mengen folgen den Portionen.
 - [ ] Ein Rezept aufklappen und 20 Sekunden stehen lassen: es darf sich nicht von selbst schließen.
-- [ ] Einstellungen → „Alle Daten als JSON sichern“: der Teilen-Dialog erscheint; „In Dateien sichern“ funktioniert.
+- [ ] Optionen → „Alle Daten als JSON sichern“: der Teilen-Dialog erscheint; „In Dateien sichern“ funktioniert.
 - [ ] Optional: Kurzbefehl „Rezept importieren“ aus dem Teilen-Menü von Safari.
 
 ## 12. Für die Weiterentwicklung
@@ -349,7 +349,7 @@ Mit einem eigenen Hilfsdienst lädt der Link-Import zuverlässig und ohne öffen
 3. **Edit code** wählen, den gesamten Beispielcode löschen und den Inhalt der Datei `worker/recipe-proxy.js` aus diesem Repository einfügen.
 4. Oben im Code die Zeile `const ALLOWED_ORIGINS = ['https://nicoahb.github.io'];` prüfen: dort muss der Ursprung eurer App stehen, also der Pages-Link **ohne Pfad** (bei `https://nicoahb.github.io/Einkaufsliste-Rezepte/` ist es `https://nicoahb.github.io`). Bei einem anderen Konto entsprechend ändern.
 5. **Deploy**. Die Adresse des Dienstes endet auf `.workers.dev`, z. B. `https://rezepte.dein-name.workers.dev`.
-6. In der App: **Einstellungen → Rezepte aus Links laden**, die Adresse bei „Eigener Hilfsdienst“ eintragen, **Import-Einstellungen speichern**, dann **Eigenen Hilfsdienst testen**. Es muss „Hilfsdienst funktioniert“ erscheinen.
+6. In der App: **Optionen → Rezepte aus Links laden**, die Adresse bei „Eigener Hilfsdienst“ eintragen, **Import-Einstellungen speichern**, dann **Eigenen Hilfsdienst testen**. Es muss „Hilfsdienst funktioniert“ erscheinen.
 
 7. **Empfohlen: Schlüssel einrichten.** Die Prüfung des Absenders allein schützt nur vor fremden Webseiten, nicht vor Programmen, die die Adresse kennen. Bei Cloudflare unter **Worker → Settings → Variables and Secrets** eine Variable `ACCESS_KEY` mit einer langen Zufallszeichenfolge anlegen (z. B. 30 Buchstaben und Ziffern) und **Deploy**. In der App die Adresse dann mit Schlüssel eintragen: `https://rezepte.dein-name.workers.dev/?key=DEINE-ZEICHENFOLGE`. Ohne passenden Schlüssel antwortet der Dienst mit „403“. Weiterleitungen prüft der Dienst einzeln (nur `https`, keine privaten Adressen, höchstens drei Sprünge).
 

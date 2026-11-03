@@ -149,7 +149,7 @@ export function scrollHints(selector = '.chips, .product-modes') {
 }
 
 /* Untere Leiste: Die fünf Symbole stehen in gleichmäßigen Abständen (gleich breite Reiter). Dafür wird die Beschriftung höchstens
-   so weit verkleinert, dass auch das längste Wort („Einstellungen“) vollständig in seinen Reiter passt. Wäre die Schrift dann kleiner
+   so weit verkleinert, dass auch das längste Wort („Ausgaben“, „Optionen“; bis 2.140 „Einstellungen“) vollständig in seinen Reiter passt. Wäre die Schrift dann kleiner
    als `minFont`, bleibt die Aufteilung nach Wortlänge (sehr schmale Bildschirme), damit jede Beschriftung lesbar bleibt. */
 export function evenTabs(bar, minFont = 9.5) {
   if (!bar) return;
@@ -162,7 +162,8 @@ export function evenTabs(bar, minFont = 9.5) {
     const column = inner / buttons.length, base = parseFloat(getComputedStyle(buttons[0]).fontSize);
     const widest = Math.max(...buttons.map(button => { const label = button.querySelector('.tab-label'); if (!label) return 0; const range = document.createRange(); range.selectNodeContents(label); return range.getBoundingClientRect().width; }));
     if (!(widest > 0) || !(column > 0) || !(base > 0)) return;
-    const font = Math.min(base, base * (column - 4) / widest);
+    // Je Reiter mindestens 12 px Luft (6 px je Seite), damit zwei lange Wörter nebeneinander nicht zusammenrücken (sehr schmale Telefone).
+    const font = Math.min(base, base * (column - 12) / widest);
     if (font < minFont) return;
     bar.style.setProperty('--tab-font', `${Math.floor(font * 10) / 10}px`); bar.classList.add('even-tabs');
   };

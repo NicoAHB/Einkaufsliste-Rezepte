@@ -10289,6 +10289,27 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.141: „Optionen“ statt „Einstellungen“: kein Wort muss mehr verkleinert werden, die Lücken zwischen den Wörtern sind ausgewogen ----
+  for (const width of [320, 375, 390, 430]) test(`2.141: untere Leiste bei ${width}px: Einkauf, Rezepte, Plan, Ausgaben, Optionen in voller Schrift und mit ausgewogenen Lücken`, async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width, height: 800 } } });
+    await open(page);
+    assert.deepEqual(await page.locator('.tabs .tab-label').allTextContents(), ['Einkauf', 'Rezepte', 'Plan', 'Ausgaben', 'Optionen']);
+    const bar = await page.evaluate(() => {
+      const nav = document.querySelector('.tabs'), base = parseFloat(getComputedStyle(nav.querySelector('button')).fontSize);
+      return { even: nav.classList.contains('even-tabs'), labels: [...nav.querySelectorAll('.tab-label')].map(node => { const range = document.createRange(); range.selectNodeContents(node); const text = range.getBoundingClientRect(), cell = node.closest('button').getBoundingClientRect();
+        return { left: text.left, right: text.right, font: parseFloat(getComputedStyle(node).fontSize), room: Math.min(text.left - cell.left, cell.right - text.right) }; }), base: parseFloat(nav.style.getPropertyValue('--tab-font')) || base };
+    });
+    assert.equal(bar.even, true, 'gleich breite Reiter auch auf schmalen Telefonen');
+    assert.ok(bar.labels.every(label => Math.abs(label.font - bar.labels[0].font) < 0.05) && bar.labels[0].font >= (width < 360 ? 10 : 11.4), `volle, gleiche Schrift: ${bar.labels.map(label => label.font)}`);
+    const gaps = bar.labels.slice(1).map((label, index) => label.left - bar.labels[index].right);
+    assert.ok(Math.min(...gaps) >= Math.max(...gaps) / 2.5 && Math.min(...gaps) >= (width < 360 ? 8 : 14), `Lücken zwischen den Wörtern: ${gaps.map(Math.round).join(', ')}`);
+    assert.ok(bar.labels.every(label => label.room >= 3), 'kein Wort stößt an den Rand seines Reiters');
+    // Seite und Anleitung heißen ebenso
+    await openSettings(page);
+    assert.equal(await page.textContent('#settings-title'), 'Optionen');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
   // ---- 2.139 (E1): Papierkorb „Kürzlich gelöscht“ ----
   test('2.139: gelöschter Artikel landet im Papierkorb, lässt sich wiederherstellen und rückgängig machen; Gekauftes erscheint nicht', async () => {
     const data = structuredClone(demo);

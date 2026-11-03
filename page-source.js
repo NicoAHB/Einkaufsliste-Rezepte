@@ -62,7 +62,7 @@ export async function fetchRecipePage(link, options = {}, signal) {
   if (target.startsWith('http://')) target = `https://${target.slice(7)}`;
   const routes = importRoutes(target, options);
   if (!routes.length) {
-    const error = new Error('Zum Laden einer Webseite braucht die App einen Hilfsdienst, weil Browser fremde Seiten nicht direkt lesen dürfen. Erlaube unten den öffentlichen Hilfsdienst oder richte in den Einstellungen einen eigenen ein. Alternativ: Seite öffnen, Text kopieren und unter „Text“ einfügen.');
+    const error = new Error('Zum Laden einer Webseite braucht die App einen Hilfsdienst, weil Browser fremde Seiten nicht direkt lesen dürfen. Erlaube unten den öffentlichen Hilfsdienst oder richte in den Optionen einen eigenen ein. Alternativ: Seite öffnen, Text kopieren und unter „Text“ einfügen.');
     error.code = 'no-route'; throw error;
   }
   const failures = [];
