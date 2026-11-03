@@ -95,7 +95,7 @@ test('Seite mit schema.org-Rezept wird vollständig übernommen', () => {
   assert.equal(recipe.sourceUrl, 'https://www.chefkoch.de/rezepte/1');
   assert.deepEqual(recipe.tags, ['Pasta', 'schnell', 'Hauptspeise', 'Italien']);
   assert.deepEqual(recipe.ingredients.map(row => `${row.quantity} ${row.unit} ${row.name}`), [
-    '400 g Spaghetti', '150 g Schinkenspeck', '2 Stück Ei(er)', '100 g Parmesan', `1 ${NO_AMOUNT} Salz und Pfeffer`, '1 EL Olivenöl']);
+    '400 g Spaghetti', '150 g Schinkenspeck', '2 Stück Eier', '100 g Parmesan', `1 ${NO_AMOUNT} Salz und Pfeffer`, '1 EL Olivenöl']);
   assert.equal(recipe.instructions, 'Gesamtzeit: 30 Min.\n\n1. Spaghetti in Salzwasser kochen.\n\n2. Speck in der Pfanne ausbraten.\n\n3. Eier mit Käse verrühren.');
 });
 
@@ -187,4 +187,27 @@ test('Eingefügtes JSON-LD und eingefügtes HTML werden erkannt', () => {
   assert.equal(recipeFromAnyText(chefkoch, 'https://www.chefkoch.de/').name, 'Spaghetti Carbonara');
   assert.equal(recipeFromAnyText('Zutaten\n2 Eier\n1 Prise Salz\nZubereitung\nKochen.').via, 'text');
   assert.equal(recipeFromAnyText('x', 'javascript:alert(1)').sourceUrl, '');
+});
+
+test('Chefkoch-Schreibweisen: Pluralendungen, Packungsgrößen, „2 x 200 g“, n. B., gehäuft und Größe vor der Einheit', () => {
+  const cases = [
+    ['2 Ei(er)', { name: 'Eier', quantity: 2, unit: 'Stück' }],
+    ['1 Ei(er)', { name: 'Ei', quantity: 1, unit: 'Stück' }],
+    ['1 Zwiebel(n)', { name: 'Zwiebel', quantity: 1, unit: 'Stück' }],
+    ['3 Tomate(n)', { name: 'Tomaten', quantity: 3, unit: 'Stück' }],
+    ['2 Zehe/n Knoblauch', { name: 'Knoblauch', quantity: 2, unit: 'Zehen' }],
+    ['1 Zehe/n Knoblauch', { name: 'Knoblauch', quantity: 1, unit: 'Zehe' }],
+    ['2 Zehe(n) Knoblauch', { name: 'Knoblauch', quantity: 2, unit: 'Zehen' }],
+    ['1 Dose (400 g) Tomaten', { name: 'Tomaten (à 400 g)', quantity: 1, unit: 'Dose' }],
+    ['2 x 200 g Joghurt', { name: 'Joghurt', quantity: 400, unit: 'g' }],
+    ['2×150g Mozzarella', { name: 'Mozzarella', quantity: 300, unit: 'g' }],
+    ['n. B. Salz', { name: 'Salz', quantity: 1, unit: NO_AMOUNT }],
+    ['Pfeffer, n. B.', { name: 'Pfeffer', quantity: 1, unit: NO_AMOUNT }],
+    ['1 EL, gehäuft Mehl', { name: 'Mehl (gehäuft)', quantity: 1, unit: 'EL' }],
+    ['1 TL Zucker, gestrichen', { name: 'Zucker (gestrichen)', quantity: 1, unit: 'TL' }],
+    ['1 kleine Dose Mais', { name: 'Mais (kleine Dose)', quantity: 1, unit: 'Dose' }],
+    ['3 große Eier', { name: 'große Eier', quantity: 3, unit: 'Stück' }],
+    ['Zwiebel(n)', { name: 'Zwiebeln', quantity: 1, unit: NO_AMOUNT }],
+  ];
+  for (const [input, expected] of cases) assert.deepEqual(parseIngredientLine(input), expected, input);
 });

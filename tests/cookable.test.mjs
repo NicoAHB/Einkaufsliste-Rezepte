@@ -161,3 +161,11 @@ test('Nur Vorrat ist Standard; Einkauf und Kaufdatum machen Zutaten niemals auto
  assert.equal(availability('KAROTTE',indexNames(namesFrom({pantry,items}))),'have');
  for(const name of ['Salz','Pfeffer','Wasser'])assert.equal(required(row('x',name,'g')),false);
 });
+
+test('Gespeicherte Chefkoch-Namen werden im Vorrat erkannt, beschreibende Zusätze bleiben bedeutend', () => {
+  const index = indexNames({ have: ['Eier', 'Zwiebeln', 'Knoblauch', 'Tomaten', 'Mehl', 'Mais', 'Milch'] });
+  for (const name of ['Ei(er)', 'Zwiebel(n)', '/n Knoblauch', 'Tomaten (à 400 g)', 'Tomaten (400 g)', 'Mehl (gehäuft)', 'Mais (kleine Dose)'])
+    assert.equal(availability(name, index), 'have', name);
+  assert.equal(availability('Milch (laktosefrei)', index), 'missing', 'laktosefrei bleibt eine eigene Produktart');
+  assert.equal(availability('Tomatenmark', index), 'missing');
+});

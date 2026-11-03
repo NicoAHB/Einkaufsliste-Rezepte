@@ -115,7 +115,25 @@ const sizeWord='(?:klein|gross|mittelgross)(?:e|en|er|es|em)?';
 const produceWord='(?:reif|uberreif|unreif|frisch)(?:e|en|er|es|em)?';
 const descriptor=new RegExp(`^(?:(?:(?:sehr|gut|voll) )?(?:${sizeWord}|${produceWord}))(?: (?:(?:sehr|gut|voll) )?(?:${sizeWord}|${produceWord}))*$`);
 const sizesOnly=new RegExp(`^(?:(?:sehr|gut|voll) )?${sizeWord}(?: (?:(?:sehr|gut|voll) )?${sizeWord})*$`);
-export function ingredientProductName(name) {
+/* Schreibweisen von Rezeptseiten, die keine eigene Produktart bezeichnen: Pluralendungen von Chefkoch
+   („Ei(er)“, „Zwiebel(n)“, „Zehe/n“ und das davon übrig gebliebene „/n Knoblauch“) sowie reine Mengen-
+   und Packungsnotizen in Klammern („Tomaten (à 400 g)“, „Mehl (gehäuft)“). Beschreibende Zusätze wie
+   „(laktosefrei)“ oder „(Magerquark)“ bleiben bedeutend. */
+const LETTER='A-Za-zÄÖÜäöüß';
+const PLURAL_MARK=new RegExp(`([${LETTER}])\\((n|en|e|er|s|nen)\\)(?![${LETTER}])`,'g');
+const SLASH_PLURAL=new RegExp(`([${LETTER}])\\/(?:n|en|e|er|s|nen)(?![${LETTER}])`,'g');
+const AMOUNT_NOTE=/\s*\((?:(?:à|a|je|ca\.?|circa|etwa|insgesamt|zusammen)\s*)?\d[\d.,/]*\s*(?:(?:-|–|bis)\s*\d[\d.,/]*\s*)?(?:[A-Za-zÄÖÜäöüß]{1,12}\.?)?\s*\)/g;
+const MEASURE_NOTE=/\s*\((?:leicht |gut |knapp )?(?:gehäuft|gestrichen|kleine?[rs]?|große?[rs]?|mittelgroße?[rs]?)(?:\s+(?:Dose|Packung|Becher|Glas|Flasche|Tüte|Stück))?\)/gi;
+// Für neue Listenzeilen aus älteren Rezepten: nur die Chefkoch-Pluralendungen bereinigen, Packungsnotizen bleiben stehen.
+export const withoutPluralMarks = name => { const text=String(name??''), clean=text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1').replace(/\s+/g,' ').trim(); return clean||text; };
+export function recipeNameCore(name) {
+  const text=String(name??'');
+  const core=text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1')
+    .replace(AMOUNT_NOTE,'').replace(MEASURE_NOTE,'').replace(/\s+/g,' ').trim();
+  return core||text;
+}
+export function ingredientProductName(original) {
+  const name=recipeNameCore(original);
   // Leitungswasser im Rezept ist kein Mineralwasser/Getränk aus der Katalogfamilie „Wasser“.
   const exact=productGroup(name); if(exact)return exact.id==='wasser'?name:exact.name;
   const words=groupNameKey(name).split(' ');
@@ -134,7 +152,7 @@ export function ingredientProductName(name) {
 // Die freie Eingabe selbst verwendet diese Funktion nicht und behält ihren Namen.
 export function reuseProductNames(rows,items,storeId) {
   const open=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&(row.storeId || '')===(storeId || ''));
-  return rows.map(row=>{const key=spellingStem(ingredientProductName(row.name)),existing=key&&open.find(item=>spellingStem(ingredientProductName(item.name))===key);return existing?{...row,name:existing.name}:row;});
+  return rows.map(row=>{const key=spellingStem(ingredientProductName(row.name)),existing=key&&open.find(item=>spellingStem(ingredientProductName(item.name))===key);if(existing)return {...row,name:existing.name};const clean=withoutPluralMarks(row.name);return clean===row.name?row:{...row,name:clean};});
 }
 
 // Feldweise, idempotente Migration. Keine IDs, Mengen, Preise oder Löschmarkierungen ändern.

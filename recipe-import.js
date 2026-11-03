@@ -50,8 +50,19 @@ for (const alias of ['pck', 'pkg', 'pack']) PLURAL_LOOKUP.set(alias, PLURALS[2])
 PLURAL_LOOKUP.set('msp', PLURALS[13]);
 // Wörter, die im Deutschen Mengenangaben sind, aber in der Mehrzahl gleich bleiben oder idiomatisch benutzt werden.
 const PLAIN_UNITS = new Set(['bund', 'bünde', 'blatt', 'blätter', 'glas', 'gläser', 'becher', 'handvoll', 'schuss', 'spritzer', 'würfel', 'streifen', 'hauch', 'bündel', 'päckchen']);
-const FILLER = /^(?:(?:ca|circa|etwa|ungefähr|evtl|eventuell|optional|etwas)[.:]?\s+|~\s*|nach\s+(?:geschmack|belieben|bedarf)\s+)/i;
-const TRAILING_FILLER = /[,;]?\s*\(?(?:nach\s+(?:geschmack|belieben|bedarf)|optional|evtl\.?|bei\s+bedarf|zum\s+abschmecken)\)?\s*$/i;
+const FILLER = /^(?:(?:ca|circa|etwa|ungefähr|evtl|eventuell|optional|etwas)[.:]?\s+|~\s*|nach\s+(?:geschmack|belieben|bedarf)\s+|n\.\s?b\.\s*)/i;
+const TRAILING_FILLER = /[,;]?\s*\(?(?:nach\s+(?:geschmack|belieben|bedarf)|optional|evtl\.?|bei\s+bedarf|zum\s+abschmecken|n\.\s?b\.)\)?\s*$/i;
+// Chefkoch schreibt Einzahl und Mehrzahl zusammen: „2 Ei(er)“, „1 Zwiebel(n)“, „2 Zehe/n Knoblauch“.
+// Bei genau 1 bleibt die Einzahl, sonst entsteht die Mehrzahl.
+const LETTERS = 'A-Za-zÄÖÜäöüß';
+const PLURAL_MARK = new RegExp(`([${LETTERS}])(?:\\((n|en|e|er|s|nen)\\)|\\/(n|en|e|er|s|nen))(?![${LETTERS}])`, 'g');
+const pluralForm = (text, quantity) => text.replace(PLURAL_MARK, (all, last, paren, slash) => quantity === 1 ? last : last + (paren || slash));
+// Angaben wie „gehäuft“ oder „gestrichen“ gehören zur Einheit, nicht zum Produkt.
+const MEASURE_HINT = '(?:leicht |gut |knapp )?(?:gehäuft|gestrichen)(?:e[nrs]?)?';
+const LEADING_HINT = new RegExp(`^\\s*,?\\s*(${MEASURE_HINT})\\s*,?\\s+(.+)$`, 'i');
+const TRAILING_HINT = new RegExp(`\\s*,\\s*(${MEASURE_HINT})\\s*$`, 'i');
+// Größe vor der Packungseinheit: „1 kleine Dose Mais“.
+const SIZE_BEFORE_UNIT = /^\s*((?:kleine|große|mittelgroße|mittlere)[nrs]?)\s+/i;
 
 function number(text) {
   let m;
@@ -105,14 +116,37 @@ export function parseIngredientLine(raw) {
   let found = amount(line);
   if (found) {
     const quantity = found[0];
-    let rest = line.slice(found[1]);
+    let rest = pluralForm(line.slice(found[1]), quantity);
+    // „2 x 200 g Joghurt“ oder „2×200g“: zusammen 400 g.
+    const times = /^\s*[x×]\s*/i.exec(rest), inner = times && number(rest.slice(times[0].length));
+    if (inner) {
+      const afterInner = rest.slice(times[0].length + inner[1]), innerUnit = unitOf(afterInner, inner[0]);
+      if (innerUnit && Object.hasOwn(MEASURES, afterInner.trim().split(/[\s.]/)[0].toLocaleLowerCase('de'))) {
+        const innerName = cleanName(afterInner.slice(innerUnit.length));
+        const total = quantity * inner[0] * innerUnit.factor;
+        if (innerName && total > 0 && Number.isFinite(total)) return { name: innerName.slice(0, 120), quantity: Math.round(total * 1000) / 1000, unit: innerUnit.unit };
+      }
+    }
     // „200g“ ohne Leerzeichen und „200 g“ werden gleich behandelt.
-    const unit = unitOf(rest, quantity);
-    let name, outUnit = 'Stück', outQuantity = quantity;
+    let unit = unitOf(rest, quantity), size = '';
+    const sized = !unit && SIZE_BEFORE_UNIT.exec(rest);
+    if (sized) {
+      const sizedUnit = unitOf(rest.slice(sized[0].length), quantity);
+      if (sizedUnit && !Object.hasOwn(MEASURES, rest.slice(sized[0].length).trim().split(/[\s.]/)[0].toLocaleLowerCase('de'))) {
+        unit = sizedUnit; rest = rest.slice(sized[0].length); size = `${sized[1]} ${sizedUnit.unit}`;
+      }
+    }
+    let name, outUnit = 'Stück', outQuantity = quantity, hint = '';
     if (unit) { outUnit = unit.unit; outQuantity = quantity * unit.factor; rest = rest.slice(unit.length); }
-    // „1 Dose à 400 g Tomaten“: Packungsgröße als Hinweis hinter dem Namen behalten.
-    const pack = /^\s*(?:à|a|je)\s*([\d.,/]+\s*[A-Za-zäöü]+)\.?\s+(.+)$/i.exec(rest);
-    name = pack ? `${cleanName(pack[2])} (à ${pack[1].replace(/\s+/g, ' ')})` : cleanName(rest);
+    const leading = LEADING_HINT.exec(rest);
+    if (leading) { hint = leading[1]; rest = leading[2]; }
+    const trailing = TRAILING_HINT.exec(rest);
+    if (trailing) { hint ||= trailing[1]; rest = rest.slice(0, trailing.index); }
+    // „1 Dose à 400 g Tomaten“ und „1 Dose (400 g) Tomaten“: Packungsgröße als Hinweis hinter dem Namen behalten.
+    const pack = /^\s*(?:(?:à|a|je)\s*([\d.,/]+\s*[A-Za-zäöü]+)\.?|\(\s*(?:(?:à|a|je|ca\.?)\s*)?([\d.,/]+\s*[A-Za-zäöü]+)\.?\s*\))\s+(.+)$/i.exec(rest);
+    name = pack ? `${cleanName(pack[3])} (à ${(pack[1] || pack[2]).replace(/\s+/g, ' ')})` : cleanName(rest);
+    if (name && hint) name = `${name} (${hint.toLocaleLowerCase('de')})`;
+    if (name && size) name = `${name} (${size.toLocaleLowerCase('de').replace(/^(\S+) (\S)/, (all, word, first) => `${word} ${first.toLocaleUpperCase('de')}`)})`;
     if (!name) return null;
     if (!(outQuantity > 0) || !Number.isFinite(outQuantity)) return { name, quantity: 1, unit: NO_AMOUNT };
     return { name: name.slice(0, 120), quantity: Math.round(outQuantity * 1000) / 1000, unit: outUnit };
@@ -123,7 +157,7 @@ export function parseIngredientLine(raw) {
     const parsed = parseIngredientLine(trailing[2] + ' ' + trailing[1]);
     if (parsed && parsed.unit !== NO_AMOUNT) return parsed;
   }
-  const name = cleanName(line.replace(TRAILING_FILLER, ''));
+  const name = cleanName(pluralForm(line.replace(TRAILING_FILLER, ''), 2));
   return name ? { name, quantity: 1, unit: NO_AMOUNT } : null;
 }
 
