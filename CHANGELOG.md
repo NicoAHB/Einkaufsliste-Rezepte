@@ -2,6 +2,39 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.146: Eigene Rückfragen, Papierkorb für alles, Vorratssorten getrennt, Vorbereitung für eine App
+
+**Rückfragen im Stil der App.** Alle 15 Rückfragen (z. B. Artikel oder Rezept löschen, Papierkorb leeren, Liste freigeben, Token entfernen) erscheinen nicht mehr als graues Browser-Fenster, sondern als eigenes Fenster der App:
+- mittig, mit Überschrift, kurzem Text und beschrifteten Knöpfen („Löschen“, „Freigeben“, „Verwerfen“ statt „OK“),
+- bei Löschen ist der Knopf rot, und der Fokus liegt zuerst auf „Abbrechen“,
+- Escape oder ein Tipp daneben brechen ab; Hell/Dunkel und Farbe folgen der App.
+Nach der Antwort liest die App den Stand neu, falls ein Abgleich inzwischen etwas geändert hat. Neues Modul `ask.js`.
+
+**Papierkorb für alles.** „Kürzlich gelöscht“ zeigt jetzt auch:
+- **eigene Produkte**: kommen samt Stern zurück; Hinweis „Kürzlich gelöschte eigene Produkte (n)“ unter „Eigene“,
+- **gemerkte Schreibweisen**: Hinweis direkt bei den Schreibweisen in den Optionen,
+- **Ausgabenkategorien**: kommen ohne Weiterleitung zurück; Buchungen bleiben bei der Ersatzkategorie.
+Nicht dabei sind geheime Listen (nur auf diesem Gerät, das Löschen fragt ausdrücklich nach) und Personen (werden archiviert und lassen sich dort zurückholen).
+
+**Vorrat führt Sorten getrennt.**
+- „Basmati-Reis“ und „Reis“ sind zwei Einträge mit eigenen Kacheln und eigenen Fotos. Sie werden einzeln hinzugefügt, entfernt und aufgebraucht; „Letzte 7 Tage gekauft“ und Smart Stock arbeiten ebenso.
+- Gleiche Wörter bleiben gleich: „Äpfel“/„Apfel“, „Knoblauchzehen“/„Knoblauch“, „Tomaten, gehackt“/„Tomaten“.
+- **Rezepte, Wochenplan und Einkaufszettel prüfen weiter nach Gruppe:** Ein Rezept mit „Reis“ zählt jede Reissorte im Vorrat mit. So kommt nichts auf den Zettel, was schon (in einer anderen Sorte) da ist.
+- Eine Kachel nennt andere vorhandene Sorten derselben Gruppe, z. B. „Reis vorhanden“ auf „Sushi-Reis“.
+- Wie die Ansicht „Internationale Produkte“ seit 2.145 zeigt auch der Vorrat das Foto der Sorte statt des Gruppenbilds.
+- Technisch: neuer Schlüssel `stockKey` (Sorte) neben `pantryKey` (Gruppe).
+
+**Vorbereitung für eine App (iOS/Android).**
+- Neues Modul `platform.js` bündelt Dateien weitergeben, Haptik, externe Links und den Service Worker. Eine spätere App passt nur diese Datei an.
+- Fahrplan mit Store-Anforderungen, Backend-Empfehlung und Rechtlichem in [`docs/APP-STORE.md`](docs/APP-STORE.md).
+
+**Tests.**
+- Neue Browser- und Logiktests für die Rückfragen, den Papierkorb und getrennte Sorten.
+- Die Test-Helfer warten jetzt verlässlicher: auf die verarbeitete Antwort statt auf einen festen Takt, und auf eine leere Warteschlange statt nur auf den grünen Status.
+- Die Tests für geheime Listen laufen auch unter fünffacher Last stabil.
+
+Offline-Paket `einkauf-shell-v158`.
+
 ## Neu in Version 2.145: passende Bilder für internationale Varianten
 
 - Internationale Produkte verwenden das Foto der genauen Sorte: Mie-Nudeln statt des allgemeinen Nudelbildes, Sesamöl statt Olivenöl, rotes Pesto statt grünem Pesto und schwarze statt rote Bohnen. Die vorhandenen Einzelbilder werden weiterverwendet.

@@ -75,3 +75,36 @@ test('Papierkorb leeren: Einträge sind endgültig weg, das Aufräumen entfernt 
   assert.equal(isPurged(again), false);
   assert.equal(trashEntries({ ...data, items: [again] }, now + 2000).some(entry => entry.id === 'Tomaten'), true);
 });
+
+test('2.145: eigene Produkte, Schreibweisen und Kategorien im Papierkorb – mit Wiederherstellen, Rückgängig und Leeren', async () => {
+  const { undoRestoreChanges, purgeChanges } = await import('../trash.js');
+  const { expenseCategoryId } = await import('../expense-categories.js');
+  const t = offset => new Date(now - offset).toISOString(), grill = expenseCategoryId('Grillen'), spare = expenseCategoryId('Freizeit');
+  let data = merge(emptyData(), [
+    operation('productFavorites', 'fav-keckd', { name: 'Keckd', productId: null, quantity: 1, unit: 'Stück', category: 'sonstiges', deletedAt: null }, 'Nico', t(3 * HOUR)),
+    operation('productRemovals', 'own-keckd', { name: 'Keckd', deletedAt: null }, 'Nico', t(HOUR)),
+    operation('productFavorites', 'fav-keckd', { deletedAt: t(HOUR) }, 'Nico', t(HOUR)),
+    operation('productRemovals', 'own-alt', { name: 'Alt', deletedAt: null }, 'Nico', t((TRASH_DAYS + 2) * DAY)),
+    operation('aliases', 'alias-1', { from: 'tomatn', name: 'Tomaten', deletedAt: null }, 'Nico', t(2 * DAY)),
+    operation('aliases', 'alias-1', { deletedAt: t(2 * HOUR) }, 'Nico', t(2 * HOUR)),
+    operation('expenseCategories', grill, { name: 'Grillen', sortOrder: 0, deletedAt: null }, 'Nico', t(3 * DAY)),
+    operation('expenseCategories', spare, { name: 'Freizeit', sortOrder: 1, deletedAt: null }, 'Nico', t(3 * DAY)),
+    operation('expenseCategories', grill, { name: 'Grillen', sortOrder: 0, deletedAt: t(30 * 60000), replacementId: spare }, 'Nico', t(30 * 60000))
+  ].map((op, index) => ({ ...op, id: `op-${index}` })));
+  const entries = trashEntries(data, now), byKind = kind => entries.filter(entry => entry.kind === kind);
+  assert.deepEqual(byKind('ownProducts').map(entry => entry.title), ['Keckd'], 'nur das kürzlich gelöschte eigene Produkt');
+  assert.deepEqual(byKind('aliases').map(entry => entry.title), ['tomatn → Tomaten']);
+  assert.equal(byKind('expenseCategories')[0].title, 'Grillen');
+  assert.match(byKind('expenseCategories')[0].detail, /Buchungen jetzt bei „Freizeit“/);
+  // Eigenes Produkt: Löschmarke aufheben und den mitgelöschten Stern zurückholen; Rückgängig setzt die Marke wieder
+  const restore = restoreChanges(data, 'productRemovals', 'own-keckd', t(0));
+  assert.deepEqual(restore, [{ collection: 'productRemovals', id: 'own-keckd', patch: { deletedAt: t(0) } }, { collection: 'productFavorites', id: 'fav-keckd', patch: { deletedAt: null } }]);
+  assert.deepEqual(undoRestoreChanges(restore, t(0)).map(change => change.patch.deletedAt), [null, t(0)]);
+  // Kategorie: kommt ohne Weiterleitung zurück
+  assert.deepEqual(restoreChanges(data, 'expenseCategories', grill)[0].patch, { deletedAt: null, replacementId: null });
+  // Leeren: Marken bleiben, verschwinden aber aus dem Papierkorb und lassen sich nicht mehr zurückholen
+  const purged = merge(data, purgeChanges(data, t(0), now).map((change, index) => ({ ...operation(change.collection, change.id, change.patch, 'Nico', t(0)), id: `purge-${index}` })));
+  assert.deepEqual(trashEntries(purged, now + 1000), []);
+  assert.equal(purged.productRemovals.find(row => row.id === 'own-keckd').deletedAt, null, 'die Löschmarke selbst bleibt aktiv');
+  assert.deepEqual(restoreChanges(purged, 'productRemovals', 'own-keckd'), []);
+});

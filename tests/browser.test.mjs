@@ -74,6 +74,19 @@ async function context(options = {}) {
   return { ctx, page, problems };
 }
 const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
+// Rückfragen der App (ask.js, seit 2.145) statt window.confirm: auf das eigene Fenster warten, Text prüfen und antworten.
+const answerAsk = async (page, accept = true, ...patterns) => {
+  await page.locator('#ask-dialog[open]').waitFor();
+  const text = `${await page.textContent('#ask-title')}\n${await page.textContent('#ask-message')}`;
+  for (const pattern of patterns) assert.match(text, pattern);
+  const answers = Number(await page.getAttribute('#ask-dialog', 'data-answers') || 0);
+  await page.click(accept ? '#ask-ok' : '#ask-cancel');
+  // Erst weiter, wenn die App die Antwort verarbeitet hat (ask.js zählt data-answers hoch); die Fortsetzung der Aktion läuft
+  // unmittelbar danach. Ein fester Takt reicht unter Last nicht, weil das Schließen-Ereignis eine eigene Browser-Aufgabe ist.
+  await page.waitForFunction(count => Number(document.querySelector('#ask-dialog').dataset.answers || 0) > count, answers);
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+  return text;
+};
 // Der Planungsdialog ändert Portionen bewusst ausschließlich über seine Pfeile.
 const setMealPortions = async (page, value) => {
   const target=Number(value), input=page.locator('#meal-servings');
@@ -398,11 +411,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await row('Joghurt').locator('.item-qty').textContent(), /^3\sBecher$/);
     // Löschen: erst die Rückfrage, abgebrochen bleibt alles, bestätigt sind beide weg
     await row('Joghurt').locator('.item-copy').click(); await row('Tomaten').locator('.item-copy').click();
-    page.once('dialog', dialog => { assert.match(dialog.message(), /2 Artikel löschen/); void dialog.dismiss(); });
-    await page.click('#select-delete');
+    await page.click('#select-delete'); await answerAsk(page, false, /2 Artikel löschen/);
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1, 'abgebrochen: nichts gelöscht');
-    page.once('dialog', dialog => { void dialog.accept(); });
-    await page.click('#select-delete');
+    await page.click('#select-delete'); await answerAsk(page);
     await page.waitForFunction(() => !/Joghurt|Tomaten/.test(document.querySelector('#items').textContent));
     assert.match(await page.textContent('#notice-text'), /2 Artikel gelöscht/);
     // Beenden: wieder alles wie bisher; auch beim Wechsel in einen anderen Bereich endet der Modus
@@ -1021,9 +1032,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
     await page.click('[data-tab=settings]');
-    page.once('dialog', dialog => dialog.accept());
     await page.locator('#connection-details > summary').click();
-    await page.click('#disconnect');
+    await page.click('#disconnect'); await answerAsk(page, true, /Token entfernen/);
     await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).palette, 'flieder');
     assert.equal(await page.getAttribute('html', 'data-palette'), 'flieder');
@@ -3382,7 +3392,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   test('2.117: Auswählen ist nur in Listen mit auswählbaren Artikeln aktiv und wird nach Hinzufügen oder Löschen sofort aktualisiert',async()=>{
     const data=structuredClone(demo);data.items=[{...data.items[0],id:'only-rewe-2117',name:'Rewe-Artikel',storeId:'store-rewe',checked:false}];const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);const select=page.locator('#select-mode');assert.equal(await select.isEnabled(),true);await page.locator('#store-chips [data-store-id=store-edeka]').click();assert.equal(await select.isDisabled(),true);assert.ok(await select.evaluate(n=>Number(getComputedStyle(n).opacity)<1));await select.evaluate(n=>n.click());assert.equal(await page.locator('#select-bar').isHidden(),true);
-    await page.fill('#item-form [name=name]','Neuer Edeka-Artikel');await page.click('#item-form .add-button');assert.equal(await select.isEnabled(),true);await select.click();await page.locator('#items .select-mark').click();page.once('dialog',dialog=>dialog.accept());await page.click('#select-delete');assert.equal(await page.locator('#items .item').count(),0);assert.equal(await select.textContent(),'Auswahl beenden');assert.equal(await select.isEnabled(),true);await page.click('#select-done');assert.equal(await select.textContent(),'Auswählen');assert.equal(await select.isDisabled(),true);await page.locator('#store-chips [data-store-id=store-rewe]').click();assert.equal(await select.isEnabled(),true);await page.locator('#store-chips [data-store-id=store-lidl]').click();assert.equal(await select.isDisabled(),true);assert.deepEqual(problems,[]);await ctx.close();
+    await page.fill('#item-form [name=name]','Neuer Edeka-Artikel');await page.click('#item-form .add-button');assert.equal(await select.isEnabled(),true);await select.click();await page.locator('#items .select-mark').click();await page.click('#select-delete');await answerAsk(page);assert.equal(await page.locator('#items .item').count(),0);assert.equal(await select.textContent(),'Auswahl beenden');assert.equal(await select.isEnabled(),true);await page.click('#select-done');assert.equal(await select.textContent(),'Auswählen');assert.equal(await select.isDisabled(),true);await page.locator('#store-chips [data-store-id=store-rewe]').click();assert.equal(await select.isEnabled(),true);await page.locator('#store-chips [data-store-id=store-lidl]').click();assert.equal(await select.isDisabled(),true);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.117: alle Listen dürfen ausgeblendet werden und bleiben über die Verwaltung wieder erreichbar',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,visibilityData2117());await open(page);await page.click('#manage-stores');await sheetOpen(page);const before=(await storedDemo(page)).items;for(const toggle of await page.locator('#store-editor .store-visibility').all())await toggle.click();await page.click('#stores-dialog .sheet-head [data-close]');assert.equal(await page.locator('#store-chips [data-store-id]').count(),0);assert.equal(await page.locator('#items .item').count(),0);await page.click('#manage-stores');await sheetOpen(page);await toggleRow2117(page,'store-edeka').click();await page.click('#stores-dialog .sheet-head [data-close]');assert.equal(await page.locator('#store-chips [data-store-id=store-edeka]').count(),1);assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
@@ -3736,8 +3746,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await page.locator('#shop-list .shop-name').allTextContents(), ['Äpfel']);
     await page.click('#shop-back');
     await openStores(page);
-    page.once('dialog', dialog => dialog.accept());
-    await page.click('[aria-label="Rewe löschen"]');
+    await page.click('[aria-label="Rewe löschen"]'); await answerAsk(page, true, /„Rewe“ löschen/);
     await page.keyboard.press('Escape');
     await page.click('#mode-shop');
     const chips = () => page.locator('#shop-chips .chip').evaluateAll(nodes => nodes.map(node => [node.firstChild.textContent, node.getAttribute('aria-selected')]));
@@ -4265,8 +4274,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await openSettings(page);
-    page.once('dialog', dialog => dialog.accept());
-    await page.click('#disconnect');
+    await page.click('#disconnect'); await answerAsk(page);
     await page.waitForFunction(() => !JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);
     const kept = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')));
     assert.deepEqual([kept.actor, kept.palette, kept.storeStyle, kept.groupItems, kept.shopScreenOn], ['Nico', 'rose', 'logo', false, true], 'nur die Verbindungsdaten sind weg');
@@ -6478,8 +6486,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#items .item', { hasText: 'Nudeln' }).count() >= 1);
     // Geschäft löschen: seine Artikel verschwinden aus allen Ansichten, die ohne Geschäft bleiben
     await openStores(page);
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: 'Rewe löschen' }).click();
+    await page.getByRole('button', { name: 'Rewe löschen' }).click(); await answerAsk(page);
     await page.click('#stores-dialog [data-close]');
     assert.equal(await page.locator('#items .item', { hasText: 'Äpfel' }).count(), 0);
     assert.ok(await page.locator('#items .item', { hasText: 'Tomaten' }).count() >= 1);
@@ -6497,7 +6504,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     return content;
   };
-  const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+  // „Abgeglichen“ heißt: Status grün UND keine wartende Änderung mehr. Läuft gerade der regelmäßige Abgleich, startet die App
+  // keinen zweiten; der Status bleibt dann kurz grün, obwohl eine neue Änderung noch wartet. Deshalb auch die Warteschlange prüfen.
+  const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok' &&
+    Object.keys(localStorage).filter(key => key.startsWith('einkauf-data-v1:')).every(key => { try { return !(JSON.parse(localStorage.getItem(key)).pending || []).length; } catch { return true; } }));
 
   // Hilfen für „lange halten und nach rechts in den Mülleimer ziehen“ (Maus: echte Zeigerereignisse wie auf dem Handy)
   const center = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
@@ -6678,8 +6688,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.evaluate(async ([url]) => { await (await caches.open('einkauf-photos-v1')).put(new Request(url), new Response('x')); }, [`${base}/photo/${lost}`]);
     await openSettings(page);
     assert.equal(await page.locator('#clean-photos').isVisible(), true);
-    page.once('dialog', dialog => { assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/); void dialog.accept(); });
-    await page.click('#clean-photos');
+    await page.click('#clean-photos'); await answerAsk(page, true, /2 nicht mehr verwendete Fotos/);
     await page.waitForFunction(() => /2 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
     assert.deepEqual([...remote.photos.keys()], [`photos/${keep}.jpg`]);
     await page.click('#clean-photos');
@@ -6701,8 +6710,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://api.github.com/**', route => remote.handler(route));
     await open(page); await synced(page);
     await openSettings(page);
-    page.once('dialog', dialog => { assert.match(dialog.message(), /1 nicht mehr verwendete Fotos/); assert.match(dialog.message(), /1 neuere bleiben vorerst stehen/); void dialog.accept(); });
-    await page.click('#clean-photos');
+    await page.click('#clean-photos'); await answerAsk(page, true, /1 nicht mehr verwendete Fotos/, /1 neuere bleiben vorerst stehen/);
     await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
     assert.match(await page.textContent('#storage-note'), /1 neuere bleiben vorerst stehen/);
     assert.deepEqual([...remote.photos.keys()], [`photos/${young}.jpg`]);
@@ -6728,12 +6736,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await synced(page);
     await openSettings(page);
     // Während die Rückfrage offen ist, kommt vom anderen Gerät ein Rezept, das auf das Foto „late“ verweist
-    page.once('dialog', dialog => {
-      assert.match(dialog.message(), /2 nicht mehr verwendete Fotos/);
-      remote.remoteChange(content => { content.recipes.find(row => row.id === 'recipe-pasta').photoId = late; });
-      void dialog.accept();
-    });
     await page.click('#clean-photos');
+    await page.locator('#ask-dialog[open]').waitFor(); assert.match(await page.textContent('#ask-message'), /2 nicht mehr verwendete Fotos/);
+    remote.remoteChange(content => { content.recipes.find(row => row.id === 'recipe-pasta').photoId = late; });
+    await answerAsk(page);
     await page.waitForFunction(() => /1 Fotos gelöscht/.test(document.querySelector('#storage-note').textContent));
     assert.deepEqual([...remote.photos.keys()], [`photos/${late}.jpg`], 'das Foto mit neuem Rezept bleibt');
     // Kann nicht abgeglichen werden (hier: Anmeldung abgelehnt), wird nicht einmal die Liste der Fotos geholt, geschweige denn gelöscht
@@ -8196,9 +8202,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#select-mode');
     for (const name of ['Tomaten', 'Nudeln']) await page.locator('#items .item', { hasText: name }).locator('.item-copy').click();
     await page.click('#select-move'); await sheetOpen(page); assert.equal(await page.textContent('#move-delete-label'), '2 Artikel löschen');
-    page.once('dialog', dialog => dialog.dismiss()); await page.click('#move-delete');
+    await page.click('#move-delete'); await answerAsk(page, false, /2 Artikel löschen/);
     assert.deepEqual(await storedDemo(page), before); assert.equal(await page.locator('#move-dialog').evaluate(node => node.open), true); assert.equal(await page.textContent('#select-count'), '2 ausgewählt');
-    page.once('dialog', dialog => dialog.accept()); await page.click('#move-delete'); await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
+    await page.click('#move-delete'); await answerAsk(page); await page.waitForSelector('#move-dialog[open]', { state: 'detached' });
     const after = await storedDemo(page); for (const name of ['Tomaten', 'Nudeln']) assert.ok(after.items.find(row => row.name === name).deletedAt);
     assert.deepEqual(after.items.filter(row => !['Tomaten', 'Nudeln'].includes(row.name)), before.items.filter(row => !['Tomaten', 'Nudeln'].includes(row.name)));
     assert.equal(await page.locator('#select-bar').isHidden(), true); assert.equal(await page.getAttribute('#select-mode', 'aria-pressed'), 'false');
@@ -9084,7 +9090,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.85: Löschhinweis verdeckt Auswahlknöpfe nicht und verschwindet sofort mit Fertig; kurzer Platzhalter',async()=>{
     for(const width of [280,390]){
       const {ctx,page,problems}=await context({context:{viewport:{width,height:844}}});await open(page);assert.equal(await page.getAttribute('#item-form [name=name]','placeholder'),'Was brauchst du?');
-      await page.click('#select-mode');await page.locator('#items .select-mark').first().click();page.once('dialog',dialog=>dialog.accept());await page.click('#select-delete');await page.waitForSelector('#notice:not([hidden])');await page.waitForTimeout(250);
+      await page.click('#select-mode');await page.locator('#items .select-mark').first().click();await page.click('#select-delete');await answerAsk(page);await page.waitForSelector('#notice:not([hidden])');await page.waitForTimeout(250);
       const geometry=await page.evaluate(()=>{const notice=document.querySelector('#notice').getBoundingClientRect(),bar=document.querySelector('#select-bar').getBoundingClientRect();return {noticeBottom:notice.bottom,barTop:bar.top};});assert.ok(geometry.noticeBottom<=geometry.barTop,JSON.stringify(geometry));assert.match(await page.textContent('#notice-text'),/1 Artikel gelöscht/);assert.equal(await page.locator('#select-done').isVisible(),true);
       await page.click('#select-done');assert.equal(await page.locator('#notice').isHidden(),true);assert.equal(await page.locator('#select-bar').isHidden(),true);await storeButton(page,'#store-chips','Lidl').click();assert.equal(await page.getAttribute('#item-form [name=name]','placeholder'),'Was brauchst du?');assert.deepEqual(problems,[]);await ctx.close();
     }
@@ -9130,7 +9136,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Arbeitsanweisung 2.86: Auswahlleiste, Importwarnungen und zehn Linkimporte mit automatischem Wiederholen',async()=>{
     const {ctx,page,problems}=await context({config:{importProxy:'https://rezepte.test.workers.dev',publicProxy:false}});let requests=0;
     await ctx.route('https://rezepte.test.workers.dev/**',route=>{requests++;return route.fulfill({status:requests%2?502:200,headers:{'access-control-allow-origin':'*','content-type':'text/html'},body:requests%2?'Fehler':recipeHtml});});
-    await open(page);page.on('dialog',dialog=>dialog.accept());await page.click('#select-mode');await page.locator('#items .item-copy').first().click();await page.click('#select-delete');
+    await open(page);await page.click('#select-mode');await page.locator('#items .item-copy').first().click();await page.click('#select-delete');await answerAsk(page);
     assert.equal(await page.locator('#notice').isVisible(),true);
     const overlap=await page.evaluate(()=>{const a=document.querySelector('#notice').getBoundingClientRect(),b=document.querySelector('#select-bar').getBoundingClientRect();return a.bottom>b.top&&a.top<b.bottom;});assert.equal(overlap,false);
     assert.equal(await page.textContent('#select-done'),'Schließen');await page.click('#select-done');assert.equal(await page.locator('#notice').isVisible(),false);assert.equal(await page.locator('#select-bar').isVisible(),false);
@@ -9547,9 +9553,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.screenshot({path:`/tmp/sattplan289-rezept-${width}.png`});
     await edit.click();await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.locator('#delete-recipe').textContent(),'Rezept dauerhaft aus dem Rezeptbuch löschen');
     assert.deepEqual(await page.locator('#delete-recipe').evaluate(deleteAppearance),cardDeleteAppearance,'Der Löschknopf hat im Editor dasselbe Aussehen wie in der Rezeptansicht');
-    let prompt='';page.once('dialog',dialog=>{prompt=dialog.message();dialog.dismiss();});await page.click('#delete-recipe');
-    assert.match(prompt,/Rezept „Tomaten-Pasta“ dauerhaft aus dem Rezeptbuch löschen\?/);assert.deepEqual(await storedDemo(page),before);
-    page.once('dialog',dialog=>dialog.accept());await page.click('#delete-recipe');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});
+    await page.click('#delete-recipe');const prompt=await answerAsk(page,false);
+    assert.match(prompt,/Rezept löschen\?\n„Tomaten-Pasta“ wird aus dem Rezeptbuch gelöscht/);assert.deepEqual(await storedDemo(page),before);
+    await page.click('#delete-recipe');await answerAsk(page);await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});
     const after=await storedDemo(page);assert.ok(after.recipes.find(row=>row.id==='recipe-pasta').deletedAt);assert.deepEqual(after.meals,before.meals);assert.deepEqual(after.items,before.items);
     await page.click('#plan-recipe-dialog .sheet-actions button');await goTab(page,'recipes');
     const library=page.locator('.recipe-card',{hasText:'Kichererbsen-Curry'});await library.locator('summary').click();
@@ -9701,7 +9707,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.91: geheime Liste mit Schloss und Haken bleibt bei ${width}px ${theme} lokal; abgebrochene Freigabe erhält sie`,async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen',theme,productImages:true},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);
-    const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
+    // Erst vergleichen, wenn die App ihre Beispieldaten gespeichert hat (unter Last geschieht das erst kurz nach dem Start).
+    await page.waitForFunction(()=>localStorage.getItem('einkauf-demo-v1'));const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
     const row=await createSecret291(page);assert.equal(await row.locator('[name=private]').isChecked(),true);await row.locator('.list-privacy').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan291-geheim-haken-${width}.png`});
     await page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(page);
     await addSecret290(page,'Milch');assert.equal(await page.locator('#private-items [data-photo-key=milch]').count(),1);
@@ -9710,7 +9717,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();await page.click('#private-done>summary');assert.equal(await page.locator('#private-done-items .private-row').count(),1);
     assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.equal(await horizontalOverflow(page),0);
     await page.click('#manage-stores');await row.locator('summary').click();await row.locator('[name=private]').uncheck();
-    page.once('dialog',dialog=>dialog.dismiss());await row.locator('.store-save').click();assert.equal(await page.locator('#store-chips [data-private]').count(),1);
+    await row.locator('.store-save').click();await answerAsk(page,false);assert.equal(await page.locator('#store-chips [data-private]').count(),1);
     await page.click('#stores-dialog .sheet-head [data-close]');await page.reload();await openSecret290(page);assert.match(await page.textContent('#private-items'),/Diese Notiz bleibt privat/);
     assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.deepEqual(problems,[]);await ctx.close();
   });
@@ -9731,15 +9738,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const api=github(data),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
     for(const device of [a,b]){await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);}
     await openStores(a.page);const shared=a.page.locator('.store-row[data-id=extra-290]');await shared.locator('[name=name]').fill('Nur mein Reiseplan');await chooseStoreSymbol(shared,'secret');
-    a.page.once('dialog',dialog=>dialog.dismiss());await shared.locator('.store-save').click();
+    await shared.locator('.store-save').click();await answerAsk(a.page,false);
     assert.equal(api.content.stores.find(row=>row.id==='extra-290').deletedAt,null);assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);
-    a.page.once('dialog',dialog=>{assert.match(dialog.message(),/Frühere gemeinsame Daten/);dialog.accept();});await shared.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
+    await shared.locator('.store-save').click();await answerAsk(a.page,true,/Frühere gemeinsame Daten/);await synced(a.page);await pollNow(b.page);await synced(b.page);
     assert.ok(api.content.stores.find(row=>row.id==='extra-290').deletedAt);assert.ok(!JSON.stringify(api.content).includes('Nur mein Reiseplan'));assert.equal(await b.page.locator('#store-chips [data-private]').count(),0);
     await a.page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(a.page,'Nur mein Reiseplan');await addSecret290(a.page,'NurIch7291');
     await a.page.getByRole('button',{name:'NurIch7291 privat bearbeiten',exact:true}).click();await a.page.fill('#private-item-form [name=note]','NochGeheimeNotiz7291');await a.page.click('#private-item-form button[type=submit]');
     await pollNow(a.page);await synced(a.page);assert.ok(!/NurIch7291|NochGeheimeNotiz7291/.test(JSON.stringify(api.content)));
-    await openStores(a.page);const local=a.page.locator('.private-store-row');await local.locator('[name=private]').uncheck();a.page.once('dialog',dialog=>dialog.dismiss());await local.locator('.store-save').click();assert.ok(!JSON.stringify(api.content).includes('NurIch7291'));
-    a.page.once('dialog',dialog=>{assert.match(dialog.message(),/für die Familie freigeben/);dialog.accept();});await local.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
+    await openStores(a.page);const local=a.page.locator('.private-store-row');await local.locator('[name=private]').uncheck();await local.locator('.store-save').click();await answerAsk(a.page,false);assert.ok(!JSON.stringify(api.content).includes('NurIch7291'));
+    await local.locator('.store-save').click();await answerAsk(a.page,true,/für die Familie freigegeben/);await synced(a.page);await pollNow(b.page);await synced(b.page);
     const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,13);
     const rows=api.content.items.filter(row=>!row.deletedAt&&row.storeId===target.id);assert.equal(rows.length,4);const copied=rows.find(row=>row.name==='Milch');assert.deepEqual([copied.quantity,copied.unit,copied.checked,copied.wishNote,copied.wishImageHidden],[2,'l',true,'Bisher geteilte Notiz',true]);assert.equal(rows.find(row=>row.name==='NurIch7291').wishNote,'NochGeheimeNotiz7291');
     // Gerät B: Ein Abgleich ohne eigene Änderungen setzt den Status nicht auf „gleicht ab“; `synced` kann deshalb schon vor dem Laden zurückkehren.
@@ -9758,8 +9765,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await open(page);await createSecret291(page,'Meine Liste');await page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(page);await addSecret290(page,'Geheimes Geschenk');
     await openStores(page);const row=page.locator('.private-store-row');await row.locator('[name=private]').uncheck();
     await page.evaluate(()=>{window.failShared291=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.failShared291&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
-    page.once('dialog',dialog=>dialog.accept());await row.locator('.store-save').click();assert.equal(await page.locator('#store-chips [data-private]').count(),1);assert.ok(!(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'))).includes('Geheimes Geschenk'));
-    await page.evaluate(()=>window.failShared291=false);page.once('dialog',dialog=>dialog.accept());await row.locator('.store-save').click();const state=await storedDemo(page),list=state.stores.find(row=>row.name==='Meine Liste');assert.ok(list);assert.equal(state.items.filter(row=>row.storeId===list.id).length,1);assert.equal(await page.locator('#store-chips [data-private]').count(),0);
+    await row.locator('.store-save').click();await answerAsk(page);assert.equal(await page.locator('#store-chips [data-private]').count(),1);assert.ok(!(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'))).includes('Geheimes Geschenk'));
+    await page.evaluate(()=>window.failShared291=false);await row.locator('.store-save').click();await answerAsk(page);const state=await storedDemo(page),list=state.stores.find(row=>row.name==='Meine Liste');assert.ok(list);assert.equal(state.items.filter(row=>row.storeId===list.id).length,1);assert.equal(await page.locator('#store-chips [data-private]').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -9802,7 +9809,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.101: ungesendete Fotos überstehen Trennen und Neustart und werden nach erneutem Verbinden hochgeladen',async()=>{
     const api=github(demo),{ctx,page,problems}=await context({config:connectedConfig});api.behavior.failPhotoPuts=true;await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await fillRecipe2101(page,'Foto bleibt');await page.setInputFiles('#recipe-form [name=photo]',await photo288(page));await page.waitForSelector('#photo-preview:not([hidden])');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog[open]',{state:'detached'});
     await page.waitForFunction(()=>document.querySelector('#status').dataset.state==='pending');const id=await page.evaluate(()=>{const c=JSON.parse(localStorage.getItem('einkauf-settings-v1')),key=`einkauf-data-v1:${JSON.stringify([c.owner,c.repo,c.branch,c.path])}`;return JSON.parse(localStorage.getItem(key)).base.recipes.find(r=>r.name==='Foto bleibt')?.photoId;});assert.ok(id);
-    await openSettings(page);page.once('dialog',d=>d.accept());await page.click('#disconnect');await page.waitForFunction(()=>!JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);await page.reload();await page.waitForSelector('#store-chips button');await page.waitForTimeout(200);
+    await openSettings(page);await page.click('#disconnect');await answerAsk(page);await page.waitForFunction(()=>!JSON.parse(localStorage.getItem('einkauf-settings-v1')).token);await page.reload();await page.waitForSelector('#store-chips button');await page.waitForTimeout(200);
     assert.equal(await page.evaluate(async id=>Boolean(await(await import('./photos.js')).readPhoto(id)),id),true);api.behavior.failPhotoPuts=false;await connect2101(page);assert.ok(api.photos.has(`photos/${id}.jpg`));assert.deepEqual(problems.filter(s=>!/Failed to load resource/.test(s)),[]);await ctx.close();
   });
   test('2.101: fehlende Fotodatei bleibt in der Upload-Warteschlange und wird deutlich gemeldet',async()=>{
@@ -10155,8 +10162,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     assert.equal(await page.locator('#quarantine-card').isVisible(), true);
     assert.match(await page.textContent('#quarantine-text'), /Eine Änderung ließ sich nicht/);
-    page.once('dialog', dialog => dialog.accept());
-    await page.click('#quarantine-discard');
+    await page.click('#quarantine-discard'); await answerAsk(page, true, /verwerfen/);
     await page.waitForSelector('#quarantine-card', { state: 'hidden' });
     assert.equal(await page.evaluate(() => Object.keys(localStorage).some(name => name.startsWith('einkauf-quarantine-v1:'))), false);
     assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
@@ -10169,8 +10175,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#storage-recovery[open]');
     assert.match(await page.textContent('#storage-recovery'), /Lokalen Speicher als Datei sichern/);
     assert.equal((await page.textContent('#storage-recovery-reload')).trim(), 'Lokalen Stand verwerfen und Beispieldaten laden');
-    page.once('dialog', dialog => dialog.accept());
-    await Promise.all([page.waitForEvent('load'), page.click('#storage-recovery-reload')]);
+    await page.click('#storage-recovery-reload'); await page.locator('#ask-dialog[open]').waitFor();
+    await Promise.all([page.waitForEvent('load'), page.click('#ask-ok')]);
     await page.waitForSelector('#items .item');
     assert.equal(await page.locator('#storage-recovery[open]').count(), 0);
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base.version, 1);
@@ -10392,7 +10398,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
   // ---- 2.144: Internationale Produkte auch im Vorrat, klarer Speichern-Knopf, Mülleimer mit „Rückgängig“ für eigene Produkte ----
-  test('2.144: Vorrat: „Internationale Produkte“ wählbar, Sorten mit Bild, „Vorhanden als Reis“, Knopf sagt hinzufügen, entfernen oder aktualisieren', async () => {
+  test('2.144: Vorrat: „Internationale Produkte“ wählbar, Sorten mit Bild, „Reis vorhanden“ (seit 2.145 Sorten getrennt), Knopf sagt hinzufügen, entfernen oder aktualisieren', async () => {
     const data = pantryData278([{ name: 'Reis', available: true }]);
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
     await seedLocal(ctx, data); await open(page); await openPantry(page, 'all');
@@ -10402,7 +10408,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const buckwheat = page.locator('.product-card[data-product=buchweizen]').first();
     assert.equal(await buckwheat.locator('.product-pick').isEnabled(), true);
     assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(), 1, 'eigenes Buchweizenbild');
-    assert.match(await page.locator('.product-card[data-product=sushi-reis]').first().textContent(), /Vorhanden als Reis/);
+    const sushi = page.locator('.product-card[data-product=sushi-reis]').first();
+    assert.match(await sushi.textContent(), /Reis vorhanden/, 'eine andere Sorte der Gruppe ist da');
+    assert.equal(await sushi.locator('.product-pick').getAttribute('aria-pressed'), 'false', 'Sushi-Reis selbst steht nicht im Vorrat');
     const add = page.locator('#product-picker-add');
     await buckwheat.locator('.product-pick').click();
     assert.equal((await add.textContent()).trim(), 'Produkt dem Vorrat hinzufügen');
@@ -10438,7 +10446,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal((await remove.textContent()).trim(), 'Löschen');
     const look = await remove.evaluate(node => { const probe = document.createElement('div'); probe.style.color = 'var(--danger)'; document.body.append(probe); const danger = getComputedStyle(probe).color; probe.remove(); return { color: getComputedStyle(node).color, danger, height: node.getBoundingClientRect().height }; });
     assert.equal(look.color, look.danger, 'in Rot'); assert.ok(look.height >= 44);
-    page.once('dialog', dialog => void dialog.accept()); await remove.click();
+    await remove.click(); await answerAsk(page, true, /Eigenes Produkt löschen\?/, /„Keckd“/);
     assert.equal(await card.count(), 0);
     const undo = page.locator('#product-picker-feedback .product-undo');
     assert.equal((await undo.textContent()).trim(), 'Rückgängig');
@@ -10449,6 +10457,112 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const saved = await storedDemo(page);
     assert.ok(saved.productRemovals.every(row => row.deletedAt), 'Löschmarke aufgehoben');
     assert.ok(saved.productFavorites.some(row => !row.deletedAt && row.name === 'Keckd'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.145: Rückfragen im Stil der App statt grauer Browser-Fenster ----
+  for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.145: Rückfrage bei ${width}px ${theme}: mittig, roter Knopf, Fokus auf Abbrechen; Escape und Tipp daneben brechen ab`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    let native = 0; page.on('dialog', dialog => { native++; void dialog.dismiss(); });
+    await open(page);
+    await page.click('#select-mode');
+    for (const entry of (await page.locator('#items .item').all()).slice(0, 2)) await entry.locator('.item-copy').click();
+    const remaining = async () => page.locator('#items .item').count(), count = await remaining();
+    // 1. Escape bricht ab
+    await page.click('#select-delete'); await page.locator('#ask-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#ask-title'), '2 Artikel löschen?');
+    assert.match(await page.textContent('#ask-message'), /Kürzlich gelöscht/);
+    assert.equal((await page.textContent('#ask-ok')).trim(), 'Löschen'); assert.equal((await page.textContent('#ask-cancel')).trim(), 'Abbrechen');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'ask-cancel', 'bei Löschen liegt der Fokus auf Abbrechen');
+    await page.waitForFunction(() => document.querySelector('#ask-dialog').getAnimations().every(animation => animation.playState === 'finished'));
+    const look = await page.evaluate(() => { const probe = document.createElement('div'); probe.style.color = 'var(--danger)'; document.body.append(probe); const danger = getComputedStyle(probe).color; probe.remove();
+      const box = document.querySelector('#ask-dialog').getBoundingClientRect(), ok = document.querySelector('#ask-ok').getBoundingClientRect(), cancel = document.querySelector('#ask-cancel').getBoundingClientRect();
+      return { danger, color: getComputedStyle(document.querySelector('#ask-ok')).color, box: { x: box.x, y: box.y, w: box.width, h: box.height }, ok: ok.height, cancel: cancel.height, vw: innerWidth, vh: innerHeight }; });
+    assert.equal(look.color, look.danger, 'roter Knopf');
+    assert.ok(Math.abs(look.box.x - (look.vw - look.box.w) / 2) <= 1 && look.box.y > 0 && look.box.y + look.box.h < look.vh, `mittig ${JSON.stringify(look.box)}`);
+    assert.ok(look.ok >= 44 && look.cancel >= 44, `gut antippbar ${look.ok}/${look.cancel}`);
+    await saveShot(page, `2145-rueckfrage-${width}-${theme}.png`);
+    await page.keyboard.press('Escape'); await page.locator('#ask-dialog[open]').waitFor({ state: 'detached' });
+    assert.equal(await remaining(), count, 'Escape: nichts gelöscht');
+    // 2. Tipp auf den abgedunkelten Rand bricht ab
+    await page.click('#select-delete'); await page.locator('#ask-dialog[open]').waitFor();
+    await page.mouse.click(4, 4); await page.locator('#ask-dialog[open]').waitFor({ state: 'detached' });
+    assert.equal(await remaining(), count, 'Tipp daneben: nichts gelöscht');
+    // 3. Löschen
+    await page.click('#select-delete'); await answerAsk(page, true);
+    await page.waitForFunction(expected => document.querySelectorAll('#items .item').length === expected, count - 2);
+    assert.equal(native, 0, 'kein graues Browser-Fenster');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.145: Papierkorb für alles: eigene Produkte, Schreibweisen und Kategorien ----
+  test('2.145: gelöschtes eigenes Produkt und entfernte Schreibweise stehen im Papierkorb und kommen samt Stern zurück', async () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 86400000).toISOString();
+    data.aliases = [{ id: 'alias-2145', from: 'tomatn', name: 'Tomaten', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page);
+    // Eigenes Produkt mit Stern anlegen und unter „Eigene“ löschen
+    await page.click('#open-products'); await sheetOpen(page);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Keckd');
+    await page.locator('.product-card .product-star').click(); await page.fill('#product-picker-search', ''); await page.click('[data-product-mode=own]');
+    const trashLink = page.locator('#product-picker-trash');
+    assert.equal(await trashLink.isVisible(), false, 'noch nichts gelöscht');
+    await page.locator('.product-card', { hasText: 'Keckd' }).locator('.product-delete').click(); await answerAsk(page, true, /Kürzlich gelöscht/);
+    await trashLink.waitFor(); assert.match(await trashLink.textContent(), /Kürzlich gelöschte eigene Produkte\s*\(1\)/);
+    await page.click('[data-product-mode=all]'); assert.equal(await trashLink.isVisible(), false, 'nur im Reiter „Eigene“');
+    await page.click('[data-product-mode=own]'); await trashLink.click(); await page.locator('#trash-dialog[open]').waitFor();
+    const row = page.locator('.trash-row', { hasText: 'Keckd' });
+    assert.match(await row.textContent(), /Eigene Produkte/);
+    await row.locator('.trash-restore').click();
+    assert.match(await page.textContent('#trash-status-text'), /„Keckd“ ist wieder bei den eigenen Produkten, samt Stern/);
+    await page.click('#trash-dialog [data-close]');
+    const card = page.locator('.product-card', { hasText: 'Keckd' }); await card.waitFor();
+    assert.equal(await card.locator('.product-star').getAttribute('aria-pressed'), 'true');
+    await page.click('#product-picker-dialog [data-close]');
+    // Schreibweise in den Optionen entfernen und über den Hinweis zurückholen
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Zuordnung tomatn zu Tomaten entfernen' }).click();
+    const aliasLink = page.locator('#alias-card .trash-link'); await aliasLink.waitFor();
+    assert.match(await aliasLink.textContent(), /Kürzlich gelöschte Schreibweisen\s*\(1\)/);
+    await aliasLink.click(); await page.locator('#trash-dialog[open]').waitFor();
+    await page.locator('.trash-row', { hasText: 'tomatn → Tomaten' }).locator('.trash-restore').click();
+    assert.match(await page.textContent('#trash-status-text'), /Schreibweise „tomatn → Tomaten“ gilt wieder/);
+    const saved = await storedDemo(page);
+    assert.equal(saved.aliases.find(row => row.id === 'alias-2145').deletedAt, null);
+    assert.ok(saved.productRemovals.every(row => row.deletedAt), 'Löschmarke aufgehoben');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.145: Vorrat führt Sorten getrennt; Rezepte zählen jede Sorte der Gruppe ----
+  test('2.145: Basmati-Reis und Reis stehen getrennt im Vorrat; Entfernen trifft nur die Sorte, das Rezept mit „Reis“ zählt den Basmati-Reis', async () => {
+    const data = pantryData278([{ name: 'Reis', available: true }]);
+    data.recipes.push({ id: 'recipe-reis-2145', name: 'Reispfanne', servings: 2, tags: [], instructions: 'Kochen.', createdAt: '2026-10-29T09:00:00.000Z', updatedAt: '2026-10-29T09:00:00.000Z', deletedAt: null, _clock: {} });
+    data.ingredients.push({ id: 'ing-reis-2145', recipeId: 'recipe-reis-2145', name: 'Reis', quantity: 200, unit: 'g', createdAt: '2026-10-29T09:00:00.000Z', updatedAt: '2026-10-29T09:00:00.000Z', deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await openPantry(page, 'all');
+    await page.selectOption('#product-picker-category', 'international');
+    await page.locator('.product-card[data-product=basmati-reis] .product-pick').first().click();
+    await page.click('#product-picker-add'); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    const live = async () => (await storedDemo(page)).pantry.filter(row => !row.deletedAt && row.available !== false).map(row => row.name).sort();
+    assert.deepEqual(await live(), ['Basmati-Reis', 'Reis'], 'zwei Einträge statt einer überschriebenen Gruppe');
+    // Aktueller Vorrat: beide Sorten als eigene Kacheln mit eigenem Bild
+    await page.selectOption('#product-picker-category', ''); await page.click('[data-product-mode=current]');
+    const names = await page.locator('.product-card .product-name').allTextContents();
+    assert.ok(names.includes('Basmati-Reis') && names.includes('Reis'), names.join(', '));
+    assert.equal(await page.locator('.product-card', { hasText: 'Basmati-Reis' }).locator('[data-photo-key=basmati-reis]').count(), 1, 'Katalogbild der Sorte');
+    // Nur „Reis“ entfernen: der Basmati-Reis bleibt
+    await page.locator('.product-card').filter({ has: page.locator('.product-name', { hasText: /^Reis$/ }) }).locator('.product-pick').click();
+    assert.equal((await page.textContent('#product-picker-add')).trim(), 'Aus dem Vorrat entfernen');
+    await page.click('#product-picker-add'); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    assert.deepEqual(await live(), ['Basmati-Reis']);
+    await page.click('#product-picker-dialog [data-close]');
+    // Das Rezept mit „Reis“ zählt den Basmati-Reis mit (Gruppe)
+    await goTab(page, 'recipes');
+    assert.match(await page.locator('.recipe-card', { hasText: 'Reispfanne' }).textContent(), /1 von 1 Zutaten da/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -10537,14 +10651,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(colors[0], colors[1], 'gedämpfte Farbe wie der Hinweis');
     await purge.scrollIntoViewIfNeeded(); await saveShot(page, '2139-papierkorb-leeren.png');
     // Abbrechen ändert nichts
-    let question = '';
-    page.once('dialog', dialog => { question = dialog.message(); void dialog.dismiss(); });
     await purge.click();
-    assert.match(question, /^Alle 3 Einträge im Papierkorb endgültig löschen\?/); assert.match(question, /nicht rückgängig/);
+    const question = await answerAsk(page, false);
+    assert.match(question, /^Papierkorb leeren\?\nAlle 3 Einträge im Papierkorb endgültig löschen\?/); assert.match(question, /nicht rückgängig/);
+    assert.equal(await page.locator('#ask-ok').evaluate(node => node.classList.contains('danger')), true, 'roter Knopf „Endgültig löschen“');
     assert.equal(await page.locator('.trash-row').count(), 3);
     // Bestätigen leert den Papierkorb
-    page.once('dialog', dialog => void dialog.accept());
-    await purge.click();
+    await purge.click(); await answerAsk(page);
     await page.locator('#trash-empty').waitFor();
     assert.equal(await page.locator('#trash-empty strong').textContent(), 'Der Papierkorb ist leer', 'kein „Nichts gelöscht“ direkt unter der Bestätigung');
     assert.match(await page.textContent('#trash-status-text'), /Papierkorb geleert · 3 Einträge endgültig gelöscht/);
@@ -10641,8 +10754,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Internationale Produkte und eigene Produkte löschen: Länder, lokales Buchweizenbild, Bestätigung und dauerhafter Schutz',async()=>{
     const {ctx,page,problems}=await context();await open(page);await page.click('#open-products');await sheetOpen(page);
     await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Keckd');const own=page.locator('.product-card');await own.locator('.product-star').click();await page.click('[data-product-mode=own]');await own.locator('.product-pick').click();
-    page.once('dialog',d=>d.dismiss());await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();assert.equal(await own.count(),1);assert.match(await page.textContent('#product-picker-count'),/1/);
-    page.once('dialog',d=>d.accept());await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-feedback'),/gelöscht/);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
+    await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();await answerAsk(page,false);assert.equal(await own.count(),1);assert.match(await page.textContent('#product-picker-count'),/1/);
+    await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();await answerAsk(page);assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-feedback'),/gelöscht/);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
     await page.click('#product-picker-dialog [data-close]');await page.reload();await page.click('#open-products');await page.click('[data-product-mode=own]');await page.fill('#product-picker-search','Keckd');assert.equal(await page.locator('.product-card').count(),0);
     await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Äpfel');assert.equal(await page.locator('.product-delete').count(),0);
     await page.fill('#product-picker-search','');await page.selectOption('#product-picker-category','international');assert.equal(await page.locator('.product-group h3').count(),14);for(const id of ['mie-nudeln','udon-nudeln','sesamoel','schwarze-bohnen','pesto-rot'])assert.equal(await page.locator(`.product-card[data-product=${id}] [data-photo-key=${id}]`).first().count(),1,`${id}: eigenes Variantenbild`);assert.match(await page.textContent('#product-picker-list'),/Ukraine/);const buckwheat=page.locator('.product-card[data-product=buchweizen]');assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(),1);assert.equal(await page.locator('.product-delete').count(),0);

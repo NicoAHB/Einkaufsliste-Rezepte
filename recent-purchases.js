@@ -1,5 +1,5 @@
 /* Nachweis eines Einkaufs ausschließlich durch Abhaken im Laden, kein Rückschluss aus updatedAt. */
-import { pantryKey } from './data.js';
+import { stockKey } from './data.js';
 export const PURCHASE_DAYS = 7;
 export function isRecentPurchase(row, now = Date.now()) {
   const time = typeof row.shopBoughtAt === 'string' ? Date.parse(row.shopBoughtAt) : NaN;
@@ -9,7 +9,8 @@ export function recentPurchases(items = [], now = Date.now()) {
   const found = new Map();
   for (const item of items) {
     if (typeof item.name !== 'string' || !item.name.trim() || !isRecentPurchase(item, now)) continue;
-    const key = pantryKey(item.name), previous = found.get(key);
+    // Je Sorte ein Eintrag (2.145): Basmati- und Jasmin-Reis stehen getrennt.
+    const key = stockKey(item.name), previous = found.get(key);
     if (!previous || Date.parse(item.shopBoughtAt) > Date.parse(previous.shopBoughtAt)) found.set(key, {...item});
   }
   return [...found.values()].sort((a,b) => Date.parse(b.shopBoughtAt) - Date.parse(a.shopBoughtAt) || a.name.localeCompare(b.name,'de'));

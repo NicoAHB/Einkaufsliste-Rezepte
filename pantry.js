@@ -1,14 +1,16 @@
 /* Leichter Haushaltsvorrat: vorhanden/aufgebraucht, keine automatische Mengenbuchhaltung.
    Die App speichert jeden Eintrag und jedes Feld mit ihrer vorhandenen Offline-/Merge-Logik. */
-import { pantryKey, pantryRows } from './data.js';
+import { stockKey, pantryRows } from './data.js';
+// Seit 2.145 führt der Vorrat Sorten getrennt (stockKey statt pantryKey): „Basmati-Reis“ legt einen eigenen Eintrag an,
+// statt einen vorhandenen „Reis“ zu überschreiben. Rezepte prüfen weiter nach Gruppe (pantryKey in data.js).
 import { isCategory, suggestCategory } from './categories.js';
 import { pantryProductAllowed } from './product-catalog.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
 function newPantryId(name, rows) {
-  let id = `pantry-${encodeURIComponent(pantryKey(name))}`;
-  while (rows.some(row => row.id === id && pantryKey(row.name) !== pantryKey(name))) id += '-new';
+  let id = `pantry-${encodeURIComponent(stockKey(name))}`;
+  while (rows.some(row => row.id === id && stockKey(row.name) !== stockKey(name))) id += '-new';
   return id;
 }
 export function pantryChanges(products, rows = []) {
@@ -16,9 +18,9 @@ export function pantryChanges(products, rows = []) {
   for (const product of products) {
     const name = String(typeof product === 'string' ? product : product?.name || '').trim().replace(/\s+/g, ' ');
     if (!name || name.length > 120) throw new Error('Bitte einen Produktnamen mit 1 bis 120 Zeichen eingeben.');
-    if (!rows.some(row=>pantryKey(row.name)===pantryKey(name)) && !pantryProductAllowed({ name })) throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht. Technik und Einrichtungsartikel gehören auf die Einkaufsliste oder den Wunschzettel.');
-    const key = pantryKey(name); if (seen.has(key)) continue; seen.add(key);
-    const matches = rows.filter(row => pantryKey(row.name) === key), live = matches.filter(row => !row.deletedAt);
+    if (!rows.some(row=>stockKey(row.name)===stockKey(name)) && !pantryProductAllowed({ name })) throw new Error('Der Vorrat ist für Lebensmittel und Drogerieprodukte gedacht. Technik und Einrichtungsartikel gehören auf die Einkaufsliste oder den Wunschzettel.');
+    const key = stockKey(name); if (seen.has(key)) continue; seen.add(key);
+    const matches = rows.filter(row => stockKey(row.name) === key), live = matches.filter(row => !row.deletedAt);
     if (live.length) {
       for (const row of live) if (row.available === false || row.autoStock) changes.push({ id: row.id, patch: { available: true, ...(row.autoStock?{autoStock:null}:{}) } });
       continue;
@@ -37,9 +39,9 @@ export function pantryChanges(products, rows = []) {
 export function pantrySelectionChanges(products,rows=[]) {
   const changes=[],seen=new Set();
   for(const product of products){
-    const key=pantryKey(product.name);if(seen.has(key))continue;seen.add(key);
+    const key=stockKey(product.name);if(seen.has(key))continue;seen.add(key);
     if(product.pantryAvailable===false){
-      const existing=pantryRows(rows).find(row=>pantryKey(row.name)===key);
+      const existing=pantryRows(rows).find(row=>stockKey(row.name)===key);
       if(existing)for(const id of existing.ids){const row=rows.find(value=>value.id===id);if(row.available!==false)changes.push({id,patch:{available:false}});}
     }else changes.push(...pantryChanges([product],rows));
   }

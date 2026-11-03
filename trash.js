@@ -7,8 +7,13 @@
    - abgehakte Artikel (gekauft, z. B. nach „Einkauf beenden“ oder „Erledigte entfernen“),
    - Artikel, die beim Verschieben zu einem gleichen Artikel dazugezählt wurden (`mergedInto`) oder als gleichzeitiges Doppel
      zweier Geräte zusammengeführt wurden (Änderung „fold-del-…“): Ihre Menge steckt bereits im anderen Artikel,
-   - interne, auf null zurückgenommene Wochenplan-Anteile. */
+   - interne, auf null zurückgenommene Wochenplan-Anteile.
+
+   Seit 2.145 auch: eigene Produkte (Löschmarke in productRemovals), gemerkte Schreibweisen (aliases) und Ausgabenkategorien.
+   Eigene Produkte sind umgekehrt gespeichert: Eine aktive Zeile in productRemovals bedeutet „gelöscht“. Wiederherstellen hebt sie
+   deshalb mit deletedAt auf; „Papierkorb leeren“ setzt purgedAt, die Marke selbst bleibt (sonst böte ein altes Gerät das Produkt wieder an). */
 import { POLICY } from './compact.js';
+import { productKey } from './prices.js';
 
 export const TRASH_DAYS = POLICY.tombstoneDays;
 const DAY = 86400000;
@@ -18,8 +23,15 @@ export const TRASH_KINDS = Object.freeze([
   { kind: 'meals', label: 'Wochenplan', icon: 'calendar' },
   { kind: 'purchases', label: 'Ausgaben', icon: 'chart' },
   { kind: 'stores', label: 'Geschäfte & Listen', icon: 'store' },
-  { kind: 'templates', label: 'Vorlagen', icon: 'bookmark' }
+  { kind: 'templates', label: 'Vorlagen', icon: 'bookmark' },
+  { kind: 'ownProducts', label: 'Eigene Produkte', icon: 'box' },
+  { kind: 'aliases', label: 'Schreibweisen', icon: 'text' },
+  { kind: 'expenseCategories', label: 'Kategorien', icon: 'tag' }
 ]);
+const categoryKey = name => String(name || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+// Wann ein eigenes Produkt gelöscht wurde: als die Löschmarke zuletzt gesetzt (deletedAt auf null) wurde.
+const removedAt = row => row?._clock?.deletedAt?.at || row?.createdAt || row?.updatedAt || '';
+const removalActive = (row, since) => Boolean(row) && !row.deletedAt && !row.purgedAt && Date.parse(removedAt(row)) >= since;
 
 const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(value);
 const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
@@ -72,6 +84,25 @@ export function trashEntries(data, now = Date.now()) {
     const count = Array.isArray(row.items) ? row.items.length : 0;
     entries.push({ kind: 'templates', collection: 'templates', id: row.id, title: row.name || 'Vorlage', detail: `${count} ${count === 1 ? 'Artikel' : 'Artikel'}`, deletedAt: row.deletedAt });
   }
+  for (const row of data.productRemovals || []) {
+    if (!removalActive(row, since)) continue;
+    entries.push({ kind: 'ownProducts', collection: 'productRemovals', id: row.id, title: row.name, detail: 'aus Produktauswahl und Favoriten', deletedAt: removedAt(row) });
+  }
+  for (const row of data.aliases || []) {
+    if (!recent(row, since)) continue;
+    entries.push({ kind: 'aliases', collection: 'aliases', id: row.id, title: `${row.from} → ${row.name}`, detail: 'gemerkte Schreibweise', deletedAt: row.deletedAt });
+  }
+  // Eine Kategorie kann (nach gleichzeitigem Anlegen auf zwei Geräten) mehrfach gespeichert sein; der Papierkorb zeigt sie einmal.
+  const categories = new Map(), live = new Map((data.expenseCategories || []).filter(row => !row.deletedAt).map(row => [row.id, row]));
+  for (const row of data.expenseCategories || []) {
+    if (!recent(row, since) || live.size && [...live.values()].some(other => categoryKey(other.name) === categoryKey(row.name))) continue;
+    const key = categoryKey(row.name), previous = categories.get(key);
+    if (!previous || row.deletedAt > previous.deletedAt) categories.set(key, row);
+  }
+  for (const row of categories.values()) {
+    const target = live.get(row.replacementId);
+    entries.push({ kind: 'expenseCategories', collection: 'expenseCategories', id: row.id, title: row.name, detail: target ? `Ausgabenkategorie · Buchungen jetzt bei „${target.name}“` : 'Ausgabenkategorie', deletedAt: row.deletedAt });
+  }
   return entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.title.localeCompare(b.title, 'de'));
 }
 
@@ -81,10 +112,19 @@ export const trashCounts = entries => entries.reduce((counts, entry) => ({ ...co
 /* Änderungen zum Wiederherstellen eines Eintrags: [{ collection, id, patch }].
    Ein Artikel, dessen Geschäft inzwischen gelöscht ist, kommt ohne Geschäft zurück (sonst bliebe er unsichtbar).
    Ein Gericht bringt sein gelöschtes Rezept mit. */
-export function restoreChanges(data, collection, id) {
+export function restoreChanges(data, collection, id, at = new Date().toISOString()) {
   const row = (data[collection] || []).find(entry => entry.id === id);
+  if (collection === 'productRemovals') {
+    // Eigenes Produkt: Löschmarke aufheben und die dabei mitgelöschten Favoriten (gleicher Name, im selben Moment) zurückholen.
+    if (!row || row.deletedAt || row.purgedAt) return [];
+    const when = Date.parse(removedAt(row)), key = productKey(row.name);
+    const favorites = (data.productFavorites || []).filter(fav => fav.deletedAt && productKey(fav.name) === key && Math.abs(Date.parse(fav.deletedAt) - when) <= 10000);
+    return [{ collection, id, patch: { deletedAt: at } }, ...favorites.map(fav => ({ collection: 'productFavorites', id: fav.id, patch: { deletedAt: null } }))];
+  }
   if (!row || !row.deletedAt || isPurged(row)) return [];
   const changes = [{ collection, id, patch: { deletedAt: null } }];
+  // Eine zurückgeholte Kategorie leitet nicht mehr weiter; ihre früheren Buchungen bleiben bei der Ersatzkategorie.
+  if (collection === 'expenseCategories') changes[0].patch.replacementId = null;
   if (collection === 'items' && row.storeId) {
     const store = (data.stores || []).find(entry => entry.id === row.storeId);
     if (!store || store.deletedAt) changes[0].patch.storeId = '';
@@ -94,6 +134,11 @@ export function restoreChanges(data, collection, id) {
     if (recipe?.deletedAt) changes.push({ collection: 'recipes', id: recipe.id, patch: { deletedAt: null } });
   }
   return changes;
+}
+
+/* „Rückgängig“ nach dem Wiederherstellen: die Gegenänderungen. Eigene Produkte werden wieder als gelöscht markiert (deletedAt: null). */
+export function undoRestoreChanges(changes, at = new Date().toISOString()) {
+  return changes.map(({ collection, id }) => ({ collection, id, patch: { deletedAt: collection === 'productRemovals' ? null : at } }));
 }
 
 /* „Papierkorb leeren“: alle Einträge, die gerade im Papierkorb stehen, als endgültig gelöscht markieren. Die Marke verteilt sich

@@ -1,3 +1,5 @@
+import { vibrate } from './platform.js';
+
 // Zeilen ziehen: Zeile lange gedrückt halten, bis sie „abhebt“. Dann
 //  - nach rechts in die rote Fläche schieben und loslassen: löschen,
 //  - (nur wenn `options.target` gesetzt ist) frei über den Bildschirm auf ein Ziel schieben, z. B. ein Geschäft, und loslassen: dorthin verschieben,
@@ -68,7 +70,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     if (!options.noZone) { zone.style.top = `${middle - half}px`; zone.classList.add('show'); }
     options.hint?.classList.add('show');
     getSelection?.()?.removeAllRanges();   // was beim Halten doch markiert wurde (iOS), verschwindet beim Abheben
-    navigator.vibrate?.(12);
+    vibrate(12);
     drag = { row, ghost, id: row.dataset.id, startX: point.x, startY: point.y, left: box.left, top: box.top, height: box.height, dx: 0, dy: 0, hot: false, goal: null, band: [middle - half, middle + half] };
     swallow = true;
   }
@@ -80,10 +82,10 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     } else { drag.dx = shift(x - drag.startX, drag.left, innerWidth); drag.dy = 0; }
     drag.ghost.style.transform = `translate(${drag.dx}px, ${drag.dy}px)`;
     const hot = !options.noZone && overZone(x, innerWidth) && (!target || overBand(y, drag.band[0], drag.band[1]));
-    if (hot !== drag.hot) { drag.hot = hot; zone?.classList.toggle('hot', hot); if (hot) navigator.vibrate?.(8); }
+    if (hot !== drag.hot) { drag.hot = hot; zone?.classList.toggle('hot', hot); if (hot) vibrate(8); }
     if (target) {
       const goal = hot ? null : target.at(x, y, drag.id) ?? null;   // ein Ziel kann auch '' heißen („ohne Geschäft“)
-      if (goal !== drag.goal) { drag.goal = goal; target.mark(goal); if (goal !== null) navigator.vibrate?.(8); }
+      if (goal !== drag.goal) { drag.goal = goal; target.mark(goal); if (goal !== null) vibrate(8); }
     }
   }
   function finish(drop) {
