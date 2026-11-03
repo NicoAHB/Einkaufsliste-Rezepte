@@ -53,6 +53,7 @@ import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
+import { ask, mountAsk } from './ask.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -97,6 +98,7 @@ let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion
 const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
 const portions = new Map(), openRecipes = new Set();
+mountAsk();
 singleOpenAccordion($('#help-body'), '.help-section');
 singleOpenAccordion($('#recipe-list'), '.recipe-details', () => {
   openRecipes.clear();
@@ -978,18 +980,21 @@ function listPrivacyField(picker,isOwn,checked=false) {
   picker.addEventListener('change',()=>sync(true));input.addEventListener('change',()=>sync());sync();return {field,input,sync};
 }
 const PRIVATE_SOURCE_FIELDS=['quantity','unit','category','wishUrl','imageKey','wishImageHidden','purchaseUnit','purchaseMeasure','purchaseAmount','onSale','salePrice','saleUntil','createdBy'];
-function makeSharedListPrivate(storeId,name) {
-  const source=active(state.stores).find(row=>row.id===storeId);if(!source)throw new Error('Diese Liste wurde inzwischen entfernt.');
+async function makeSharedListPrivate(storeId,name) {
+  if(!active(state.stores).some(row=>row.id===storeId))throw new Error('Diese Liste wurde inzwischen entfernt.');
+  const count=active(state.items).filter(row=>row.storeId===storeId).length;
+  if(!await ask({title:'Als geheime Liste weiterführen?',message:`„${name}“ mit ${count} Einträgen wird als geheime Kopie auf diesem Gerät weitergeführt. Die bisher gemeinsame Liste wird für die Familie ausgeblendet. Frühere gemeinsame Daten und Sicherungen bleiben bestehen.`,confirmLabel:'Geheim weiterführen'}))return null;
+  // Nach der Rückfrage neu lesen: Inzwischen kann ein Abgleich Einträge geändert haben.
+  if(!active(state.stores).some(row=>row.id===storeId))throw new Error('Diese Liste wurde inzwischen entfernt.');
   const rows=active(state.items).filter(row=>row.storeId===storeId);
-  if(!confirm(`„${name}“ mit ${rows.length} Einträgen als geheime Kopie auf diesem Gerät weiterführen? Die bisher gemeinsame Liste wird für die Familie ausgeblendet. Frühere gemeinsame Daten und Sicherungen bleiben bestehen.`))return null;
   const id=privateList.createList(name,rows.map(row=>({name:row.name,note:row.wishNote||'',checked:Boolean(row.checked),source:Object.fromEntries(PRIVATE_SOURCE_FIELDS.filter(key=>row[key]!==undefined).map(key=>[key,clone(row[key])]))})));
   if(!id)return null;
   try{commit([nextOp('stores',storeId,{deletedAt:new Date().toISOString()})]);}
   catch(error){privateList.removeList(id);throw error;}
   return id;
 }
-function sharePrivateList(id,name,symbol) {
-  if(!confirm(`„${name}“ mit ${privateList.size(id)} Einträgen und privaten Notizen für die Familie freigeben? Diese Inhalte werden anschließend über GitHub geteilt.`))return null;
+async function sharePrivateList(id,name,symbol) {
+  if(!await ask({title:'Für die Familie freigeben?',message:`„${name}“ mit ${privateList.size(id)} Einträgen und privaten Notizen wird für die Familie freigegeben. Diese Inhalte werden anschließend über GitHub geteilt.`,confirmLabel:'Freigeben'}))return null;
   const prepared=privateList.prepareShare(id);if(!prepared)return null;
   const storeId=prepared.list.sharedStoreId,ops=[nextOp('stores',storeId,{name,separate:true,anywhere:false,chainKey:null,offersUrl:'',symbol:symbol==='name'?'none':symbol,deletedAt:null})];
   for(const item of prepared.items)ops.push(nextOp('items',item.sharedId,{...Object.fromEntries(PRIVATE_SOURCE_FIELDS.filter(key=>item.source?.[key]!==undefined).map(key=>[key,clone(item.source[key])])),name:item.name,wishNote:item.note,quantity:item.source?.quantity||1,unit:item.source?.unit||'Stück',storeId,checked:item.checked,createdBy:item.source?.createdBy||config.actor||'Unbekannt',deletedAt:null}));
@@ -1015,13 +1020,13 @@ function privateStoreEditorRow(list) {
     if(save.textContent!==caption)save.replaceChildren(icon('check'),element('span',caption));save.setAttribute('aria-label',`${name.value.trim()||list.name} ${dirty?'speichern':caption}`);
   };
   form.append(label,picker,privacy.field,warning,save);form.addEventListener('input',update);form.addEventListener('change',update);update();
-  form.addEventListener('submit',event=>{event.preventDefault();guard(()=>{
+  form.addEventListener('submit',event=>{event.preventDefault();guard(async()=>{
     const title=name.value.trim();if(!title)throw new Error('Bitte einen Listennamen eingeben.');
     if(privacy.input.checked){if(privateList.renameList(list.id,title))replaceStoreEditorRow(row,privateStoreEditorRow(privateList.lists.find(item=>item.id===list.id)));}
-    else {const id=sharePrivateList(list.id,title,picker.querySelector('input:checked')?.value||'name');if(id)replaceStoreEditorRow(row,storeEditorRow(active(state.stores).find(store=>store.id===id)));}
+    else {const id=await sharePrivateList(list.id,title,picker.querySelector('input:checked')?.value||'name');if(id)replaceStoreEditorRow(row,storeEditorRow(active(state.stores).find(store=>store.id===id)));}
   });});
   const open=button('Liste öffnen',()=>{if(!privateList.has(list.id)&&!privateList.enable(list.id))return;$('#stores-dialog').close();tab('shopping');showView(privateView(list.id));},'secondary store-private-open');open.prepend(icon('lock'));
-  const remove=button('Geheime Liste auf diesem Gerät löschen',()=>{if(confirm(`„${list.name}“ und alle darin enthaltenen privaten Einträge auf diesem Gerät löschen?`)&&privateList.removeList(list.id))row.remove();},'danger store-delete');
+  const remove=button('Geheime Liste auf diesem Gerät löschen',async()=>{if(await ask({title:'Geheime Liste löschen?',message:`„${list.name}“ und alle darin enthaltenen privaten Einträge werden auf diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.`,confirmLabel:'Löschen',danger:true})&&privateList.removeList(list.id))row.remove();},'danger store-delete');
   body.append(form,open,remove);return row;
 }
 function storeEditorRow(store) {
@@ -1121,11 +1126,11 @@ function storeEditorRow(store) {
       save.setAttribute('aria-label',modified?`${input.value.trim()||store.name} speichern`:`${store.name}: ${label}`);
     };
     form.addEventListener('input',updateSave);form.addEventListener('change',updateSave);updateSave();
-    form.addEventListener('submit', event => { event.preventDefault(); guard(() => {
+    form.addEventListener('submit', event => { event.preventDefault(); guard(async () => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
       currentStore(store.id);if(!dirty())return;
       const patch=storePatch(),delta=changed(patch,initial);
-      if(privacy.input.checked&&patch.separate){const id=makeSharedListPrivate(store.id,name);if(id)replaceStoreEditorRow(row,privateStoreEditorRow(privateList.lists.find(list=>list.id===id)));return;}
+      if(privacy.input.checked&&patch.separate){const id=await makeSharedListPrivate(store.id,name);if(id)replaceStoreEditorRow(row,privateStoreEditorRow(privateList.lists.find(list=>list.id===id)));return;}
       if(wishList)delta.wishlist=true;
       if(patch.separate)Object.assign(delta,{chainKey:null,offersUrl:'',anywhere:false,aisles:null});
       commit([nextOp('stores',store.id,delta)]);
@@ -1133,9 +1138,11 @@ function storeEditorRow(store) {
       replacement.open=row.open;replacement.querySelector('.aisle-fold').open=aisleFold.open;
       row.replaceWith(replacement);$('#stores-dialog').scrollTop=scroll;
     }); });
-    const remove = button(isSeparate(store)?'Liste löschen':'Geschäft löschen', () => {
+    const remove = button(isSeparate(store)?'Liste löschen':'Geschäft löschen', async () => {
       if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
-      if (!confirm(`„${store.name}“ löschen? Die zugehörigen Artikel werden ausgeblendet.`)) return;
+      if (!await ask({ title: `„${store.name}“ löschen?`, message: 'Die zugehörigen Artikel werden ausgeblendet. 14 Tage lang lässt sich alles unter „Kürzlich gelöscht“ zurückholen.', confirmLabel: 'Löschen', danger: true })) return;
+      if (!active(state.stores).some(row => row.id === store.id)) return;
+      if (active(state.stores).length <= 1) throw new Error('Mindestens ein Geschäft muss bleiben.');
       removeRows('stores', [store.id]); renderStores();
     }, 'danger store-delete');
     remove.setAttribute('aria-label', `${store.name} löschen`); body.append(form);
@@ -1284,10 +1291,11 @@ function recipeCard(recipe, ingredients, options = {}) {
   return card;
 }
 const RECIPE_DELETE_LABEL = 'Rezept dauerhaft aus dem Rezeptbuch löschen';
-function deleteRecipe(id) {
+async function deleteRecipe(id) {
   const recipe=active(state.recipes).find(row=>row.id===id);
   if(!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
-  if(!confirm(`Rezept „${recipe.name}“ dauerhaft aus dem Rezeptbuch löschen?`)) return;
+  if(!await ask({title:'Rezept löschen?',message:`„${recipe.name}“ wird aus dem Rezeptbuch gelöscht. 14 Tage lang lässt es sich unter „Kürzlich gelöscht“ zurückholen.`,confirmLabel:'Löschen',danger:true})) return;
+  if(!active(state.recipes).some(row=>row.id===id)) return;
   removeSavedRecipe(id);
 }
 function removeSavedRecipe(id) {
@@ -3660,8 +3668,8 @@ function renderDeviceStorage() {
   $('#device-storage').textContent = `Auf diesem Gerät belegt: ${mb(total)} von meist etwa 5 MB (Daten und Warteschlange ${mb(sizes.data)}, Tagesverlauf ${mb(sizes.daily)}, Sonstiges ${mb(sizes.other)}).`;
   $('#clear-daily-history').hidden = sizes.daily < 2048;
 }
-$('#clear-daily-history').addEventListener('click', () => guard(() => {
-  if (!confirm('Den Tagesverlauf früherer Tage auf diesem Gerät löschen? Die heutigen Rezepte des Tages und deine Rezeptsammlung bleiben erhalten.')) return;
+$('#clear-daily-history').addEventListener('click', () => guard(async () => {
+  if (!await ask({ title: 'Älteren Tagesverlauf löschen?', message: 'Der Tagesverlauf früherer Tage wird auf diesem Gerät gelöscht. Die heutigen Rezepte des Tages und deine Rezeptsammlung bleiben erhalten.', confirmLabel: 'Löschen', danger: true })) return;
   const current = loadDaily(); current.history = []; saveDaily(); renderDeviceStorage(); showNotice('Älterer Tagesverlauf gelöscht');
 }));
 function compactNow() {
@@ -3708,7 +3716,7 @@ async function cleanPhotos() {
   const young = orphans.length - old.length;
   if (!old.length) { note.textContent = `${young} ungenutzte Fotos sind noch neu (unter 24 Stunden) und bleiben vorerst.`; return; }
   const size = old.reduce((sum, file) => sum + (file.size || 0), 0);
-  if (!confirm(`${old.length} nicht mehr verwendete Fotos (${kb(size)}) endgültig löschen?${young ? `\n\n${young} neuere bleiben vorerst stehen.` : ''}\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`)) { note.textContent = ''; return; }
+  if (!await ask({ title: 'Ungenutzte Fotos löschen?', message: `${old.length} nicht mehr verwendete Fotos (${kb(size)}) werden endgültig gelöscht.${young ? `\n\n${young} neuere bleiben vorerst stehen.` : ''}\n\nNur sinnvoll, wenn beide Geräte gerade abgeglichen sind.`, confirmLabel: 'Endgültig löschen', danger: true })) { note.textContent = ''; return; }
   // Nach der Rückfrage noch einmal abgleichen: Inzwischen kann ein Rezept auf eines der Fotos verweisen.
   await freshSync();
   const stillUnused = retainedPhotoIds(localStorage,usedPhotos());
@@ -3959,13 +3967,15 @@ function openMoveSelected() {
   };
   fillMoveChoices(choice);
 }
-$('#move-delete').addEventListener('click', () => guard(() => {
+$('#move-delete').addEventListener('click', () => guard(async () => {
   if (!$('#move-dialog').open) return;
   if (moveScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte die Auswahl erneut öffnen.');
   const ids = moveDeleteIds.filter(id => active(state.items).some(row => row.id === id));
   if (!ids.length) { $('#move-dialog').close(); showNotice('Diese Artikel wurden inzwischen entfernt.'); return; }
-  if (ids.length > 1 && !confirm(`${ids.length} Artikel löschen?`)) return;
-  removeRows('items', ids); selected.clear(); setSelecting(false); $('#move-dialog').close();
+  if (ids.length > 1 && !await ask({ title: `${ids.length} Artikel löschen?`, message: '14 Tage lang lassen sie sich unter „Kürzlich gelöscht“ zurückholen.', confirmLabel: 'Löschen', danger: true })) return;
+  if (!$('#move-dialog').open) return;
+  const still = ids.filter(id => active(state.items).some(row => row.id === id)); if (!still.length) return;
+  removeRows('items', still); selected.clear(); setSelecting(false); $('#move-dialog').close();
   showNotice(ids.length === 1 ? 'Artikel gelöscht' : `${ids.length} Artikel gelöscht`);
 }));
 function moveSelected(storeId) {
@@ -4039,9 +4049,10 @@ $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!sele
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });
 $('#select-done').addEventListener('click', () => guard(()=>setSelecting(false)));
 $('#select-move').addEventListener('click', () => guard(openMoveSelected));
-$('#select-delete').addEventListener('click', () => guard(() => {
+$('#select-delete').addEventListener('click', () => guard(async () => {
+  const chosen = selectedItems(); if (!chosen.length) return;
+  if (!await ask({ title: `${chosen.length} Artikel löschen?`, message: '14 Tage lang lassen sie sich unter „Kürzlich gelöscht“ zurückholen.', confirmLabel: 'Löschen', danger: true })) return;
   const rows = selectedItems(); if (!rows.length) return;
-  if (!confirm(`${rows.length} Artikel löschen?`)) return;
   removeRows('items', rows.map(row => row.id)); selected.clear(); renderItems(); showNotice(`${rows.length} Artikel gelöscht`);
 }));
 $('#welcome-stores').addEventListener('click',()=>openStoresDialog());
@@ -4356,11 +4367,14 @@ $('#trash-undo').addEventListener('click', () => guard(() => {
 }));
 /* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
    „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
-$('#trash-purge').addEventListener('click', () => guard(() => {
+$('#trash-purge').addEventListener('click', () => guard(async () => {
+  const before = purgeChanges(state).length;
+  if (!before) return;
+  const what = before === 1 ? 'Den Eintrag' : `Alle ${before} Einträge`;
+  if (!await ask({ title: 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
+  // Erst nach der Rückfrage bestimmen, was gelöscht wird: Ein Abgleich kann den Papierkorb inzwischen verändert haben.
   const changes = purgeChanges(state), count = changes.length;
   if (!count) return;
-  const what = count === 1 ? 'Den Eintrag' : `Alle ${count} Einträge`;
-  if (!confirm(`${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`)) return;
   if (connected()) compactRequested = true;
   commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
   if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
@@ -4407,20 +4421,21 @@ function openStorageRecovery(raw) {
 }
 const backupName = kind => `sattplan-${kind}-${new Date().toISOString().slice(0, 10)}.json`;
 $('#storage-recovery-save').addEventListener('click', () => guard(() => deliverFile(new File([brokenCache], backupName('lokaler-speicher'), { type: 'application/json' }))));
-$('#storage-recovery-reload').addEventListener('click', () => guard(() => {
-  if (!confirm('Lokalen Stand auf diesem Gerät verwerfen? Noch nicht gesendete Änderungen gehen dabei verloren. Sichere ihn vorher als Datei.')) return;
+$('#storage-recovery-reload').addEventListener('click', () => guard(async () => {
+  if (!await ask({ title: 'Lokalen Stand verwerfen?', message: 'Noch nicht gesendete Änderungen auf diesem Gerät gehen dabei verloren. Sichere ihn vorher als Datei.', confirmLabel: 'Verwerfen', danger: true })) return;
   try { localStorage.removeItem(namespace()); } catch { throw new Error('Der Browser lässt den Speicher gerade nicht ändern. Bitte die App ganz schließen und erneut öffnen.'); }
   location.reload();
 }));
 $('#quarantine-save').addEventListener('click', () => guard(() => deliverFile(new File([JSON.stringify({ app: 'Sattplan', target: namespace(), changes: quarantined() }, null, 2)], backupName('nicht-uebernommene-aenderungen'), { type: 'application/json' }))));
-$('#quarantine-discard').addEventListener('click', () => guard(() => {
-  if (!confirm('Die beiseitegelegten Änderungen endgültig verwerfen? Sichere sie vorher als Datei, falls du sie noch brauchst.')) return;
+$('#quarantine-discard').addEventListener('click', () => guard(async () => {
+  if (!await ask({ title: 'Beiseitegelegte Änderungen verwerfen?', message: 'Sie werden endgültig verworfen. Sichere sie vorher als Datei, falls du sie noch brauchst.', confirmLabel: 'Verwerfen', danger: true })) return;
   try { localStorage.removeItem(quarantineKey()); } catch { /* bleibt sichtbar */ }
   renderQuarantine(); showNotice('Beiseitegelegte Änderungen verworfen');
 }));
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
-  if (!confirm('Token auf diesem Gerät entfernen? Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.')) return;
+  if (!await ask({ title: 'Token entfernen?', message: 'Der Token wird auf diesem Gerät entfernt. Lokale Repository-Daten und ausstehende Änderungen bleiben für eine spätere erneute Verbindung gespeichert.', confirmLabel: 'Token entfernen', danger: true })) return;
+  if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
   const { owner, repo, branch, path, token, tokenExpires, savedAt, ...kept } = config;   // alles andere (Name, Darstellung, Hilfsdienst …) bleibt auf diesem Gerät
   saveConfig(kept);
   fillSettings(); message(); await loadWorkspace();

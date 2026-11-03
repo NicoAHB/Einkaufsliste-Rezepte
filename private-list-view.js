@@ -1,3 +1,4 @@
+import {ask} from './ask.js';
 import {emptyPrivateList,privateListKey,readPrivateList,updatePrivateList,privateLists,privateItemListId,withPrivateLists} from './private-list.js';
 
 // Eigener Datenweg: keine gemeinsamen Daten oder Synchronisationsoperationen.
@@ -69,8 +70,10 @@ export function mountPrivateList({getScope,onChange,onError,makeId,makeIcon,make
     const name=form.elements.name.value.trim(),note=form.elements.note.value.trim();if(!name){form.elements.name.focus();return;}
     if(mutate(data=>{const item=data.items.find(row=>row.id===pending.id&&row.listId===pending.listId);if(!item)throw new Error('Dieser private Eintrag wurde inzwischen entfernt.');if(name!==pending.baseline.name)item.name=name;if(note!==pending.baseline.note)item.note=note;return data;}))dialog.close();
   });
-  $('private-item-delete').addEventListener('click',()=>{
-    const pending=editing;if(!pending||pending.scope!==scope||!confirm('Diesen Eintrag aus deiner geheimen Liste löschen?'))return;
+  $('private-item-delete').addEventListener('click',async()=>{
+    const pending=editing;if(!pending||pending.scope!==scope)return;
+    if(!await ask({title:'Eintrag löschen?',message:'Dieser Eintrag wird aus deiner geheimen Liste gelöscht.',confirmLabel:'Löschen',danger:true}))return;
+    if(editing!==pending||pending.scope!==scope)return;
     if(mutate(data=>{data.items=data.items.filter(row=>row.id!==pending.id);return data;}))dialog.close();
   });
   dialog.addEventListener('close',()=>{editing=null;form.reset();});

@@ -1,6 +1,7 @@
 /* Produktauswahl als eigenes Fenster. Keine Händler-/Bilddienste: Fotos und Katalog liegen in der App.
    Änderungen gehen ausschließlich über die vorhandenen Speicher-Callbacks der App. */
 import { INTERNATIONAL_CATEGORY, internationalProductGroups, isInternationalProduct } from './international-products.js';
+import { ask } from './ask.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice, preferredQuantity } from './buying.js';
 import { CATEGORIES } from './categories.js';
@@ -235,10 +236,11 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
           // Mülleimer mit Wort (2.144): eindeutig, aber erst nach Rückfrage wirksam; danach „Rückgängig“ in der Meldung.
           const remove=node('button',undefined,'product-delete');remove.type='button';remove.dataset.productAction='delete';remove.dataset.product=product.id;remove.setAttribute('aria-label',`${product.name} dauerhaft löschen`);
           remove.append(svg('trash'),node('span','Löschen'));
-          remove.addEventListener('click',()=>{try{
-            if(!dialog.open||scope!==getScope()||target!=='list'||mode!=='own'||submitting)throw new Error('Bitte den Reiter „Eigene“ erneut öffnen.');
-            const current=library().find(row=>row.id===product.id);if(!current?.own)throw new Error('Nur eigene Produkte können gelöscht werden.');
-            if(!window.confirm(`„${current.name}“ dauerhaft aus deinen eigenen Produkten löschen?\n\nDer Eintrag verschwindet aus der Produktauswahl und den Favoriten. Bereits angelegte Einkaufspositionen, Vorräte und Belege bleiben erhalten.`))return;
+          remove.addEventListener('click',async()=>{try{
+            const check=()=>{if(!dialog.open||scope!==getScope()||target!=='list'||mode!=='own'||submitting)throw new Error('Bitte den Reiter „Eigene“ erneut öffnen.');const found=library().find(row=>row.id===product.id);if(!found?.own)throw new Error('Nur eigene Produkte können gelöscht werden.');return found;};
+            const asked=check();
+            if(!await ask({title:'Eigenes Produkt löschen?',message:`„${asked.name}“ verschwindet aus der Produktauswahl und den Favoriten. Bereits angelegte Einkaufspositionen, Vorräte und Belege bleiben erhalten. 14 Tage lang lässt es sich unter „Kürzlich gelöscht“ zurückholen.`,confirmLabel:'Löschen',danger:true}))return;
+            const current=check();
             const undo=onDeleteOwn(current);selection.delete(current.id);clearError();renderCart();renderProducts();
             const feedback=$('product-picker-feedback');feedback.replaceChildren(node('span',`„${current.name}“ aus eigenen Produkten gelöscht.`));
             if(onRestoreOwn&&undo){const back=node('button','Rückgängig','text-button product-undo');back.type='button';back.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Produktauswahl erneut öffnen.');onRestoreOwn(undo);feedback.replaceChildren(node('span',`„${current.name}“ ist wieder bei den eigenen Produkten.`));renderProducts();}catch(error){fail(error);}});feedback.append(' ',back);}
