@@ -4083,7 +4083,9 @@ productPicker = mountProductPicker({
   onConsume:product=>{commit(stockRemovalOperations([product]));return isOptionalBasic(product.name);},
   recognizeName,
   onQuickBuy: product => pantryBuyer.buyProduct(product),
-  onDeleteOwn:product=>{const removal=ownProductRemoval(product);const ids=(state.productFavorites||[]).filter(row=>!row.deletedAt&&productKey(row.name)===productKey(product.name)).map(row=>row.id);commit([nextOp('productRemovals',removal.id,removal.patch),...ids.map(id=>nextOp('productFavorites',id,{deletedAt:new Date().toISOString()}))]);},
+  onDeleteOwn:product=>{const removal=ownProductRemoval(product);const ids=(state.productFavorites||[]).filter(row=>!row.deletedAt&&productKey(row.name)===productKey(product.name)).map(row=>row.id);commit([nextOp('productRemovals',removal.id,removal.patch),...ids.map(id=>nextOp('productFavorites',id,{deletedAt:new Date().toISOString()}))]);return {removalId:removal.id,favoriteIds:ids};},
+  // „Rückgängig“ nach dem Löschen (2.144): Die Löschmarke wird aufgehoben, gelöschte Favoriten kommen zurück.
+  onRestoreOwn:({removalId,favoriteIds=[]})=>{const at=new Date().toISOString();commit([nextOp('productRemovals',removalId,{deletedAt:at}),...favoriteIds.filter(id=>(state.productFavorites||[]).some(row=>row.id===id&&row.deletedAt)).map(id=>nextOp('productFavorites',id,{deletedAt:null}))]);},
   onFavorite: product => {
     const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
     const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {

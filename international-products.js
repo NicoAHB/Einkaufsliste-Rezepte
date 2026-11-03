@@ -1,5 +1,7 @@
 /* Zusätzlicher Länder-/Küchenfilter. Die normalen Gänge und Produktkennungen bleiben bestehen.
-   Die Zuordnung beschreibt die Verwendung in einer Küche, keine ausschließliche Herkunft oder aktuelle Verfügbarkeit. */
+   Die Zuordnung beschreibt die Verwendung in einer Küche, keine ausschließliche Herkunft oder aktuelle Verfügbarkeit.
+   2.144: um passende Katalogprodukte mit vorhandenem Bild ergänzt (z. B. Mie-Nudeln, Ghee, Mascarpone, Guacamole) sowie
+   „Naher Osten & Nordafrika“ und „USA & Kanada“. Ein Produkt darf in mehreren Küchen stehen (Sojasoße: China und Japan). */
 export const INTERNATIONAL_CATEGORY = 'international';
 export const INTERNATIONAL_COUNTRIES = Object.freeze(
 [
@@ -9,7 +11,10 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
     "products": [
       "sojasosse",
       "glasnudeln",
-      "pak-choi"
+      "pak-choi",
+      "mie-nudeln",
+      "sesamoel",
+      "austernsauce"
     ]
   },
   {
@@ -21,7 +26,8 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "kritharaki",
       "dolmadakia",
       "feta",
-      "halloumi"
+      "halloumi",
+      "pitabrot"
     ]
   },
   {
@@ -34,7 +40,11 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "chapati",
       "basmati-reis",
       "naanbrot",
-      "garam-masala"
+      "garam-masala",
+      "ghee",
+      "rote-linsen",
+      "kichererbsen",
+      "kurkuma"
     ]
   },
   {
@@ -47,7 +57,14 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "pesto-gruen",
       "pesto-rot",
       "polenta",
-      "mozzarella"
+      "mozzarella",
+      "mascarpone",
+      "ricotta",
+      "balsamico-dunkel",
+      "parmaschinken",
+      "ciabatta",
+      "tortellini",
+      "lasagneplatten"
     ]
   },
   {
@@ -60,7 +77,10 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "mirin",
       "sushi-reis",
       "udon-nudeln",
-      "sojasosse"
+      "sojasosse",
+      "teriyakisauce",
+      "seidentofu",
+      "wasabi-erbsen"
     ]
   },
   {
@@ -83,7 +103,22 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "taco-gewuerzmischung",
       "tortillas",
       "tortilla-chips",
-      "schwarze-bohnen"
+      "schwarze-bohnen",
+      "guacamole",
+      "salsa-dip",
+      "kidneybohnen",
+      "nachos"
+    ]
+  },
+  {
+    "id": "me",
+    "label": "Naher Osten & Nordafrika",
+    "products": [
+      "hummus",
+      "falafel",
+      "tahin",
+      "couscous",
+      "harissa"
     ]
   },
   {
@@ -102,7 +137,8 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
     "products": [
       "chorizo",
       "oliven-gruen",
-      "oliven-schwarz"
+      "oliven-schwarz",
+      "serranoschinken"
     ]
   },
   {
@@ -113,7 +149,10 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "currypaste-gruen",
       "kokosmilch",
       "jasmin-reis",
-      "reisnudeln"
+      "reisnudeln",
+      "fischsauce",
+      "suesse-chilisauce",
+      "sriracha"
     ]
   },
   {
@@ -125,7 +164,8 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "ayran",
       "pekmez",
       "bulgur",
-      "tahin"
+      "tahin",
+      "fladenbrot"
     ]
   },
   {
@@ -136,6 +176,16 @@ export const INTERNATIONAL_COUNTRIES = Object.freeze(
       "wareniki",
       "borschtsch",
       "smetana"
+    ]
+  },
+  {
+    "id": "us",
+    "label": "USA & Kanada",
+    "products": [
+      "erdnussbutter",
+      "bbq-sauce",
+      "ahornsirup",
+      "bagels"
     ]
   }
 ].map(country=>Object.freeze({...country,products:Object.freeze(country.products)})));

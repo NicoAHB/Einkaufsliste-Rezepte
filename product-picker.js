@@ -21,7 +21,7 @@ const svg = name => {
   icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); icon.append(use); return icon;
 };
 
-export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName, onStockSettings, onConsume, onDeleteOwn }) {
+export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName, onStockSettings, onConsume, onDeleteOwn, onRestoreOwn }) {
   const $ = id => document.getElementById(id), dialog = $('product-picker-dialog'), form = $('product-picker-form');
   const search = $('product-picker-search'), category = $('product-picker-category'), store = $('product-picker-store'), grid = $('product-picker-list');
   if(![...category.options].some(option=>option.value===INTERNATIONAL_CATEGORY))category.add(new Option('Internationale Produkte',INTERNATIONAL_CATEGORY),1);
@@ -40,7 +40,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function resetHelp() {
     const hint=$('product-picker-hint'),list=node('ul');
     const texts=target==='pantry'
-      ?['Antippen: Vorrat vormerken oder ausgrauen; unten mit „Änderungen speichern“ übernehmen. ★ merkt Favoriten.','„Nachkaufen“: Menge und Geschäft wählen, mit „Auf die Einkaufsliste“ zum Einkaufszettel hinzufügen.','Unter „Letzte 7 Tage gekauft“ die Einstellung aufklappen, einschalten, 1–7 Tage wählen und „Speichern“ drücken. Die Kopfzeile zeigt den gespeicherten Zustand; Datum und Nutzer stehen auf dem gespeicherten Button.','Ausnahme Grundvorrat: Mehl, Nudeln und andere Grundvorräte bleiben, bis du sie als aufgebraucht markierst. Manuelle Vorräte laufen nicht ab.','Haushalt, Drogerie und Sonstiges werden nicht automatisch übernommen.','„Aufgebraucht“ nimmt das Produkt sofort aus dem Vorrat. Der Einkauf bleibt sieben Tage sichtbar, aufgebrauchte Produkte grau.','Optionale Grundvorräte (Nudeln, Tomatenmark, Butter) kommen beim Aufbrauchen automatisch auf den Einkaufszettel.']
+      ?['Antippen: Vorrat vormerken oder ausgrauen; unten mit „Produkte dem Vorrat hinzufügen“ (bzw. „Aus dem Vorrat entfernen“) übernehmen. ★ merkt Favoriten.','„Nachkaufen“: Menge und Geschäft wählen, mit „Auf die Einkaufsliste“ zum Einkaufszettel hinzufügen.','Unter „Letzte 7 Tage gekauft“ die Einstellung aufklappen, einschalten, 1–7 Tage wählen und „Speichern“ drücken. Die Kopfzeile zeigt den gespeicherten Zustand; Datum und Nutzer stehen auf dem gespeicherten Button.','Ausnahme Grundvorrat: Mehl, Nudeln und andere Grundvorräte bleiben, bis du sie als aufgebraucht markierst. Manuelle Vorräte laufen nicht ab.','Haushalt, Drogerie und Sonstiges werden nicht automatisch übernommen.','„Aufgebraucht“ nimmt das Produkt sofort aus dem Vorrat. Der Einkauf bleibt sieben Tage sichtbar, aufgebrauchte Produkte grau.','Optionale Grundvorräte (Nudeln, Tomatenmark, Butter) kommen beim Aufbrauchen automatisch auf den Einkaufszettel.']
       :['Antippen zum Auswählen - Mit dem Stern als Favorit merken.','Wähle die gewünschten Produkte aus und füge sie mit dem Button unten schnell zur Einkaufsliste hinzu.'];
     for(const text of texts)list.append(node('li',text));
     hint.replaceChildren(list);
@@ -82,8 +82,12 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     getRows: () => tabOrder.getOrder().map(id => ({ id, name: dialog.querySelector(`[data-product-mode="${id}"]`).textContent.trim() })),
     onChange: order => tabOrder.setOrder(order)
   }));
-  const library = () => {
-    const data=getData(),products=(target==='list'&&category.value===INTERNATIONAL_CATEGORY?internationalProductLibrary:target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry,data.productRemovals);
+  // „Internationale Produkte“ zeigt die genauen Sorten (Sushi-Reis, Tortillas …) statt der zusammengefassten Gruppen – für die
+  // Einkaufsliste und seit 2.144 auch für den Vorrat (dort bis dahin gesperrt). Der Vorrat nimmt nur, was als Vorrat taugt.
+  const library = (international = category.value === INTERNATIONAL_CATEGORY) => {
+    const data=getData(),source=international?internationalProductLibrary:target==='pantry'?pantryProductLibrary:productLibrary;
+    let products=source(data.history,data.favorites,data.pantry,data.productRemovals);
+    if(international&&target==='pantry')products=products.filter(pantryProductAllowed);
     if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
     return products;
   };
@@ -103,7 +107,9 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   function updateFooter() {
     const count = selection.size, invalidStore = target === 'list' && store.value && !getStores().some(shop => shop.id === store.value);
     $('product-picker-add').disabled = !count || submitting || Boolean(invalidStore);
-    $('product-picker-add').textContent = target==='pantry'&&count ? 'Änderungen speichern' : count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'} hinzufügen` : 'Produkte auswählen';
+    // Vorrat (2.144): Der Knopf sagt, was passiert – hinzufügen, entfernen oder beides.
+    const removing=target==='pantry'?[...selection.values()].filter(product=>product.pantryAvailable===false).length:0;
+    $('product-picker-add').textContent = target==='pantry'&&count ? (!removing ? `${count === 1 ? 'Produkt' : 'Produkte'} dem Vorrat hinzufügen` : removing === count ? 'Aus dem Vorrat entfernen' : 'Vorrat aktualisieren') : count ? `${count} ${count === 1 ? 'Produkt' : 'Produkte'} hinzufügen` : 'Produkte auswählen';
     $('product-picker-clear').hidden = !count;
     $('product-picker-selected').textContent = `Auswahl (${count}) · Mengen ändern`;
     $('product-picker-cart').hidden = target !== 'list' || !count;
@@ -153,9 +159,16 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     // Gespeicherte Vorräte bleiben bis zum Speichern an ihrem Platz, auch abgewählte.
     const currentViewKeys=new Set([...pantryKeys(getData().pantry||[]),...[...selection.values()].map(product=>pantryKey(product.name))]);
     const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
-    const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
-    const categories = new Set(products.map(product => product.category));
-    for (const option of category.options) option.disabled = option.value===INTERNATIONAL_CATEGORY&&target==='pantry'|| target === 'pantry' && mode !== 'all' && Boolean(option.value) && !(option.value===INTERNATIONAL_CATEGORY?products.some(isInternationalProduct):categories.has(option.value));
+    const forMode = all => target === 'pantry' ? mode==='recent'?purchases.map(row=>({...all.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(all, mode, currentViewKeys) : all;
+    const products = forMode(allProducts);
+    // In „Aktuell“, „Grundvorrat“ und „Gekauft“ sind nur Kategorien wählbar, in denen etwas steht. Gezählt wird immer im passenden Bestand:
+    // die Gänge in der normalen Auswahl, „Internationale Produkte“ in den genauen Sorten.
+    if (target === 'pantry' && mode !== 'all') {
+      const international = category.value === INTERNATIONAL_CATEGORY, regular = international ? forMode(library(false)) : products, worldwide = international ? products : forMode(library(true));
+      // Der Grundvorrat ist eine feste Liste allgemeiner Produkte; Sorten aus aller Welt gehören dort nicht hinein.
+      const categories = new Set(regular.map(product => product.category)), hasInternational = mode !== 'basics' && worldwide.some(isInternationalProduct);
+      for (const option of category.options) option.disabled = Boolean(option.value) && !(option.value === INTERNATIONAL_CATEGORY ? hasInternational : categories.has(option.value));
+    } else for (const option of category.options) option.disabled = false;
     if (category.selectedOptions[0]?.disabled) category.value = '';
     const visible = filterProducts(products, {mode:target === 'pantry' && ['current','basics','recent'].includes(mode) ? 'all' : mode,
       query:search.value, category:category.value, includeOwn:target === 'pantry'});
@@ -195,7 +208,9 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         if (target === 'list') pick.append(node('small', amount, 'product-amount'));
         pick.append(check);
         const inList = exactOnList.get(productKey(product.name));
-        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?'Wird entfernt':'Wird dem Vorrat hinzugefügt'):'Vorhanden','product-on-list'));
+        // Der Vorrat fasst Sorten zusammen (Sushi-Reis zählt als Reis). Steht die Sorte unter anderem Namen im Vorrat, sagt die Kachel unter welchem.
+        const stockedAs=category.value===INTERNATIONAL_CATEGORY&&stocked&&stock&&productKey(stock.name)!==productKey(product.name)?stock.name:'';
+        if(target==='pantry'&&(stocked||chosen))pick.append(node('small',chosen?(chosen.pantryAvailable===false?(stockedAs?`${stockedAs} wird entfernt`:'Wird entfernt'):'Wird dem Vorrat hinzugefügt'):stockedAs?`Vorhanden als ${stockedAs}`:'Vorhanden','product-on-list'));
         else if(target==='list'&&inList)pick.append(node('small',`Auf Liste: ${shoppingAmount(inList)}`,'product-on-list'));
         else if(product.own)pick.append(node('small','Eigenes Produkt','product-on-list'));
         if(mode==='recent')pick.append(node('small',`${purchaseLabel(product.shopBoughtAt)}${product.boughtBy?` von ${product.boughtBy}`:' · Käufer unbekannt'}`,'product-on-list product-purchase'));
@@ -217,12 +232,17 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         card.append(pick,star);
         if(target==='list'&&mode==='own'&&product.own&&onDeleteOwn){
           card.classList.add('has-own-delete');
-          const remove=node('button','Löschen','product-delete');remove.type='button';remove.dataset.productAction='delete';remove.dataset.product=product.id;remove.setAttribute('aria-label',`${product.name} dauerhaft löschen`);
+          // Mülleimer mit Wort (2.144): eindeutig, aber erst nach Rückfrage wirksam; danach „Rückgängig“ in der Meldung.
+          const remove=node('button',undefined,'product-delete');remove.type='button';remove.dataset.productAction='delete';remove.dataset.product=product.id;remove.setAttribute('aria-label',`${product.name} dauerhaft löschen`);
+          remove.append(svg('trash'),node('span','Löschen'));
           remove.addEventListener('click',()=>{try{
             if(!dialog.open||scope!==getScope()||target!=='list'||mode!=='own'||submitting)throw new Error('Bitte den Reiter „Eigene“ erneut öffnen.');
             const current=library().find(row=>row.id===product.id);if(!current?.own)throw new Error('Nur eigene Produkte können gelöscht werden.');
             if(!window.confirm(`„${current.name}“ dauerhaft aus deinen eigenen Produkten löschen?\n\nDer Eintrag verschwindet aus der Produktauswahl und den Favoriten. Bereits angelegte Einkaufspositionen, Vorräte und Belege bleiben erhalten.`))return;
-            onDeleteOwn(current);selection.delete(current.id);clearError();renderCart();renderProducts();$('product-picker-feedback').textContent=`„${current.name}“ aus eigenen Produkten gelöscht.`;$('product-picker-feedback').hidden=false;
+            const undo=onDeleteOwn(current);selection.delete(current.id);clearError();renderCart();renderProducts();
+            const feedback=$('product-picker-feedback');feedback.replaceChildren(node('span',`„${current.name}“ aus eigenen Produkten gelöscht.`));
+            if(onRestoreOwn&&undo){const back=node('button','Rückgängig','text-button product-undo');back.type='button';back.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Produktauswahl erneut öffnen.');onRestoreOwn(undo);feedback.replaceChildren(node('span',`„${current.name}“ ist wieder bei den eigenen Produkten.`));renderProducts();}catch(error){fail(error);}});feedback.append(' ',back);}
+            feedback.hidden=false;
             (grid.querySelector('button')||search).focus({preventScroll:true});
           }catch(error){fail(error);}});card.append(remove);
         }
