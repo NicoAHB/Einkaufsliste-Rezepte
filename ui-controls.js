@@ -126,3 +126,24 @@ function drawOrder() {
     list.append(li);
   });
 }
+
+/* Waagerecht scrollende Leisten (Geschäfte, Filter, Produktsammlungen): Ein weicher Rand zeigt, dass es links oder
+   rechts weitergeht. Er erscheint nur, solange dort wirklich etwas verdeckt ist. */
+export function scrollHints(selector = '.chips, .product-modes') {
+  const update = node => {
+    const hidden = node.scrollWidth - node.clientWidth > 1;
+    node.classList.toggle('more-right', hidden && node.scrollLeft + node.clientWidth < node.scrollWidth - 1);
+    node.classList.toggle('more-left', hidden && node.scrollLeft > 1);
+  };
+  const watched = new WeakSet(), resize = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => entries.forEach(entry => update(entry.target))) : null;
+  let queued = false;
+  const attach = () => {
+    queued = false;
+    document.querySelectorAll(selector).forEach(node => {
+      if (!watched.has(node)) { watched.add(node); node.addEventListener('scroll', () => update(node), { passive: true }); resize?.observe(node); }
+      update(node);
+    });
+  };
+  attach();
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(attach); } }).observe(document.body, { childList: true, subtree: true });
+}

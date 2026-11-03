@@ -4831,3 +4831,92 @@ button.recipe-delete { color:var(--danger) }
   flex-direction:column;
   gap:.5rem;
 }
+/* 2.137: Verdeckte Einträge in waagerecht scrollenden Leisten mit weichem Rand andeuten (scrollHints in ui-controls.js) */
+.chips.more-right, .product-modes.more-right {
+  -webkit-mask-image:linear-gradient(to right, #000 calc(100% - 44px), transparent);
+  mask-image:linear-gradient(to right, #000 calc(100% - 44px), transparent);
+}
+.chips.more-left, .product-modes.more-left {
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 44px);
+  mask-image:linear-gradient(to right, transparent, #000 44px);
+}
+.chips.more-left.more-right, .product-modes.more-left.more-right {
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+  mask-image:linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+}
+/* 2.137: Abgleichstatus auch außerhalb der Einstellungen sichtbar: Punkt am Reiter (gelb: wartet, rot: Problem) */
+.tabs [data-tab=settings] .tab-icon {
+  position:relative;
+}
+body:is([data-sync=pending],[data-sync=error]) .tabs [data-tab=settings] .tab-icon::after {
+  content:'';
+  position:absolute;
+  top:1px;
+  right:12px;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:var(--warn);
+  box-shadow:0 0 0 2px var(--card);
+}
+body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
+  background:var(--danger);
+}
+/* 2.137: Der heutige Tag im Wochenplan bleibt auch im Glas-Design klar erkennbar */
+:root .day.today, :root[data-glass] .day.today {
+  border:2px solid var(--accent);
+  box-shadow:0 0 0 1px var(--accent), var(--shadow);
+}
+.day-today-badge {
+  margin-left:.5rem;
+  padding:.1rem .5rem;
+  border-radius:999px;
+  background:var(--accent);
+  color:var(--on-accent, #fff);
+  font-size:.75rem;
+  font-weight:700;
+  vertical-align:middle;
+}
+/* 2.137: Waagerechtes Wischen in den Tagesrezepten blättert; senkrecht scrollt der Inhalt wie bisher */
+#daily-content {
+  touch-action:pan-y;
+}
+/* 2.137: Einheitliche Aufklapp-Pfeile statt der Browser-Dreiecke */
+:is(.purchase-more, .cookable-how, #recipe-raw, #members-archived) > summary {
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  list-style:none;
+}
+:is(.purchase-more, .cookable-how, #recipe-raw, #members-archived) > summary::-webkit-details-marker {
+  display:none;
+}
+:is(.purchase-more, .cookable-how, #recipe-raw, #members-archived) > summary::after {
+  content:'';
+  flex:none;
+  width:.45em;
+  height:.45em;
+  margin:0 .2em .2em auto;
+  border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;
+  transform:rotate(45deg);
+  transition:transform .15s ease;
+}
+:is(.purchase-more, .cookable-how, #recipe-raw, #members-archived)[open] > summary::after {
+  margin-bottom:-.2em;
+  transform:rotate(-135deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.purchase-more, .cookable-how, #recipe-raw, #members-archived) > summary::after { transition:none }
+}
+/* 2.137: Leerer Budgetbereich mit kurzer Erklärung statt nur einem Knopf */
+.spend-budget.empty-budget {
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  padding:12px 14px;
+  text-align:center;
+}
+.empty-budget-text {
+  margin:0;
+}
