@@ -5119,6 +5119,37 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .trash-foot {
   margin:4px 0 0;
 }
+.trash-purge {
+  display:flex;
+  justify-content:center;
+  margin-top:-6px
+}
+/* Bewusst leise: kleine graue Schrift ohne Rahmen, erst beim Zeigen oder Antippen rot. Endgültiges Löschen soll man finden, aber nicht versehentlich treffen.
+   (Die doppelte ID schlägt die gemeinsamen Rahmen der Textknöpfe weiter oben.) */
+:root #trash-dialog #trash-purge, :root[data-glass] #trash-dialog #trash-purge {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:44px;
+  padding:6px 12px;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  color:var(--muted);
+  font-size:.82rem;
+  font-weight:600
+}
+#trash-purge .icon {
+  width:15px;
+  height:15px
+}
+:root #trash-dialog #trash-purge:hover, :root #trash-dialog #trash-purge:focus-visible, :root #trash-dialog #trash-purge:active,
+:root[data-glass] #trash-dialog #trash-purge:hover, :root[data-glass] #trash-dialog #trash-purge:focus-visible, :root[data-glass] #trash-dialog #trash-purge:active {
+  color:var(--danger)
+}
+:root #trash-dialog #trash-purge[hidden] {
+  display:none
+}
 @media (max-width:400px) {
   .trash-row {
     grid-template-columns:40px minmax(0, 1fr);

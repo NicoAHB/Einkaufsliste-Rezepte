@@ -94,7 +94,8 @@ export function compact(input, now = new Date(), policy = POLICY) {
   // Offline-Anlagen nicht nachträglich wieder als neue Ausgabe zählen.
   for (const key of ['stores', 'items', 'recipes', 'ingredients', 'meals', 'aliases', 'templates', 'budgets']) {
     next[key] = next[key].filter(row => {
-      const drop = !(key === 'items' && isRecentPurchase(row,now.getTime())) && ((row.deletedAt && olderThan(row.deletedAt, policy.tombstoneDays)) ||
+      // Endgültig gelöscht („Papierkorb leeren“, purgedAt): sofort entfernen statt nach Ablauf der Frist.
+      const drop = !(key === 'items' && isRecentPurchase(row,now.getTime())) && ((row.deletedAt && ((row.purgedAt && row.purgedAt >= row.deletedAt) || olderThan(row.deletedAt, policy.tombstoneDays))) ||
         (key === 'items' && row.checked && !row.deletedAt && olderThan(row.updatedAt, policy.doneDays)) ||
         (key === 'items' && row._planEmpty && olderThan(row.updatedAt, policy.tombstoneDays)));
       if (drop) { removed[key]++; if (key === 'items') gone.push(row); }
@@ -160,3 +161,7 @@ export function compact(input, now = new Date(), policy = POLICY) {
 }
 
 export const due = (data, bytes = sizeOf(data)) => bytes > AUTO_BYTES;
+// Nach „Papierkorb leeren“ räumt der nächste Abgleich auf, auch wenn die Datei noch klein ist; so verschwinden die Daten auch dann,
+// wenn das Leeren ohne Netz geschah. Ausgaben zählen nicht: Sie behalten ihre Löschmarke dauerhaft (siehe oben).
+const PURGEABLE = ['stores', 'items', 'recipes', 'ingredients', 'meals', 'aliases', 'templates', 'budgets'];
+export const purgeDue = data => PURGEABLE.some(key => (data[key] || []).some(row => row.deletedAt && row.purgedAt && row.purgedAt >= row.deletedAt));

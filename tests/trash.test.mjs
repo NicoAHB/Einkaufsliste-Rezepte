@@ -52,3 +52,26 @@ test('Papierkorb: Tagesüberschriften', () => {
   assert.equal(trashDayLabel(now - DAY, now), 'Gestern');
   assert.match(trashDayLabel(now - 3 * DAY, now), /Oktober/);
 });
+
+test('Papierkorb leeren: Einträge sind endgültig weg, das Aufräumen entfernt sie aus der Datei; Ausgaben behalten ihre Löschmarke', async () => {
+  const { compact } = await import('../compact.js');
+  const { purgeChanges, isPurged } = await import('../trash.js');
+  const data = sample(), stamp = new Date(now).toISOString();
+  const changes = purgeChanges(data, stamp, now);
+  assert.equal(changes.length, trashEntries(data, now).length);
+  assert.ok(changes.every(change => change.patch.purgedAt === stamp));
+  // Auf die Beispieldaten anwenden, wie es der Abgleich täte
+  for (const change of changes) Object.assign(data[change.collection].find(row => row.id === change.id), change.patch);
+  assert.deepEqual(trashEntries(data, now), [], 'der Papierkorb ist leer');
+  assert.deepEqual(restoreChanges(data, 'items', 'Tomaten'), [], 'nicht mehr wiederherstellbar');
+  const tidy = compact(data, new Date(now)).data;
+  assert.equal(tidy.items.some(row => row.id === 'Tomaten'), false, 'Artikel aus der Datei entfernt');
+  assert.equal(tidy.recipes.some(row => row.id === 'suppe'), false, 'Rezept entfernt');
+  assert.equal(tidy.ingredients.some(row => row.recipeId === 'suppe'), false, 'samt Zutaten');
+  assert.equal(tidy.items.some(row => row.id === 'Noch da'), true, 'aktive Einträge bleiben');
+  assert.equal(tidy.purchases.find(row => row.id === 'p1').deletedAt !== null, true, 'Ausgabe behält ihre Löschmarke');
+  // Später zurückgeholt und erneut gelöscht: steht wieder im Papierkorb
+  const again = { ...data.items.find(row => row.id === 'Tomaten'), deletedAt: new Date(now + 1000).toISOString() };
+  assert.equal(isPurged(again), false);
+  assert.equal(trashEntries({ ...data, items: [again] }, now + 2000).some(entry => entry.id === 'Tomaten'), true);
+});

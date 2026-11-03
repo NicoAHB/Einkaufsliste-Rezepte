@@ -47,11 +47,11 @@ import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
-import { TRASH_DAYS, TRASH_KINDS, restoreChanges, trashCounts, trashDayLabel, trashEntries } from './trash.js';
+import { TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
-import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
+import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
@@ -2553,8 +2553,8 @@ async function sync(manual = false) {
       // Haben zwei Geräte gleichzeitig denselben Artikel neu angelegt, wird das Doppel hier deterministisch zusammengeführt (siehe data.js).
       const folds = duplicateFolds(merged.items);
       if (folds.length) merged = merge(merged, folds);
-      // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB oder auf Wunsch. Es darf den Abgleich nie verhindern.
-      if (compactRequested || due(merged)) {
+      // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB, nach „Papierkorb leeren“ oder auf Wunsch. Es darf den Abgleich nie verhindern.
+      if (compactRequested || due(merged) || purgeDue(merged)) {
         try { tidy = compact(merged); if (tidy.changed) merged = tidy.data; } catch { tidy = null; }
       }
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
@@ -4302,6 +4302,9 @@ function renderTrash() {
   }
   $('#trash-empty').hidden = entries.length > 0;
   list.hidden = !shown.length;
+  // „Papierkorb leeren“ steht klein am Ende und nur, wenn es etwas zu leeren gibt.
+  $('#trash-purge').hidden = !entries.length;
+  $('#trash-purge').setAttribute('aria-label', `Papierkorb leeren: ${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} endgültig löschen`);
 }
 function restoredWhere(entry, changes) {
   const name = `„${entry.title}“`;
@@ -4325,6 +4328,21 @@ $('#trash-undo').addEventListener('click', () => guard(() => {
   const at = new Date().toISOString();
   commit(undo.filter(change => active(state[change.collection] || []).some(row => row.id === change.id)).map(change => nextOp(change.collection, change.id, { deletedAt: at })));
   $('#trash-status-text').textContent = 'Wieder in den Papierkorb gelegt'; $('#trash-undo').hidden = true; renderTrash();
+}));
+/* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
+   „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
+$('#trash-purge').addEventListener('click', () => guard(() => {
+  const changes = purgeChanges(state), count = changes.length;
+  if (!count) return;
+  const what = count === 1 ? 'Den Eintrag' : `Alle ${count} Einträge`;
+  if (!confirm(`${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`)) return;
+  if (connected()) compactRequested = true;
+  commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
+  if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
+  trashUndo = null; trashFilter = 'all';
+  $('#trash-status-text').textContent = `Papierkorb geleert · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} endgültig gelöscht`;
+  $('#trash-status').hidden = false; $('#trash-undo').hidden = true;
+  renderTrash();
 }));
 $('#trash-open').addEventListener('click', () => guard(() => openTrash()));
 document.querySelectorAll('[data-trash-kind]').forEach(node => node.addEventListener('click', () => guard(() => openTrash(node.dataset.trashKind))));

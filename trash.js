@@ -25,7 +25,10 @@ const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 
 const euros = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 const dayLabel = day => { const date = new Date(`${day}T12:00:00`); return Number.isNaN(date.getTime()) ? day : new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date); };
 const byId = rows => new Map((rows || []).map(row => [row.id, row]));
-const recent = (row, since) => Boolean(row?.deletedAt) && Date.parse(row.deletedAt) >= since;
+// Endgültig gelöschte Einträge („Papierkorb leeren“, Feld purgedAt) erscheinen nicht mehr und lassen sich nicht zurückholen.
+// Die Marke gilt nur für die Löschung, die beim Leeren bestand: Wird ein Eintrag später zurückgeholt und erneut gelöscht, steht er wieder hier.
+export const isPurged = row => Boolean(row?.deletedAt && row.purgedAt && row.purgedAt >= row.deletedAt);
+const recent = (row, since) => Boolean(row?.deletedAt) && !isPurged(row) && Date.parse(row.deletedAt) >= since;
 
 // Wurde der Artikel als Doppel zusammengeführt oder zu einem gleichen Artikel gezählt, ist nichts verloren.
 const foldedAway = row => Boolean(row.mergedInto) || String(row._clock?.deletedAt?.id || '').startsWith('fold-del-');
@@ -80,7 +83,7 @@ export const trashCounts = entries => entries.reduce((counts, entry) => ({ ...co
    Ein Gericht bringt sein gelöschtes Rezept mit. */
 export function restoreChanges(data, collection, id) {
   const row = (data[collection] || []).find(entry => entry.id === id);
-  if (!row || !row.deletedAt) return [];
+  if (!row || !row.deletedAt || isPurged(row)) return [];
   const changes = [{ collection, id, patch: { deletedAt: null } }];
   if (collection === 'items' && row.storeId) {
     const store = (data.stores || []).find(entry => entry.id === row.storeId);
@@ -91,6 +94,13 @@ export function restoreChanges(data, collection, id) {
     if (recipe?.deletedAt) changes.push({ collection: 'recipes', id: recipe.id, patch: { deletedAt: null } });
   }
   return changes;
+}
+
+/* „Papierkorb leeren“: alle Einträge, die gerade im Papierkorb stehen, als endgültig gelöscht markieren. Die Marke verteilt sich
+   wie jede Änderung auf alle Geräte; das anschließende Aufräumen (compact.js) entfernt die Daten aus der Datei. Nur bei Ausgaben
+   bleibt die kleine Löschmarke dauerhaft, damit ein lange offline gewesenes Gerät sie nicht als neue Ausgabe wieder einträgt. */
+export function purgeChanges(data, at = new Date().toISOString(), now = Date.parse(at)) {
+  return trashEntries(data, now).map(entry => ({ collection: entry.collection, id: entry.id, patch: { purgedAt: at } }));
 }
 
 // Überschriften für die Gruppierung nach Tag: „Heute“, „Gestern“, sonst Wochentag und Datum.

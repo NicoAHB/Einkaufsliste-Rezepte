@@ -10351,6 +10351,54 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  test('2.139: „Papierkorb leeren“ steht unauffällig am Ende, fragt nach und löscht alles endgültig; Ausgaben behalten nur ihre Löschmarke', async () => {
+    const data = structuredClone(demo), now = Date.now(), at = ms => new Date(now - ms).toISOString();
+    const tomato = data.items.find(row => row.name === 'Tomaten'); tomato.deletedAt = at(3600000);
+    data.recipes.find(row => row.id === 'recipe-curry').deletedAt = at(26 * 3600000);
+    data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 4730, storeId: data.stores[0].id, buyerName: 'Anna', note: 'Wocheneinkauf', source: 'hand', createdAt: at(4 * 86400000), updatedAt: at(4 * 86400000), deletedAt: at(3 * 86400000), _clock: {} }];
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page);
+    await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    const purge = page.locator('#trash-purge');
+    assert.equal(await purge.isVisible(), true); assert.equal((await purge.textContent()).trim(), 'Papierkorb leeren');
+    assert.equal(await purge.getAttribute('aria-label'), 'Papierkorb leeren: 3 Einträge endgültig löschen');
+    // Unauffällig: unter allen Einträgen und dem Hinweis, kleiner als „Wiederherstellen“, in der gedämpften Hinweisfarbe statt rot
+    const [box, foot, lastRow] = await Promise.all([purge.boundingBox(), page.locator('.trash-foot').boundingBox(), page.locator('.trash-row').last().boundingBox()]);
+    assert.ok(box.y > lastRow.y + lastRow.height && box.y + box.height / 2 > foot.y + foot.height, `ganz unten (${JSON.stringify({ box, foot })})`);
+    assert.ok(box.height >= 44, 'trotzdem gut antippbar');
+    const sizes = await page.evaluate(() => [parseFloat(getComputedStyle(document.querySelector('#trash-purge')).fontSize), parseFloat(getComputedStyle(document.querySelector('.trash-restore')).fontSize)]);
+    assert.ok(sizes[0] < sizes[1], `kleiner als Wiederherstellen (${sizes})`);
+    const colors = await page.evaluate(() => [getComputedStyle(document.querySelector('#trash-purge')).color, getComputedStyle(document.querySelector('.trash-foot')).color]);
+    assert.equal(colors[0], colors[1], 'gedämpfte Farbe wie der Hinweis');
+    await purge.scrollIntoViewIfNeeded(); await saveShot(page, '2139-papierkorb-leeren.png');
+    // Abbrechen ändert nichts
+    let question = '';
+    page.once('dialog', dialog => { question = dialog.message(); void dialog.dismiss(); });
+    await purge.click();
+    assert.match(question, /^Alle 3 Einträge im Papierkorb endgültig löschen\?/); assert.match(question, /nicht rückgängig/);
+    assert.equal(await page.locator('.trash-row').count(), 3);
+    // Bestätigen leert den Papierkorb
+    page.once('dialog', dialog => void dialog.accept());
+    await purge.click();
+    await page.locator('#trash-empty').waitFor();
+    assert.match(await page.textContent('#trash-status-text'), /Papierkorb geleert · 3 Einträge endgültig gelöscht/);
+    assert.equal(await page.locator('#trash-undo').isHidden(), true, 'kein Rückgängig');
+    assert.equal(await purge.isHidden(), true);
+    assert.equal(await page.locator('.trash-row').count(), 0);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    assert.equal(saved.items.some(row => row.id === tomato.id), false, 'Artikel aus den Daten entfernt');
+    assert.equal(saved.recipes.some(row => row.id === 'recipe-curry'), false, 'Rezept entfernt');
+    assert.equal(saved.ingredients.some(row => row.recipeId === 'recipe-curry'), false, 'samt Zutaten');
+    const purchase = saved.purchases.find(row => row.id === 'gone-purchase');
+    assert.ok(purchase.deletedAt && purchase.purgedAt, 'die Ausgabe bleibt als Löschmarke, damit ein Gerät ohne Netz sie nicht neu einträgt');
+    await page.click('#trash-dialog [data-close]');
+    assert.match(await page.textContent('#trash-summary'), /^Leer/);
+    await goTab(page, 'shopping'); assert.equal(await page.locator('#shopping .trash-link').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   // ---- 2.139 (E12): Offline-Anzeige ----
   test('2.139: ohne Netz erscheint oben ein Offline-Band mit wartenden Änderungen; nach der Rückkehr kurz „Wieder online“', async () => {
     const remote = github(structuredClone(demo));
