@@ -47,4 +47,14 @@ jobs:
           fc-match sans-serif
           fc-match system-ui
       - name: Browsertests
-        run: npm run test:browser
+        run: |
+          set +e
+          npm run test:browser 2>&1 | tee /tmp/sattplan-browser-tests.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$test_status" -ne 0 ]; then
+            printf '### Browsertest fehlgeschlagen\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 240 /tmp/sattplan-browser-tests.log >> "$GITHUB_STEP_SUMMARY"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$test_status"
