@@ -6402,13 +6402,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#notice', { state: 'hidden', timeout: 8000 });
     await page.getByRole('tab', { name: /^Alle/ }).click();
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 1);
-    // Rückgängig geht über den Mülleimer.
+    // Rückgängig geht über den Mülleimer; seit 2.147 meldet das Löschen „„Joghurt“ gelöscht“ mit „Rückgängig“.
     await page.getByRole('button', { name: /^Joghurt, .*bearbeiten/ }).click(); await sheetOpen(page); await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
     assert.equal(await page.locator('#items .item', { hasText: 'Joghurt' }).count(), 0);
+    assert.equal(await page.textContent('#notice-text'), '„Joghurt“ gelöscht');
     // Ein Artikel, der in der Ansicht erscheint, braucht keinen Hinweis.
     await page.getByRole('tab', { name: /^Lidl/ }).click();
     await page.fill('#item-form input[name=name]', 'Quark'); await page.click('#item-form button[type=submit]');
-    assert.equal(await page.locator('#notice').isHidden(), true);
+    assert.equal(await page.locator('#notice').isHidden() || !/Quark/.test(await page.textContent('#notice-text')), true, 'kein Hinweis zum sichtbaren Artikel');
     assert.equal(await page.locator('#items .item', { hasText: 'Quark' }).count(), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -10366,6 +10367,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.getByRole('button', { name: 'Tomaten-Pasta aus dem Plan entfernen', exact: true }).click();
     assert.equal(await notice(), 'Gericht entfernt');
     assert.equal(active((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base)).meals).length, 0);
+    // 2.147: gleich „Rückgängig“; danach wieder entfernen
+    assert.equal(await page.locator('#notice-undo').isVisible(), true); await page.click('#notice-undo');
+    assert.equal(await notice(), 'Das Gericht steht wieder im Wochenplan');
+    assert.equal(active((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base)).meals).length, 1);
+    await page.getByRole('button', { name: 'Tomaten-Pasta aus dem Plan entfernen', exact: true }).click();
+    assert.equal(await notice(), 'Gericht entfernt');
     // Mit Zutaten auf dem Einkaufszettel: Rückfrage, dann je nach Wahl
     // (erst „Ja“: danach sind die Zutaten wieder vom Zettel, beim zweiten Mal kommen sie erneut dazu)
     for (const [choice, expected] of [['#plan-adjust-apply', 'Gericht entfernt · Zutaten vom Einkaufszettel genommen'], ['#plan-adjust-keep', 'Gericht entfernt']]) {

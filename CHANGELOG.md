@@ -10,7 +10,7 @@ Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md
 - **Im Laden**: über Name und Menge, solange die Ansicht nicht gesperrt ist. Der Kreis hakt weiterhin ab, auch wenn man ihn langsam antippt.
 - Supermärkte und eigene Listen mit Symbol wie bisher.
 
-**„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben und in geheimen Listen. Auch **Erledigte entfernen** lässt sich so sofort zurücknehmen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
+**„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben, beim Entfernen eines Gerichts aus dem Wochenplan (wenn der Einkaufszettel nicht betroffen ist) und in geheimen Listen. Auch **Erledigte entfernen** lässt sich so sofort zurücknehmen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
 
 **Papierkorb.**
 - **Geheime Listen** haben jetzt einen eigenen Papierkorb auf diesem Gerät: Gelöschte private Einträge bleiben 14 Tage wiederherstellbar, mit dem Hinweis **Kürzlich gelöscht (n)** am Ende der geheimen Liste und unter **Optionen → Kürzlich gelöscht** („nur auf diesem Gerät“). **Papierkorb leeren** entfernt auch sie endgültig. Das Löschen eines einzelnen privaten Eintrags fragt deshalb nicht mehr nach.

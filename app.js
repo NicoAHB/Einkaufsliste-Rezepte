@@ -931,6 +931,7 @@ function undoDelete(ids, scope, collection = 'items') {
   commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
   if (collection === 'purchases') { renderSpending(); showNotice(changes.length === 1 ? 'Die Ausgabe ist wieder eingetragen' : `${changes.length} Ausgaben sind wieder eingetragen`); return; }
   if (collection === 'recipes') { showNotice(`„${state.recipes.find(row => row.id === changes[0].id)?.name || 'Rezept'}“ ist wieder im Rezeptbuch`); return; }
+  if (collection === 'meals') { showNotice('Das Gericht steht wieder im Wochenplan'); return; }
   const first = state.items.find(row => row.id === changes[0].id);
   showNotice(changes.length === 1 ? `„${first?.name || 'Artikel'}“ ist wieder da` : `${changes.length} Artikel sind wieder da`);
 }
@@ -1929,7 +1930,10 @@ function changePlannedMeal(meal, patch, next, finish=()=>{}, alsoAdd=false) {
   if(!reduces){
     // Ohne `next` wird das Gericht entfernt (Papierkorb am Gericht oder im Bearbeiten-Fenster): dann „Gericht entfernt“ statt „gespeichert“.
     const result=alsoAdd?withMealShopping([nextOp('meals',meal.id,patch)],meal.id):{ops:[nextOp('meals',meal.id,patch)],notice:next?'Gericht gespeichert':'Gericht entfernt'};
-    commit(result.ops,result.notice);finish();return;
+    commit(result.ops,result.notice);
+    // Entfernt (2.147): gleich „Rückgängig“ anbieten; der Einkaufszettel war nicht betroffen.
+    if(!next&&!alsoAdd&&patch.deletedAt){const scope=namespace();showNotice(result.notice,()=>undoDelete([meal.id],scope,'meals'),{trash:true});}
+    finish();return;
   }
   planAdjustment={mealId:meal.id,patch,next,finish,alsoAdd,scope:namespace()};renderPlanAdjustment();
   $('#plan-adjust-dialog').showModal();
