@@ -2,6 +2,16 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.141: „Optionen“ statt „Einstellungen“ – ruhige untere Leiste
+
+Die fünf Symbole standen schon seit 2.139 rechnerisch in gleichen Abständen, wirkten aber ungleich: Das Auge misst die Lücken zwischen den Wörtern, und „Einstellungen“ füllte seinen Reiter bis an den Rand (bei 390 px nur 12 px Abstand zu „Ausgaben“, zwischen „Plan“ und „Ausgaben“ dagegen 36 px). Außerdem mussten dafür alle Beschriftungen auf 10,3–10,7 px schrumpfen.
+
+- Der Reiter heißt jetzt **Optionen** (8 Buchstaben wie „Ausgaben“), ebenso die Überschrift der Seite und alle Wegbeschreibungen in Anleitung, Hinweisen und Meldungen („Optionen → Datensicherung“, „in den Optionen“). Begriffe wie „Import-Einstellungen“ bleiben.
+- Alle Beschriftungen stehen wieder in voller Größe (11,5 px) bei 375, 390 und 430 px; die Lücken zwischen den Wörtern liegen bei 20–39 px statt 12–36 px.
+- Auch bei 320 px gibt es jetzt gleich breite Reiter (bisher die Aufteilung nach Wortlänge). Jeder Reiter behält mindestens 12 px Luft; dafür wird die Schrift dort nur leicht auf 10,3 px verkleinert.
+
+Offline-Paket `einkauf-shell-v153`.
+
 ## Neu in Version 2.140: Rezepte sortieren und „Der Papierkorb ist leer“
 
 **Rezepte sortieren.** Über der Rezeptliste steht links die Anzahl („12 Rezepte“, bei Suche oder Filter „3 von 12 Rezepten“), rechts eine Sortier-Pille mit der aktuellen Wahl. Ein Tipp öffnet die Auswahl (auf dem iPhone das gewohnte Drehrad):

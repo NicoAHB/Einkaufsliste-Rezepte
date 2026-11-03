@@ -195,7 +195,7 @@ function guard(action) {
 }
 function storageWrite(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
-  catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Diese Änderung wurde nicht übernommen. Unter Einstellungen → Datenumfang siehst du, was Platz belegt, und kannst den älteren Tagesverlauf löschen oder aufräumen.'); }
+  catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Diese Änderung wurde nicht übernommen. Unter Optionen → Datenumfang siehst du, was Platz belegt, und kannst den älteren Tagesverlauf löschen oder aufräumen.'); }
 }
 function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; confirmAutoSave(document.activeElement); }
 // Erst zusammenführen, dann schreiben: So wird nie eine Kombination gespeichert, die sich beim nächsten Start nicht laden ließe.
@@ -211,7 +211,7 @@ function quarantine(entries) {
   let kept = true;
   try { localStorage.setItem(quarantineKey(), JSON.stringify(addToQuarantine(quarantined(), entries))); } catch { kept = false; }
   renderQuarantine();
-  message(`${entries.length === 1 ? 'Eine Änderung ließ' : `${entries.length} Änderungen ließen`} sich nicht mit dem gemeinsamen Stand zusammenführen. Alle anderen Änderungen werden weiter abgeglichen. ${kept ? 'Unter Einstellungen kannst du sie als Datei sichern oder verwerfen.' : 'Der Browser konnte sie nicht aufbewahren, weil der Speicher voll ist.'}`);
+  message(`${entries.length === 1 ? 'Eine Änderung ließ' : `${entries.length} Änderungen ließen`} sich nicht mit dem gemeinsamen Stand zusammenführen. Alle anderen Änderungen werden weiter abgeglichen. ${kept ? 'Unter Optionen kannst du sie als Datei sichern oder verwerfen.' : 'Der Browser konnte sie nicht aufbewahren, weil der Speicher voll ist.'}`);
 }
 function renderQuarantine() {
   const list = quarantined(), card = $('#quarantine-card');
@@ -673,7 +673,7 @@ function renderItems() {
       button('Alle übernehmen', () => acknowledge(news.flatMap(entry => entry.entries.map(e => e.id))), 'text-button'));
     list.append(head); news.forEach(entry => list.append(newsRow(entry)));
   }
-  // Nach Gängen im Laden geordnet (abschaltbar in den Einstellungen); Erledigtes steht immer unten.
+  // Nach Gängen im Laden geordnet (abschaltbar in den Optionen); Erledigtes steht immer unten.
   const grouped = config.groupItems !== false;
   const addOpen = (items, nested, order = null) => {
     if (!grouped) { items.sort(byName).forEach(item => list.append(itemRow(item))); return; }
@@ -2180,7 +2180,7 @@ $('#open-help').addEventListener('click', () => guard(openHelp));
 
 /* ---------- Rezepte des Tages ---------- */
 // Ohne Einstellung kommen jeden Tag drei Rezepte aus der eingebauten Sammlung (rezepte-des-tages.json, kein Hilfsdienst nötig), danach neu zusammengestellte (recipe-maker.js).
-// Mit einem Link in den Einstellungen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
+// Mit einem Link in den Optionen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
 // noch nicht entschiedenen Rezepte kommen einzeln zum Durchklicken. Gemerkt wird nur auf diesem Gerät: heutige Auswahl, Stand und alles Entschiedene.
 const dailyStore = () => `einkauf-daily:${namespace()}`;
 let daily = null, dailyTicket = 0, dailyTried = '', builtinCollection = null, dailyScope = '', dailyReview = null, dailyLoading = null, pendingDailyRemoval = null;
@@ -2385,7 +2385,7 @@ async function showDaily() {
     while (d.index < d.queue.length && known.has(d.queue[d.index].key)) { d.outcome[d.queue[d.index].key] = 'known'; d.index += 1; }
     saveDaily(); renderDailyButton();renderDailyDays();
     if (!d.queue.length) {
-      card.replaceChildren(element('p', d.builtin ? 'Heute gibt es keine neuen Vorschläge. Morgen geht es weiter.' : d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
+      card.replaceChildren(element('p', d.builtin ? 'Heute gibt es keine neuen Vorschläge. Morgen geht es weiter.' : d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Optionen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
       dailyButtons(); dailyReviewChoices(); return;
     }
     if (d.index >= d.queue.length) {
@@ -2754,7 +2754,7 @@ async function backup() {
   await deliverFile(new File([json], name, { type: 'application/json' }));
 }
 // Vollsicherung: eine ZIP-Datei mit den Daten (daten.json, wie die JSON-Sicherung) und allen Rezeptfotos (fotos/<Kennung>.jpg). Fotos kommen aus dem Gerätespeicher,
-// sonst aus dem Daten-Repository; was sich nicht holen lässt, wird gezählt und in „lies-mich.txt“ genannt. Die Wiederherstellung läuft unter Einstellungen → Datensicherung.
+// sonst aus dem Daten-Repository; was sich nicht holen lässt, wird gezählt und in „lies-mich.txt“ genannt. Die Wiederherstellung läuft unter Optionen → Datensicherung.
 async function backupFull() {
   const note = $('#export-note'), button = $('#export-full');
   button.disabled = true;
@@ -2769,7 +2769,7 @@ async function backupFull() {
     }
     const lines = [`Vollsicherung von Sattplan vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
     if (missing.length) lines.push('', `Nicht gesichert (nicht auf diesem Gerät und nicht im Daten-Repository gefunden): ${missing.join(', ')}`);
-    lines.push('', 'Wiederherstellen: In Sattplan unter Einstellungen → Datensicherung → Datensicherung wiederherstellen diese ZIP-Datei auswählen. Vorschau prüfen und Ersetzen bestätigen. Bitte vertraulich aufbewahren.');
+    lines.push('', 'Wiederherstellen: In Sattplan unter Optionen → Datensicherung → Datensicherung wiederherstellen diese ZIP-Datei auswählen. Vorschau prüfen und Ersetzen bestätigen. Bitte vertraulich aufbewahren.');
     files.push({ name: 'lies-mich.txt', data: encode(lines.join('\n')) });
     const zip = makeZip(files);
     await deliverFile(new File([zip], `sattplan-vollsicherung-${stamp}.zip`, { type: 'application/zip' }));
@@ -3754,7 +3754,7 @@ document.addEventListener('click', event => {
 // iOS Safari meldet einen Tipp auf ein Element ohne eigenen Klick-Empfänger nicht als Klick: Der leere Empfänger macht den Hintergrund des Fensters „antippbar“.
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', () => {}));
 $('#refresh').addEventListener('click', () => guard(() => sync(true)));
-// Die Statuszeile oben ist zugleich ein Knopf: verbunden gleicht sie ab, sonst führt sie in die Einstellungen zum Verbinden.
+// Die Statuszeile oben ist zugleich ein Knopf: verbunden gleicht sie ab, sonst führt sie in die Optionen zum Verbinden.
 $('#syncline').addEventListener('click', () => guard(() => {
   if (connected() && tokenWarning() === null) return sync(true);
   tab('settings'); $('#connection-details').open = true;   // ohne Verbindung oder bei ablaufendem Token: dorthin, wo man ihn einträgt

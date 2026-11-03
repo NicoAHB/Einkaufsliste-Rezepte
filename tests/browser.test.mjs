@@ -9742,7 +9742,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     a.page.once('dialog',dialog=>{assert.match(dialog.message(),/für die Familie freigeben/);dialog.accept();});await local.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
     const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,13);
     const rows=api.content.items.filter(row=>!row.deletedAt&&row.storeId===target.id);assert.equal(rows.length,4);const copied=rows.find(row=>row.name==='Milch');assert.deepEqual([copied.quantity,copied.unit,copied.checked,copied.wishNote,copied.wishImageHidden],[2,'l',true,'Bisher geteilte Notiz',true]);assert.equal(rows.find(row=>row.name==='NurIch7291').wishNote,'NochGeheimeNotiz7291');
-    assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]').count(),1);
+    // Gerät B: Ein Abgleich ohne eigene Änderungen setzt den Status nicht auf „gleicht ab“; `synced` kann deshalb schon vor dem Laden zurückkehren.
+    // Also auf die Liste selbst warten (sie kommt mit diesem oder dem nächsten regulären Abgleich), statt sofort zu zählen.
+    const sharedChip=b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]');await sharedChip.waitFor({timeout:20000});
+    assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await sharedChip.count(),1);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
   test('2.91: bisherige geheime Geräteliste bleibt mit Einträgen und Notizen erhalten und ist über die Verwaltung erreichbar',async()=>{
@@ -10286,6 +10289,27 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(tabs.every(tab => tab.font >= 9.5), `lesbare Schrift: ${tabs[0].font}`);
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.tabs .tab-label')].every(node => node.getClientRects().length === 1)), true, 'eine Zeile je Beschriftung');
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.141: „Optionen“ statt „Einstellungen“: kein Wort muss mehr verkleinert werden, die Lücken zwischen den Wörtern sind ausgewogen ----
+  for (const width of [320, 375, 390, 430]) test(`2.141: untere Leiste bei ${width}px: Einkauf, Rezepte, Plan, Ausgaben, Optionen in voller Schrift und mit ausgewogenen Lücken`, async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width, height: 800 } } });
+    await open(page);
+    assert.deepEqual(await page.locator('.tabs .tab-label').allTextContents(), ['Einkauf', 'Rezepte', 'Plan', 'Ausgaben', 'Optionen']);
+    const bar = await page.evaluate(() => {
+      const nav = document.querySelector('.tabs'), base = parseFloat(getComputedStyle(nav.querySelector('button')).fontSize);
+      return { even: nav.classList.contains('even-tabs'), labels: [...nav.querySelectorAll('.tab-label')].map(node => { const range = document.createRange(); range.selectNodeContents(node); const text = range.getBoundingClientRect(), cell = node.closest('button').getBoundingClientRect();
+        return { left: text.left, right: text.right, font: parseFloat(getComputedStyle(node).fontSize), room: Math.min(text.left - cell.left, cell.right - text.right) }; }), base: parseFloat(nav.style.getPropertyValue('--tab-font')) || base };
+    });
+    assert.equal(bar.even, true, 'gleich breite Reiter auch auf schmalen Telefonen');
+    assert.ok(bar.labels.every(label => Math.abs(label.font - bar.labels[0].font) < 0.05) && bar.labels[0].font >= (width < 360 ? 10 : 11.4), `volle, gleiche Schrift: ${bar.labels.map(label => label.font)}`);
+    const gaps = bar.labels.slice(1).map((label, index) => label.left - bar.labels[index].right);
+    assert.ok(Math.min(...gaps) >= Math.max(...gaps) / 2.5 && Math.min(...gaps) >= (width < 360 ? 8 : 14), `Lücken zwischen den Wörtern: ${gaps.map(Math.round).join(', ')}`);
+    assert.ok(bar.labels.every(label => label.room >= 3), 'kein Wort stößt an den Rand seines Reiters');
+    // Seite und Anleitung heißen ebenso
+    await openSettings(page);
+    assert.equal(await page.textContent('#settings-title'), 'Optionen');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
