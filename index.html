@@ -348,7 +348,7 @@
     <button type="button" data-close="store-catalog-dialog" class="secondary catalog-custom">Eigenen Namen eingeben</button>
   </dialog>
   <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <input name="id" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
+    <input name="rowId" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
     <section class="remembered-amount" aria-label="Gemerkte Einkaufsmenge"><p id="remembered-amount-text" class="hint"></p><div class="row-actions"><button id="change-remembered-amount" type="button" class="text-button">Ändern</button><button id="reset-remembered-amount" type="button" class="text-button">Zurücksetzen</button></div><div id="remembered-amount-editor" hidden><div class="price-grid unit-grid"><label>Gemerkte Menge<input name="memoryQuantity" inputmode="decimal" maxlength="16"></label><label>Einheit<input name="memoryUnit" list="units" maxlength="30"></label></div><button id="save-remembered-amount" type="button" class="secondary">Vorgabe speichern</button></div></section>
     <label class="checkbox-label once-only"><input name="onceOnly" type="checkbox"> Nur für diesen Einkauf – gemerkte Menge behalten</label>
@@ -367,7 +367,7 @@
   <dialog id="private-item-dialog" aria-labelledby="private-item-title"><form id="private-item-form" class="stack" novalidate><div class="sheet-head"><h2 id="private-item-title">Privaten Eintrag bearbeiten</h2><button type="button" data-close="private-item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Nur auf diesem Gerät sichtbar.</p><label>Name<input name="name" required maxlength="120" autocomplete="off"></label><label>Private Notiz<textarea name="note" rows="4" maxlength="1000" placeholder="Nur für dich"></textarea></label><button id="private-item-delete" type="button" class="danger">Privaten Eintrag löschen</button><div class="sheet-actions"><button type="submit">Privat speichern</button></div></form></dialog>
   <dialog id="wish-dialog" aria-labelledby="wish-title"><form id="wish-form" data-explicit-save class="stack" novalidate>
     <div class="sheet-head"><h2 id="wish-title">Wunschdetails</h2><button type="button" data-close="wish-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <input name="id" type="hidden">
+    <input name="rowId" type="hidden">
     <label>Name<input name="name" required maxlength="120" autocomplete="off"></label>
     <label>Produktlink (optional)<input name="wishUrl" type="url" inputmode="url" maxlength="2000" placeholder="https://…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
     <a id="wish-product-link" class="button secondary" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden><svg class="icon"><use href="#i-external"/></svg>Produkt ansehen</a>
@@ -392,7 +392,7 @@
   <dialog id="recipe-dialog"><form id="recipe-form" data-explicit-save class="stack"><div class="sheet-head"><h2 id="recipe-editor-title">Neues Rezept</h2><button type="button" data-close="recipe-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="recipe-draft-error" class="dialog-error" role="alert" hidden></p><div id="recipe-draft-note" class="import-note" hidden></div>
     <div id="recipe-import-note" class="import-note" hidden></div>
-    <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
+    <input name="rowId" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
     <label class="recipe-portions-field">Portionen<input name="servings" inputmode="decimal" value="2" required></label>
     <div id="recipe-groups-field" class="recipe-groups-field"><input name="tags" type="hidden"><label for="recipe-groups-toggle">Rezeptgruppen</label>
       <button id="recipe-groups-toggle" class="recipe-groups-toggle" type="button" aria-expanded="false" aria-haspopup="dialog" aria-controls="recipe-groups-menu"><span id="recipe-groups-selection" class="recipe-groups-selection"></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
@@ -488,7 +488,7 @@
     <p class="hint">Importierte Rezepte sind Vorschläge: Du prüfst und korrigierst alles, bevor es gespeichert wird.</p>
   </form></dialog>
   <dialog id="purchase-dialog"><form id="purchase-form" data-explicit-save class="stack" novalidate><div class="sheet-head"><h2 id="purchase-title">Ausgabe eintragen</h2><button type="button" data-close="purchase-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <input name="id" type="hidden">
+    <input name="rowId" type="hidden">
     <label>Betrag (€)<span class="name-field"><input name="amount" inputmode="decimal" placeholder="z. B. 23,45" maxlength="14" autocomplete="off" aria-label="Betrag in Euro"><button id="purchase-plus" class="add-button" type="submit" aria-label="Einkauf hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></span></label>
     <div class="purchase-person-field"><label>Eingekauft von<select name="buyerId" aria-label="Person für diesen Betrag"></select></label><button id="purchase-person-add" type="button" class="icon-button secondary" aria-label="Person hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button></div>
     <div class="price-grid unit-grid"><label>Datum<input name="date" type="date"></label><label>Geschäft<select name="storeId"></select></label></div>
@@ -550,7 +550,7 @@
     </div>
   </dialog>
   <dialog id="meal-dialog"><form id="meal-form" data-explicit-save class="stack"><div class="sheet-head"><h2 id="meal-title">Gericht planen</h2><button type="button" data-close="meal-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <input name="id" type="hidden">
+    <input name="rowId" type="hidden">
     <label data-day>Tag<input name="date" type="date" required></label><button id="meal-change-day" type="button" class="secondary" hidden>Auf einen anderen Tag verschieben</button>
     <input name="recipeId" type="hidden">
     <div class="pick-field" role="group" aria-labelledby="recipe-pick-label"><div class="pick-head"><label id="recipe-pick-label" class="pick-caption" for="recipe-filter">Rezeptauswahl</label><select id="recipe-filter" aria-label="Rezepte filtern" aria-describedby="recipe-filter-hint"></select></div>

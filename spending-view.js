@@ -68,9 +68,9 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     }
     for (const id of ['purchase-form', 'finish-form']) {
       const form = $(id); if (form.closest('dialog').open) {
-        const selected = form.elements.buyerId.value, row = rows().find(row => row.id === form.elements.id?.value);
+        const selected = form.elements.buyerId.value, row = rows().find(row => row.id === form.elements.rowId?.value);
         fillBuyer(form.elements.buyerId, selected, row?.buyerName || '');
-        if (id === 'purchase-form' && form.elements.id.value && !row) { form.closest('dialog').close(); onMessage('Dieser Eintrag wurde inzwischen entfernt.'); }
+        if (id === 'purchase-form' && form.elements.rowId.value && !row) { form.closest('dialog').close(); onMessage('Dieser Eintrag wurde inzwischen entfernt.'); }
       }
     }
     if (membersDialog.open) renderMembers();
