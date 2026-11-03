@@ -88,8 +88,8 @@ test('Worker: liefert die Seite mit CORS-Header, erkennt Zeichensatz und begrenz
 
 
 test('Öffentliche Hilfsdienste: gemeinsame Vorgabe ist an, ausdrücklich aus bleibt aus',()=>{
-  assert.equal(publicProxyEnabled({}),true);assert.equal(publicProxyEnabled({publicProxy:true}),true);
-  for(const publicProxy of [false,null,'false']) assert.equal(publicProxyEnabled({publicProxy}),false);
+  assert.equal(publicProxyEnabled({publicProxy:true}),true);
+  for(const publicProxy of [undefined,false,null,'false','true']) assert.equal(publicProxyEnabled({publicProxy}),false);
 });
 
 test('Importabbruch: auch eine verspätete Antwort wird weder ausgewertet noch als Rezept zurückgegeben',async()=>{

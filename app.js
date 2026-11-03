@@ -2637,6 +2637,8 @@ function updateSaveButtons() {
 for (const id of ['#settings-form', '#import-settings-form']) for (const type of ['input', 'change']) $(id).addEventListener(type, updateSaveButtons);
 function showConnectionState() {
   const left = tokenDaysLeft();
+  // Ohne gespeicherten Token gibt es nichts zu entfernen.
+  $('#disconnect').hidden = !config.token;
   $('#connection-state').textContent = connected() ? `✓ ${config.owner}/${config.repo} · ${config.actor || ''}${left !== null && left <= 14 ? ` · Token ${tokenLabel(left)}` : ''}` : 'nicht verbunden';
 }
 // Welche Bereiche der Einstellungen offen sind, merkt sich jedes Gerät. „Gemeinsame Liste“ steht offen, solange nichts verbunden ist.
