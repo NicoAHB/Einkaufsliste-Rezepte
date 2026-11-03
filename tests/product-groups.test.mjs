@@ -190,3 +190,12 @@ test('Zutatenübernahme: Restmengen verwenden den bestehenden Namen und Merker; 
   assert.equal(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{...item,checked:true}])[0].quantity,3);
   assert.equal(shoppingDeficits([{name:'Reife Bananen',quantity:3,unit:'Stück'}],[],[{...item,_planEmpty:true,quantity:0}])[0].quantity,3);
 });
+
+test('Rezeptübernahme ordnet „Ei(er)“ dem vorhandenen Artikel „Eier“ zu und bereinigt neue Listenzeilen', () => {
+  const items = [{ id: 'eggs', name: 'Eier', quantity: 6, unit: 'Stück', storeId: '', checked: false, deletedAt: null }];
+  const rows = reuseProductNames([{ name: 'Ei(er)', quantity: 2, unit: 'Stück' }, { name: 'Zwiebel(n)', quantity: 1, unit: 'Stück' }, { name: 'Tomaten (à 400 g)', quantity: 1, unit: 'Dose' }], items, '');
+  assert.deepEqual(rows.map(row => row.name), ['Eier', 'Zwiebeln', 'Tomaten (à 400 g)']);
+  assert.equal(ingredientProductName('Ei(er)'), 'Eier');
+  assert.equal(sameIngredient('Tomaten (à 400 g)', 'Tomaten'), true);
+  assert.equal(sameIngredient('Milch (laktosefrei)', 'Milch'), false);
+});
