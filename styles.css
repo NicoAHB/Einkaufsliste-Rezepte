@@ -4927,3 +4927,12 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
   font-weight:600;
   line-height:1.2;
 }
+/* 2.139: Gleich breite Reiter, damit die Symbole der unteren Leiste gleichmäßig verteilt sind (evenTabs in ui-controls.js) */
+.tabs.even-tabs {
+  gap:0;
+}
+.tabs.even-tabs button {
+  flex:1 1 0;
+  min-width:0;
+  font-size:var(--tab-font);
+}

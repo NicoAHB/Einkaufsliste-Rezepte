@@ -147,3 +147,29 @@ export function scrollHints(selector = '.chips, .product-modes') {
   attach();
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(attach); } }).observe(document.body, { childList: true, subtree: true });
 }
+
+/* Untere Leiste: Die fünf Symbole stehen in gleichmäßigen Abständen (gleich breite Reiter). Dafür wird die Beschriftung höchstens
+   so weit verkleinert, dass auch das längste Wort („Einstellungen“) vollständig in seinen Reiter passt. Wäre die Schrift dann kleiner
+   als `minFont`, bleibt die Aufteilung nach Wortlänge (sehr schmale Bildschirme), damit jede Beschriftung lesbar bleibt. */
+export function evenTabs(bar, minFont = 9.5) {
+  if (!bar) return;
+  const fit = () => {
+    bar.classList.remove('even-tabs'); bar.style.removeProperty('--tab-font');
+    const buttons = [...bar.querySelectorAll(':scope > button')], style = getComputedStyle(bar);
+    if (!buttons.length || style.display === 'none' || !bar.clientWidth) return;
+    // Gleich breite Reiter brauchen keinen Zwischenraum (siehe .tabs.even-tabs): Jeder bekommt ein Fünftel der Leiste.
+    const inner = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const column = inner / buttons.length, base = parseFloat(getComputedStyle(buttons[0]).fontSize);
+    const widest = Math.max(...buttons.map(button => { const label = button.querySelector('.tab-label'); if (!label) return 0; const range = document.createRange(); range.selectNodeContents(label); return range.getBoundingClientRect().width; }));
+    if (!(widest > 0) || !(column > 0) || !(base > 0)) return;
+    const font = Math.min(base, base * (column - 4) / widest);
+    if (font < minFont) return;
+    bar.style.setProperty('--tab-font', `${Math.floor(font * 10) / 10}px`); bar.classList.add('even-tabs');
+  };
+  let queued = false;
+  const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; fit(); }); } };
+  fit();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(schedule).observe(bar);
+  addEventListener('resize', schedule);
+  document.fonts?.ready?.then(schedule).catch(() => {});
+}

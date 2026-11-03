@@ -1,4 +1,4 @@
-import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion, scrollHints } from './ui-controls.js';
+import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion, scrollHints, evenTabs } from './ui-controls.js';
 import { createDraftStore } from './drafts.js';
 import { checkedRecipeGroups } from './recipe-tags.js';
 import { mountRecipeTagPicker } from './recipe-tag-picker.js';
@@ -62,6 +62,7 @@ const CONFIG_KEY = 'einkauf-settings-v1';
 const DISPLAY_DEFAULTS = Object.freeze({theme:'light',storeStyle:'text',palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65,groupItems:true,productImages:true});
 watchSaveForms();
 scrollHints();
+evenTabs(document.querySelector('.tabs'));
 document.querySelectorAll('[data-app-version]').forEach(node => { node.textContent = `Version ${APP_VERSION}`; });
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).

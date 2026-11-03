@@ -10271,4 +10271,22 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.139: Gleichmäßige Abstände der fünf Symbole in der unteren Leiste ----
+  for (const [width, theme, glass] of [[375, 'light', true], [390, 'dark', true], [430, 'light', false]]) test(`2.139: Symbole der unteren Leiste stehen bei ${width}px ${theme} gleichmäßig, Beschriftungen passen in ihren Reiter`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, glass }, context: { viewport: { width, height: 800 }, colorScheme: theme } });
+    await open(page);
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('.tabs button')].map(button => {
+      const box = button.getBoundingClientRect(), icon = button.querySelector('.tab-icon').getBoundingClientRect(), range = document.createRange();
+      range.selectNodeContents(button.querySelector('.tab-label')); const text = range.getBoundingClientRect();
+      return { center: icon.left + icon.width / 2, width: box.width, inside: text.left >= box.left - 0.5 && text.right <= box.right + 0.5, lines: Math.round(text.height / parseFloat(getComputedStyle(button).lineHeight || 13)) || 1, font: parseFloat(getComputedStyle(button).fontSize) };
+    }));
+    const steps = tabs.slice(1).map((tab, index) => tab.center - tabs[index].center);
+    assert.ok(Math.max(...steps) - Math.min(...steps) <= 1, `gleichmäßige Abstände: ${steps.map(Math.round).join(', ')}`);
+    assert.ok(tabs.every(tab => tab.inside), 'jede Beschriftung steht vollständig in ihrem Reiter');
+    assert.ok(tabs.every(tab => tab.font >= 9.5), `lesbare Schrift: ${tabs[0].font}`);
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.tabs .tab-label')].every(node => node.getClientRects().length === 1)), true, 'eine Zeile je Beschriftung');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 });
