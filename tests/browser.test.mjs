@@ -3305,7 +3305,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await storedDemo(page)).recipes,before.recipes);assert.deepEqual(problems.filter(text=>!/Failed to fetch|Failed to load resource/.test(text)),[]);await ctx.close();
   });
   test('2.95: Ausgabe eintragen und Speicherbestätigung erst nach erfolgreichem Schreiben',async()=>{
-    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');assert.equal((await page.textContent('#add-purchase')).trim(),'Ausgabe eintragen');
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');assert.equal((await page.textContent('#add-purchase')).trim(),'Ausgabe nachträglich eintragen');
     await page.click('#add-purchase');await sheetOpen(page);assert.equal(await page.textContent('#purchase-title'),'Ausgabe eintragen');
     await page.fill('#purchase-form [name=amount]','12,34');assert.match(await page.locator('#purchase-form [data-form-feedback]').textContent(),/noch nicht übernommen/);
     await page.evaluate(()=>{window.failSave295=true;const real=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(window.failSave295&&key==='einkauf-demo-v1')throw new DOMException('Voll','QuotaExceededError');return real.call(this,key,value);};});
@@ -10310,6 +10310,33 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Seite und Anleitung heißen ebenso
     await openSettings(page);
     assert.equal(await page.textContent('#settings-title'), 'Optionen');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.142: „Ausgabe nachträglich eintragen“ hellgrün statt kräftig gefüllt ----
+  for (const [width, theme] of [[320, 'light'], [390, 'dark'], [430, 'light']]) test(`2.142: „Ausgabe nachträglich eintragen“ bei ${width}px ${theme}: hellgrün, gut lesbar, eigene Zeile`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, palette: 'gruen' }, context: { viewport: { width, height: 800 }, colorScheme: theme } });
+    await open(page); await goTab(page, 'spending');
+    const button = page.locator('#add-purchase');
+    assert.equal((await button.textContent()).trim(), 'Ausgabe nachträglich eintragen');
+    const look = await page.evaluate(() => {
+      const rgb = value => { const [r, g, b] = value.match(/[\d.]+/g).map(Number); return [r, g, b]; };
+      const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const node = document.querySelector('#add-purchase'), style = getComputedStyle(node), probe = document.createElement('div');
+      probe.style.cssText = 'color:var(--accent);background:var(--accent-soft)'; document.body.append(probe);
+      const tokens = getComputedStyle(probe); const accent = tokens.color, soft = tokens.backgroundColor; probe.remove();
+      const [a, b] = [lum(rgb(style.color)), lum(rgb(style.backgroundColor))];
+      const head = node.parentElement.getBoundingClientRect(), box = node.getBoundingClientRect(), title = document.querySelector('#spending-title').getBoundingClientRect();
+      return { bg: style.backgroundColor, fg: style.color, accent, soft, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), full: Math.abs(box.width - head.width) <= 1, below: box.top >= title.bottom - 1, height: box.height, lines: Math.round(box.height / parseFloat(style.lineHeight || 20)) };
+    });
+    assert.equal(look.bg, look.soft, 'heller Grundton (--accent-soft) statt der kräftigen Füllung');
+    assert.equal(look.fg, look.accent, 'grüne Schrift');
+    assert.ok(look.contrast >= 4.5, `gut lesbar: ${look.contrast.toFixed(2)} : 1`);
+    assert.ok(look.full && look.below, 'eigene Zeile unter der Überschrift, volle Breite');
+    assert.ok(look.height >= 44 && look.height < 70, `eine Zeile, gut antippbar (${look.height}px)`);
+    assert.equal(await horizontalOverflow(page), 0);
+    await button.click(); await sheetOpen(page);
+    assert.equal(await page.textContent('#purchase-title'), 'Ausgabe eintragen');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
