@@ -2,6 +2,29 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.147: Wischen in den Mülleimer in allen Listen, „Rückgängig“ nach jedem Löschen, Speichern erst nach einer Änderung
+
+**Wischen in den Mülleimer in allen Listen.** Zeile lange gedrückt halten, bis sie abhebt, dann nach rechts in die rote Fläche ziehen:
+- **Wünsche** (Listen mit Geschenk-Symbol): Bisher öffnete langes Drücken nur die Wunschdetails, der Mülleimer erschien dort nie. Jetzt öffnet *Halten und Loslassen* die Details, *Halten und nach rechts ziehen* löscht.
+- **Geheime Listen**: ebenso; Halten und Loslassen öffnet den Eintrag.
+- **Im Laden**: über Name und Menge, solange die Ansicht nicht gesperrt ist. Der Kreis hakt weiterhin ab, auch wenn man ihn langsam antippt.
+- Supermärkte und eigene Listen mit Symbol wie bisher.
+
+**„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben und in geheimen Listen. Auch **Erledigte entfernen** lässt sich so sofort zurücknehmen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
+
+**Papierkorb.**
+- **Geheime Listen** haben jetzt einen eigenen Papierkorb auf diesem Gerät: Gelöschte private Einträge bleiben 14 Tage wiederherstellbar, mit dem Hinweis **Kürzlich gelöschte private Einträge (n)** am Ende der Liste und unter **Optionen → Kürzlich gelöscht** („nur auf diesem Gerät“). **Papierkorb leeren** entfernt auch sie endgültig. Das Löschen eines einzelnen privaten Eintrags fragt deshalb nicht mehr nach.
+- In der geheimen Liste steht nicht mehr der Hinweis auf gelöschte gemeinsame Artikel.
+- Ein **abgehakter Artikel, der einzeln gelöscht wird** (Wischen, Bearbeiten, Auswahl), steht jetzt im Papierkorb. Was mit **Einkauf beenden** oder **Erledigte entfernen** weggeräumt wird, bleibt wie bisher draußen (es ist gekauft).
+
+**Speichern erst nach einer Änderung.** In den Bearbeiten-Fenstern für Artikel, Wünsche, private Einträge, Rezepte und Ausgaben ist der grüne Knopf grau, solange nichts geändert ist, und zeigt die letzte Speicherung (**Gespeichert um 14:05 Uhr**, an anderen Tagen **Gespeichert am 02.11. um 14:05 Uhr**). Sobald sich etwas unterscheidet, wird er grün und heißt **Änderungen speichern**; wer die Änderung zurücknimmt, sieht wieder den grauen Knopf. Auch Zutatenzeilen, Fotos und „Bild entfernen“ zählen. Nach dem Speichern bestätigt unten **„…“ gespeichert um … Uhr**. Neue Einträge (neues Rezept, neue Ausgabe) speichern wie bisher. Neues Modul `dirty-save.js`.
+
+**Geheime Liste: Tastatur schließt nach dem Hinzufügen.** Nach **Privat hinzufügen** ist der neue Eintrag sofort zu sehen und nicht mehr von der Tastatur verdeckt.
+
+**Tests.** Neue Browsertests für das Wischen bei Wünschen, im Laden und in geheimen Listen, den privaten Papierkorb, einzeln gelöschte abgehakte Artikel und die Speichern-Knöpfe. Tests, die bisher ohne Änderung speicherten, prüfen jetzt den grauen Knopf.
+
+Offline-Paket `einkauf-shell-v159`.
+
 ## Neu in Version 2.146: Eigene Rückfragen, Papierkorb für alles, Vorratssorten getrennt, Vorbereitung für eine App
 
 **Rückfragen im Stil der App.** Alle 15 Rückfragen (z. B. Artikel oder Rezept löschen, Papierkorb leeren, Liste freigeben, Token entfernen) erscheinen nicht mehr als graues Browser-Fenster, sondern als eigenes Fenster der App:
