@@ -2863,12 +2863,19 @@ body.in-store .tabs {
   white-space:normal;
   flex-wrap:wrap
 }
-#daily-remove,#daily-remove-confirm {
+#daily-add,#daily-remove,#daily-remove-confirm {
   min-height:48px;
-  color:#fff;
-  background:#b3261e;
-  border-color:#b3261e;
+  padding:10px 12px;
+  color:var(--accent);
+  background:var(--accent-soft);
+  border:1px solid var(--accent);
+  box-shadow:none;
   white-space:normal
+}
+#daily-remove,#daily-remove-confirm {
+  color:var(--danger);
+  background:var(--danger-soft);
+  border-color:var(--danger)
 }
 #daily-remove-dialog .sheet-actions { display:grid; gap:10px }
 /* Der Dialog lässt sich nur auf und ab bewegen, nie zur Seite: Lange Wörter brechen um, nichts darf breiter sein als der Dialog. */
