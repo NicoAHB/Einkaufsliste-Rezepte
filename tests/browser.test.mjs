@@ -10382,6 +10382,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     page.once('dialog', dialog => void dialog.accept());
     await purge.click();
     await page.locator('#trash-empty').waitFor();
+    assert.equal(await page.locator('#trash-empty strong').textContent(), 'Der Papierkorb ist leer', 'kein „Nichts gelöscht“ direkt unter der Bestätigung');
     assert.match(await page.textContent('#trash-status-text'), /Papierkorb geleert · 3 Einträge endgültig gelöscht/);
     assert.equal(await page.locator('#trash-undo').isHidden(), true, 'kein Rückgängig');
     assert.equal(await purge.isHidden(), true);

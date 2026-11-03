@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.140: „Der Papierkorb ist leer“
+
+Ist im Papierkorb nichts (mehr), steht dort jetzt **Der Papierkorb ist leer** statt „Nichts gelöscht“. Direkt nach **Papierkorb leeren** las sich „Nichts gelöscht“ unter der grünen Bestätigung „1 Eintrag endgültig gelöscht“ wie ein Widerspruch. Offline-Paket `einkauf-shell-v152`.
+
 ## Neu in Version 2.139: Papierkorb, Offline-Anzeige und gleichmäßige untere Leiste
 
 **Kürzlich gelöscht (Papierkorb).** Gelöschte Artikel, Rezepte, Gerichte im Wochenplan, Ausgaben, Geschäfte & Listen und Vorlagen der letzten 14 Tage lassen sich mit einem Tipp wiederherstellen, auf allen verbundenen Geräten. Geöffnet wird der Papierkorb unter **Einstellungen → Kürzlich gelöscht** oder über den Hinweis **Kürzlich gelöscht (n)** direkt unter Einkaufsliste, Rezepten, Wochenplan und Ausgaben (nur sichtbar, wenn dort etwas zurückzuholen ist). Einträge sind nach Tagen gruppiert und nach Art filterbar. Nach dem Wiederherstellen sagt die App, wo der Eintrag jetzt steht, und bietet **Rückgängig**. Ein Gericht bringt sein gelöschtes Rezept mit; ein Artikel eines inzwischen gelöschten Geschäfts kommt ohne Geschäft zurück. Gekaufte (abgehakte) Artikel und Artikel, die beim Verschieben zu einem gleichen Artikel dazugezählt wurden, erscheinen nicht, weil dabei nichts verloren ging. Neues Modul `trash.js`; Artikel tragen beim Zusammenzählen das optionale Feld `mergedInto`.
