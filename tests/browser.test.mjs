@@ -8208,7 +8208,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   for(const [offset,width,font,theme] of [[0,390,16,'light'],[-1,280,24,'dark']])test(`2.134: Tagesrezept von ${offset===0?'heute':'gestern'} bei ${width}px nur nach Bestätigung entfernen und wieder hinzufügen`,async()=>{
     const saved=archivedDailyFixture();if(offset===0)Object.assign(saved,{...saved.history[0],day:saved.day,history:saved.history});
     const {ctx,page,problems}=await context({config:{theme,palette:'gruen',glass:true,glassLevel:65},context:{viewport:{width,height:844},colorScheme:theme}});
-    await ctx.addInitScript(value=>localStorage.setItem('einkauf-daily:einkauf-demo-v1',JSON.stringify(value)),saved);await open(page);await page.evaluate(size=>document.documentElement.style.setProperty('font-size',size+'px','important'),font);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.click(offset===0?'#daily-review-today':'#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');
+    await ctx.addInitScript(value=>localStorage.setItem('einkauf-daily:einkauf-demo-v1',JSON.stringify(value)),saved);await open(page);await page.evaluate(size=>document.documentElement.style.setProperty('font-size',size+'px','important'),font);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.click(offset===0?'#daily-review-open':'#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');
     const before=await storedDemo(page),record=await dailySaved(page),id=demo.recipes[0].id,title=await page.textContent('#daily-card h3'),remove=page.locator('#daily-remove'),dialog=page.locator('#daily-remove-dialog'),cancel=dialog.getByRole('button',{name:'Abbrechen',exact:true}).last();
     assert.equal(await remove.textContent(),'Hinzugefügtes Rezept entfernen');assert.equal(await page.locator('#daily-note').isHidden(),true);assert.equal(await page.locator('#daily-add').isHidden(),true);assert.deepEqual(await remove.evaluate(node=>{const s=getComputedStyle(node);return [s.backgroundColor,s.color];}),['rgb(179, 38, 30)','rgb(255, 255, 255)']);
     await page.locator('#daily-content').evaluate(node=>node.scrollTop=100);const scroll=await page.locator('#daily-content').evaluate(node=>node.scrollTop);await remove.click();await sheetOpen(page);await dialog.waitFor({state:'visible'});assert.match(await page.textContent('#daily-remove-text'),new RegExp(demo.recipes[0].name));assert.equal(await cancel.evaluate(node=>node===document.activeElement),true);assert.deepEqual(await storedDemo(page),before,'Öffnen der Rückfrage löscht nichts');assert.equal(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);
@@ -8333,8 +8333,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   test('Tagesrückblick: heute dieselben drei erneut ansehen, später hinzufügen, ohne Fortschritt oder Duplikate', async () => {
     const { ctx, page, problems } = await context(); await open(page); const titles = await finishDailyForReview(page, true), before = await dailySaved(page), count = (await storedDemo(page)).recipes.length;
-    assert.equal(await page.locator('#daily-review-yesterday').isDisabled(), true); assert.match(await page.textContent('#daily-review-unavailable'), /keine Auswahl/);
-    await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.equal(await page.locator('#daily-review-choices button').count(),1);assert.equal(await page.textContent('#daily-review-open'),'Von heute und vergangene Tage erneut anschauen');assert.equal(await page.locator('#daily-review-open').isEnabled(),true);assert.equal(await page.locator('#daily-review-unavailable').isHidden(),true);
+    await page.click('#daily-review-open'); await page.waitForSelector('#daily-card .daily-ingredients');
     assert.equal(await page.textContent('#daily-card h3'), titles[0]); assert.equal(await page.locator('#daily-add').isHidden(), true);
     await page.click('#daily-review-next'); await page.waitForFunction(title => document.querySelector('#daily-card h3').textContent === title && !document.querySelector('#daily-add').hidden, titles[1]);
     await page.click('#daily-add'); assert.equal((await storedDemo(page)).recipes.length, count + 1); assert.equal(await page.locator('#daily-add').isHidden(), true);
@@ -8342,7 +8342,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#daily-review-prev'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[1]);
     const after = await dailySaved(page); assert.equal(after.index, before.index); assert.deepEqual(after.decided, before.decided); assert.deepEqual(after.queue, before.queue);
     await reopenDaily(page); assert.match(await page.textContent('#daily-card'), /2 von 3 Rezepten hinzugefügt/);
-    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[0]);
+    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-open'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[0]);
     assert.deepEqual(problems, []); await ctx.close();
   });
   test('Tagesrückblick: gestern bleibt über Tageswechsel und Offline-Neustart gespeichert', async () => {
@@ -8352,7 +8352,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.evaluate(() => localStorage.setItem('test-day-offset', '1')); await page.reload(); const todayTitles = await finishDailyForReview(page);
     assert.ok(!yesterdayTitles.includes(todayTitles[0])); const before = await dailySaved(page);
     await page.click('#daily-dialog [data-close]'); await ctx.setOffline(true); await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open');
-    assert.equal(await page.locator('#daily-review-yesterday').isEnabled(), true); await page.click('#daily-review-yesterday'); await page.waitForSelector('#daily-card .daily-ingredients');
+    assert.equal(await page.locator('#daily-review-choices button').count(),1);assert.equal(await page.locator('#daily-review-open').isEnabled(),true);await page.click('#daily-review-open');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),todayTitles[0]);await page.click('#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');
     assert.match(await page.textContent('#daily-progress'), /Gestern erneut/); assert.equal(await page.textContent('#daily-card h3'), yesterdayTitles[0]);
     await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), yesterdayTitles[1]);
     assert.deepEqual((await dailySaved(page)).queue, before.queue); assert.equal((await dailySaved(page)).index, before.index);
@@ -8362,7 +8362,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ config: dailyConfig }); let requests = 0;
     const handler = dailySite(2); await ctx.route(`${PROXY}/**`, route => { requests++; return handler(route); }); await open(page);
     const titles = await finishDailyForReview(page, false, 2), loaded = requests; await page.click('#daily-dialog [data-close]');
-    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients');
+    await page.reload(); await goTab(page, 'recipes'); await page.click('#daily-open'); await page.click('#daily-review-open'); await page.waitForSelector('#daily-card .daily-ingredients');
     assert.equal(await page.textContent('#daily-card h3'), titles[0]); await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[1]);
     assert.equal(requests, loaded); const saved = await dailySaved(page); assert.equal(Object.keys(saved.drafts).length, 2);
     assert.deepEqual(problems, []); await ctx.close();
@@ -8398,7 +8398,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.textContent('#product-picker-title'),'Vorrat auswählen');
       assert.equal(await page.getAttribute('[data-product-mode=basics]','aria-pressed'),'true');
       await fits('Grundvorrat'); await holdProduct(page, 'salz'); await fits('Auf Einkaufsliste'); await page.click('#pantry-buy-dialog [data-close]'); await page.click('#product-picker-dialog [data-close]');
-      await finishDailyForReview(page); await fits('Tagesübersicht'); await page.click('#daily-review-today'); await page.waitForSelector('#daily-card .daily-ingredients'); await fits('Tagesrückblick'); await page.click('#daily-dialog [data-close]');
+      await finishDailyForReview(page); await fits('Tagesübersicht'); await page.click('#daily-review-open'); await page.waitForSelector('#daily-card .daily-ingredients'); await fits('Tagesrückblick'); await page.click('#daily-dialog [data-close]');
       await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('details').evaluate(node => { node.open = true; }); await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).getByRole('button', { name: 'Bearbeiten', exact: true }).click(); await sheetOpen(page); await page.fill('#recipe-form [name=notes]', 'Eigene Notizen bleiben gut lesbar.'); await fits('Notizen');
       assert.deepEqual(problems, []); await ctx.close();
     });
@@ -9528,7 +9528,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for(const width of [320,390])test(`2.89: Zurück und Weiter bleiben bei ${width}px klar erkennbar und gleich hoch`,async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen'},context:{viewport:{width,height:844}}});await open(page);await finishDailyForReview(page);
-    await page.click('#daily-review-today');await page.waitForSelector('#daily-card .daily-ingredients');
+    await page.click('#daily-review-open');await page.waitForSelector('#daily-card .daily-ingredients');
     assert.equal(await page.locator('#daily-review-finish').count(),0);assert.equal(await page.textContent('#daily-review-prev span'),'Zurück');assert.equal(await page.textContent('#daily-review-next span'),'Weiter');
     assert.equal(await page.locator('#daily-review-prev').isDisabled(),true);
     const prev=await page.locator('#daily-review-prev').boundingBox(),next=await page.locator('#daily-review-next').boundingBox();

@@ -2225,11 +2225,10 @@ async function fetchDailyDraft(item, record) {
   saveDaily(); return draft;
 }
 function dailyReviewChoices() {
-  const d = loadDaily(), records = dailyHistory(d, localDay());
+  const records = dailyHistory(loadDaily(), localDay()).filter(row=>row.queue.length);
   $('#daily-review-choices').hidden = false;
-  $('#daily-review-today').disabled = !records.some(row => row.day === localDay() && row.queue.length);
-  $('#daily-review-yesterday').disabled = !records.some(row => row.day < localDay() && row.queue.length);
-  $('#daily-review-unavailable').hidden = !$('#daily-review-yesterday').disabled;
+  $('#daily-review-open').disabled = !records.length;
+  $('#daily-review-unavailable').hidden = Boolean(records.length);
 }
 function dailyDayTitle(day){
   if(day===localDay())return 'Heute';if(day===addDays(localDay(),-1))return 'Gestern';
@@ -2408,8 +2407,10 @@ $('#daily-remove-confirm').addEventListener('click',()=>guard(confirmDailyRemova
 $('#daily-remove-dialog').addEventListener('close',()=>{pendingDailyRemoval=null;});
 $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
 $('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; if($('#daily-remove-dialog').open)$('#daily-remove-dialog').close();pendingDailyRemoval=null; });
-$('#daily-review-today').addEventListener('click', () => guard(() => openDailyReview(localDay())));
-$('#daily-review-yesterday').addEventListener('click', () => guard(() => openDailyReview(addDays(localDay(), -1))));
+$('#daily-review-open').addEventListener('click', () => guard(() => {
+  const record=dailyHistory(loadDaily(),localDay()).filter(row=>row.queue.length).at(-1);
+  if(record)return openDailyReview(record.day);
+}));
 $('#daily-day-prev').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-prev').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),-1));}));
 $('#daily-day-next').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-next').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),1));}));
 function moveDailyRecipe(delta){
