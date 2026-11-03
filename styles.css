@@ -1564,16 +1564,17 @@ button.link-button {
   transition:transform .18s ease
 }
 .tabs button {
-  flex:1 1 0;
+  flex:1 0 auto;
+  min-width:44px;
   max-width:280px;
   flex-direction:column;
   gap:2px;
   min-height:52px;
-  padding:2px 4px;
+  padding:2px 0;
   border-radius:14px;
   background:transparent;
   color:var(--muted);
-  font-size:.72rem;
+  font-size:min(.72rem,3.8vw,20px);
   font-weight:650
 }
 .tab-icon {
@@ -1591,7 +1592,7 @@ button.link-button {
 .tabs button[aria-current=page] {
   color:var(--accent)
 }
-.tabs .tab-label { max-width:100%; white-space:normal; overflow-wrap:anywhere; text-align:center; line-height:1.15 }
+.tabs .tab-label { max-width:100%; white-space:nowrap; overflow-wrap:normal; text-align:center; line-height:1.15 }
 .tabs button[aria-current=page] .tab-icon {
   background:var(--accent-soft)
 }
@@ -2363,9 +2364,6 @@ body.in-store .tabs {
   }
 }
 @media(max-width:360px) {
-  .tabs button {
-    font-size:.64rem
-  }
   .tab-icon {
     width:46px
   }
@@ -3147,11 +3145,6 @@ details,summary,.card {
     padding-left:max(4px,env(safe-area-inset-left));
     padding-right:max(4px,env(safe-area-inset-right))
   }
-  .tabs button {
-    min-width:0;
-    padding:2px 0;
-    font-size:.64rem
-  }
   .tab-label {
     letter-spacing:-.02em
   }
@@ -3163,9 +3156,6 @@ details,summary,.card {
   .tabs {
     gap:0
   }
-  .tabs button {
-    font-size:.57rem
-  }
   .tab-icon {
     width:38px
   }
@@ -3174,9 +3164,6 @@ details,summary,.card {
   }
 }
 @media(max-width:300px) {
-  .tabs button {
-    font-size:.48rem
-  }
   .spend-chart {
     gap:4px
   }

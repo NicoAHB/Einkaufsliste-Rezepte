@@ -1,6 +1,10 @@
-# Sattplan – Version 2.132
+# Sattplan – Version 2.133
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.133: Einzeilige Beschriftungen in der Navigation
+
+**Einstellungen** und die anderen Beschriftungen der unteren Navigation bleiben vollständig in einer Zeile. Die Reiter bekommen Platz entsprechend der Wortlänge; die gemeinsame Schriftgröße passt sich an die Bildschirmbreite an. So passen alle fünf Bereiche auch auf schmale Bildschirme, ohne Wörter umzubrechen oder abzuschneiden. Offline-Paket **einkauf-shell-v145**.
 
 ## Neu in Version 2.132: Feste Rezeptnavigation und Hinzufügen im Tagesverlauf
 
