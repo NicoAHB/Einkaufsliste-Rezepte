@@ -835,7 +835,7 @@ function editItem(id) {
   itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
     category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
-  for (const key of ['id', 'name']) form.elements[key].value = item[key];
+  form.elements.rowId.value = item.id; form.elements.name.value = item.name;
   editQuantity.load(item);
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true, true);

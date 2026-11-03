@@ -10236,4 +10236,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     } finally { swOverride = null; }
     await ctx.close();
   });
+  test('2.137: Rezeptformular zeigt beim Tippen den Entwurfshinweis; versteckte Kennungsfelder überdecken keine Formular-ID', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await goTab(page, 'recipes'); await page.click('#add-recipe'); await sheetOpen(page);
+    await page.fill('#recipe-form input[name=name]', 'Linsensuppe');
+    assert.equal((await page.locator('#recipe-form [data-form-feedback]').textContent()).trim(), 'Entwurf – mit Speichern in die Rezepte übernehmen.');
+    assert.deepEqual(await page.evaluate(() => [...document.forms].filter(form => typeof form.id !== 'string').map(form => form.getAttribute('id'))), []);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 });
