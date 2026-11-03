@@ -2404,6 +2404,18 @@ body.in-store .tabs {
 .item.drag-origin {
   opacity:.3
 }
+/* Geheime Liste und „Im Laden“ (2.147): ebenso ziehen; beim langen Drücken keine Textauswahl, die Ursprungszeile wird blass */
+.private-row,.shop-item {
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none
+}
+.private-row.drag-origin,.shop-item.drag-origin {
+  opacity:.3
+}
+.drag-ghost.private-row,.drag-ghost.shop-item {
+  list-style:none
+}
 .drag-ghost {
   position:fixed;
   z-index:30;
