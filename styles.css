@@ -3548,7 +3548,7 @@ output {
 }
 
 /* Hauptaktionen bleiben klar gefüllt, ohne Farbverlauf oder Leuchteffekt. */
-:root[data-glass] :is(#add-recipe,#purchase-save,.primary-action,.inline-form>button,.stack>button:not(.secondary):not(.danger):not(.text-button)) {
+:root[data-glass] :is(#purchase-save,.primary-action,.inline-form>button,.stack>button:not(.secondary):not(.danger):not(.text-button)) {
   background:var(--accent);
   box-shadow:none
 }
@@ -4682,18 +4682,18 @@ button.recipe-delete { color:var(--danger) }
 :root #spending-chart button.text-button,:root[data-glass] #spending-chart button.text-button { min-width:0; min-height:0; padding:4px 0; border:0; border-radius:10px; background:transparent; color:var(--muted); box-shadow:none; font-size:.7rem; font-weight:600 }
 :root .spend-chart button[aria-current=true],:root[data-glass] .spend-chart button[aria-current=true] { background:var(--accent-soft); color:var(--accent) }
 .spend-chart .value { width:100%; text-align:center }
-/* „Ausgabe nachträglich eintragen“ (2.142): eine eigene Zeile unter der Überschrift, hellgrün wie die Aktionen der Rezeptkarten
-   und der gewählte Filter, statt kräftig gefüllt. Der Weg im Alltag ist „Einkauf beenden“; das hier ist der Nachtrag. */
+/* „Ausgabe nachträglich eintragen“ (2.142) und „Neu“ bei den Rezepten (2.143): hellgrün wie die Aktionen der Rezeptkarten und der
+   gewählte Filter, statt kräftig gefüllt. „Ausgabe nachträglich eintragen“ steht in einer eigenen Zeile unter der Überschrift. */
 #spending>.section-head { align-items:stretch; flex-wrap:wrap }
 #spending>.section-head>#add-purchase { width:100%; white-space:normal }
-:root #add-purchase,:root[data-glass] #add-purchase {
+:root :is(#add-purchase,#add-recipe),:root[data-glass] :is(#add-purchase,#add-recipe) {
   background:var(--accent-soft);
   color:var(--accent);
   border:2px solid color-mix(in srgb, var(--accent) 45%, var(--accent-soft));
   box-shadow:none;
   font-weight:700
 }
-:root #add-purchase:active:not(:disabled),:root[data-glass] #add-purchase:active:not(:disabled) {
+:root :is(#add-purchase,#add-recipe):active:not(:disabled),:root[data-glass] :is(#add-purchase,#add-recipe):active:not(:disabled) {
   background:color-mix(in srgb, var(--accent) 18%, var(--accent-soft))
 }
 #stores-dialog button:focus-visible,#stores-dialog summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
@@ -4881,8 +4881,10 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
   margin-left:.5rem;
   padding:.1rem .5rem;
   border-radius:999px;
-  background:var(--accent);
-  color:var(--on-accent, #fff);
+  /* 2.143: mittelgrün wie die übrigen Hervorhebungen statt kräftig gefüllt */
+  background:var(--accent-soft);
+  color:var(--accent);
+  border:1.5px solid color-mix(in srgb, var(--accent) 45%, var(--accent-soft));
   font-size:.75rem;
   font-weight:700;
   vertical-align:middle;

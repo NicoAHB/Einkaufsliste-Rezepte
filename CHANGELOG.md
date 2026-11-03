@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.143: „Gericht entfernt“, „Heute“ und „Neu“ in Mittelgrün
+
+- **Fehler behoben:** Wer ein Gericht im Wochenplan entfernte (Papierkorb am Gericht), bekam unten die Meldung „Gericht gespeichert“. Jetzt steht dort **Gericht entfernt**. Waren seine Zutaten schon auf dem Einkaufszettel, sagt die Meldung nach „Ja, … entfernen“ zusätzlich **Zutaten vom Einkaufszettel genommen**. Ändern meldet weiter „Gericht gespeichert“.
+- **„Heute“** im Wochenplan ist nicht mehr kräftig grün gefüllt, sondern mittelgrün mit grüner Schrift und feinem Rand.
+- **„Neu“** bei den Rezepten sieht aus wie „Ausgabe nachträglich eintragen“: hellgrün mit grüner Schrift und grünem Rand.
+- Lesbarkeit hell und dunkel mindestens 4,5 : 1.
+
+Offline-Paket `einkauf-shell-v155`.
+
 ## Neu in Version 2.142: „Ausgabe nachträglich eintragen“ in Hellgrün
 
 - Der Knopf oben unter **Ausgaben** heißt jetzt **Ausgabe nachträglich eintragen**. Der Alltagsweg ist „Einkauf beenden“ mit dem Betrag; dieser Knopf ist für Nachträge.

@@ -10340,6 +10340,57 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.143: Entfernen meldet „Gericht entfernt“; „Heute“ und „Neu“ mittelgrün statt kräftig gefüllt ----
+  test('2.143: Gericht aus dem Plan entfernen meldet „Gericht entfernt“ (auch mit Einkaufszettel), Ändern weiter „Gericht gespeichert“', async () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString();
+    data.meals = [{ id: 'meal-2143', recipeId: 'recipe-pasta', date: isoDate(), servings: 2, done: false, createdBy: 'Nico', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await goTab(page, 'plan');
+    const notice = () => page.textContent('#notice-text');
+    // Ändern: weiter „Gericht gespeichert“
+    await page.getByRole('button', { name: 'Tomaten-Pasta ändern', exact: true }).click(); await sheetOpen(page);
+    await page.click('#meal-portions-up'); await page.click('#meal-form button[type=submit]:not([value=shopping])'); await page.waitForSelector('#meal-dialog[open]', { state: 'detached' });
+    assert.equal(await notice(), 'Gericht gespeichert');
+    // Entfernen ohne Einkaufszettel: „Gericht entfernt“
+    await page.getByRole('button', { name: 'Tomaten-Pasta aus dem Plan entfernen', exact: true }).click();
+    assert.equal(await notice(), 'Gericht entfernt');
+    assert.equal(active((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base)).meals).length, 0);
+    // Mit Zutaten auf dem Einkaufszettel: Rückfrage, dann je nach Wahl
+    // (erst „Ja“: danach sind die Zutaten wieder vom Zettel, beim zweiten Mal kommen sie erneut dazu)
+    for (const [choice, expected] of [['#plan-adjust-apply', 'Gericht entfernt · Zutaten vom Einkaufszettel genommen'], ['#plan-adjust-keep', 'Gericht entfernt']]) {
+      await page.locator('.day.today .day-head .icon-button').click(); await sheetOpen(page);
+      await page.locator('#recipe-pick [data-value=recipe-curry]').click(); await page.click('#meal-save-shopping'); await page.waitForSelector('#meal-dialog[open]', { state: 'detached' });
+      await page.getByRole('button', { name: 'Kichererbsen-Curry aus dem Plan entfernen', exact: true }).click(); await sheetOpen(page);
+      await page.click(choice); await page.waitForSelector('#plan-adjust-dialog', { state: 'hidden' });
+      assert.equal(await notice(), expected);
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  for (const theme of ['light', 'dark']) test(`2.143: „Heute“ im Wochenplan und „Neu“ bei den Rezepten mittelgrün (${theme}), gut lesbar`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, palette: 'gruen' }, context: { colorScheme: theme } });
+    await open(page);
+    const look = selector => page.evaluate(selector => {
+      const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const probe = document.createElement('div'); probe.style.cssText = 'color:var(--accent);background:var(--accent-soft)'; document.body.append(probe);
+      const tokens = getComputedStyle(probe), accent = tokens.color, soft = tokens.backgroundColor; probe.remove();
+      const style = getComputedStyle(document.querySelector(selector)), [a, b] = [lum(rgb(style.color)), lum(rgb(style.backgroundColor))];
+      return { bg: style.backgroundColor, fg: style.color, accent, soft, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+    }, selector);
+    await goTab(page, 'plan');
+    assert.equal(await page.textContent('.day.today .day-today-badge'), 'Heute');
+    for (const selector of ['.day.today .day-today-badge', '#add-recipe']) {
+      if (selector === '#add-recipe') await goTab(page, 'recipes');
+      const result = await look(selector);
+      assert.equal(result.bg, result.soft, `${selector}: heller Grundton statt kräftiger Füllung`);
+      assert.equal(result.fg, result.accent, `${selector}: grüne Schrift`);
+      assert.ok(result.contrast >= 4.5, `${selector}: lesbar ${result.contrast.toFixed(2)} : 1`);
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
   // ---- 2.139 (E1): Papierkorb „Kürzlich gelöscht“ ----
   test('2.139: gelöschter Artikel landet im Papierkorb, lässt sich wiederherstellen und rückgängig machen; Gekauftes erscheint nicht', async () => {
     const data = structuredClone(demo);
