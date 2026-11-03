@@ -2,7 +2,14 @@
    Händlerdaten abgerufen; alle Preise stammen aus euren eigenen Eingaben. Der Verlauf bezahlter Preise steht in history.js. */
 import { chainForStore } from './brand.js';
 import { euroCents } from './numbers.js';
-export const productKey = name => String(name).normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' ');
+const keyCache = new Map();
+// Wird bei jedem Namensvergleich aufgerufen; das Ergebnis hängt nur vom Text ab und wird deshalb zwischengespeichert.
+export const productKey = name => {
+  if (typeof name !== 'string') return String(name).normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' ');
+  let key = keyCache.get(name);
+  if (key === undefined) { if (keyCache.size >= 20000) keyCache.clear(); key = name.normalize('NFC').trim().toLocaleLowerCase('de').replace(/\s+/g, ' '); keyCache.set(name, key); }
+  return key;
+};
 
 export function unitSpec(unit) {
   const key = productKey(unit);

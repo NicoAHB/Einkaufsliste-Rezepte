@@ -2068,6 +2068,8 @@ Mit einem eigenen Hilfsdienst lädt der Link-Import zuverlässig und ohne öffen
 5. **Deploy**. Die Adresse des Dienstes endet auf `.workers.dev`, z. B. `https://rezepte.dein-name.workers.dev`.
 6. In der App: **Einstellungen → Rezepte aus Links laden**, die Adresse bei „Eigener Hilfsdienst“ eintragen, **Import-Einstellungen speichern**, dann **Eigenen Hilfsdienst testen**. Es muss „Hilfsdienst funktioniert“ erscheinen.
 
+7. **Empfohlen: Schlüssel einrichten.** Die Prüfung des Absenders allein schützt nur vor fremden Webseiten, nicht vor Programmen, die die Adresse kennen. Bei Cloudflare unter **Worker → Settings → Variables and Secrets** eine Variable `ACCESS_KEY` mit einer langen Zufallszeichenfolge anlegen (z. B. 30 Buchstaben und Ziffern) und **Deploy**. In der App die Adresse dann mit Schlüssel eintragen: `https://rezepte.dein-name.workers.dev/?key=DEINE-ZEICHENFOLGE`. Ohne passenden Schlüssel antwortet der Dienst mit „403“. Weiterleitungen prüft der Dienst einzeln (nur `https`, keine privaten Adressen, höchstens drei Sprünge).
+
 Die App erlaubt nur Adressen auf `*.workers.dev` (Sicherheitsrichtlinie `connect-src` in `index.html`). Wer eine eigene Domain verwenden möchte, ergänzt diese dort.
 
 Grenzen: Einige Seiten blockieren automatische Abrufe (Anmeldung, Bot-Schutz) oder laden Rezepte erst per JavaScript nach. Dann hilft „Text“ oder „Screenshot“.

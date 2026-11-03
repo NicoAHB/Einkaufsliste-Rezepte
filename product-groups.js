@@ -4,7 +4,19 @@ import { PRODUCT_ROWS } from './product-catalog-data.js';
 import { productKey } from './prices.js';
 
 const PLURAL = ['en', 'er', 'n', 'e'];
-export function spellingStem(name) {
+/* Namensabgleiche laufen sehr oft (jede Rezeptkarte prüft ihre Zutaten gegen Vorrat und Einkaufsliste). Die reinen
+   Text-Umformungen werden deshalb pro Name zwischengespeichert; das Ergebnis hängt nur vom Text ab. */
+export function memoText(fn, limit = 20000) {
+  const cache = new Map();
+  return value => {
+    if (typeof value !== 'string') return fn(value);
+    let result = cache.get(value);
+    if (result === undefined) { if (cache.size >= limit) cache.clear(); result = fn(value); cache.set(value, result); }
+    return result;
+  };
+}
+export const spellingStem = memoText(stemOf);
+function stemOf(name) {
   return productKey(name).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => {
     for (const ending of PLURAL) if (word.length - ending.length >= 2 && word.endsWith(ending)) return word.slice(0, -ending.length);
     return word;
@@ -132,7 +144,8 @@ export function recipeNameCore(name) {
     .replace(AMOUNT_NOTE,'').replace(MEASURE_NOTE,'').replace(/\s+/g,' ').trim();
   return core||text;
 }
-export function ingredientProductName(original) {
+export const ingredientProductName = memoText(productNameOf);
+function productNameOf(original) {
   const name=recipeNameCore(original);
   // Leitungswasser im Rezept ist kein Mineralwasser/Getränk aus der Katalogfamilie „Wasser“.
   const exact=productGroup(name); if(exact)return exact.id==='wasser'?name:exact.name;

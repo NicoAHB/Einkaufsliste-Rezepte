@@ -17,6 +17,13 @@ export const workerHost = value => {
   try { const url = new URL(String(value || '').trim()); return url.protocol === 'https:' && url.hostname.endsWith('.workers.dev') && !url.username ? url.origin : ''; }
   catch { return ''; }
 };
+// Optionaler Schlüssel des eigenen Hilfsdienstes (ACCESS_KEY im Worker), eingetragen als …workers.dev/?key=…
+export const workerKey = value => {
+  if (!workerHost(value)) return '';
+  try { return (new URL(String(value).trim()).searchParams.get('key') || '').slice(0, 200); } catch { return ''; }
+};
+// So wird die Adresse gespeichert: nur der Ursprung, bei Bedarf mit Schlüssel.
+export const workerAddress = value => { const host = workerHost(value), key = workerKey(value); return host && key ? `${host}/?key=${encodeURIComponent(key)}` : host; };
 
 async function download(address, timeoutMs, signal) {
   if(signal?.aborted) throw new DOMException('Abgebrochen','AbortError');
@@ -43,8 +50,8 @@ function pause(ms, signal) {
 
 export function importRoutes(target, { workerUrl = '', allowPublic = false } = {}) {
   const routes = [];
-  const worker = workerHost(workerUrl);
-  if (worker) routes.push({ name: 'eigener Hilfsdienst', address: `${worker}/?url=${encodeURIComponent(target)}` });
+  const worker = workerHost(workerUrl), key = workerKey(workerUrl);
+  if (worker) routes.push({ name: 'eigener Hilfsdienst', address: `${worker}/?${key ? `key=${encodeURIComponent(key)}&` : ''}url=${encodeURIComponent(target)}` });
   if (allowPublic) for (const proxy of PUBLIC_PROXIES) routes.push({ name: proxy.name, address: proxy.url(target) });
   return routes;
 }

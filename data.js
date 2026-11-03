@@ -262,6 +262,9 @@ export function merge(data, operations) {
   let next = clone(validate(data));
   next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= []; next.stockSettings ||= [];
   const applied = new Set(next.sync.applied); let created = [], touched = new Set();
+  // Nachschlagen per Kennung statt linearer Suche: bei vielen Änderungen und Datensätzen sonst Änderungen × Datensätze Schritte.
+  let indexes = new Map();
+  const rowIndex = collection => { let index = indexes.get(collection); if (!index) { index = new Map(next[collection].map(entry => [entry.id, entry])); indexes.set(collection, index); } return index; };
   for (const op of [...operations].sort(byTime)) {
     if (applied.has(op.id)) continue;
     if (op.collection === 'restore') {
@@ -272,16 +275,16 @@ export function merge(data, operations) {
         next.sync.applied.forEach(id => applied.add(id));
         // Die kombinierte ID-Liste hat eine neue Reihenfolge. Alte Aufräum-Marken
         // beziehen sich auf Positionen der Sicherung und gelten hier nicht mehr.
-        delete next.sync.marks; created = []; touched = new Set();
+        delete next.sync.marks; created = []; touched = new Set(); indexes = new Map();
       }
       applied.add(op.id); continue;
     }
     if (!collections.includes(op.collection)) throw new Error('Unbekannte Änderungsart.');
     if (revisionKey(op) <= revisionKey(next.sync.restore)) { applied.add(op.id); continue; }
-    let row = next[op.collection].find(entry => entry.id === op.entityId);
+    let row = rowIndex(op.collection).get(op.entityId);
     if (!row) {
       row = { id: op.entityId, createdAt: op.at, updatedAt: op.at, deletedAt: null, _clock: {} };
-      next[op.collection].push(row); created.push([op.collection, row]);
+      next[op.collection].push(row); rowIndex(op.collection).set(row.id, row); created.push([op.collection, row]);
     }
     row._clock ||= {};
     // Unabhängige erste Einstellungen dürfen auch dann zusammenkommen,

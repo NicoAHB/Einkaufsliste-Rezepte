@@ -24,7 +24,7 @@ const demo = JSON.parse(await readFile(path.join(root, 'beispieldaten.json'), 'u
 const SHOTS = process.env.SATTPLAN_SHOTS || '';
 const saveShot = (target, name) => SHOTS ? target.screenshot({ path: path.join(SHOTS, name) }) : Promise.resolve();
 
-let server, base, browser;
+let server, base, browser, swOverride = null;   // swOverride: Ersatzinhalt für sw.js (Prüfung der Update-Anzeige)
 before(async () => {
   if (!playwright) return;
   server = http.createServer(async (request, response) => {
@@ -32,6 +32,7 @@ before(async () => {
     let file = path.join(root, decodeURIComponent(url.pathname));
     if (url.pathname.endsWith('/')) file += 'index.html';
     if (!file.startsWith(root)) { response.writeHead(403).end(); return; }
+    if (swOverride && url.pathname.endsWith('/sw.js')) { response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store' }).end(swOverride); return; }
     try { response.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' }).end(await readFile(file)); }
     catch { response.writeHead(404).end(); }
   });
@@ -4420,7 +4421,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Alte Zuordnungen: ein Link zum Hinzufügen (…?add=) benennt nichts um; ohne Zuordnungen verschwindet der Prüfbereich', async () => {
     const { ctx, page, problems } = await oldAliasContext();
     await open(page, `?add=${encodeURIComponent('Apfeltasche und Zwiebel')}`);
-    await page.waitForTimeout(300);
+    await page.click('#incoming-add-confirm'); await page.waitForTimeout(300);
     const names = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt).map(row => row.name));
     assert.ok(names.includes('Apfeltasche') && !names.includes('Apfel'), JSON.stringify(names));
     assert.ok(names.includes('Zwiebeln'), 'die bestätigte Schreibweise gilt auch im Link');
@@ -5701,6 +5702,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.goto(`${base}/index.html?add=${encodeURIComponent('Haferflocken, 2 Eier und 500 g Butter')}&store=lidl`);
     await page.waitForSelector('#status[data-state]',{state:'attached'});
     assert.equal(new URL(page.url()).search, '', 'die Adresse wird bereinigt, ein Neuladen fügt nichts doppelt hinzu');
+    // 2.137: Erst nach Bestätigung kommt etwas auf die Liste.
+    await page.waitForSelector('#incoming-add-dialog[open]');
+    assert.deepEqual(await page.locator('#incoming-add-list li').allTextContents(), ['1 Stück Haferflocken', '2 Stück Eier', '500 g Butter']);
+    assert.match(await page.textContent('#incoming-add-text'), /bei Lidl auf die Einkaufsliste/);
+    await page.click('#incoming-add-confirm');
     assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Haferflocken, Eier, Butter \(Lidl\)/);
     assert.match(await page.textContent('#notice-text'), /nur auf diesem Gerät/, 'im Beispielmodus ein Hinweis');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
@@ -5710,12 +5716,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Noch einmal dieselben Eier: zählt zum vorhandenen Eintrag dazu (kein zweiter Eintrag)
     await page.goto(`${base}/index.html?add=Eier&store=Lidl`);
     await page.waitForSelector('#status[data-state]',{state:'attached'});
+    await page.click('#incoming-add-confirm');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
     assert.equal(await page.locator('#items .item', { hasText: 'Eier' }).count(), 1);
     assert.match(await page.locator('#items .item', { hasText: 'Eier' }).textContent(), /3 Stück/);
     // Ohne Text: nichts passiert; Zahlen mit Komma wie „1,5 l Milch“ werden nicht zerteilt
     await page.goto(`${base}/index.html?add=${encodeURIComponent('1,5 l Hafermilch')}`);
     await page.waitForSelector('#status[data-state]',{state:'attached'});
+    await page.click('#incoming-add-confirm');
     assert.match(await page.textContent('#notice-text'), /Hinzugefügt: Hafermilch/);
     await page.getByRole('tab', { name: /^Alle/ }).click();
     assert.match(await page.locator('#items .item', { hasText: 'Hafermilch' }).textContent(), /1,5 l/);
@@ -10163,6 +10171,69 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.waitForSelector('#items .item');
     assert.equal(await page.locator('#storage-recovery[open]').count(), 0);
     assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base.version, 1);
+    await ctx.close();
+  });
+  test('2.137: ein Link mit ?add= fügt ohne Bestätigung nichts hinzu; Abbrechen lässt die Liste unverändert', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page, `?add=${encodeURIComponent('Kaviar und Champagner')}`);
+    await page.waitForSelector('#incoming-add-dialog[open]');
+    const before = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.length);
+    await page.locator('#incoming-add-dialog .sheet-actions [data-close]').click();
+    await page.waitForSelector('#incoming-add-dialog', { state: 'hidden' });
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')));
+    assert.equal(after.base.items.length, before); assert.deepEqual(after.pending, []);
+    assert.equal(await page.locator('#items .item', { hasText: 'Kaviar' }).count(), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.137 (T8): Abhaken bleibt auch mit vielen Rezepten und Artikeln schnell; die Rezeptliste zeigt beim Öffnen den aktuellen Stand ----
+  test('2.137: Abhaken mit 200 Rezepten und 300 Artikeln bleibt schnell; die Rezeptansicht ist beim Öffnen aktuell', async () => {
+    const data = structuredClone(demo), at = '2026-10-01T10:00:00.000Z';
+    const names = ['Tomaten', 'Zwiebeln', 'Mehl', 'Milch', 'Eier', 'Butter', 'Reis', 'Nudeln', 'Käse', 'Paprika'];
+    for (let r = 0; r < 200; r++) {
+      data.recipes.push({ id: `bulk-${r}`, name: `Sammelrezept ${r}`, servings: 2, tags: [], instructions: 'Kochen.', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+      names.forEach((name, i) => data.ingredients.push({ id: `bulk-${r}-${i}`, recipeId: `bulk-${r}`, name, quantity: 100, unit: 'g', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }));
+    }
+    for (let i = 0; i < 300; i++) data.items.push({ id: `bulk-item-${i}`, name: `Artikel ${i}`, quantity: 1, unit: 'Stück', storeId: '', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await page.waitForSelector('#items .item');
+    await goTab(page, 'recipes');
+    const pasta = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
+    await pasta.locator('summary').click();
+    assert.match(await pasta.locator('li', { hasText: 'Tomaten' }).first().textContent(), /Auf Einkaufszettel/);
+    await goTab(page, 'shopping');
+    const ms = await page.evaluate(async () => {
+      const check = document.querySelector('#items .item [aria-label="Tomaten: abhaken"]'); const started = performance.now(); check.click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return performance.now() - started;
+    });
+    assert.ok(ms < 2000, `Abhaken dauerte ${Math.round(ms)} ms`);
+    await goTab(page, 'recipes');
+    assert.doesNotMatch(await pasta.locator('li', { hasText: 'Tomaten' }).first().textContent(), /Auf Einkaufszettel/, 'abgehakte Tomaten stehen nicht mehr offen auf dem Zettel');
+    assert.equal(await page.locator('.recipe-card').count(), 203);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.137 (T7): Eine neue App-Version wartet, bis „Neu laden“ angetippt wird; erst dann übernimmt sie ----
+  test('2.137: neue Version wartet auf „Neu laden“ und übernimmt danach', async () => {
+    const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow' } });
+    await open(page);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    assert.ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)));
+    const original = await readFile(path.join(root, 'sw.js'), 'utf8');
+    swOverride = original.replace(/einkauf-shell-v\d+/, 'einkauf-shell-test-update');
+    try {
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then(registration => registration.update()));
+    await page.waitForSelector('#update-banner:not([hidden])', { timeout: 60000 });
+    assert.equal(await page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration()).waiting)), true, 'die neue Version wartet');
+    assert.deepEqual(await page.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('einkauf-shell-')).sort()).then(keys => keys.length), 2, 'altes Paket bleibt bis zum Wechsel erhalten');
+    await Promise.all([page.waitForEvent('load'), page.click('#reload')]);
+    await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await page.waitForFunction(async () => (await caches.keys()).includes('einkauf-shell-test-update') && !(await navigator.serviceWorker.getRegistration()).waiting);
+    assert.equal(await page.locator('#update-banner').isHidden(), true, 'nach dem Wechsel kein erneuter Hinweis');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    } finally { swOverride = null; }
     await ctx.close();
   });
 });
