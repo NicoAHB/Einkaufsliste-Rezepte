@@ -194,8 +194,27 @@ test('Zutatenübernahme: Restmengen verwenden den bestehenden Namen und Merker; 
 test('Rezeptübernahme ordnet „Ei(er)“ dem vorhandenen Artikel „Eier“ zu und bereinigt neue Listenzeilen', () => {
   const items = [{ id: 'eggs', name: 'Eier', quantity: 6, unit: 'Stück', storeId: '', checked: false, deletedAt: null }];
   const rows = reuseProductNames([{ name: 'Ei(er)', quantity: 2, unit: 'Stück' }, { name: 'Zwiebel(n)', quantity: 1, unit: 'Stück' }, { name: 'Tomaten (à 400 g)', quantity: 1, unit: 'Dose' }], items, '');
-  assert.deepEqual(rows.map(row => row.name), ['Eier', 'Zwiebeln', 'Tomaten (à 400 g)']);
+  assert.deepEqual(rows.map(row => row.name), ['Eier', 'Zwiebeln', 'Tomaten (Konserve)'], 'eine Dose Tomaten ist die Konserve');
   assert.equal(ingredientProductName('Ei(er)'), 'Eier');
   assert.equal(sameIngredient('Tomaten (à 400 g)', 'Tomaten'), true);
   assert.equal(sameIngredient('Milch (laktosefrei)', 'Milch'), false);
+});
+
+test('Dosen: Rezeptzeilen mit Einheit Dose werden zur Konserve des Katalogs mit passendem Bild und Gang', async () => {
+  const { cannedProductName, ingredientMatchName } = await import('../product-groups.js');
+  const { imageForProduct } = await import('../product-images.js');
+  const { itemCategory } = await import('../categories.js');
+  assert.equal(cannedProductName('Tomaten', 'Dose'), 'Tomaten (Konserve)');
+  assert.equal(cannedProductName('Tomaten (à 400 g)', 'Dosen'), 'Tomaten (Konserve)');
+  assert.equal(cannedProductName('stückige Tomaten', 'Dose'), 'Tomaten (Konserve)');
+  assert.equal(cannedProductName('Tomaten aus der Dose', 'g'), 'Tomaten (Konserve)');
+  assert.equal(cannedProductName('Erbsen', 'Dose'), 'Erbsen in der Dose');
+  assert.equal(cannedProductName('Mais', 'Dose'), null, 'Mais ist ohnehin ein Dosenprodukt');
+  assert.equal(cannedProductName('Tomaten', 'g'), null);
+  assert.equal(ingredientMatchName({ name: 'Tomaten', unit: 'Stück' }), 'Tomaten');
+  assert.equal(imageForProduct({ name: 'Tomaten', unit: 'Dose' }).key, 'gehackte-tomaten');
+  assert.equal(imageForProduct({ name: 'Tomaten', unit: 'g' }).key, 'tomaten');
+  assert.equal(itemCategory({ name: 'Tomaten', unit: 'Dose' }), 'vorrat');
+  const items = [{ id: 'can', name: 'Tomaten (Konserve)', quantity: 1, unit: 'Dose', storeId: '', checked: false, deletedAt: null }];
+  assert.deepEqual(reuseProductNames([{ name: 'Tomaten', quantity: 2, unit: 'Dose' }, { name: 'Knoblauch, gepresst', quantity: 1, unit: 'Zehe' }], items, '').map(row => row.name), ['Tomaten (Konserve)', 'Knoblauch']);
 });

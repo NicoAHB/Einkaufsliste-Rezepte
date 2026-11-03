@@ -109,7 +109,7 @@ export const PRODUCT_FAMILIES = Object.freeze(families.map(([id,name,variants]) 
   return group;
 }));
 // Übliche Schreibweisen, die in Rezepten vorkommen, ohne die freie Eingabe umzubenennen.
-for(const [name,id] of [['Grüne Oliven','oliven-gruen'],['Schwarze Oliven','oliven-gruen'],['Speiseöl','olivenoel'],['Pflanzenöl','olivenoel'],['Weizenmehl','mehl'],['Vollmilch','milch']]) byName.set(groupNameKey(name),byId.get(id));
+for(const [name,id] of [['Grüne Oliven','oliven-gruen'],['Schwarze Oliven','oliven-gruen'],['Speiseöl','olivenoel'],['Pflanzenöl','olivenoel'],['Weizenmehl','mehl'],['Vollmilch','milch'],['Stückige Tomaten','gehackte-tomaten'],['Dosentomaten','gehackte-tomaten'],['Pizzatomaten','gehackte-tomaten'],['Tomaten in Stücken','gehackte-tomaten']]) byName.set(groupNameKey(name),byId.get(id));
 export const productGroup = name => byName.get(groupNameKey(name)) || null;
 export const productGroupById = id => byId.get(id) || null;
 export const canonicalProductName = name => productGroup(name)?.name || name;
@@ -136,12 +136,22 @@ const PLURAL_MARK=new RegExp(`([${LETTER}])\\((n|en|e|er|s|nen)\\)(?![${LETTER}]
 const SLASH_PLURAL=new RegExp(`([${LETTER}])\\/(?:n|en|e|er|s|nen)(?![${LETTER}])`,'g');
 const AMOUNT_NOTE=/\s*\((?:(?:à|a|je|ca\.?|circa|etwa|insgesamt|zusammen)\s*)?\d[\d.,/]*\s*(?:(?:-|–|bis)\s*\d[\d.,/]*\s*)?(?:[A-Za-zÄÖÜäöüß]{1,12}\.?)?\s*\)/g;
 const MEASURE_NOTE=/\s*\((?:leicht |gut |knapp )?(?:gehäuft|gestrichen|kleine?[rs]?|große?[rs]?|mittelgroße?[rs]?)(?:\s+(?:Dose|Packung|Becher|Glas|Flasche|Tüte|Stück))?\)/gi;
-// Für neue Listenzeilen aus älteren Rezepten: nur die Chefkoch-Pluralendungen bereinigen, Packungsnotizen bleiben stehen.
-export const withoutPluralMarks = name => { const text=String(name??''), clean=text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1').replace(/\s+/g,' ').trim(); return clean||text; };
+/* Zubereitungsangaben hinter der Zutat („Knoblauch, gepresst“, „Zwiebel (fein gewürfelt)“, „Tomaten in Scheiben“) ändern nicht,
+   was eingekauft wird. Nur bekannte Angaben am Ende werden übergangen; Zusätze, die ein anderes Produkt meinen („getrocknet“,
+   „gemahlen“, „laktosefrei“), bleiben bedeutend. Davorstehende Wörter („gehackte Tomaten“ = Konserve) bleiben ebenfalls stehen. */
+const PREP_WORD='(?:(?:sehr |ganz |grob |fein |frisch |klein |dünn |dick |leicht )?(?:gehackt|gepresst|gewürfelt|geschnitten|gerieben|geraspelt|geschält|gehobelt|zerdrückt|zerkleinert|zerlassen|geschmolzen|halbiert|geviertelt|geachtelt|entkernt|entsteint|gewaschen|geputzt|abgetropft|abgespült|abgezupft|gezupft|püriert|verquirlt|zimmerwarm|weich|kalt|lauwarm|gekocht|blanchiert|aufgetaut)(?:e[nrs]?)?'
+  +'|in (?:feine |dünne |dicke |kleine |grobe |mundgerechte )?(?:Würfel|Würfeln|Scheiben|Ringe|Ringen|Streifen|Stücke|Stücken|Spalten)(?: geschnitten)?'
+  +'|zum (?:Anbraten|Braten|Bestreuen|Bestäuben|Garnieren|Servieren|Einfetten|Kochen|Würzen|Abschmecken)|für die Form|nach Geschmack|nach Belieben|optional)';
+const PREP_TAIL=new RegExp(`(?:\\s*,\\s*|\\s+)\\(?${PREP_WORD}(?:(?:\\s*,\\s*|\\s+und\\s+|\\s+)${PREP_WORD})*\\)?\\s*$`,'i');
+// Zählwörter, die mit dem Produkt zusammengeschrieben werden: „2 Knoblauchzehen“ meint Knoblauch.
+const COMPOUND_COUNT=/\bKnoblauch(?:zehen?|knollen?)\b/gi;
+const withoutPrep = text => { let clean=text, before; do { before=clean; clean=clean.replace(PREP_TAIL,''); } while (clean!==before&&clean.trim()); return clean.trim()?clean:text; };
+// Für neue Listenzeilen aus Rezepten: Pluralendungen und Zubereitungsangaben bereinigen, Packungsnotizen bleiben stehen.
+export const withoutPluralMarks = name => { const text=String(name??''), clean=withoutPrep(text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1').replace(COMPOUND_COUNT,'Knoblauch')).replace(/\s+/g,' ').trim(); return clean||text; };
 export function recipeNameCore(name) {
   const text=String(name??'');
-  const core=text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1')
-    .replace(AMOUNT_NOTE,'').replace(MEASURE_NOTE,'').replace(/\s+/g,' ').trim();
+  const core=withoutPrep(text.replace(/^\s*\/(?:n|en|e|er|s|nen)\s+/i,'').replace(PLURAL_MARK,'$1$2').replace(SLASH_PLURAL,'$1').replace(COMPOUND_COUNT,'Knoblauch')
+    .replace(AMOUNT_NOTE,'').replace(MEASURE_NOTE,'')).replace(/\s+/g,' ').trim();
   return core||text;
 }
 export const ingredientProductName = memoText(productNameOf);
@@ -161,11 +171,35 @@ function productNameOf(original) {
   return name;
 }
 
+/* Konserven: „1 Dose Tomaten“ meint keine frischen Tomaten, sondern das Konservenprodukt des Katalogs („Tomaten (Konserve)“
+   mit eigenem Bild). Die Zuordnung entsteht aus dem Katalog selbst: Familien „… (Konserve)“ und Produkte „… in der Dose“.
+   Produkte, die es ohnehin nur als Dose gibt (Mais, Kichererbsen, Kokosmilch), bleiben unverändert. */
+const CAN_UNIT=/^(?:dosen?|büchsen?|konserven?)$/i;
+const CAN_PHRASE=/(?:\s*\(\s*(?:aus der |in der )?(?:dose|büchse|konserve)\s*\)|,?\s+(?:aus der|in der) (?:dose|büchse))\s*$/i;
+const canned = new Map();
+for (const group of PRODUCT_FAMILIES) { const base=/^(.+) \(Konserve\)$/.exec(group.name)?.[1]; if(base) canned.set(spellingStem(base), group.name); }
+for (const row of PRODUCT_ROWS) { const base=row[3]==='Dose'&&/^(.+) in der Dose$/i.exec(row[1])?.[1]; if(base&&!canned.has(spellingStem(base))) canned.set(spellingStem(base), canonicalProductName(row[1])); }
+const cannedNames = new Set(canned.values());
+export function cannedProductName(name, unit='') {
+  const text=String(name??'');
+  if(!CAN_UNIT.test(String(unit??'').trim())&&!CAN_PHRASE.test(text)) return null;
+  const product=ingredientProductName(text.replace(CAN_PHRASE,''));
+  if(cannedNames.has(product)) return product;
+  return canned.get(spellingStem(product)) || null;
+}
+// Der Name, unter dem eine Zutat oder ein Artikel mit Vorrat, Einkaufsliste und Kochbarkeit verglichen wird (berücksichtigt die Einheit).
+export const ingredientMatchName = row => cannedProductName(row?.name, row?.unit) || row?.name || '';
+
 // Übernahmen aus Katalog/Rezept zählen zu einem passenden bereits benannten Artikel.
 // Die freie Eingabe selbst verwendet diese Funktion nicht und behält ihren Namen.
 export function reuseProductNames(rows,items,storeId) {
   const open=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&(row.storeId || '')===(storeId || ''));
-  return rows.map(row=>{const key=spellingStem(ingredientProductName(row.name)),existing=key&&open.find(item=>spellingStem(ingredientProductName(item.name))===key);if(existing)return {...row,name:existing.name};const clean=withoutPluralMarks(row.name);return clean===row.name?row:{...row,name:clean};});
+  return rows.map(row=>{
+    const can=cannedProductName(row.name,row.unit),wanted=can||row.name,key=spellingStem(ingredientProductName(wanted));
+    const existing=key&&open.find(item=>spellingStem(ingredientProductName(ingredientMatchName(item)))===key);
+    if(existing)return {...row,name:existing.name};
+    const clean=can||withoutPluralMarks(row.name);return clean===row.name?row:{...row,name:clean};
+  });
 }
 
 // Feldweise, idempotente Migration. Keine IDs, Mengen, Preise oder Löschmarkierungen ändern.

@@ -169,3 +169,12 @@ test('Gespeicherte Chefkoch-Namen werden im Vorrat erkannt, beschreibende Zusät
   assert.equal(availability('Milch (laktosefrei)', index), 'missing', 'laktosefrei bleibt eine eigene Produktart');
   assert.equal(availability('Tomatenmark', index), 'missing');
 });
+
+test('Knoblauch im Vorrat deckt Zehen, Knoblauchzehen und Zubereitungsangaben; Dosen brauchen die Konserve', () => {
+  const index = indexNames({ have: ['Knoblauch', 'Zwiebeln', 'Tomaten (Konserve)'] });
+  for (const name of ['Knoblauch', 'Knoblauchzehe', 'Knoblauchzehen', 'Knoblauch, gepresst', 'Knoblauch (fein gehackt)', 'Knoblauchzehe, fein gehackt', 'Zwiebel, geschält und gewürfelt', 'Zwiebeln in Ringen'])
+    assert.equal(availability({ name, quantity: 1, unit: 'Zehe' }, index), 'have', name);
+  assert.equal(availability({ name: 'Tomaten', quantity: 1, unit: 'Dose' }, index), 'have', 'eine Dose Tomaten ist die Konserve');
+  assert.equal(availability({ name: 'Tomaten', quantity: 500, unit: 'g' }, index), 'missing', 'frische Tomaten sind keine Konserve');
+  assert.equal(availability({ name: 'Mandeln, gemahlen', quantity: 100, unit: 'g' }, indexNames({ have: ['Mandeln'] })), 'missing', 'gemahlen bleibt ein eigenes Produkt');
+});

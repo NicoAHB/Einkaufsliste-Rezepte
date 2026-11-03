@@ -9,7 +9,7 @@ const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!=
 // Pro Ansicht bleibt nur ein Vorratsabgleich offen. Ein normales Neuzeichnen
 // nach dem Datenabgleich erhält den geöffneten Abgleich desselben Rezepts.
 export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel}) {
-  const tracked=ingredients.filter(required),have=tracked.filter(row=>availability(row.name,index)==='have'),missing=tracked.filter(row=>availability(row.name,index)!=='have');
+  const tracked=ingredients.filter(required),have=tracked.filter(row=>availability(row,index)==='have'),missing=tracked.filter(row=>availability(row,index)!=='have');
   const badge=node('div',undefined,`recipe-stock ${missing.length===0?'complete':have.length?'partial':'empty'}`);
   const trigger=node('button',undefined,'recipe-stock-toggle');trigger.type='button';
   const heading=node('span',undefined,'recipe-stock-heading');heading.append(node('span',`${have.length} von ${tracked.length} Zutaten da · ${missing.length} fehlen`),makeIcon('info'));

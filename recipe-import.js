@@ -136,6 +136,9 @@ export function parseIngredientLine(raw) {
         unit = sizedUnit; rest = rest.slice(sized[0].length); size = `${sized[1]} ${sizedUnit.unit}`;
       }
     }
+    // „2 Knoblauchzehen“: Zählwort und Produkt zusammengeschrieben; eingekauft wird Knoblauch, gezählt in Zehen.
+    const clove = !unit && /^\s*Knoblauchzehe(n)?(?![a-zäöüß])/i.exec(rest);
+    if (clove) { unit = { unit: quantity === 1 ? 'Zehe' : 'Zehen', factor: 1, length: 0 }; rest = `Knoblauch${rest.slice(clove[0].length)}`; }
     let name, outUnit = 'Stück', outQuantity = quantity, hint = '';
     if (unit) { outUnit = unit.unit; outQuantity = quantity * unit.factor; rest = rest.slice(unit.length); }
     const leading = LEADING_HINT.exec(rest);

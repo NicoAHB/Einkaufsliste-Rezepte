@@ -10245,4 +10245,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.138: Knoblauch im Vorrat und „1 Dose Tomaten“ als Konserve ----
+  test('2.138: Rezept übernehmen: Knoblauch aus dem Vorrat bleibt weg, die Dose Tomaten kommt als Konserve mit Dosenbild', async () => {
+    const data = structuredClone(demo), at = '2026-10-29T12:00:00.000Z';
+    data.items = []; data.pantry = [{ id: 'pantry-garlic', name: 'Knoblauch', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} }];
+    data.recipes = [{ ...data.recipes[0], id: 'sauce-2138', name: 'Tomatensauce 2138', servings: 2 }];
+    data.ingredients = [
+      { ...data.ingredients[0], id: 'sauce-garlic', recipeId: 'sauce-2138', name: 'Knoblauch, gepresst', quantity: 1, unit: 'Zehe' },
+      { ...data.ingredients[0], id: 'sauce-cloves', recipeId: 'sauce-2138', name: 'Knoblauchzehen', quantity: 2, unit: 'Stück' },
+      { ...data.ingredients[0], id: 'sauce-can', recipeId: 'sauce-2138', name: 'Tomaten', quantity: 1, unit: 'Dose' }];
+    const { ctx, page, problems } = await context({ config: { productImages: true } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await goTab(page, 'recipes');
+    const card = page.locator('.recipe-card', { hasText: 'Tomatensauce 2138' });
+    await card.locator('summary').click();
+    assert.match(await card.locator('li', { hasText: 'Knoblauch, gepresst' }).last().textContent(), /Vorhanden/);
+    await card.getByRole('button', { name: 'Einkaufen', exact: true }).click(); await sheetOpen(page);
+    const checked = await page.locator('#transfer-ingredients label').evaluateAll(nodes => nodes.filter(node => node.querySelector('input').checked).map(node => node.textContent));
+    assert.equal(checked.length, 1, `nur die Dose ist vorausgewählt: ${checked.join(' | ')}`); assert.match(checked[0], /Tomaten/);
+    await page.click('#transfer-form button:not([data-close])'); await page.waitForSelector('#transfer-dialog[open]', { state: 'detached' });
+    const rows = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => !row.deletedAt).map(row => `${row.quantity} ${row.unit} ${row.name}`));
+    assert.deepEqual(rows, ['1 Dose Tomaten (Konserve)']);
+    await goTab(page, 'shopping');
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten (Konserve)' }).locator('[data-photo-key]').getAttribute('data-photo-key'), 'gehackte-tomaten');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
 });

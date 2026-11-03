@@ -3,6 +3,7 @@
    für denselben Namen verwendete Kategorie (die App lernt aus euren Artikeln), dann eine Schätzung
    nach Stichwörtern. Ohne Treffer bleibt der Artikel unter „Sonstiges“, es wird nichts erfunden. */
 import { productKey } from './prices.js';
+import { cannedProductName } from './product-groups.js';
 import { PRODUCT_ROWS } from './product-catalog-data.js';
 const catalogCategories = new Map(PRODUCT_ROWS.map(([, name, , , category]) => [productKey(name), category]));
 
@@ -85,7 +86,8 @@ export const suggestCategory = (name, items = []) => rememberedCategory(items, n
 
 // Kategorie, unter der ein vorhandener Artikel angezeigt wird.
 export function itemCategory(item, items = []) {
-  return (isCategory(item.category) ? item.category : null) ?? suggestCategory(item.name, items) ?? 'sonstiges';
+  // Ohne eigene Kategorie: Eine Dose Tomaten steht bei den Konserven, nicht bei Obst & Gemüse.
+  return (isCategory(item.category) ? item.category : null) ?? suggestCategory(cannedProductName(item.name, item.unit) || item.name, items) ?? 'sonstiges';
 }
 
 /* Eigene Reihenfolge der Gänge (pro Geschäft: `aisles`, Liste von Kategorie-Kennungen). Genannte Gänge kommen zuerst in dieser Reihenfolge, alle anderen danach
