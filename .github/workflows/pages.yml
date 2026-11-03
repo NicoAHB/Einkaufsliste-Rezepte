@@ -1,0 +1,39 @@
+# Veröffentlicht die App erst, wenn der Workflow „Tests“ auf main grün ist.
+# Aktivieren (einmalig, auf GitHub):
+#   1. Settings → Pages → Build and deployment → Source: „GitHub Actions“
+#   2. Settings → Secrets and variables → Actions → Variables → neue Variable PAGES_VIA_ACTIONS mit dem Wert true
+# Solange die Variable fehlt, wird dieser Workflow übersprungen und GitHub Pages veröffentlicht wie bisher direkt aus dem Branch.
+name: Veröffentlichen
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.PAGES_VIA_ACTIONS == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
