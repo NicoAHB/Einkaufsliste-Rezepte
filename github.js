@@ -19,7 +19,7 @@ export async function contentsRequest(config, method, body, etag = '') {
         'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(etag ? { 'If-None-Match': etag } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {})
     });
-  } catch { throw new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'); }
+  } catch { throw Object.assign(new Error('Keine Verbindung zu GitHub. Deine Änderungen bleiben lokal gespeichert. Bei Empfang wird automatisch erneut gesendet; die App dafür geöffnet lassen.'), { network: true }); }
   finally { clearTimeout(timeout); }
   // 304: seit der letzten Abfrage unverändert. Solche Abfragen zählen nicht zum GitHub-Limit.
   if (response.status === 304) return null;
