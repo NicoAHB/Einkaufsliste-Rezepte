@@ -2,6 +2,31 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.144: Vorrat mit internationalen Produkten, klarer Speichern-Knopf, Mülleimer mit „Rückgängig“
+
+**Vorrat.**
+- Der Knopf unten heißt jetzt **Produkte dem Vorrat hinzufügen** (bei einem Produkt „Produkt dem Vorrat hinzufügen“) statt „Änderungen speichern“. Wird nur abgewählt, steht dort **Aus dem Vorrat entfernen**, bei beidem **Vorrat aktualisieren**.
+- **Internationale Produkte** sind im Vorrat jetzt wählbar (bis 2.143 grau). Gezeigt werden die genauen Sorten mit ihren Bildern, z. B. Buchweizen, Kimchi oder Sushi-Reis.
+- Der Vorrat fasst Sorten zusammen: Sushi-Reis zählt als Reis. Steht schon „Reis“ im Vorrat, sagt die Kachel deshalb **Vorhanden als Reis**.
+- Im Reiter **Grundvorrat**, einer festen Liste allgemeiner Produkte, bleibt die Kategorie grau.
+
+**Internationale Produkte erweitert.**
+- 14 statt 12 Länder und Küchen, alphabetisch: neu sind **Naher Osten & Nordafrika** (Hummus, Falafel, Tahin, Couscous, Harissa) und **USA & Kanada** (Erdnussbutter, BBQ-Sauce, Ahornsirup, Bagels).
+- Die übrigen Länder bekommen passende Produkte aus dem Katalog, z. B. Mie-Nudeln, Sesamöl und Austernsauce (China), Ghee, rote Linsen und Kurkuma (Indien), Mascarpone, Ricotta, Parmaschinken und Tortellini (Italien), Teriyakisauce und Seidentofu (Japan), Guacamole und Nachos (Mexiko), Fischsauce und Sriracha (Thailand), Serranoschinken (Spanien), Fladenbrot (Türkei) und Pitabrot (Griechenland).
+- Alle Ergänzungen sind schon im Katalog und haben dort ihr eigenes Foto; es kommen keine neuen Bilder dazu. Zusammen sind es 97 Produkte.
+
+**Eigene Produkte löschen.**
+- Unter „Eigene“ steht an jedem eigenen Produkt ein roter **Mülleimer · Löschen**.
+- Nach der Rückfrage bietet die Meldung **Rückgängig** an: Das Produkt kommt mit seinem Stern zurück.
+
+**Außerdem (aus der unveröffentlichten Fassung 2.143 übernommen).**
+- Entfernen eines Gerichts im Wochenplan meldet **Gericht entfernt** (bisher „Gericht gespeichert“).
+- „Heute“ im Wochenplan und „Neu“ bei den Rezepten sind mittelgrün statt kräftig gefüllt.
+
+**Tests.** Die Kategorienprüfung 2.79 war seit 2.143 rot (13 statt 12 Einträge, also mit „Internationale Produkte“); sie ist angepasst. Neu sind Tests für den Vorrat mit internationalen Produkten, die Knopftexte, den Mülleimer mit Rückgängig und die neuen Länder.
+
+Offline-Paket `einkauf-shell-v156`.
+
 ## Neu in Version 2.143: Internationale Produkte und eigene Produkte löschen
 
 - Unter **Produkte → Internationale Produkte** stehen gängige Zutaten nach zwölf Ländern/Küchen sortiert. 32 neue Produkte ergänzen den Bestand, darunter Buchweizen, mit 32 neu erzeugten lokalen Beispielbildern. Bereits bekannte Zutaten verwenden ihre vorhandenen Bilder; normale Einkaufs-Gänge bleiben erhalten.

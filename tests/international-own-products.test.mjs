@@ -9,7 +9,7 @@ import {normaliseBackup} from '../backup-restore.js';
 import {imageForProduct} from '../product-images.js';
 const at='2026-11-03T12:00:00.000Z';
 test('international view groups real catalog IDs by countries and keeps physical grocery aisles',()=>{
- assert.equal(GROCERY_PRODUCTS.length,1056);assert.equal(INTERNATIONAL_COUNTRIES.length,12);
+ assert.equal(GROCERY_PRODUCTS.length,1056);assert.equal(INTERNATIONAL_COUNTRIES.length,14);
  for(const country of INTERNATIONAL_COUNTRIES)for(const id of country.products)assert.ok(GROCERY_PRODUCTS.some(p=>p.id===id),`${country.label}: ${id}`);
  const products=filterProducts(internationalProductLibrary(),{category:INTERNATIONAL_CATEGORY});assert.ok(products.length>=60);const groups=internationalProductGroups(products);assert.equal(groups[0].label,'China');assert.ok(groups.find(g=>g.id==='ua').matches.some(p=>p.id==='buchweizen'));assert.equal(products.find(p=>p.id==='buchweizen').category,'vorrat');assert.ok(filterProducts(productLibrary(),{query:'Japan'}).some(p=>p.id==='misopaste'));
 });
@@ -25,4 +25,17 @@ test('deletion survives history, reload, favorites, a delayed device and compact
  const late=operation('productFavorites','favorite-keckd',{name:'Keckd',productId:null,quantity:1,unit:'Stück',category:'sonstiges',deletedAt:null},'Other','2026-11-03T12:01:00.000Z');data=merge(data,[late]);data=JSON.parse(JSON.stringify(data));assert.doesNotThrow(()=>validate(data));assert.ok(!productLibrary(data.items,data.productFavorites,data.pantry,data.productRemovals).some(p=>p.name==='Keckd'));assert.ok(productLibrary(data.items,data.productFavorites,data.pantry,data.productRemovals).some(p=>p.id==='aepfel'));
  const cleaned=compact(data,new Date('2030-01-01T00:00:00Z')).data;assert.equal(cleaned.productRemovals.length,1);assert.equal(normaliseBackup(cleaned).productRemovals.length,1);
  const invalid=JSON.parse(JSON.stringify(data));invalid.productRemovals[0].id='aepfel';assert.throws(()=>validate(invalid),/Löschmarkierung/);
+});
+
+test('2.144: weitere Küchen mit vorhandenen Katalogbildern, deutsch sortiert; jedes Produkt hat ein eigenes Bild',()=>{
+ const labels=INTERNATIONAL_COUNTRIES.map(country=>country.label);
+ assert.deepEqual(labels,[...labels].sort((a,b)=>a.localeCompare(b,'de')),'Länder alphabetisch');
+ assert.ok(labels.includes('Naher Osten & Nordafrika')&&labels.includes('USA & Kanada'));
+ const lib=internationalProductLibrary(),byId=new Map(lib.map(p=>[p.id,p]));
+ for(const [country,id] of [['it','mascarpone'],['in','ghee'],['mx','guacamole'],['cn','mie-nudeln'],['me','hummus'],['us','erdnussbutter'],['th','fischsauce']]){
+  assert.ok(INTERNATIONAL_COUNTRIES.find(c=>c.id===country).products.includes(id),`${country}: ${id}`);
+  assert.equal(imageForProduct(byId.get(id)).kind,'product',`${id} hat ein eigenes Katalogbild`);
+ }
+ for(const country of INTERNATIONAL_COUNTRIES)assert.equal(new Set(country.products).size,country.products.length,`${country.label} ohne Doppel`);
+ const groups=internationalProductGroups(filterProducts(lib,{category:INTERNATIONAL_CATEGORY}));assert.equal(groups.length,14);assert.ok(groups.every(group=>group.matches.length>=3));
 });

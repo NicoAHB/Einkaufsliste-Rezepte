@@ -8896,15 +8896,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const data=pantryData278([{name:'Milch',available:true},{name:'Meine Hausmischung',category:'sonstiges',available:true},{name:'Mehl',available:false}]);
     data.items=[0,1].map(i=>({...demo.items[0],id:`paste-${i}`,name:'Zahnpasta',category:'haushalt',quantity:1,unit:'Tube',checked:true}));data.names=[];
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await openPantry(page);const before=await storedDemo(page);
-    const categories=await page.locator('#product-picker-category option').allTextContents();assert.equal(categories.length,12);
-    assert.deepEqual(await enabledCategories279(page),['','kuehl','sonstiges']);
-    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,12);
+    const categories=await page.locator('#product-picker-category option').allTextContents();assert.equal(categories.length,13,'elf Gänge, „Alle Kategorien“ und „Internationale Produkte“');
+    assert.deepEqual(await enabledCategories279(page),['','kuehl','sonstiges'],'ohne internationale Vorräte bleibt die Kategorie im Reiter „Aktuell“ grau');
+    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,13,'unter „Alle“ ist auch „Internationale Produkte“ wählbar');
     await page.fill('#product-picker-search','Salz');await page.locator('.product-card[data-product=salz] .product-star').click();await page.fill('#product-picker-search','');await page.click('[data-product-mode=favorites]');
     assert.deepEqual(await enabledCategories279(page),['','gewuerze']);assert.deepEqual(await page.locator('#product-picker-category option').allTextContents(),categories);
     await page.fill('#product-picker-search','Milch');assert.equal(await page.locator('.product-card').count(),0);assert.deepEqual(await enabledCategories279(page),['','gewuerze'],'Kategorien gehören zum gesamten Reiter, unabhängig von der Suche');
     await page.fill('#product-picker-search','');await page.click('[data-product-mode=frequent]');assert.deepEqual(await enabledCategories279(page),['','haushalt']);
     await page.click('[data-product-mode=basics]');assert.equal(await page.locator('.product-card').count(),22);assert.deepEqual(await enabledCategories279(page),['','kuehl','vorrat','gewuerze']);
-    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,12);assert.deepEqual((await storedDemo(page)).pantry,before.pantry);assert.deepEqual(problems,[]);await ctx.close();
+    await page.click('[data-product-mode=all]');assert.equal((await enabledCategories279(page)).length,13);assert.deepEqual((await storedDemo(page)).pantry,before.pantry);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.79: ein Reiterwechsel behält passende Kategorien und setzt eine ausgegraute Auswahl auf Alle Kategorien zurück',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,pantryData278([{name:'Milch',available:true}]));await open(page);await openPantry(page,'all');
@@ -9052,13 +9052,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.83: Abgewählte Kacheln bleiben an derselben Stelle, grau und erneut aktivierbar; Speichern übernimmt erst danach',async()=>{
     const data=pantryData278([{id:'potatoes',name:'Kartoffeln',category:'obst',imageKey:'kartoffeln',available:true},{id:'own-veg',name:'Mein eigenes Gemüse',category:'obst',imageKey:'muesli',available:true}]);
     const {ctx,page,problems}=await context({context:{viewport:{width:390,height:844}}});await seedLocal(ctx,data);await open(page);await openPantry(page);const before=await storedDemo(page),names=await page.locator('.product-name').allTextContents(),potatoes=page.locator('.product-card[data-product=kartoffeln]'),box=await potatoes.boundingBox();
-    await potatoes.locator('.product-pick').click();assert.deepEqual(await page.locator('.product-name').allTextContents(),names);const after=await potatoes.boundingBox();assert.equal(after.x,box.x);assert.equal(after.y,box.y);assert.equal(await potatoes.locator('.product-pick').getAttribute('aria-pressed'),'false');assert.equal(await potatoes.locator('.product-pick').isEnabled(),true);assert.equal(await potatoes.locator('.product-photo').evaluate(node=>getComputedStyle(node).filter),'grayscale(1)');assert.equal(await page.textContent('#product-picker-add'),'Änderungen speichern');assert.deepEqual(await storedDemo(page),before);assert.equal(await page.locator('#pantry-removed').count(),0);
+    await potatoes.locator('.product-pick').click();assert.deepEqual(await page.locator('.product-name').allTextContents(),names);const after=await potatoes.boundingBox();assert.equal(after.x,box.x);assert.equal(after.y,box.y);assert.equal(await potatoes.locator('.product-pick').getAttribute('aria-pressed'),'false');assert.equal(await potatoes.locator('.product-pick').isEnabled(),true);assert.equal(await potatoes.locator('.product-photo').evaluate(node=>getComputedStyle(node).filter),'grayscale(1)');assert.equal(await page.textContent('#product-picker-add'),'Aus dem Vorrat entfernen');assert.deepEqual(await storedDemo(page),before);assert.equal(await page.locator('#pantry-removed').count(),0);
     await potatoes.locator('.product-pick').click();assert.equal(await potatoes.locator('.product-pick').getAttribute('aria-pressed'),'true');assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');assert.equal(await page.locator('#product-picker-add').isDisabled(),true);
-    const own=page.locator('.product-card',{hasText:'Mein eigenes Gemüse'});await own.locator('.product-pick').click();assert.deepEqual(await page.locator('.product-name').allTextContents(),names);assert.equal(await own.locator('.product-pick').getAttribute('aria-pressed'),'false');await page.getByRole('button',{name:'Änderungen speichern',exact:true}).click();assert.equal(await own.count(),0);const saved=(await storedDemo(page)).pantry.find(row=>row.id==='own-veg');assert.equal(saved.available,false);assert.equal(saved.imageKey,'muesli');assert.equal(saved.name,'Mein eigenes Gemüse');assert.equal(saved.category,'obst');assert.equal((await storedDemo(page)).pantry.find(row=>row.id==='potatoes').available,true);assert.deepEqual(problems,[]);await ctx.close();
+    const own=page.locator('.product-card',{hasText:'Mein eigenes Gemüse'});await own.locator('.product-pick').click();assert.deepEqual(await page.locator('.product-name').allTextContents(),names);assert.equal(await own.locator('.product-pick').getAttribute('aria-pressed'),'false');await page.getByRole('button',{name:'Aus dem Vorrat entfernen',exact:true}).click();assert.equal(await own.count(),0);const saved=(await storedDemo(page)).pantry.find(row=>row.id==='own-veg');assert.equal(saved.available,false);assert.equal(saved.imageKey,'muesli');assert.equal(saved.name,'Mein eigenes Gemüse');assert.equal(saved.category,'obst');assert.equal((await storedDemo(page)).pantry.find(row=>row.id==='potatoes').available,true);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.83: letzte Kachel bleibt in ihrer Kategorie; Schließen verwirft Abwahl, bestätigtes Speichern entfernt dauerhaft',async()=>{
     const {ctx,page,problems}=await context({context:{viewport:{width:280,height:844}}});await seedLocal(ctx,pantryData278([{name:'Milch',available:true}]));await open(page);await openPantry(page);const before=await storedDemo(page);await page.selectOption('#product-picker-category','kuehl');await page.locator('.product-pick').click();assert.equal(await page.inputValue('#product-picker-category'),'kuehl');assert.equal(await page.locator('.product-card.pending-removal').count(),1);assert.equal(await page.textContent('#product-picker-status'),'0 Produkte im aktuellen Vorrat');assert.ok(await horizontalOverflow(page)<=1);await closePantry(page);assert.deepEqual(await storedDemo(page),before);
-    await openPantry(page);assert.equal(await page.locator('.product-pick').getAttribute('aria-pressed'),'true');await page.locator('.product-pick').click();await page.getByRole('button',{name:'Änderungen speichern',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.equal((await storedDemo(page)).pantry[0].available,false);await closePantry(page);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openPantry(page);assert.equal(await page.locator('.product-card').count(),0);assert.deepEqual(problems,[]);await ctx.close();
+    await openPantry(page);assert.equal(await page.locator('.product-pick').getAttribute('aria-pressed'),'true');await page.locator('.product-pick').click();await page.getByRole('button',{name:'Aus dem Vorrat entfernen',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.equal((await storedDemo(page)).pantry[0].available,false);await closePantry(page);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await openPantry(page);assert.equal(await page.locator('.product-card').count(),0);assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('2.84: Rezeptauswahl filtert nach Vorrat und Einkaufszettel; Mengenhinweis nennt nur tatsächlich fehlende Einkaufsprodukte',async()=>{
@@ -9108,7 +9108,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await card.getByRole('button',{name:'Einkaufen'}).click();await sheetOpen(page);assert.equal(await page.locator('#transfer-dialog').isVisible(),true);await page.click('#transfer-dialog [data-close]');
     await card.getByRole('button',{name:/Rezeptblatt.*PDF/}).click();await sheetOpen(page);assert.equal(await page.locator('#sheet-dialog').isVisible(),true);await page.click('#sheet-close');
     await openPantry(page);await page.locator('.product-pick').first().click();
-    assert.equal(await page.locator('.product-card').count(),1,'ausgeschaltete Kachel bleibt bis zum Speichern stehen');assert.equal(await page.textContent('#product-picker-add'),'Änderungen speichern');
+    assert.equal(await page.locator('.product-card').count(),1,'ausgeschaltete Kachel bleibt bis zum Speichern stehen');assert.equal(await page.textContent('#product-picker-add'),'Aus dem Vorrat entfernen');
     await page.click('#product-picker-add');await closePantry(page);await goTab(page,'recipes');assert.equal(await card.locator('.recipe-stock').count(),0,'leerer Vorrat blendet den Hinweis aus');
     await goTab(page,'settings');assert.equal(await page.locator('.topbar').isVisible(),true);await goTab(page,'plan');assert.equal(await page.locator('.topbar').isVisible(),false);
     assert.ok(await horizontalOverflow(page)<=1);assert.deepEqual(problems,[]);await ctx.close();
@@ -10340,6 +10340,119 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.144: Entfernen meldet „Gericht entfernt“; „Heute“ und „Neu“ mittelgrün statt kräftig gefüllt ----
+  test('2.144: Gericht aus dem Plan entfernen meldet „Gericht entfernt“ (auch mit Einkaufszettel), Ändern weiter „Gericht gespeichert“', async () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString();
+    data.meals = [{ id: 'meal-2143', recipeId: 'recipe-pasta', date: isoDate(), servings: 2, done: false, createdBy: 'Nico', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await goTab(page, 'plan');
+    const notice = () => page.textContent('#notice-text');
+    // Ändern: weiter „Gericht gespeichert“
+    await page.getByRole('button', { name: 'Tomaten-Pasta ändern', exact: true }).click(); await sheetOpen(page);
+    await page.click('#meal-portions-up'); await page.click('#meal-form button[type=submit]:not([value=shopping])'); await page.waitForSelector('#meal-dialog[open]', { state: 'detached' });
+    assert.equal(await notice(), 'Gericht gespeichert');
+    // Entfernen ohne Einkaufszettel: „Gericht entfernt“
+    await page.getByRole('button', { name: 'Tomaten-Pasta aus dem Plan entfernen', exact: true }).click();
+    assert.equal(await notice(), 'Gericht entfernt');
+    assert.equal(active((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base)).meals).length, 0);
+    // Mit Zutaten auf dem Einkaufszettel: Rückfrage, dann je nach Wahl
+    // (erst „Ja“: danach sind die Zutaten wieder vom Zettel, beim zweiten Mal kommen sie erneut dazu)
+    for (const [choice, expected] of [['#plan-adjust-apply', 'Gericht entfernt · Zutaten vom Einkaufszettel genommen'], ['#plan-adjust-keep', 'Gericht entfernt']]) {
+      await page.locator('.day.today .day-head .icon-button').click(); await sheetOpen(page);
+      await page.locator('#recipe-pick [data-value=recipe-curry]').click(); await page.click('#meal-save-shopping'); await page.waitForSelector('#meal-dialog[open]', { state: 'detached' });
+      await page.getByRole('button', { name: 'Kichererbsen-Curry aus dem Plan entfernen', exact: true }).click(); await sheetOpen(page);
+      await page.click(choice); await page.waitForSelector('#plan-adjust-dialog', { state: 'hidden' });
+      assert.equal(await notice(), expected);
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  for (const theme of ['light', 'dark']) test(`2.144: „Heute“ im Wochenplan und „Neu“ bei den Rezepten mittelgrün (${theme}), gut lesbar`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, palette: 'gruen' }, context: { colorScheme: theme } });
+    await open(page);
+    const look = selector => page.evaluate(selector => {
+      const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const probe = document.createElement('div'); probe.style.cssText = 'color:var(--accent);background:var(--accent-soft)'; document.body.append(probe);
+      const tokens = getComputedStyle(probe), accent = tokens.color, soft = tokens.backgroundColor; probe.remove();
+      const style = getComputedStyle(document.querySelector(selector)), [a, b] = [lum(rgb(style.color)), lum(rgb(style.backgroundColor))];
+      return { bg: style.backgroundColor, fg: style.color, accent, soft, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+    }, selector);
+    await goTab(page, 'plan');
+    assert.equal(await page.textContent('.day.today .day-today-badge'), 'Heute');
+    for (const selector of ['.day.today .day-today-badge', '#add-recipe']) {
+      if (selector === '#add-recipe') await goTab(page, 'recipes');
+      const result = await look(selector);
+      assert.equal(result.bg, result.soft, `${selector}: heller Grundton statt kräftiger Füllung`);
+      assert.equal(result.fg, result.accent, `${selector}: grüne Schrift`);
+      assert.ok(result.contrast >= 4.5, `${selector}: lesbar ${result.contrast.toFixed(2)} : 1`);
+    }
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.144: Internationale Produkte auch im Vorrat, klarer Speichern-Knopf, Mülleimer mit „Rückgängig“ für eigene Produkte ----
+  test('2.144: Vorrat: „Internationale Produkte“ wählbar, Sorten mit Bild, „Vorhanden als Reis“, Knopf sagt hinzufügen, entfernen oder aktualisieren', async () => {
+    const data = pantryData278([{ name: 'Reis', available: true }]);
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await seedLocal(ctx, data); await open(page); await openPantry(page, 'all');
+    assert.ok((await enabledCategories279(page)).includes('international'), 'unter „Alle“ wählbar statt grau');
+    await page.selectOption('#product-picker-category', 'international');
+    assert.ok(await page.locator('.product-group h3').count() >= 13, 'Länder als Gruppen');
+    const buckwheat = page.locator('.product-card[data-product=buchweizen]').first();
+    assert.equal(await buckwheat.locator('.product-pick').isEnabled(), true);
+    assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(), 1, 'eigenes Buchweizenbild');
+    assert.match(await page.locator('.product-card[data-product=sushi-reis]').first().textContent(), /Vorhanden als Reis/);
+    const add = page.locator('#product-picker-add');
+    await buckwheat.locator('.product-pick').click();
+    assert.equal((await add.textContent()).trim(), 'Produkt dem Vorrat hinzufügen');
+    await page.locator('.product-card[data-product=kimchi] .product-pick').first().click();
+    assert.equal((await add.textContent()).trim(), 'Produkte dem Vorrat hinzufügen');
+    const box = await add.boundingBox(); assert.ok(box.x + box.width <= 390 - 8 && box.height >= 44, `Knopf passt (${JSON.stringify(box)})`);
+    await saveShot(page, '2144-vorrat-international.png');
+    await add.click(); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    const pantry = (await storedDemo(page)).pantry.filter(row => !row.deletedAt && row.available !== false).map(row => row.name);
+    assert.ok(pantry.includes('Buchweizen') && pantry.includes('Kimchi') && pantry.includes('Reis'), pantry.join(', '));
+    // Reiter „Aktuell“: Kategorie bleibt wählbar und zeigt den Bestand
+    await page.click('[data-product-mode=current]');
+    assert.equal(await page.inputValue('#product-picker-category'), 'international');
+    assert.equal(await page.locator('.product-card[data-product=buchweizen] .product-pick').first().getAttribute('aria-pressed'), 'true');
+    await page.locator('.product-card[data-product=buchweizen] .product-pick').first().click();
+    assert.equal((await add.textContent()).trim(), 'Aus dem Vorrat entfernen');
+    await page.click('[data-product-mode=all]'); await page.locator('.product-card[data-product=misopaste] .product-pick').first().click();
+    assert.equal((await add.textContent()).trim(), 'Vorrat aktualisieren');
+    // Grundvorrat ist eine feste Liste allgemeiner Produkte
+    await page.click('[data-product-mode=basics]');
+    assert.equal((await enabledCategories279(page)).includes('international'), false);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  test('2.144: eigenes Produkt mit rotem Mülleimer löschen und mit „Rückgängig“ samt Favorit zurückholen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await page.click('#open-products'); await sheetOpen(page);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Keckd');
+    await page.locator('.product-card .product-star').click(); await page.fill('#product-picker-search', ''); await page.click('[data-product-mode=own]');
+    const card = page.locator('.product-card', { hasText: 'Keckd' }), remove = card.locator('.product-delete');
+    assert.equal(await remove.locator('use').getAttribute('href'), '#i-trash', 'Mülleimer');
+    assert.equal((await remove.textContent()).trim(), 'Löschen');
+    const look = await remove.evaluate(node => { const probe = document.createElement('div'); probe.style.color = 'var(--danger)'; document.body.append(probe); const danger = getComputedStyle(probe).color; probe.remove(); return { color: getComputedStyle(node).color, danger, height: node.getBoundingClientRect().height }; });
+    assert.equal(look.color, look.danger, 'in Rot'); assert.ok(look.height >= 44);
+    page.once('dialog', dialog => void dialog.accept()); await remove.click();
+    assert.equal(await card.count(), 0);
+    const undo = page.locator('#product-picker-feedback .product-undo');
+    assert.equal((await undo.textContent()).trim(), 'Rückgängig');
+    await undo.click();
+    assert.match(await page.textContent('#product-picker-feedback'), /wieder bei den eigenen Produkten/);
+    assert.equal(await card.count(), 1, 'wieder unter „Eigene“');
+    assert.equal(await card.locator('.product-star').getAttribute('aria-pressed'), 'true', 'Favorit wieder da');
+    const saved = await storedDemo(page);
+    assert.ok(saved.productRemovals.every(row => row.deletedAt), 'Löschmarke aufgehoben');
+    assert.ok(saved.productFavorites.some(row => !row.deletedAt && row.name === 'Keckd'));
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   // ---- 2.139 (E1): Papierkorb „Kürzlich gelöscht“ ----
   test('2.139: gelöschter Artikel landet im Papierkorb, lässt sich wiederherstellen und rückgängig machen; Gekauftes erscheint nicht', async () => {
     const data = structuredClone(demo);
@@ -10532,7 +10645,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     page.once('dialog',d=>d.accept());await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-feedback'),/gelöscht/);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
     await page.click('#product-picker-dialog [data-close]');await page.reload();await page.click('#open-products');await page.click('[data-product-mode=own]');await page.fill('#product-picker-search','Keckd');assert.equal(await page.locator('.product-card').count(),0);
     await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Äpfel');assert.equal(await page.locator('.product-delete').count(),0);
-    await page.fill('#product-picker-search','');await page.selectOption('#product-picker-category','international');assert.equal(await page.locator('.product-group h3').count(),12);assert.match(await page.textContent('#product-picker-list'),/Ukraine/);const buckwheat=page.locator('.product-card[data-product=buchweizen]');assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(),1);assert.equal(await page.locator('.product-delete').count(),0);
+    await page.fill('#product-picker-search','');await page.selectOption('#product-picker-category','international');assert.equal(await page.locator('.product-group h3').count(),14);assert.match(await page.textContent('#product-picker-list'),/Ukraine/);const buckwheat=page.locator('.product-card[data-product=buchweizen]');assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(),1);assert.equal(await page.locator('.product-delete').count(),0);
     await buckwheat.locator('.product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(problems,[]);await ctx.close();
   });
 
