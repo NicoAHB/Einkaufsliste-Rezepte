@@ -5212,3 +5212,94 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 @media (prefers-reduced-motion: reduce) {
   .connection-band, .trash-row, .trash-status { animation:none }
 }
+
+/* Rezeptliste: Anzahl links, Sortierung rechts (2.140). Die Auswahl ist ein natives Auswahlfeld (auf dem iPhone das Drehrad),
+   gestaltet als ruhige Pille; 16 px Schrift verhindert das Heranzoomen von iOS. */
+.recipe-toolbar {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px 10px;
+  margin:0 0 12px
+}
+.recipe-toolbar[hidden] {
+  display:none
+}
+.recipe-count {
+  margin:0;
+  min-width:0;
+  color:var(--muted);
+  font-size:.9rem;
+  font-weight:600;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.recipe-sort {
+  position:relative;
+  display:inline-flex;
+  flex:0 1 auto;
+  min-width:0;
+  margin:0 0 0 auto
+}
+.recipe-count {
+  flex:none
+}
+/* Sichtbar ist nur die Pille mit der aktuellen Wahl (so breit wie ihr Text); darüber liegt unsichtbar das native Auswahlfeld,
+   das jeden Tipp annimmt und auf dem iPhone das Drehrad öffnet. */
+.recipe-sort-face {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+  min-height:44px;
+  padding:8px 13px 8px 12px;
+  border:1px solid var(--line-strong);
+  border-radius:999px;
+  background:var(--card);
+  color:var(--text);
+  font-size:.95rem;
+  font-weight:650;
+  box-shadow:0 1px 3px hsl(var(--h) 30% 15% / .08)
+}
+.recipe-sort-face > span {
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
+.recipe-sort-face .icon {
+  width:17px;
+  height:17px;
+  color:var(--accent)
+}
+.recipe-sort-face .recipe-sort-chevron {
+  width:15px;
+  height:15px;
+  color:var(--muted)
+}
+#recipe-sort {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  min-height:0;
+  margin:0;
+  padding:0;
+  border:0;
+  opacity:0;
+  cursor:pointer
+}
+.recipe-sort:focus-within .recipe-sort-face {
+  outline:3px solid var(--accent);
+  outline-offset:2px
+}
+/* Schmale Telefone: etwas kleinere Pille, damit „Zuletzt hinzugefügt“ neben der Anzahl ungekürzt passt. */
+@media (max-width:360px) {
+  .recipe-sort-face {
+    gap:5px;
+    padding:8px 10px;
+    font-size:.86rem
+  }
+}

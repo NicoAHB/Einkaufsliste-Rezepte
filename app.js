@@ -80,7 +80,19 @@ let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
 let wishBaseline = null;
 let tagFilter = '', remoteEtag = '', deferredImport = null, deferredAdd = null;
-let favoritesOnly = false, oldestFirst = false, planWeek = weekStart(isoDate()), mealBaseline = null;
+let favoritesOnly = false, planWeek = weekStart(isoDate()), mealBaseline = null;
+/* Sortierung der Rezeptliste (2.140), pro Gerät gemerkt:
+   - „A–Z“: Favoriten zuerst, dann nach Namen (wie bisher),
+   - „Zuletzt hinzugefügt“: neu angelegte, importierte und aus den Rezepten des Tages übernommene Rezepte zuerst,
+   - „Lange nicht gekocht“: zuerst, was noch nie oder am längsten nicht auf dem Tisch stand (bis 2.139 ein Filterknopf). */
+const RECIPE_SORT_KEY = 'einkauf-recipe-sort-v1';
+const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
+const RECIPE_ORDER = {
+  name: (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b),
+  new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
+  cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b)
+};
+let recipeSort = (() => { try { const value = localStorage.getItem(RECIPE_SORT_KEY); return Object.hasOwn(RECIPE_ORDER, value) ? value : 'name'; } catch { return 'name'; } })();
 let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
 const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
@@ -1168,24 +1180,31 @@ function renderRecipes() {
   const tags = uniqueRecipeTags(recipes.flatMap(recipe => recipe.tags)).sort((a, b) => a.localeCompare(b, 'de'));
   if (tagFilter && !tags.some(tag=>recipeTagKey(tag)===tagFilter)) tagFilter = '';
   const chips = $('#tag-chips'); chips.replaceChildren(); chips.hidden = !recipes.length;
-  chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }),
-    chip('Lange nicht gekocht', oldestFirst, () => { oldestFirst = !oldestFirst; renderRecipes(); }));
+  chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }));
   for (const tag of tags){const key=recipeTagKey(tag);chips.append(chip(tag, key === tagFilter, () => { tagFilter = tagFilter === key ? '' : key; renderRecipes(); }));}
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
-  const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
-  // Favoriten zuerst; „Lange nicht gekocht“ zeigt zuerst, was noch nie oder am längsten nicht auf dem Tisch stand.
-  const order = oldestFirst ? (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b) :
-    (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b);
-  for (const recipe of recipes.filter(recipe => {
+  const order = RECIPE_ORDER[recipeSort];
+  const shown = recipes.filter(recipe => {
     const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
       (!tagFilter || recipe.tags.some(tag=>recipeTagKey(tag)===tagFilter)) && (!favoritesOnly || recipe.favorite);
-  }).sort(order)) grid.append(recipeCard(recipe, ingredientsOf(recipe.id)));
+  }).sort(order);
+  for (const recipe of shown) grid.append(recipeCard(recipe, ingredientsOf(recipe.id), { sort: recipeSort }));
+  // Anzahl und Sortierung über der Liste; die Anzahl sagt bei Suche oder Filter, wie viele von allen zu sehen sind.
+  $('#recipe-toolbar').hidden = !recipes.length; $('#recipe-sort').value = recipeSort;
+  $('#recipe-sort-label').textContent = $('#recipe-sort').selectedOptions[0]?.textContent || 'A–Z';
+  $('#recipe-count').textContent = shown.length === recipes.length ? `${recipes.length} ${recipes.length === 1 ? 'Rezept' : 'Rezepte'}` : `${shown.length} von ${recipes.length} ${recipes.length === 1 ? 'Rezept' : 'Rezepten'}`;
   refreshRecipeStock();
   if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));
   hydratePhotos();
 }
+$('#recipe-sort').addEventListener('change', event => {
+  recipeSort = Object.hasOwn(RECIPE_ORDER, event.target.value) ? event.target.value : 'name';
+  try { localStorage.setItem(RECIPE_SORT_KEY, recipeSort); } catch { /* ohne Speicher gilt die Wahl bis zum Schließen */ }
+  renderRecipes();
+});
+function addedLabel(at) { const day = relativeDay(at); return `hinzugefügt ${day === 'geplant' ? 'heute' : day}`; }
 function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
   if (recipe.photoId) {
@@ -1199,8 +1218,9 @@ function recipeCard(recipe, ingredients, options = {}) {
   star.setAttribute('aria-pressed', String(Boolean(recipe.favorite)));
   head.append(element('h3', recipe.name), star); card.append(head);
   const source = webUrl(recipe.sourceUrl), cooked = recipe.lastCookedAt && relativeDay(recipe.lastCookedAt);
-  card.append(element('p', [`${ingredients.length} Zutaten`, `${format(options.servings ?? recipe.servings)} Portionen`, source && hostLabel(source),
-    cooked && cooked !== 'geplant' && `gekocht ${cooked}`].filter(Boolean).join(' · '), 'recipe-meta'));
+  // Je nach Sortierung steht vorn, wonach sortiert ist: „hinzugefügt gestern“ bzw. „noch nie gekocht“.
+  card.append(element('p', [options.sort === 'new' && recipe.createdAt && addedLabel(recipe.createdAt), `${ingredients.length} Zutaten`, `${format(options.servings ?? recipe.servings)} Portionen`, source && hostLabel(source),
+    cooked && cooked !== 'geplant' ? `gekocht ${cooked}` : options.sort === 'cooked' && !recipe.lastCookedAt && 'noch nie gekocht'].filter(Boolean).join(' · '), 'recipe-meta'));
   if (recipe.tags.length) {
     const tags = element('div', undefined, 'tags');
     uniqueRecipeTags(recipe.tags).forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
