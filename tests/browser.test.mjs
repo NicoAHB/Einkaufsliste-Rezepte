@@ -10929,6 +10929,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const recipeSave = '#recipe-form .sheet-actions button[type=submit]';
     assert.equal((await state(recipeSave))[1], true);
     await page.click('#add-ingredient'); assert.deepEqual(await state(recipeSave), ['Änderungen speichern', false]);
+    await page.locator('#ingredient-editor > *').last().locator('button').last().click(); assert.equal((await state(recipeSave))[1], true, 'neue leere Zutat wieder entfernt');
+    // Ein neues Foto ist erst nach dem Verkleinern da: auch dann wird der Knopf grün
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    await page.setInputFiles('#recipe-form [name=photo]', { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.waitForFunction(selector => !document.querySelector(selector).disabled, recipeSave);
+    assert.equal((await state(recipeSave))[0], 'Änderungen speichern');
     assert.deepEqual(problems, []); await ctx.close();
   });
 

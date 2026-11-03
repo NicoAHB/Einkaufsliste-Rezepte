@@ -54,7 +54,8 @@ function listen() {
   // Erst nach allen übrigen Reaktionen prüfen: Knöpfe im Formular (Bild entfernen, Zutat hinzufügen, + und −) und Auswahlfenster
   // ändern Werte in ihrem eigenen Ereignis.
   const later = () => setTimeout(refreshAll);
-  for (const type of ['input', 'change', 'click']) document.addEventListener(type, later, true);
+  // „close“ und „submit“ steigen nicht auf, laufen aber in der Erfassungsphase am Dokument vorbei (z. B. ein Unterfenster fügt eine Kategorie hinzu).
+  for (const type of ['input', 'change', 'click', 'close', 'submit']) document.addEventListener(type, later, true);
 }
 
 export function armDirty(form, { savedAt = '', extra = null, buttons = null } = {}) {

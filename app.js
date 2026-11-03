@@ -47,7 +47,7 @@ import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
-import { armDirty, disarmDirty } from './dirty-save.js';
+import { armDirty, disarmDirty, refreshDirty } from './dirty-save.js';
 import { SINGLE_DELETE, TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
@@ -3534,7 +3534,7 @@ async function readPurchasePhoto(files) {
   } catch (error) {
     if (error?.name === 'AbortError') return;
     purchaseStatus(''); message(error.message);
-  } finally { purchaseAbort = null; $('#purchase-progress').hidden = true; form.elements.images.value = ''; }
+  } finally { purchaseAbort = null; $('#purchase-progress').hidden = true; form.elements.images.value = ''; refreshDirty(form); }   // erkannte Werte zählen als Änderung
 }
 // Mögliches Doppel: Am gleichen Tag steht schon ein Einkauf mit gleichem Betrag im gleichen Geschäft. Beim ersten Versuch wird gewarnt und nichts gespeichert; der zweite Versuch mit
 // denselben Angaben speichert (es kann ja wirklich ein zweiter Einkauf sein). `warned` merkt sich die Angaben der Warnung.
@@ -4266,7 +4266,7 @@ $('#recipe-form').elements.photo.addEventListener('change', event => guard(async
   const blob = await resizePhoto(file);
   if(editorVersion!==photoEditVersion || !$('#recipe-dialog').open) return;
   pendingPhoto = { id: uid(), blob }; photoRemoved = false;
-  showPhotoPreview(URL.createObjectURL(blob));
+  showPhotoPreview(URL.createObjectURL(blob)); refreshDirty($('#recipe-form'));   // das Foto ist erst nach dem Verkleinern da
 }));
 $('#photo-remove').addEventListener('click', () => { ++photoEditVersion;pendingPhoto = null; photoRemoved = true; showPhotoPreview(''); });
 $('#recipe-dialog').addEventListener('close', () => { if ($('#recipe-dialog').open) return; ++photoEditVersion;pendingPhoto = null; showPhotoPreview(''); });
