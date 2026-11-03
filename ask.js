@@ -26,6 +26,8 @@ export function ask({ title = '', message = '', confirmLabel = 'OK', cancelLabel
       dialog.removeEventListener('close', done);
       if (pending !== resolve) return;          // durch eine neuere Rückfrage ersetzt
       pending = null; resolve(dialog.returnValue === 'ok');
+      // Zähler für Tests und Hilfsmittel: steigt, sobald eine Antwort verarbeitet ist (die Fortsetzung läuft direkt danach).
+      dialog.dataset.answers = String(Number(dialog.dataset.answers || 0) + 1);
     };
     dialog.addEventListener('close', done);
     dialog.showModal();

@@ -54,6 +54,7 @@ import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
+import { externalLink, saveFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -501,7 +502,7 @@ function openStoreQuickMenu(root) {
     if (count) choice.append(element('span', `(${count.textContent})`, 'quick-count'));
     box.append(choice);
   }
-  $('#store-quick-dialog').showModal(); navigator.vibrate?.(15);
+  $('#store-quick-dialog').showModal(); vibrate(15);
 }
 for (const root of [$('#store-chips'), $('#shop-chips')]) bindWishHold(root, '[data-all-stores], .chip[aria-selected=true]',
   () => guard(() => openStoreQuickMenu(root)), () => !ready || !root.getClientRects().length || isLocked());
@@ -1271,7 +1272,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   if (recipe.notes?.trim()) details.append(element('h4', 'Meine Notizen'), element('p', recipe.notes, 'recipe-steps'));
   if (source) {
     const link = element('a', `Quelle: ${hostLabel(source)}`, 'source-link');
-    link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.append(icon('external'));
+    externalLink(link, source); link.append(icon('external'));
     details.append(link);
   }
   const more = element('div', undefined, 'detail-actions');
@@ -1703,7 +1704,7 @@ function askPastMeal(node) {
   $('#past-meal-detail').textContent=`${mealName(meal)} · ${dayName(meal.date)} ${dayMonthLabel(meal.date)}`;
   $('#past-meal-error').hidden=true; $('#past-meal-dialog').showModal();
 }
-const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{askPastMeal(node);navigator.vibrate?.(15);}));
+const stopPastMealHold=holdOn($('#plan-days'),'.day.past .meal[data-past-id]',600,node=>guard(()=>{askPastMeal(node);vibrate(15);}));
 document.addEventListener('scroll',stopPastMealHold,true);
 document.addEventListener('visibilitychange',stopPastMealHold);
 window.addEventListener('blur',stopPastMealHold);
@@ -2375,7 +2376,7 @@ function fillDailyCard(draft, item, full = false) {
   const steps = (draft.instructions || '').replace(/Gesamtzeit:[^\n]*\n*/, '').replace(/\n{2,}/g, '\n').trim();
   if (steps) card.append(element('p', !full && steps.length > 260 ? `${steps.slice(0, 260).trim()} …` : steps, 'daily-steps'));
   if (item.url) {
-    const link = element('a', `Auf ${hostLabel(item.url)} ansehen`, 'daily-link'); link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const link = element('a', `Auf ${hostLabel(item.url)} ansehen`, 'daily-link'); externalLink(link, item.url);
     card.append(link);
   } else card.append(element('p', item.gen === undefined ? 'Aus der eingebauten Sammlung' : 'Neu zusammengestellt. Gespeichert wird nur, was du hinzufügst.', 'hint'));
 }
@@ -2750,15 +2751,8 @@ function applyTheme() {
 }
 function sameTarget(left, right) { return namespace(left) === namespace(right); }
 // Auf dem iPhone öffnet ein Download aus einer Homescreen-App oft eine Seite ohne Rückweg: besser den Teilen-Dialog nehmen.
-async function deliverFile(file) {
-  if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: file.name }); return; }
-    catch (error) { if (error?.name === 'AbortError') return; }
-  }
-  const url = URL.createObjectURL(file);
-  const link = element('a'); link.href = url; link.download = file.name;
-  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+// Dateien weitergeben (Teilen-Menü oder Download) über die Plattformschicht, damit eine spätere App das nativ lösen kann.
+async function deliverFile(file) { await saveFile(file); }
 async function backup() {
   const name = `sattplan-backup-${new Date().toISOString().slice(0, 10)}.json`, json = JSON.stringify(state, null, 2);
   await deliverFile(new File([json], name, { type: 'application/json' }));
@@ -2878,7 +2872,7 @@ function holdToConfirm(node, ms, action, hint = '', enabled = () => true, onTap 
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
     pointer = true; completed = false; cancelled = false; clearTimeout(reset); startX = event.clientX; startY = event.clientY;
     stop(); node.classList.add('holding');
-    timer = setTimeout(() => { stop(); settle(); if(!enabled())return;clearSelection(); completed = true; navigator.vibrate?.(15); guard(action); }, ms);
+    timer = setTimeout(() => { stop(); settle(); if(!enabled())return;clearSelection(); completed = true; vibrate(15); guard(action); }, ms);
   });
   node.addEventListener('pointermove', event => { if (pointer && Math.hypot(event.clientX - startX, event.clientY - startY) > 16) { cancelled = true; stop(); } });
   node.addEventListener('pointerleave', () => { cancelled = true; stop(); });
@@ -2967,7 +2961,7 @@ document.addEventListener('pointerdown', event => {
   endLockHold();
   node.style.setProperty('--hold', `${HOLD_ITEM_MS}ms`); node.classList.add('holding');
   lockHold = { node, x: event.clientX, y: event.clientY, timer: setTimeout(() => {
-    const target = node; endLockHold(); clearSelection(); navigator.vibrate?.(15);
+    const target = node; endLockHold(); clearSelection(); vibrate(15);
     lockQuiet = Date.now() + 800;   // das Loslassen danach ist ein Klick auf dasselbe Element (bleibt es stehen, wie „Erledigt“): er wird verschluckt, ohne den Knopf aufleuchten zu lassen
     lockBypass = true; try { target.click(); } finally { lockBypass = false; }
   }, HOLD_ITEM_MS) };
@@ -3221,7 +3215,7 @@ $('#sheet-save').addEventListener('click', sheetAction(saveSheet));
 $('#sheet-share').addEventListener('click', sheetAction(shareSheet));
 $('#sheet-zoom').addEventListener('click', () => setSheetZoom(Number($('#sheet-pages').dataset.zoom) % 3 + 1));
 $('#sheet-dialog').addEventListener('close', () => { sheet?.release(); sheet = null; $('#sheet-pages').replaceChildren(); });
-holdOn($('#sheet-scroll'), '*', HOLD_SHEET_MS, () => { navigator.vibrate?.(15); $('#sheet-dialog').close(); });
+holdOn($('#sheet-scroll'), '*', HOLD_SHEET_MS, () => { vibrate(15); $('#sheet-dialog').close(); });
 $('#sheet-scroll').addEventListener('contextmenu', event => event.preventDefault());
 // Doppeltippen: größer und wieder zurück. Der Browser meldet auf dem iPhone kein „dblclick“, deshalb zählt die App zwei kurze Tipps selbst.
 {
@@ -3307,7 +3301,7 @@ function openPickedSheet(node) {
   const id = node.dataset.value;
   if (!id || id === '__custom') return;
   const form = $('#meal-form'), shown = form.elements.recipeId.value === id ? positive(form.elements.servings.value) : 0;   // gewählt: die eingestellten Portionen, sonst die des Rezepts
-  pickOpenedAt = Date.now(); pickHeld = true; navigator.vibrate?.(15);
+  pickOpenedAt = Date.now(); pickHeld = true; vibrate(15);
   guard(() => openSheet(id, shown));
 }
 $('#recipe-pick').addEventListener('pointerdown', event => { pickHeld = false; pickOrigin = { x:event.clientX, y:event.clientY }; }, true);
@@ -4628,7 +4622,8 @@ async function start() {
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) {refreshTimedStock();void sync();} });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
-    if ('serviceWorker' in navigator) {
+    // Offline-Paket nur im Browser; eine spätere App (native Hülle) bringt ihre Dateien selbst mit (platform.js).
+    if (usesServiceWorker()) {
       // Neue App-Version: Hinweis statt stillem Wechsel mitten in einer Eingabe.
       const hadController = Boolean(navigator.serviceWorker.controller);
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloadRequested) location.reload(); else if (hadController) $('#update-banner').hidden = false; });

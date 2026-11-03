@@ -79,9 +79,11 @@ const answerAsk = async (page, accept = true, ...patterns) => {
   await page.locator('#ask-dialog[open]').waitFor();
   const text = `${await page.textContent('#ask-title')}\n${await page.textContent('#ask-message')}`;
   for (const pattern of patterns) assert.match(text, pattern);
+  const answers = Number(await page.getAttribute('#ask-dialog', 'data-answers') || 0);
   await page.click(accept ? '#ask-ok' : '#ask-cancel');
-  await page.locator('#ask-dialog[open]').waitFor({ state: 'detached' });
-  // Die App setzt ihre Aktion nach der Antwort fort (await); einen Takt abwarten, bis sie fertig gezeichnet hat.
+  // Erst weiter, wenn die App die Antwort verarbeitet hat (ask.js zählt data-answers hoch); die Fortsetzung der Aktion läuft
+  // unmittelbar danach. Ein fester Takt reicht unter Last nicht, weil das Schließen-Ereignis eine eigene Browser-Aufgabe ist.
+  await page.waitForFunction(count => Number(document.querySelector('#ask-dialog').dataset.answers || 0) > count, answers);
   await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
   return text;
 };
@@ -6502,7 +6504,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     return content;
   };
-  const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+  // „Abgeglichen“ heißt: Status grün UND keine wartende Änderung mehr. Läuft gerade der regelmäßige Abgleich, startet die App
+  // keinen zweiten; der Status bleibt dann kurz grün, obwohl eine neue Änderung noch wartet. Deshalb auch die Warteschlange prüfen.
+  const synced = page => page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok' &&
+    Object.keys(localStorage).filter(key => key.startsWith('einkauf-data-v1:')).every(key => { try { return !(JSON.parse(localStorage.getItem(key)).pending || []).length; } catch { return true; } }));
 
   // Hilfen für „lange halten und nach rechts in den Mülleimer ziehen“ (Maus: echte Zeigerereignisse wie auf dem Handy)
   const center = async locator => { const box = await locator.boundingBox(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
@@ -9702,7 +9707,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.91: geheime Liste mit Schloss und Haken bleibt bei ${width}px ${theme} lokal; abgebrochene Freigabe erhält sie`,async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen',theme,productImages:true},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);
-    const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
+    // Erst vergleichen, wenn die App ihre Beispieldaten gespeichert hat (unter Last geschieht das erst kurz nach dem Start).
+    await page.waitForFunction(()=>localStorage.getItem('einkauf-demo-v1'));const shared=await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1'));
     const row=await createSecret291(page);assert.equal(await row.locator('[name=private]').isChecked(),true);await row.locator('.list-privacy').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan291-geheim-haken-${width}.png`});
     await page.click('#stores-dialog .sheet-head [data-close]');await openSecret290(page);
     await addSecret290(page,'Milch');assert.equal(await page.locator('#private-items [data-photo-key=milch]').count(),1);
