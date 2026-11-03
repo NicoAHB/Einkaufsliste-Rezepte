@@ -41,7 +41,6 @@ export const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
  * @param selector  Zeilen, die gezogen werden dürfen
  * @param options   `onHold(id)`: Loslassen mit höchstens 24 px Bewegung (z. B. „Verschieben nach“ öffnen);
  *                  `hint`: Hinweisfläche, die beim Abheben ein- und beim Loslassen ausgeblendet wird;
- *                  `handle`: nur ein Druck auf diesen Teil der Zeile hebt sie an (z. B. Name und Menge, nicht der Abhak-Kreis);
  *                  `noZone`: ohne rote Fläche (Löschen durch Ziehen gibt es dort nicht; `zone` und `onDelete` werden nicht gebraucht), z. B. beim Verschieben eines Gerichts auf einen anderen Tag;
  *                  `target`: Ziele zum Ablegen. Die Zeile folgt dann dem Finger frei in alle Richtungen.
  *                    `show(id)` blendet die Ziele ein und gibt die Höhe zurück, die oben belegt ist (px);
@@ -111,7 +110,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
   list.addEventListener('pointerdown', event => {
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || drag || options.disabled?.()) return;   // `options.disabled()`: z. B. im Auswahlmodus
     const row = event.target.closest?.(selector);
-    if (!row || (options.handle && !event.target.closest(options.handle))) return;   // `options.handle`: nur dieser Teil der Zeile hebt sie an
+    if (!row) return;
     const point = { x: event.clientX, y: event.clientY };
     cancelHold(); swallow = false; arm();
     hold = { x: point.x, y: point.y, id: event.pointerId, timer: setTimeout(() => { hold = null; lift(row, point); }, HOLD_MS) };

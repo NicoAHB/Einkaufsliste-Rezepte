@@ -4,7 +4,7 @@
    gewöhnlichen Änderung { deletedAt: null } wiederherstellen; der Abgleich verteilt das auf alle Geräte.
 
    Nicht im Papierkorb erscheinen Löschungen, die kein Verlust sind:
-   - abgehakte Artikel (gekauft, z. B. nach „Einkauf beenden“ oder „Erledigte entfernen“),
+   - abgehakte Artikel (gekauft, z. B. nach „Einkauf beenden“; bis 2.146 auch „Erledigte entfernen“),
    - Artikel, die beim Verschieben zu einem gleichen Artikel dazugezählt wurden (`mergedInto`) oder als gleichzeitiges Doppel
      zweier Geräte zusammengeführt wurden (Änderung „fold-del-…“): Ihre Menge steckt bereits im anderen Artikel,
    - interne, auf null zurückgenommene Wochenplan-Anteile.
@@ -46,7 +46,7 @@ const recent = (row, since) => Boolean(row?.deletedAt) && !isPurged(row) && Date
 
 // Wurde der Artikel als Doppel zusammengeführt oder zu einem gleichen Artikel gezählt, ist nichts verloren.
 const foldedAway = row => Boolean(row.mergedInto) || String(row._clock?.deletedAt?.id || '').startsWith('fold-del-');
-/* Abgehakte Artikel verschwinden normalerweise mit „Einkauf abschließen“ oder „Erledigte entfernen“: Sie sind gekauft und gehören nicht in den
+/* Abgehakte Artikel verschwinden normalerweise mit „Einkauf beenden“ (bis 2.146 auch „Erledigte entfernen“): Sie sind gekauft und gehören nicht in den
    Papierkorb. Wer aber einen einzelnen abgehakten Artikel bewusst löscht (Wischen, Bearbeiten, Auswahl), bekommt ihn hier zurück (2.147).
    Solche Löschungen tragen eine eigene Änderungskennung („one-del-…“, siehe SINGLE_DELETE). */
 export const SINGLE_DELETE = 'one-del-';

@@ -611,20 +611,16 @@ const isWish = item => isSeparate(active(state.stores).find(store => store.id ==
 function itemRow(item, withStore = false) {
   const row = element('li', undefined, `item${item.checked ? ' checked' : ''}${selecting && selected.has(item.id) ? ' selected' : ''}`); row.dataset.id = item.id;
   if (isWish(item)) row.dataset.wish = '';
-  const check = button('', () => {
-    const latest = state.items.find(entry => entry.id === item.id);
-    if (!latest || latest.deletedAt) return;
-    commit([nextOp('items', item.id, { checked: !latest.checked, ...(latest.checked && latest.shopBoughtAt ? {shopBoughtAt:null,shopPurchase:null} : {}) }),...stockOps(latest.checked?undoAutomaticStockChanges(state,latest):[])]);
-  }, 'check');
-  if (item.checked) check.append(icon('check'));
-  check.setAttribute('aria-label', `${item.name}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
-  check.setAttribute('aria-pressed', String(Boolean(item.checked)));
+  /* Unter „Planen“ wird nicht abgehakt (2.147): Abhaken (und wieder öffnen) geht nur „Im Laden“. So hakt niemand beim Planen aus Versehen etwas ab.
+     Was im Laden schon abgehakt ist, steht hier unten unter „Erledigt“ mit einem kleinen Haken, der kein Knopf ist. */
+  const bought = item.checked && !selecting ? element('span', undefined, 'bought-mark') : null;
+  if (bought) { bought.append(icon('check')); bought.setAttribute('role', 'img'); bought.setAttribute('aria-label', 'im Laden abgehakt'); }
   // Die Zeile antippen öffnet die Bearbeitung; dort steht auch „Artikel löschen“.
   const copy = element('button', undefined, 'item-copy'); copy.type = 'button';
-  copy.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: bearbeiten`);
+  copy.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}${item.checked ? ', im Laden abgehakt' : ''}: bearbeiten`);
   copy.addEventListener('click', () => guard(() => editItem(item.id)));
   if (isWish(item)) copy.title = 'Lange drücken: Produktlink & Notiz';
-  // Auswahlmodus: statt Abhaken und Bearbeiten ein Auswahlkreis; Kreis und Zeile wählen aus und ab.
+  // Auswahlmodus: statt Bearbeiten ein Auswahlkreis; Kreis und Zeile wählen aus und ab.
   const pick = selecting ? button('', () => toggleSelected(item.id, row), 'check select-mark') : null;
   if (pick) {
     const mark = () => { const on = selected.has(item.id); pick.replaceChildren(...(on ? [icon('check')] : [])); pick.classList.toggle('on', on); pick.setAttribute('aria-pressed', String(on)); pick.setAttribute('aria-label', `${item.name}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); copy.setAttribute('aria-pressed', String(on)); copy.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: ${on ? 'Auswahl aufheben' : 'auswählen'}`); };
@@ -636,7 +632,8 @@ function itemRow(item, withStore = false) {
   copy.append(element('strong', item.name), element('span', `${shoppingAmount(item)}`, 'item-qty'),
     element('small', [item.createdBy || 'Unbekannt', ...(withStore ? [storeName(item.storeId)] : [])].join(' · '), 'item-meta'));
   if (isWish(item) && hasWishDetails(item)) copy.querySelector('.item-meta').append(' · ', icon(item.wishUrl ? 'link' : 'text'));
-  row.append(pick || check, copy);
+  if (!pick && !bought) row.classList.add('plain');
+  row.append(...[pick || bought].filter(Boolean), copy);
   if (imagesOn() || isWish(item)) row.append(thumbFor(item));
   return row;
 }
@@ -653,7 +650,6 @@ function renderSelectBar() {
   $('#select-move').hidden=isSeparate(viewStore()) || rows.some(isWish);
   for (const id of ['select-move', 'select-delete']) $(`#${id}`).disabled = !rows.length;
   $('#select-mode').setAttribute('aria-pressed', String(selecting)); $('#select-mode').textContent = selecting ? 'Auswahl beenden' : 'Auswählen';
-  $('#clear-checked').hidden = selecting;
   document.body.classList.toggle('selecting', selecting);
   if (selecting) document.documentElement.style.setProperty('--select-h', `${bar.offsetHeight}px`);   // Platz unter der Liste: sie bleibt bis zum Ende erreichbar
 }
@@ -673,7 +669,6 @@ function renderItems() {
   const news = seen ? newFromOthers(rows, config.actor || '', seen) : [], newIds = new Set(news.map(entry => entry.item.id));
   const open = rows.filter(item => !item.checked && !newIds.has(item.id)), done = rows.filter(item => item.checked).sort(byName);
   $('#select-mode').disabled=!selecting&&!rows.some(item=>item.checked||!newIds.has(item.id));
-  $('#clear-checked').disabled = !done.length;
   if (!rows.length && !news.length) list.append(element('li', view === 'none' ? 'Keine Artikel ohne Geschäft.' : 'Alles im Blick. Füge deinen ersten Artikel hinzu.', 'empty'));
   if (news.length) {
     const names = [...new Set(news.flatMap(entry => entry.by))].join(' und ');
@@ -702,6 +697,8 @@ function renderItems() {
   } else addOpen(open, false, aislesOf(view));
   if (done.length) {
     if (grouped || view === 'all') list.append(groupHead('Erledigt', done.length));
+    // Ohne „Erledigte entfernen“ (2.147): Der Hinweis sagt, wo Abgehaktes verschwindet.
+    if (!selecting) list.append(element('li', 'Im Laden abgehakt. „Einkauf beenden“ unter „Im Laden“ räumt es auf.', 'done-note'));
     done.forEach(item => list.append(itemRow(item, view === 'all')));
   }
   if (document.activeElement === $('#item-form').elements.name) renderItemSuggestions();
@@ -874,7 +871,8 @@ function editItem(id) {
   $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
   $('#remembered-amount-editor').hidden = true; renderRememberedAmount();
   message(); $('#item-dialog').showModal();
-  armDirty(form, { savedAt: item.updatedAt, buttons: [form.querySelector('.sheet-actions button[type=submit]')] });
+  // Packungsgröße und gewählte Einheit liegen nicht in Formularfeldern: Sie zählen über `extra` mit.
+  armDirty(form, { savedAt: item.updatedAt, extra: () => [editQuantity.currentProfile(), editQuantity.preferenceChanged()], buttons: [form.querySelector('.sheet-actions button[type=submit]')] });
 }
 
 // Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und ein lokales Gruppenbild – ohne Menge, Einheit, Kategorie und
@@ -914,7 +912,7 @@ function deleteOps(collection, ids, extra = {}) {
 function removeRows(collection, ids) { commit(deleteOps(collection, ids)); }
 /* Artikel löschen mit „Rückgängig“ (2.147). Alles Gelöschte liegt danach 14 Tage unter „Kürzlich gelöscht“.
    `single`: bewusst gelöscht (Wischen, Bearbeiten, Auswahl). Abgehakte Artikel bekommen dann die Kennung SINGLE_DELETE und
-   erscheinen ebenfalls im Papierkorb; „Erledigte entfernen“ und „Einkauf abschließen“ räumen Gekauftes dagegen still weg. */
+   erscheinen ebenfalls im Papierkorb; „Einkauf beenden“ (und früher „Erledigte entfernen“) räumt Gekauftes dagegen still weg. */
 function deleteItems(ids, { notice = '', single = true } = {}) {
   const rows = active(state.items).filter(row => ids.includes(row.id));
   if (!rows.length) return [];
@@ -3972,10 +3970,8 @@ $('#items').addEventListener('keydown', event => {
   const node = event.target.closest?.('.item[data-wish] .item-copy');
   if (node && !selecting && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) { event.preventDefault(); guard(() => openWish(node.closest('[data-id]').dataset.id)); }
 });
-// Im Laden (2.147) ebenso: lange halten und nach rechts in den Mülleimer ziehen, solange der Laden nicht gesperrt ist. Bei Wünschen öffnet
-// Halten und Loslassen die Details (vorher öffneten sie schon beim Halten); bei Artikeln passiert beim bloßen Halten nichts.
-// Der Abhak-Kreis bleibt dabei unberührt: Wer ihn langsam antippt, hakt weiterhin ab.
-dragDelete($('#shop-list'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.shop-item[data-id]:not(.news)', { handle: '.shop-text', onHold: id => guard(() => { if (state.items.some(row => row.id === id && !row.deletedAt && isWish(row))) openWish(id); }), disabled: () => isLocked() });
+// Im Laden wird nur abgehakt, nicht gelöscht (Rollen getrennt: „Planen“ bearbeitet und löscht, „Im Laden“ hakt ab). Wünsche: lange drücken öffnet die Details.
+bindWishHold($('#shop-list'), '.shop-item[data-wish] .shop-text', id => guard(() => openWish(id)), () => isLocked());
 // Lange halten und loslassen, ohne zu ziehen: „Verschieben nach …“ (ein anderes Geschäft oder kein Geschäft). Steht dort derselbe Artikel schon offen, werden die Mengen zusammengezählt.
 let moveDeleteIds = [], moveScope = '';
 function openMove(id) {
@@ -4084,10 +4080,6 @@ $('#delete-wish').addEventListener('click', () => guard(() => {
   const id = $('#wish-form').elements.rowId.value, item = active(state.items).find(row => row.id === id);
   $('#wish-dialog').close();
   if (item) deleteItems([id]);
-}));
-$('#clear-checked').addEventListener('click', () => guard(() => {
-  const ids = visibleItems(true).filter(row => inView(row) && row.checked).map(row => row.id);
-  if (ids.length) deleteItems(ids, { single: false, notice: ids.length === 1 ? '1 erledigter Artikel entfernt' : `${ids.length} erledigte Artikel entfernt` });
 }));
 $('#select-mode').addEventListener('click', () => guard(() => setSelecting(!selecting)));
 window.addEventListener('resize', () => { if (selecting) renderSelectBar(); });

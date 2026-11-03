@@ -2,28 +2,34 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
-## Neu in Version 2.147: Wischen in den Mülleimer in allen Listen, „Rückgängig“ nach jedem Löschen, Speichern erst nach einer Änderung
+## Neu in Version 2.147: Abhaken nur im Laden, Wischen in den Mülleimer in allen Listen, „Rückgängig“ nach jedem Löschen, Speichern erst nach einer Änderung
 
-**Wischen in den Mülleimer in allen Listen.** Zeile lange gedrückt halten, bis sie abhebt, dann nach rechts in die rote Fläche ziehen:
+**Abhaken nur noch „Im Laden“.** Unter **Planen** gibt es keinen Abhak-Kreis mehr, auch nicht bei Wünschen, damit beim Planen nichts aus Versehen als erledigt markiert wird. Abgehakt und wieder geöffnet wird ausschließlich unter **Im Laden**.
+- Was dort schon abgehakt ist, steht unter Planen weiter grau unter **Erledigt**, mit einem kleinen Haken (kein Knopf) und dem Hinweis „Im Laden abgehakt. „Einkauf beenden“ unter „Im Laden“ räumt es auf.“
+- Der Knopf **Erledigte entfernen** entfällt; aufgeräumt wird mit **Einkauf beenden**. Einzelne Erledigte lassen sich weiterhin in den Mülleimer ziehen (dann stehen sie im Papierkorb).
+- Name und Menge rücken nach links und haben mehr Platz. **Auswählen** funktioniert wie bisher mit eigenem Auswahlkreis.
+- Die geheime Liste behält ihren Kreis: Sie gibt es nur auf diesem Gerät und nicht unter „Im Laden“.
+
+**Wischen in den Mülleimer in allen Listen** (unter „Planen“). Zeile lange gedrückt halten, bis sie abhebt, dann nach rechts in die rote Fläche ziehen:
 - **Wünsche** (Listen mit Geschenk-Symbol): Bisher öffnete langes Drücken nur die Wunschdetails, der Mülleimer erschien dort nie. Jetzt öffnet *Halten und Loslassen* die Details, *Halten und nach rechts ziehen* löscht.
 - **Geheime Listen**: ebenso; Halten und Loslassen öffnet den Eintrag.
-- **Im Laden**: über Name und Menge, solange die Ansicht nicht gesperrt ist. Der Kreis hakt weiterhin ab, auch wenn man ihn langsam antippt.
 - Supermärkte und eigene Listen mit Symbol wie bisher.
+- **Im Laden** wird wie bisher nur abgehakt, nicht gelöscht: „Planen“ bearbeitet und löscht, „Im Laden“ hakt ab.
 
-**„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben, beim Entfernen eines Gerichts aus dem Wochenplan (wenn der Einkaufszettel nicht betroffen ist) und in geheimen Listen. Auch **Erledigte entfernen** lässt sich so sofort zurücknehmen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
+**„Rückgängig“ nach jedem Löschen.** Unten erscheint **„…“ gelöscht** mit kleinem Mülleimer und **Rückgängig**, beim Wischen, im Bearbeiten-Fenster, bei der Auswahl, bei „Verschieben nach → Artikel löschen“, bei Wünschen, Rezepten, Ausgaben, beim Entfernen eines Gerichts aus dem Wochenplan (wenn der Einkaufszettel nicht betroffen ist) und in geheimen Listen. Bisher meldete das Löschen im Bearbeiten-Fenster gar nichts.
 
 **Papierkorb.**
 - **Geheime Listen** haben jetzt einen eigenen Papierkorb auf diesem Gerät: Gelöschte private Einträge bleiben 14 Tage wiederherstellbar, mit dem Hinweis **Kürzlich gelöscht (n)** am Ende der geheimen Liste und unter **Optionen → Kürzlich gelöscht** („nur auf diesem Gerät“). **Papierkorb leeren** entfernt auch sie endgültig. Das Löschen eines einzelnen privaten Eintrags fragt deshalb nicht mehr nach.
 - In der geheimen Liste steht nicht mehr der Hinweis auf gelöschte gemeinsame Artikel.
-- Ein **abgehakter Artikel, der einzeln gelöscht wird** (Wischen, Bearbeiten, Auswahl), steht jetzt im Papierkorb. Was mit **Einkauf beenden** oder **Erledigte entfernen** weggeräumt wird, bleibt wie bisher draußen (es ist gekauft).
+- Ein **abgehakter Artikel, der einzeln gelöscht wird** (Wischen, Bearbeiten, Auswahl), steht jetzt im Papierkorb. Was mit **Einkauf beenden** weggeräumt wird, bleibt wie bisher draußen (es ist gekauft).
 
 **Speichern erst nach einer Änderung.** In den Bearbeiten-Fenstern für Artikel, Wünsche, private Einträge, Rezepte, Ausgaben und das Monatsbudget ist der grüne Knopf grau, solange nichts geändert ist, und zeigt die letzte Speicherung (**Gespeichert um 14:05 Uhr**, an anderen Tagen **Gespeichert am 02.11. um 14:05 Uhr**). Sobald sich etwas unterscheidet, wird er grün und heißt **Änderungen speichern**; wer die Änderung zurücknimmt, sieht wieder den grauen Knopf. Auch Zutatenzeilen, Fotos und „Bild entfernen“ zählen. Nach dem Speichern bestätigt unten **„…“ gespeichert um … Uhr**. Neue Einträge (neues Rezept, neue Ausgabe) speichern wie bisher. Neues Modul `dirty-save.js`.
 
 **Geheime Liste: Tastatur schließt nach dem Hinzufügen.** Nach **Privat hinzufügen** ist der neue Eintrag sofort zu sehen und nicht mehr von der Tastatur verdeckt.
 
-Im Papierkorb heißt der Hinweis unten jetzt genauer: Was mit „Einkauf beenden“ oder „Erledigte entfernen“ weggeräumt wurde, steht unter **Vorrat → Letzte 7 Tage gekauft**.
+Im Papierkorb heißt der Hinweis unten jetzt genauer: Was mit „Einkauf beenden“ weggeräumt wurde, steht unter **Vorrat → Letzte 7 Tage gekauft**.
 
-**Tests.** Neue Logiktests (`tests/dirty-save-private-trash.test.mjs`) und Browsertests für das Wischen bei Wünschen, im Laden und in geheimen Listen, den privaten Papierkorb, einzeln gelöschte abgehakte Artikel und die Speichern-Knöpfe. Tests, die bisher ohne Änderung speicherten, prüfen jetzt den grauen Knopf.
+**Tests.** Neue Logiktests (`tests/dirty-save-private-trash.test.mjs`) und Browsertests für „Planen“ ohne Abhak-Kreis, das Wischen bei Wünschen und in geheimen Listen, den privaten Papierkorb, einzeln gelöschte abgehakte Artikel und die Speichern-Knöpfe. Tests, die bisher ohne Änderung speicherten, prüfen jetzt den grauen Knopf.
 
 Offline-Paket `einkauf-shell-v159`.
 

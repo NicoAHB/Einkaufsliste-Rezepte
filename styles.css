@@ -970,6 +970,34 @@ details[open]>summary::after {
   background:var(--card);
   color:var(--on-accent)
 }
+/* Unter „Planen“ ohne Abhak-Kreis (2.147): Name und Menge rücken nach links; Abgehaktes (nur „Im Laden“ möglich) trägt einen kleinen Haken. */
+.item.plain {
+  padding-left:16px
+}
+.bought-mark {
+  flex:none;
+  display:grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  margin-left:4px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent)
+}
+.bought-mark .icon {
+  width:16px;
+  height:16px
+}
+.done-note {
+  padding:8px 16px 10px;
+  color:var(--muted);
+  font-size:.86rem;
+  line-height:1.4
+}
+.done-note+.item {
+  border-top:1px solid var(--line)
+}
 .item.checked .check,.meal.done .check {
   background:var(--accent-soft);
   border-color:var(--accent);
@@ -2404,16 +2432,16 @@ body.in-store .tabs {
 .item.drag-origin {
   opacity:.3
 }
-/* Geheime Liste und „Im Laden“ (2.147): ebenso ziehen; beim langen Drücken keine Textauswahl, die Ursprungszeile wird blass */
-.private-row,.shop-item {
+/* Geheime Liste (2.147): ebenso ziehen; beim langen Drücken keine Textauswahl, die Ursprungszeile wird blass */
+.private-row {
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none
 }
-.private-row.drag-origin,.shop-item.drag-origin {
+.private-row.drag-origin {
   opacity:.3
 }
-.drag-ghost.private-row,.drag-ghost.shop-item {
+.drag-ghost.private-row {
   list-style:none
 }
 .drag-ghost {

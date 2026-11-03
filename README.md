@@ -2,7 +2,7 @@
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Optionen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
-**Neu in 2.147:** In allen Listen (auch bei Wünschen, in geheimen Listen und „Im Laden“) lässt sich eine Zeile lange halten und in den Mülleimer ziehen; nach jedem Löschen steht unten **Rückgängig**, und geheime Listen haben einen eigenen Papierkorb auf dem Gerät. Speichern-Knöpfe in Bearbeiten-Fenstern sind erst nach einer Änderung aktiv („Änderungen speichern“, sonst „Gespeichert um … Uhr“). Wer Sattplan später als App für iPhone und Android anbieten möchte: siehe [`docs/APP-STORE.md`](docs/APP-STORE.md).
+**Neu in 2.147:** Abgehakt wird nur noch unter **Im Laden**; unter „Planen“ gibt es keinen Abhak-Kreis und keinen Knopf „Erledigte entfernen“ mehr. Unter „Planen“ lässt sich in allen Listen (auch bei Wünschen und in geheimen Listen) eine Zeile lange halten und in den Mülleimer ziehen; nach jedem Löschen steht unten **Rückgängig**, und geheime Listen haben einen eigenen Papierkorb auf dem Gerät. Speichern-Knöpfe in Bearbeiten-Fenstern sind erst nach einer Änderung aktiv („Änderungen speichern“, sonst „Gespeichert um … Uhr“). Wer Sattplan später als App für iPhone und Android anbieten möchte: siehe [`docs/APP-STORE.md`](docs/APP-STORE.md).
 
 Was sich in den einzelnen Versionen geändert hat, steht im [Änderungsprotokoll](CHANGELOG.md). Die Versionsnummer steht in der App oben unter **Optionen**.
 
@@ -174,8 +174,8 @@ Die Wiederherstellungslogik und das JSON-/ZIP-Format sind unabhängig vom Speich
 - [ ] Als Nico und Partnerin verbinden. Auf beiden Geräten muss der gemeinsame GitHub-Status erscheinen.
 - [ ] In Edeka einen Artikel mit `1,5 kg` hinzufügen; im zweiten Gerät aktualisieren und Namen/Menge/Person prüfen.
 - [ ] Beide Geräte fügen gleichzeitig unterschiedliche Artikel hinzu: nach Abgleich müssen beide Artikel vorhanden sein.
-- [ ] Auf einem Gerät Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Erneut antippen öffnet den Artikel, ohne Meldung.
-- [ ] Erledigte entfernen; einen einzelnen Artikel mit dem Mülleimer löschen.
+- [ ] Auf einem Gerät unter **Im Laden** Artikel abhaken; auf dem anderen abwarten. Erledigtes steht unten. Erneut antippen öffnet den Artikel, ohne Meldung. Unter **Planen** gibt es keinen Abhak-Kreis.
+- [ ] **Einkauf beenden** räumt Erledigtes auf; einen einzelnen Artikel mit dem Mülleimer löschen und mit **Rückgängig** zurückholen.
 - [ ] Geschäft hinzufügen, umbenennen und mit einem Artikel löschen.
 - [ ] Eigenes Rezept mit zwei Zutaten, Tags und Zubereitung anlegen; Suche, Tagfilter, Bearbeiten und Löschen testen.
 - [ ] Beispiel-Pasta von 2 auf 4 Portionen stellen: Nudeln 400 g, Tomaten 800 g. „Zutaten auf die Liste“ öffnen, eine Zutat abwählen, Lidl wählen, bestätigen. Nur die ausgewählten Mengen sollen dort stehen.

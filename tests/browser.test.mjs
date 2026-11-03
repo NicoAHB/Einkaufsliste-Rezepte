@@ -363,14 +363,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     const row = name => page.locator('#items .item', { hasText: name });
     const names = scope => page.locator(`${scope} .item strong`).allTextContents();
-    // Ohne Auswahlmodus ist alles wie bisher (Kreis hakt ab, Tipp bearbeitet)
+    // Ohne Auswahlmodus: Tipp bearbeitet; unter „Planen“ gibt es seit 2.147 keinen Abhak-Kreis
     assert.equal(await page.locator('#select-bar').isHidden(), true);
     assert.equal(await page.locator('#items .select-mark').count(), 0);
+    assert.equal(await page.locator('#items .check').count(), 0);
     await page.click('#select-mode');
     assert.equal(await page.locator('#select-bar').isVisible(), true);
     assert.equal(await page.textContent('#select-count'), 'Nichts ausgewählt – bitte runterscrollen zum Auswählen');
     assert.equal(await page.isDisabled('#select-move'), true); assert.equal(await page.isDisabled('#select-delete'), true);
-    assert.equal(await page.locator('#clear-checked').isHidden(), true);
+    assert.equal(await page.locator('#clear-checked').count(), 0, '„Erledigte entfernen“ gibt es seit 2.147 nicht mehr');
     assert.equal(await page.getAttribute('#select-mode', 'aria-pressed'), 'true');
     // Tipp wählt aus (kein Bearbeiten-Fenster, nicht abgehakt)
     await row('Tomaten').getByRole('button', { name: /auswählen/ }).first().click();
@@ -419,7 +420,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Beenden: wieder alles wie bisher; auch beim Wechsel in einen anderen Bereich endet der Modus
     await page.click('#select-done');
     assert.equal(await page.locator('#select-bar').isHidden(), true);
-    assert.ok(await page.locator('#items .check:not(.select-mark)').count() > 0, 'Abhaken-Kreise sind zurück');
+    assert.equal(await page.locator('#items .check').count(), 0, 'keine Auswahlkreise und (seit 2.147) keine Abhak-Kreise');
     await page.click('#select-mode');
     await page.click('[data-tab=recipes]');
     assert.equal(await page.locator('#select-bar').isHidden(), true, 'andere Bereiche haben keine Auswahlleiste');
@@ -1116,8 +1117,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#items .group-head', { hasText: 'Getränke' }).locator('.count').count(), 0, 'keine Zahl bei der Kategorie (seit 2.60)');
     assert.equal(await page.locator('#items .item', { hasText: 'Xyzzy' }).count(), 2, 'beide Xyzzy stehen auf der Liste');
     assert.ok(!(await heads()).includes('Sonstiges'));
-    // Erledigt steht unten.
-    await page.locator('.item', { hasText: 'Butter' }).locator('.check').click();
+    // Erledigt steht unten (abgehakt wird seit 2.147 nur im Laden).
+    await page.click('#mode-shop'); await shopTap(page, 'Butter').click(); await page.click('#shop-back');
     const all = await heads(); assert.equal(all.at(-1), 'Erledigt');
     // Abschalten.
     await openSettings(page); await page.uncheck('#group-items'); await page.click('[data-tab=shopping]');
@@ -2000,7 +2001,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#quick-pick').isHidden(), true);
     await type('Quark'); await submit(); await type('Quark'); await submit();
     assert.equal(await page.locator('#items .item', { hasText: 'Quark' }).count(), 1, 'gleiche Artikel zählen zusammen');
-    await page.locator('#items .item', { hasText: 'Quark' }).locator('.check').click();
+    await page.click('#mode-shop'); await shopTap(page, 'Quark').click(); await page.click('#shop-back');   // abgehakt wird seit 2.147 nur im Laden
     assert.equal(await page.locator('#quick-pick .chip').first().isVisible(), false, 'zugeklapptes Formular: keine Schnellwahl');
     await expandForm(page);   // ins Namensfeld tippen klappt das Formular auf
     await page.waitForSelector('#quick-pick:not([hidden])');
@@ -3253,7 +3254,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.locator('#recipe-list .recipe-details[open]').count(),1);assert.equal(await cards.nth(index).locator('.recipe-details').evaluate(node=>node.open),true);
       assert.ok(Math.abs(after.y-before.y)<3,JSON.stringify({index,before:before.y,after:after.y}));
     }
-    const id=await cards.nth(2).getAttribute('data-recipe-id');await goTab(page,'shopping');await page.locator('#items .check').first().click();await goTab(page,'recipes');
+    const id=await cards.nth(2).getAttribute('data-recipe-id');await goTab(page,'shopping');await page.click('#mode-shop');await page.locator('#shop-list .shop-tap').first().click();await page.click('#shop-back');await goTab(page,'recipes');
     assert.equal(await page.locator('#recipe-list .recipe-details[open]').count(),1);assert.equal(await page.locator(`[data-recipe-id="${id}"] .recipe-details`).evaluate(node=>node.open),true);
     assert.deepEqual(problems,[]);await ctx.close();
   });
@@ -4074,8 +4075,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.keyboard.press('Escape');
     // 4. Nudeln und Tomaten eingekauft (abgehakt), Einkauf beendet: sie sind von der Liste weg, zählen aber noch als da
     await page.click('[data-tab=shopping]');
-    await page.getByRole('button', { name: 'Nudeln: abhaken' }).click(); await page.getByRole('button', { name: 'Tomaten: abhaken' }).click();
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    await shopTap(page, 'Nudeln').click(); await shopTap(page, 'Tomaten').click();
     await finishShop(page); await sheetOpen(page); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.ok(!(await page.textContent('#items')).includes('Nudeln'), 'von der Liste entfernt');
     await openList();
@@ -6418,17 +6419,18 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Gesamtliste ohne Schätzung: Erledigtes mit Geschäft, Entfernen gilt für die gewählte Ansicht', async () => {
     const { ctx, page, problems } = await context();
     await open(page); assert.equal(await page.locator('#shopping-total').count(), 0);
-    await page.locator('.item', { hasText: 'Milch' }).locator('.check').click();
-    await page.locator('.item', { hasText: 'Äpfel' }).locator('.check').click();
+    // Seit 2.147 wird nur „Im Laden“ abgehakt; unter „Planen“ stehen Erledigte mit ihrem Geschäft und einem Haken, der kein Knopf ist.
+    assert.equal(await page.locator('#items .check').count(), 0, 'kein Abhak-Kreis unter Planen');
+    await page.click('#mode-shop'); await shopTap(page, 'Milch').click(); await shopTap(page, 'Äpfel').click(); await page.click('#shop-back');
     const done = page.locator('#items .group-head', { hasText: 'Erledigt' });
     assert.equal(await done.count(), 1);
     assert.match(await page.locator('.item.checked', { hasText: 'Milch' }).textContent(), /· Lidl/, 'Erledigte zeigen ihr Geschäft');
+    assert.equal(await page.locator('#items .item.checked .bought-mark').count(), 2);
+    assert.equal(await page.locator('#items .item.checked button:not(.item-copy)').count(), 0, 'Erledigte lassen sich unter Planen nicht wieder öffnen');
+    assert.match(await page.textContent('#items .done-note'), /Einkauf beenden/);
+    assert.equal(await page.locator('#clear-checked').count(), 0, '„Erledigte entfernen“ gibt es nicht mehr');
     await page.getByRole('tab', { name: /^Lidl/ }).click();
-    await page.click('#clear-checked');
-    await page.getByRole('tab', { name: /^Alle/ }).click();
-    assert.equal(await page.locator('.item.checked').count(), 1, 'Nur die erledigten Artikel der gewählten Ansicht werden entfernt');
-    await page.click('#clear-checked');
-    assert.equal(await page.locator('.item.checked').count(), 0);
+    assert.equal(await page.locator('.item.checked').count(), 1, 'Lidl zeigt nur seine Erledigten');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -6579,8 +6581,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.mouse.up();
     await page.waitForSelector('.drag-ghost', { state: 'detached' });
     assert.ok((await names()).includes('Milch'), 'abgebrochen: nichts gelöscht');
-    // Abgehakter Artikel
-    await page.getByRole('button', { name: 'Äpfel: abhaken' }).click();
+    // Abgehakter Artikel (abgehakt wird seit 2.147 nur im Laden)
+    await page.click('#mode-shop'); await shopTap(page, 'Äpfel').click(); await page.click('#shop-back');
     ({ at } = await holdRow(page, 'Äpfel'));
     await page.waitForSelector('.drag-ghost');
     await page.mouse.move(width - 30, at.y, { steps: 6 });
@@ -7140,6 +7142,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.127: alte widersprüchliche Gruppen bleiben zur Korrektur sichtbar und können nicht gespeichert werden',async()=>{
     const data=structuredClone(demo);data.recipes[0].tags=['Vegetarisch','Fleisch','Schnell','Eigene Gruppe'];const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator(`[data-recipe-id="${data.recipes[0].id}"]`);await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);
     const before=await storedDemo(page);assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),4);
+    assert.equal(await page.locator('#recipe-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: unverändert nichts zu speichern');await page.fill('#recipe-form [name=notes]','Notiz 2.127');
     await page.click('#recipe-form button[type=submit]');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.match(await page.textContent('#recipe-dialog [data-dialog-error]'),/passen nicht zusammen/);assert.deepEqual(await storedDemo(page),before);
     await page.click('#recipe-groups-toggle');await pickRecipeGroup(page,'Fleisch');await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-warning').isHidden(),true);
     await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.id===data.recipes[0].id).tags,['Vegetarisch','Schnell','Eigene Gruppe']);assert.deepEqual(problems,[]);await ctx.close();
@@ -7515,15 +7518,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     });
   }
 
-  test('Einkaufsliste: die Zeile „n offen · n erledigt“ ist weg; „Auswählen“ und „Erledigte entfernen“ stehen links und rechts auf einer Zeile', async () => {
+  test('Einkaufsliste: die Zeile „n offen · n erledigt“ ist weg; über der Liste steht nur „Auswählen“ (seit 2.147 ohne „Erledigte entfernen“)', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     assert.equal(await page.locator('#item-count').count(), 0);
     assert.ok(!/\d+ offen · \d+ erledigt/.test(await page.textContent('#shopping')), 'der Text kommt nirgends vor');
-    const select = await page.locator('#select-mode').boundingBox(), clear = await page.locator('#clear-checked').boundingBox(), viewport = page.viewportSize();
-    assert.ok(Math.abs(select.y - clear.y) < 6 && select.x < clear.x, 'auf einer Zeile, „Auswählen“ links');
-    assert.ok(select.x >= 0 && clear.x + clear.width <= viewport.width, 'im Bildschirm');
-    assert.ok(select.height >= 36 && clear.height >= 36);
+    assert.equal(await page.locator('#clear-checked').count(), 0);
+    const select = await page.locator('#select-mode').boundingBox(), viewport = page.viewportSize();
+    assert.ok(select.x >= 0 && select.x + select.width <= viewport.width, 'im Bildschirm');
+    assert.ok(select.height >= 36);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -7866,9 +7869,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       assert.equal(await page.evaluate(() => document.querySelector('#wish-dialog').scrollWidth <= document.querySelector('#wish-dialog').clientWidth), true);
     }
     await page.click('#wish-dialog [data-close]');
-    await page.locator('#items .check').click();
-    assert.equal(await page.locator('#wish-dialog[open]').count(), 0);
+    assert.equal(await page.locator('#items .check').count(), 0, 'seit 2.147 kein Abhak-Kreis unter Planen');
     await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Wünsche').click();
+    await shopTap(page, 'Springseil').click();
+    assert.equal(await page.locator('#wish-dialog[open]').count(), 0, 'Abhaken öffnet keine Details');
     // Auch bei erledigten Wünschen bleibt das Detail erreichbar; die Sperre bleibt wirksam.
     await page.locator('#shop-list .shop-done summary').click();
     await page.focus('#shop-list .shop-text'); await page.keyboard.press('Enter'); await page.waitForSelector('#wish-dialog[open]');
@@ -7897,7 +7901,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await nico.page.reload(); await openWishlist(nico.page); await holdWish(nico.page);
     assert.equal(await nico.page.inputValue('#wish-form [name=wishNote]'), 'Schwarz, 3 m lang');
     await nico.page.click('#wish-dialog [data-close]');
-    await anna.page.locator('#items .check').click(); await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await anna.page.click('#mode-shop'); await storeButton(anna.page, '#shop-chips', 'Wünsche').click(); await shopTap(anna.page, 'Springseil').click(); await anna.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     await nico.ctx.setOffline(false); await pollNow(nico.page); await nico.page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     row = api.content.items.find(item => item.id === 'wish-rope');
     assert.equal(row.wishNote, 'Schwarz, 3 m lang'); assert.equal(row.wishUrl, 'https://example.org/rope'); assert.equal(row.checked, true);
@@ -8513,7 +8517,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Einkaufsmengen: gemeinsame Rezeptübernahmen und unveränderter Editor erhalten Änderungen des zweiten Geräts',async()=>{
     const api=github(milkRecipes()),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});for(const d of [a,b]){await d.ctx.route('https://api.github.com/**',api.handler);await open(d.page);await synced(d.page);}
     await transferMilk(a.page,'Milchgericht A');await synced(a.page);await pollNow(b.page);await goTab(a.page,'shopping');await a.page.locator('#items .item-copy').click();
-    await transferMilk(b.page,'Milchgericht B');await synced(b.page);await pollNow(a.page);await a.page.fill('#edit-item-form [name=name]','Milch');await a.page.click('#edit-item-form button[type=submit]');await synced(a.page);
+    await transferMilk(b.page,'Milchgericht B');await synced(b.page);await pollNow(a.page);await a.page.fill('#edit-item-form [name=name]','Milch');assert.equal(await a.page.locator('#edit-item-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: unverändert nichts zu speichern');await a.page.click('#item-dialog [data-close]');await synced(a.page);
     const row=api.content.items.find(r=>!r.deletedAt&&r.name==='Milch');assert.equal(row.quantity,900);assert.equal(row.unit,'ml');assert.match(await a.page.textContent('#items'),/1 Packung/);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
   for(const width of [280,320,390])for(const theme of ['light','dark'])test(`Einkaufsmengen Layout (${width} px ${theme}): Pfeile, Einheit und Menü bleiben bedienbar`,async()=>{
@@ -8575,7 +8579,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   test('Packungsgrößen: alte Packung ohne Inhalt fragt einmal, eigene Größe bleibt nach Neustart erhalten',async()=>{
     const data=milkRecipes();data.sync.minRev=8;data.items=[{...demo.items[0],id:'old-eggs',name:'Eier',quantity:1,unit:'Packung',storeId:'',price:null,salePrice:null,onSale:false,purchaseUnit:null,purchaseMeasure:'Packung',purchaseAt:'2026-10-29T12:00:00.000Z'}];
-    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await page.locator('#items .item-copy').click();await page.click('#edit-item-form button[type=submit]');await page.waitForSelector('#purchase-unit-dialog[open]');assert.equal((await storedDemo(page)).items[0].unit,'Packung');
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await page.locator('#items .item-copy').click();assert.equal(await page.locator('#edit-item-form .sheet-actions button[type=submit]').isDisabled(),true,'seit 2.147: erst nach einer Änderung');await page.locator('#edit-item-form .pack-size-link').click();await page.waitForSelector('#purchase-unit-dialog[open]');assert.equal((await storedDemo(page)).items[0].unit,'Packung');
     await page.getByRole('button',{name:'Andere Packungsgröße',exact:true}).click();await page.fill('#purchase-unit-dialog [name=size]','8,5');await page.click('#purchase-unit-dialog button[type=submit]');assert.match(await page.textContent('#purchase-unit-dialog .dialog-error'),/ganze Zahl/);
     await page.fill('#purchase-unit-dialog [name=size]','8');await page.click('#purchase-unit-dialog button[type=submit]');await page.click('#edit-item-form button[type=submit]');
     const row=(await storedDemo(page)).items[0];assert.equal(row.quantity,8);assert.equal(row.unit,'Stück');assert.equal(row.purchaseUnit.quantity,8);
@@ -9013,8 +9017,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   test('2.80: nur Abhaken im Laden erzeugt Kaufdatum; Einkauf beenden erhält es und Übernahme in Vorrat bleibt ausdrücklich',async()=>{
     const data=milkRecipes();data.items=[{...demo.items[0],id:'milk280',name:'Milch',storeId:'',checked:false}];
-    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();assert.equal((await storedDemo(page)).items[0].shopBoughtAt,undefined);await openPantry(page,'recent');assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-list'),/Noch keine Einkäufe/);await closePantry(page);
-    await page.getByRole('button',{name:'Milch: wieder öffnen',exact:true}).click();await page.click('#mode-shop');await shopTap(page,'Milch').click();assert.ok((await storedDemo(page)).items[0].shopBoughtAt);await page.click('#notice-undo');assert.equal((await storedDemo(page)).items[0].shopBoughtAt,null);await shopTap(page,'Milch').click();const bought=(await storedDemo(page)).items[0].shopBoughtAt;
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);assert.equal(await page.getByRole('button',{name:'Milch: abhaken',exact:true}).count(),0,'seit 2.147 unter Planen kein Abhaken');assert.equal((await storedDemo(page)).items[0].shopBoughtAt,undefined);await openPantry(page,'recent');assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-list'),/Noch keine Einkäufe/);await closePantry(page);
+    await page.click('#mode-shop');await shopTap(page,'Milch').click();assert.ok((await storedDemo(page)).items[0].shopBoughtAt);await page.click('#notice-undo');assert.equal((await storedDemo(page)).items[0].shopBoughtAt,null);await shopTap(page,'Milch').click();const bought=(await storedDemo(page)).items[0].shopBoughtAt;
     await finishShop(page);await sheetOpen(page);await page.click('#finish-only');await page.waitForSelector('#finish-dialog[open]',{state:'detached'});const removed=(await storedDemo(page)).items.find(row=>row.id==='milk280');assert.ok(removed.deletedAt);assert.equal(removed.shopBoughtAt,bought);
     await openCookable280(page);assert.equal(await page.locator('.cookable-card').count(),0,'auch frisch gekauft nicht im Vorrat');await page.click('#cookable-dialog [data-close]');await openPantry(page,'recent');const product=page.locator('.product-card[data-product=milch]');assert.match(await product.textContent(),/heute gekauft/);assert.equal(await product.locator('.product-pick').getAttribute('aria-pressed'),'false');await product.locator('.product-pick').click();assert.equal((await storedDemo(page)).pantry.length,0);await page.click('#product-picker-add');assert.equal((await storedDemo(page)).pantry[0].available,true);
     await product.locator('.product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt','Vorhandenes wird hier nicht entfernt');await closePantry(page);await openCookable280(page);assert.ok((await page.locator('.cookable-status').allTextContents()).every(text=>text==='Alles da'));assert.deepEqual(problems,[]);await ctx.close();
@@ -10216,9 +10220,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const pasta = page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' });
     await pasta.locator('summary').click();
     assert.match(await pasta.locator('li', { hasText: 'Tomaten' }).first().textContent(), /Auf Einkaufszettel/);
-    await goTab(page, 'shopping');
+    await goTab(page, 'shopping'); await page.click('#mode-shop');   // abgehakt wird seit 2.147 nur im Laden
     const ms = await page.evaluate(async () => {
-      const check = document.querySelector('#items .item [aria-label="Tomaten: abhaken"]'); const started = performance.now(); check.click();
+      const check = [...document.querySelectorAll('#shop-list .shop-tap')].find(node => /^Tomaten, .*abhaken$/.test(node.getAttribute('aria-label'))); const started = performance.now(); check.click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return performance.now() - started;
     });
     assert.ok(ms < 2000, `Abhaken dauerte ${Math.round(ms)} ms`);
@@ -10751,7 +10755,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.setOffline(true);
     await page.waitForSelector('#connection-band:not([hidden])');
     assert.match(await page.textContent('#connection-text'), /^Offline · Änderungen werden später gesendet$/);
-    await page.getByRole('button', { name: 'Tomaten: abhaken' }).click();
+    await page.click('#mode-shop'); await shopTap(page, 'Tomaten').click();
     await page.waitForFunction(() => /1 Änderung wartet/.test(document.querySelector('#connection-text').textContent));
     const band = await page.locator('#connection-band').boundingBox(); assert.ok(band.y >= 0 && band.width <= 390);
     await ctx.setOffline(false);
@@ -10802,27 +10806,44 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#notice-icon').isVisible(), false);
     // Halten und Loslassen ohne Ziehen: Details wie bisher
     await holdWish(page); assert.equal(await page.locator('#wish-title').textContent(), 'Springseil'); await page.click('#wish-dialog [data-close]');
-    // Im Laden ebenso über Name und Menge; der Abhak-Kreis hebt die Zeile nicht an
-    await page.click('#mode-shop'); await storeButton(page, '#shop-chips', 'Wünsche').click();
-    const circle = page.locator('#shop-list .shop-tap').first(), box = await circle.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650);
-    assert.equal(await page.locator('.drag-ghost').count(), 0, 'Kreis hebt nichts an'); await page.mouse.up();
-    // Der Kreis hakt wie gewohnt ab (auch langsam angetippt); zurücknehmen
-    assert.equal(await noticeText147(page), '„Springseil“ abgehakt'); await page.click('#notice-undo');
-    await page.locator('#shop-list .shop-item:not(.checked)[data-id="wish-rope"]').waitFor();
-    await dragToTrash147(page, page.locator('#shop-list .shop-item[data-id="wish-rope"] .shop-text'));
-    assert.equal(await noticeText147(page), '„Springseil“ gelöscht');
+    // Unter Planen kein Abhak-Kreis, auch nicht bei Wünschen
+    assert.equal(await page.locator('#items .check').count(), 0);
+    await dragToTrash147(page, row);
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.id === 'wish-rope'));
     assert.ok(saved.deletedAt, 'gelöscht gespeichert');
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.147: Im Laden gesperrt lässt sich nichts in den Mülleimer ziehen', async () => {
-    const { ctx, page, problems } = await context({ config: { shopLock: 60 } });
-    await open(page); await page.click('#mode-shop'); await page.click('#shop-lock');
+  for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.147: Abhaken nur im Laden: unter Planen weder Kreis noch „Erledigte entfernen“; Erledigtes mit Haken und Hinweis (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { shopLock: 0, palette: 'gruen', theme, productImages: theme === 'dark' }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await open(page);
+    const stored = name => page.evaluate(name => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.name === name && !row.deletedAt), name);
+    assert.equal(await page.locator('#items .check').count(), 0, 'kein Abhak-Kreis');
+    assert.equal(await page.locator('#clear-checked').count(), 0, 'kein „Erledigte entfernen“');
+    assert.equal(await page.getByRole('button', { name: /abhaken|wieder öffnen/ }).count(), 0, 'nichts zum Abhaken unter Planen');
+    // Ein Tipp auf die Zeile bearbeitet weiterhin und hakt nichts ab
+    await page.locator('#items .item-copy', { hasText: 'Milch' }).click(); await page.waitForSelector('#item-dialog[open]'); await page.click('#item-dialog [data-close]');
+    assert.equal((await stored('Milch')).checked, false);
+    // Im Laden abhaken: unter Planen grau unter „Erledigt“ mit Haken (kein Knopf) und Hinweis
+    await page.click('#mode-shop'); await shopTap(page, 'Milch').click(); await page.click('#shop-back');
+    assert.equal((await stored('Milch')).checked, true);
+    const done = page.locator('#items .item.checked', { hasText: 'Milch' });
+    assert.equal(await done.locator('.bought-mark').getAttribute('aria-label'), 'im Laden abgehakt');
+    assert.equal(await done.locator('button:not(.item-copy)').count(), 0, 'nicht wieder zu öffnen');
+    assert.match(await done.locator('.item-copy').getAttribute('aria-label'), /im Laden abgehakt: bearbeiten$/);
+    assert.equal(await page.textContent('#items .done-note'), 'Im Laden abgehakt. „Einkauf beenden“ unter „Im Laden“ räumt es auf.');
+    // Auswählen funktioniert weiter mit eigenem Auswahlkreis, ohne abzuhaken
+    await page.click('#select-mode'); assert.ok(await page.locator('#items .select-mark').count() > 0);
+    assert.equal(await page.locator('#items .bought-mark').count(), 0, 'im Auswahlmodus steht dort der Auswahlkreis');
+    await page.locator('#items .item', { hasText: 'Nudeln' }).locator('.select-mark').click();
+    assert.equal((await stored('Nudeln')).checked, false); await page.click('#select-done');
+    // Im Laden hebt langes Drücken keine Zeile an (dort wird nur abgehakt)
+    await page.click('#mode-shop');
     const text = page.locator('#shop-list .shop-item .shop-text').first(), box = await text.boundingBox();
     await page.mouse.move(box.x + 30, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(650);
-    assert.equal(await page.locator('.drag-ghost').count(), 0, 'gesperrt hebt nichts ab'); await page.mouse.up();
+    assert.equal(await page.locator('.drag-ghost').count(), 0); await page.mouse.up(); await page.click('#shop-back');
+    assert.equal(await horizontalOverflow(page), 0);
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2147-planen-${width}-${theme}.png` });
     assert.deepEqual(problems, []); await ctx.close();
   });
 
@@ -10870,7 +10891,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.147: einzeln gelöschte abgehakte Artikel stehen im Papierkorb, „Erledigte entfernen“ räumt still weg; beides mit „Rückgängig“', async () => {
+  test('2.147: einzeln gelöschte abgehakte Artikel stehen im Papierkorb, „Einkauf beenden“ räumt Gekauftes still weg', async () => {
     const data = structuredClone(demo); data.items.forEach((row, index) => { row.checked = index < 2; });
     const [first, second] = data.items;
     const { ctx, page, problems } = await context(); await seedLocal(ctx, data); await open(page);
@@ -10878,12 +10899,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await dragToTrash147(page, page.locator(`#items .item[data-id="${first.id}"]`));
     assert.equal(await noticeText147(page), `„${first.name}“ gelöscht`);
     assert.match(await page.textContent('#shopping-trash-link'), /Kürzlich gelöscht\s*\(1\)/, 'abgehakt, aber bewusst gelöscht');
-    await page.click('#clear-checked');
-    assert.equal(await noticeText147(page), '1 erledigter Artikel entfernt');
+    await page.click('#notice-undo'); await page.locator(`#items .item[data-id="${first.id}"]`).waitFor();
+    assert.equal(await page.locator('#shopping-trash-link').isVisible(), false, 'zurückgeholt: Papierkorb leer');
+    await dragToTrash147(page, page.locator(`#items .item[data-id="${first.id}"]`));
+    await page.click('#mode-shop'); await finishShop(page); await sheetOpen(page); await page.click('#finish-only'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.deepEqual((await deleted()).sort(), [first.id, second.id].sort());
-    assert.match(await page.textContent('#shopping-trash-link'), /\(1\)/, 'Erledigte entfernen füllt den Papierkorb nicht');
-    await page.click('#notice-undo'); await page.locator(`#items .item[data-id="${second.id}"]`).waitFor();
-    assert.deepEqual(await deleted(), [first.id]);
+    if (await page.locator('#shop-back').isVisible()) await page.click('#shop-back');   // „Einkauf beenden“ führt meist schon zurück
+    assert.match(await page.textContent('#shopping-trash-link'), /\(1\)/, 'Einkauf beenden füllt den Papierkorb nicht');
     assert.deepEqual(problems, []); await ctx.close();
   });
 
