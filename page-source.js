@@ -9,8 +9,9 @@ export const PUBLIC_PROXIES = [
   { name: 'codetabs.com', url: target => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(target)}` }
 ];
 const MAX_CHARS = 2_500_000;
-// Eine gemeinsame Vorgabe für Anzeige und Abrufe. Ausdrücklich ausgeschaltet bleibt aus.
-export const publicProxyEnabled = (config = {}) => config.publicProxy === undefined || config.publicProxy === true;
+// Eine gemeinsame Vorgabe für Anzeige und Abrufe. Öffentliche Dienste sind fremd: Ohne ausdrückliche Erlaubnis wird nichts dorthin gesendet.
+// Wer den Haken früher gesetzt hat (oder den damals vorausgewählten Haken im Importfenster gespeichert hat), behält seine Wahl.
+export const publicProxyEnabled = (config = {}) => config.publicProxy === true;
 
 export const workerHost = value => {
   try { const url = new URL(String(value || '').trim()); return url.protocol === 'https:' && url.hostname.endsWith('.workers.dev') && !url.username ? url.origin : ''; }

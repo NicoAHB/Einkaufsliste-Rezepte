@@ -9178,8 +9178,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(a.problems,[]);assert.deepEqual(b.problems,[]);await a.ctx.close();await b.ctx.close();
   });
 
-  test('2.87: öffentliche Hilfsdienste funktionieren mit dem voreingestellten Haken beim ersten Laden',async()=>{
-    for(const config of [{},{publicProxy:true}]) {
+  test('2.137: ohne gespeicherte Wahl sind öffentliche Hilfsdienste aus und es geht nichts an Dritte',async()=>{
+    const {ctx,page,problems}=await context({config:{}}),requests=[];
+    await ctx.route(/allorigins|codetabs/,route=>{requests.push(route.request().url());return route.fulfill({status:200,contentType:'text/html',body:recipeHtml});});
+    await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);
+    assert.equal(await page.isChecked('#import-form [name=publicProxy]'),false);
+    await page.fill('#import-form [name=url]','https://rezepte.lidl.de/rezepte/doener-croissant');await page.click('#import-run');
+    await page.waitForSelector('[data-dialog-error]:not([hidden])');assert.match(await page.textContent('[data-dialog-error]'),/Hilfsdienst/);
+    assert.deepEqual(requests,[],'ohne Erlaubnis wird kein öffentlicher Dienst kontaktiert');assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.87: öffentliche Hilfsdienste funktionieren mit dem gespeicherten Haken beim ersten Laden',async()=>{
+    for(const config of [{publicProxy:true}]) {
       const {ctx,page,problems}=await context({config}),requests=[];
       await ctx.route(/allorigins|codetabs/,route=>{requests.push(route.request().url());return route.fulfill({status:200,contentType:'text/html',body:recipeHtml});});
       await open(page);await page.evaluate(()=>{document.querySelector('#import-form [name=publicProxy]').disabled=true;document.querySelector('#import-run').type='button';});await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);
