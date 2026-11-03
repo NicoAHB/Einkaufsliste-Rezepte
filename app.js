@@ -1885,7 +1885,8 @@ function changePlannedMeal(meal, patch, next, finish=()=>{}, alsoAdd=false) {
   if(!meal||meal.deletedAt)throw new Error('Dieses Gericht wurde inzwischen entfernt.');
   const reduces=Number(meal.listedServings)>0&&(!next||next.recipeId!==meal.recipeId||next.servings<meal.listedServings);
   if(!reduces){
-    const result=alsoAdd?withMealShopping([nextOp('meals',meal.id,patch)],meal.id):{ops:[nextOp('meals',meal.id,patch)],notice:'Gericht gespeichert'};
+    // Ohne `next` wird das Gericht entfernt (Papierkorb am Gericht oder im Bearbeiten-Fenster): dann „Gericht entfernt“ statt „gespeichert“.
+    const result=alsoAdd?withMealShopping([nextOp('meals',meal.id,patch)],meal.id):{ops:[nextOp('meals',meal.id,patch)],notice:next?'Gericht gespeichert':'Gericht entfernt'};
     commit(result.ops,result.notice);finish();return;
   }
   planAdjustment={mealId:meal.id,patch,next,finish,alsoAdd,scope:namespace()};renderPlanAdjustment();
@@ -1936,7 +1937,8 @@ function finishPlanAdjustment(adjust) {
       if(!request.reduction.legacy){patch.listedServings=request.reduction.target||null;patch.listedParts=request.next?.recipeId===state.meals.find(row=>row.id===request.mealId).recipeId?request.reduction.parts:[];}
     }
     ops.push(nextOp('meals',request.mealId,patch));
-    const result=request.alsoAdd?withMealShopping(ops,request.mealId):{ops,notice:adjust&&request.reduction.changes.length?'Wochenplan und Einkaufsliste angepasst':'Wochenplan geändert'};
+    const trimmed=adjust&&request.reduction.changes.length;
+    const result=request.alsoAdd?withMealShopping(ops,request.mealId):{ops,notice:!request.next?(trimmed?'Gericht entfernt · Zutaten vom Einkaufszettel genommen':'Gericht entfernt'):trimmed?'Wochenplan und Einkaufsliste angepasst':'Wochenplan geändert'};
     commit(result.ops,result.notice);
     $('#plan-adjust-dialog').close();planAdjustment=null;request.finish();
   }catch(problem){error.textContent=problem.message;error.hidden=false;}

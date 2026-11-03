@@ -2,6 +2,12 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.144: „Gericht entfernt“, „Heute“ und „Neu“ in Mittelgrün
+
+- **Fehler behoben:** Wer ein Gericht im Wochenplan entfernte (Papierkorb am Gericht), bekam unten die Meldung „Gericht gespeichert“. Jetzt steht dort **Gericht entfernt**. Waren seine Zutaten schon auf dem Einkaufszettel, sagt die Meldung nach „Ja, … entfernen“ zusätzlich **Zutaten vom Einkaufszettel genommen**. Ändern meldet weiter „Gericht gespeichert“.
+- **„Heute“** im Wochenplan ist nicht mehr kräftig grün gefüllt, sondern mittelgrün mit grüner Schrift und feinem Rand.
+- **„Neu“** bei den Rezepten sieht aus wie „Ausgabe nachträglich eintragen“: hellgrün mit grüner Schrift und grünem Rand.
+- Lesbarkeit hell und dunkel mindestens 4,5 : 1.
 ## Neu in Version 2.143: Internationale Produkte und eigene Produkte löschen
 
 - Unter **Produkte → Internationale Produkte** stehen gängige Zutaten nach zwölf Ländern/Küchen sortiert. 32 neue Produkte ergänzen den Bestand, darunter Buchweizen, mit 32 neu erzeugten lokalen Beispielbildern. Bereits bekannte Zutaten verwenden ihre vorhandenen Bilder; normale Einkaufs-Gänge bleiben erhalten.
