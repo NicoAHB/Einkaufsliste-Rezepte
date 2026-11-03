@@ -1231,6 +1231,10 @@ function deleteRecipe(id) {
   const recipe=active(state.recipes).find(row=>row.id===id);
   if(!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   if(!confirm(`Rezept „${recipe.name}“ dauerhaft aus dem Rezeptbuch löschen?`)) return;
+  removeSavedRecipe(id);
+}
+function removeSavedRecipe(id) {
+  if(!active(state.recipes).some(row=>row.id===id))return;
   removeRows('recipes',[id]);
   if($('#recipe-dialog').open && $('#recipe-form').elements.id.value===id) { dropRecipeDraft();$('#recipe-dialog').close(); }
 }
@@ -2121,7 +2125,7 @@ $('#open-help').addEventListener('click', () => guard(openHelp));
 // Mit einem Link in den Einstellungen wird stattdessen diese Seite einmal am Tag geladen (braucht den Hilfsdienst) und die ersten zehn
 // noch nicht entschiedenen Rezepte kommen einzeln zum Durchklicken. Gemerkt wird nur auf diesem Gerät: heutige Auswahl, Stand und alles Entschiedene.
 const dailyStore = () => `einkauf-daily:${namespace()}`;
-let daily = null, dailyTicket = 0, dailyTried = '', builtinCollection = null, dailyScope = '', dailyReview = null, dailyLoading = null;
+let daily = null, dailyTicket = 0, dailyTried = '', builtinCollection = null, dailyScope = '', dailyReview = null, dailyLoading = null, pendingDailyRemoval = null;
 const dailyDrafts = new Map(), dailyDraftJobs = new Map();
 const dailySource = () => webUrl(config.dailySource);
 const dailySourceKey = () => dailySource() || BUILTIN_SOURCE;
@@ -2183,9 +2187,13 @@ function prefetchDaily() {
 }
 const dailyCacheKey = (item, record) => JSON.stringify([record.day, record.source, item.key]);
 const shownDaily = () => dailyReview?.record || loadDaily();
-function dailyKnown(item, draft) {
-  const known = knownRecipeKeys(); return known.has(item.key) || known.has(builtinKey(draft?.name || item.title)) || Boolean(draft?.sourceUrl && known.has(recipeKey(draft.sourceUrl)));
+function dailySavedRecipe(item, draft) {
+  const recipes=active(state.recipes),source=draft?.sourceUrl||item.url;
+  return (source&&recipes.find(row=>row.sourceUrl&&recipeKey(row.sourceUrl)===recipeKey(source)))
+    ||recipes.find(row=>row.sourceUrl&&recipeKey(row.sourceUrl)===item.key)
+    ||recipes.find(row=>row.name&&[item.key,builtinKey(draft?.name||item.title)].includes(builtinKey(row.name)));
 }
+const dailyKnown=(item,draft)=>Boolean(dailySavedRecipe(item,draft));
 async function dailyDraft(item, record = shownDaily()) {
   const cache = dailyCacheKey(item, record);
   if (dailyDrafts.has(cache)) return dailyDrafts.get(cache);
@@ -2266,14 +2274,14 @@ function openDailyReview(day,index=0) {
   if(day===localDay()&&!record?.queue.length){dailyReview=null;return showDaily();}
   dailyReview = { record:record||{day,queue:[],drafts:{},outcome:{}}, index:Math.max(0,Math.min(index,(record?.queue.length||1)-1)), scope: namespace() }; return showDailyReview();
 }
-function dailyButtons({ add = false, retry = false } = {}) {
-  $('#daily-add').hidden = !add; $('#daily-retry').hidden = !retry;
+function dailyButtons({ add = false, remove = false, retry = false } = {}) {
+  $('#daily-add').hidden = !add; $('#daily-remove').hidden = !remove; $('#daily-retry').hidden = !retry;
   $('#daily-add').disabled = false;
   syncDailyFooter();
 }
 function syncDailyFooter(){
   const note=$('#daily-note');note.hidden=!note.textContent.trim();
-  $('#daily-footer').hidden=note.hidden&&['daily-add','daily-retry'].every(id=>$('#'+id).hidden);
+  $('#daily-footer').hidden=note.hidden&&['daily-add','daily-remove','daily-retry'].every(id=>$('#'+id).hidden);
 }
 function setDailyNote(text=''){$('#daily-note').textContent=text;syncDailyFooter();}
 function refreshDailyActions(){
@@ -2281,8 +2289,8 @@ function refreshDailyActions(){
   loadDaily();if(!$('#daily-dialog').open)return;
   const record=shownDaily(),item=record.queue[dailyReview?dailyReview.index:record.index],draft=item&&dailyDrafts.get(dailyCacheKey(item,record));
   if(!draft||!$('#daily-card .daily-ingredients'))return;
-  const known=dailyKnown(item,draft);dailyButtons({add:!known});$('#daily-add').disabled=!draft.ingredients.length;
-  setDailyNote(known?'Dieses Rezept wurde bereits hinzugefügt.':'');
+  const known=dailyKnown(item,draft);dailyButtons({add:!known,remove:known});$('#daily-add').disabled=!draft.ingredients.length;
+  setDailyNote();
 }
 function fillDailyCard(draft, item, full = false) {
   const card = $('#daily-card'); card.replaceChildren();
@@ -2369,18 +2377,37 @@ $('#daily-open').addEventListener('click', () => guard(() => {
 function confirmDailyRecipe() {
   const added=addDailyRecipe();if(added===null)return;
   if (added) {
-    const record = dailyReview.record, item = record.queue[dailyReview.index], current = loadDaily();
-    record.outcome[item.key] = 'added';
-    if (current.day === record.day && current.source === record.source) current.outcome[item.key] = 'added';
-    else current.history = [...dailyHistory(current, localDay()).filter(row => row.day !== record.day), dailyRecord(record)];
-    saveDaily();
+    const record=dailyReview.record;setDailyOutcome(record,record.queue[dailyReview.index].key,'added');
   }
   if(dailyReview?.fromQueue){dailyReview=null;return showDaily();}
   refreshDailyActions();
 }
+function setDailyOutcome(record,key,outcome){
+  const current=loadDaily();record.outcome[key]=outcome;
+  if(current.day===record.day&&current.source===record.source)current.outcome[key]=outcome;
+  else current.history=[...dailyHistory(current,localDay()).filter(row=>row.day!==record.day),dailyRecord(record)];
+  saveDaily();
+}
+function openDailyRemoval(){
+  const record=shownDaily(),item=record.queue[dailyReview?dailyReview.index:record.index],draft=item&&dailyDrafts.get(dailyCacheKey(item,record)),recipe=item&&dailySavedRecipe(item,draft);
+  if(!recipe){refreshDailyActions();return;}
+  pendingDailyRemoval={id:recipe.id,scope:namespace(),record,key:item.key};
+  $('#daily-remove-text').textContent=`Möchtest du „${recipe.name}“ aus deinen Rezepten entfernen? Du kannst es hier später erneut hinzufügen.`;
+  $('#daily-remove-dialog').showModal();
+}
+function confirmDailyRemoval(){
+  const pending=pendingDailyRemoval;if(!pending)return;
+  pendingDailyRemoval=null;$('#daily-remove-dialog').close();
+  if(pending.scope!==namespace())return;
+  removeSavedRecipe(pending.id);setDailyOutcome(pending.record,pending.key,'seen');refreshDailyActions();
+  if(!$('#daily-add').hidden)$('#daily-add').focus({preventScroll:true});
+}
 $('#daily-add').addEventListener('click', () => guard(confirmDailyRecipe));
+$('#daily-remove').addEventListener('click',()=>guard(openDailyRemoval));
+$('#daily-remove-confirm').addEventListener('click',()=>guard(confirmDailyRemoval));
+$('#daily-remove-dialog').addEventListener('close',()=>{pendingDailyRemoval=null;});
 $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
-$('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; });
+$('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; if($('#daily-remove-dialog').open)$('#daily-remove-dialog').close();pendingDailyRemoval=null; });
 $('#daily-review-today').addEventListener('click', () => guard(() => openDailyReview(localDay())));
 $('#daily-review-yesterday').addEventListener('click', () => guard(() => openDailyReview(addDays(localDay(), -1))));
 $('#daily-day-prev').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-prev').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),-1));}));

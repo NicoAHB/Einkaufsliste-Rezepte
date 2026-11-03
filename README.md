@@ -1,6 +1,10 @@
-# Sattplan – Version 2.133
+# Sattplan – Version 2.134
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Einstellungen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
+
+## Neu in Version 2.134: Hinzugefügte Tagesrezepte mit Rückfrage entfernen
+
+Bei bereits gespeicherten Tagesrezepten steht unten der rote Button **Hinzugefügtes Rezept entfernen**. Die Rückfrage nennt das gespeicherte Rezept und bietet **Entfernen** und **Abbrechen**. Erst die Bestätigung entfernt es aus dem Rezeptbuch; anschließend erscheint wieder **Hinzufügen**. Das gilt für heutige und vergangene Tagesrezepte. Gleichbleibende Quellenlinks werden auch bei geändertem Rezeptnamen erkannt. Andere Rezepte, der Wochenplan und Einkaufsartikel bleiben erhalten. Die Rezeptansicht und ihre Scrollposition bleiben geöffnet. Offline-Paket **einkauf-shell-v146**.
 
 ## Neu in Version 2.133: Einzeilige Beschriftungen in der Navigation
 
