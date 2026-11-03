@@ -2,7 +2,7 @@
 
 Eine deutsche Web-App für Haushalte und Familien: auf dem iPhone große Bedienelemente, fünf Bereiche (Einkauf, Rezepte, Wochenplan, Ausgaben, Optionen), Rezept-Import aus Links, Screenshots und Text und Speicherung in einem privaten GitHub-Repository. Die App besteht aus normalen HTML-, CSS- und JavaScript-Dateien. **Für die Nutzung brauchst du keinen Server, kein Terminal und keine Installation.** GitHub Pages liefert die öffentlichen App-Dateien aus; private Daten werden mit deinem persönlichen Token direkt über die GitHub-API gelesen und geschrieben.
 
-**Neu in 2.144:** Unter Produkte und im Vorrat die Kategorie **Internationale Produkte** wählen: 14 Länder- und Küchengruppen mit lokalen Bildern. Im Vorrat übernimmt **Produkte dem Vorrat hinzufügen** die Auswahl. Im Reiter **Eigene** entfernt der rote **Mülleimer · Löschen** nach Bestätigung nur eigene Produkte aus der Auswahl und den Favoriten; **Rückgängig** holt sie zurück. Katalogprodukte, Einkaufspositionen, Vorräte und Belege bleiben unberührt.
+**Neu in 2.145:** Rückfragen erscheinen als eigenes Fenster der App, „Kürzlich gelöscht“ enthält auch eigene Produkte, Schreibweisen und Kategorien, und der Vorrat führt Sorten getrennt („Basmati-Reis“ neben „Reis“); Rezepte zählen weiter jede Sorte. Wer Sattplan später als App für iPhone und Android anbieten möchte: siehe [`docs/APP-STORE.md`](docs/APP-STORE.md).
 
 Was sich in den einzelnen Versionen geändert hat, steht im [Änderungsprotokoll](CHANGELOG.md). Die Versionsnummer steht in der App oben unter **Optionen**.
 
