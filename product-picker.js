@@ -278,7 +278,10 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
   search.addEventListener('input', () => { visibleLimit = PAGE_SIZE; clearError(); renderProducts(); });
   category.addEventListener('change', () => { visibleLimit = PAGE_SIZE; renderProducts(); });
   store.addEventListener('change', () => { clearError(); renderProducts(); });
-  for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.addEventListener('click', () => { mode = tab.dataset.productMode; visibleLimit = PAGE_SIZE; clearError(); renderProducts(); });
+  for (const tab of dialog.querySelectorAll('[data-product-mode]')) tab.addEventListener('click', () => {
+    if(mode!==tab.dataset.productMode)search.value='';
+    mode=tab.dataset.productMode;visibleLimit=PAGE_SIZE;clearError();renderProducts();
+  });
   $('product-picker-more').addEventListener('click', () => { const firstNew = visibleLimit; visibleLimit += PAGE_SIZE; renderProducts(); grid.querySelectorAll('.product-pick')[firstNew]?.focus({ preventScroll: true }); });
   $('product-picker-clear').addEventListener('click', () => { selection.clear(); $('product-picker-feedback').hidden = true; renderCart(); renderProducts(); });
   $('product-picker-count').addEventListener('click', () => { if (target === 'list' && selection.size) { $('product-picker-cart').open = true; $('product-picker-cart').scrollIntoView({ block: 'start', behavior: 'smooth' }); } });

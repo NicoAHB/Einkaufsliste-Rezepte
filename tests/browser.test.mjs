@@ -91,11 +91,18 @@ const sheetOpen = async page => {
   await page.evaluate(() => Promise.race([new Promise(resolve => setTimeout(resolve, 1500)),
     Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))]));
 };
+const recipeGroupOption = (page,tag) => page.locator('#recipe-groups-options button').filter({hasText:new RegExp(`^${tag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`)});
+const pickRecipeGroup = async (page,tag) => {
+  const option=recipeGroupOption(page,tag),section=option.locator('xpath=ancestor::details');
+  if(!await section.evaluate(node=>node.open))await section.locator('summary').click();
+  await option.click();
+};
+const openCustomRecipeGroup = async page=>{if(!await page.locator('#recipe-group-own').evaluate(node=>node.open))await page.locator('#recipe-group-own>summary').click();};
 const selectRecipeGroups = async (page,tags) => {
   await page.click('#recipe-groups-toggle');
-  for(const tag of tags){const option=page.locator('#recipe-groups-options button').filter({hasText:new RegExp(`^${tag}$`)});
-    if(await option.count()){if(await option.getAttribute('aria-pressed')!=='true')await option.click();}
-    else{await page.fill('#recipe-group-custom',tag);await page.click('#recipe-group-add');}
+  for(const tag of tags){const option=recipeGroupOption(page,tag);
+    if(await option.count()){if(await option.getAttribute('aria-pressed')!=='true')await pickRecipeGroup(page,tag);}
+    else{await openCustomRecipeGroup(page);await page.fill('#recipe-group-custom',tag);await page.click('#recipe-group-add');}
   }
   await page.click('#recipe-groups-done');
 };
@@ -4921,7 +4928,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context({config:dailyConfig});await ctx.route(`${PROXY}/**`,dailySite(1,{keywords:'Vegetarisch, Fleisch, Schnell'}));
     await open(page);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.waitForSelector('#daily-card h3:has-text("Tagesrezept 1")');const before=(await storedDemo(page)).recipes.length;
     await page.click('#daily-add');await page.waitForSelector('#recipe-dialog[open]');assert.equal(await page.locator('#daily-dialog[open]').count(),0);assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);assert.equal((await storedDemo(page)).recipes.length,before);
-    await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
+    await pickRecipeGroup(page,'Fleisch');await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
     assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Tagesrezept 1').tags,['Vegetarisch','Schnell']);assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -7061,16 +7068,36 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const pickRows = page => page.locator('#recipe-pick .pick-row strong').allTextContents();
 
+  test('2.128: eigene Rezepte bekommen aktuelle Gruppenvorschläge, die nur durch Antippen übernommen werden',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);
+    await page.fill('#recipe-form [name=name]','Tomatensuppe');await page.locator('#ingredient-editor [data-field=name]').fill('Tomaten');
+    const suggestions=page.locator('#recipe-groups-field [data-group-proposals]');await suggestions.getByRole('button',{name:'Vorschlag Vegan übernehmen',exact:true}).waitFor();assert.equal(await page.inputValue('#recipe-form [name=tags]'),'');
+    await suggestions.getByRole('button',{name:'Vorschlag Vegan übernehmen',exact:true}).click();await suggestions.getByRole('button',{name:'Vorschlag Suppe übernehmen',exact:true}).click();assert.deepEqual(await page.locator('#recipe-groups-selection .recipe-group-chip').allTextContents(),['Vegan','Suppe']);
+    await page.click('#recipe-groups-toggle');await sheetOpen(page);assert.equal(await page.locator('#recipe-groups-options details[open]').count(),0);assert.equal(await page.locator('#recipe-group-custom').isVisible(),false);assert.equal(await page.evaluate(()=>['INPUT','TEXTAREA'].includes(document.activeElement.tagName)),false);
+    await page.locator('#recipe-groups-menu').getByRole('button',{name:'Vegan abwählen',exact:true}).click();await pickRecipeGroup(page,'Vegetarisch');await page.click('#recipe-groups-done');await page.locator('#ingredient-editor [data-field=name]').fill('Lachs');
+    assert.equal(await suggestions.getByRole('button',{name:'Vorschlag Fisch übernehmen',exact:true}).count(),0,'Die aktuelle Auswahl wird nicht durch widersprüchliche Vorschläge ersetzt');assert.deepEqual(await page.locator('#recipe-groups-selection .recipe-group-chip').allTextContents(),['Suppe','Vegetarisch']);
+    await page.click('#recipe-groups-toggle');await page.locator('#recipe-groups-menu').getByRole('button',{name:'Vegetarisch abwählen',exact:true}).click();await page.click('#recipe-groups-done');await suggestions.getByRole('button',{name:'Vorschlag Fisch übernehmen',exact:true}).click();
+    await page.fill('#recipe-form [name=instructions]','Kochen.');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Tomatensuppe').tags,['Suppe','Fisch']);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  for(const [theme,glass,palette,width] of [['light',true,'gruen',390],['dark',true,'gruen',390],['light',true,'flieder',280],['dark',false,'rose',320]])test(`2.128: Import-Ladetext bleibt kontrastreich bei ${theme}, Glas ${glass}, ${palette}`,async()=>{
+    const {ctx,page,problems}=await context({config:{theme,glass,palette,glassBg:'schlicht',glassLevel:65,importProxy:'https://contrast.rezepte.workers.dev',publicProxy:false},context:{viewport:{width,height:844},colorScheme:theme}});
+    await ctx.route('https://contrast.rezepte.workers.dev/**',()=>new Promise(()=>{}));await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
+    await page.waitForFunction(()=>document.querySelector('#import-run').getAttribute('aria-busy')==='true');const colors=await page.locator('#import-run').evaluate(node=>({bg:getComputedStyle(node).backgroundColor,text:[...node.children].map(child=>getComputedStyle(child).color),opacity:getComputedStyle(node).opacity}));
+    const rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number);for(const color of colors.text)assert.ok(contrast(rgb(color),rgb(colors.bg))>=4.5,`${color} auf ${colors.bg}`);assert.equal(colors.opacity,'1');assert.equal(await page.locator('#import-run').isDisabled(),false);assert.ok(await horizontalOverflow(page)<=1);
+    if(theme==='light'&&width===390){await page.locator('#import-run').scrollIntoViewIfNeeded();await page.screenshot({path:'/workspace/work/sattplan-2128-import-kontrast.png'});}await page.click('#import-cancel');assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.deepEqual(problems,[]);await ctx.close();
+  });
+
   test('2.127: Rezeptgruppen öffnen ohne Tastatur, bleiben für Mehrfachauswahl offen und ersetzen widersprüchliche Ernährung',async()=>{
     const {ctx,page,problems}=await context();await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);
     assert.equal(await page.locator('#recipe-form [name=tags]').getAttribute('type'),'hidden');assert.ok(!(await page.textContent('#recipe-form')).includes('Tags (Komma)'));
     await page.click('#recipe-groups-toggle');assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
     assert.equal(await page.evaluate(()=>['INPUT','TEXTAREA'].includes(document.activeElement.tagName)),false);
-    const pick=name=>page.locator('#recipe-groups-options').getByRole('button',{name,exact:true});
-    await pick('Vegetarisch').click();await pick('Schnell').click();await pick('Suppe').click();assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
-    await pick('Fleisch').click();assert.equal(await pick('Vegetarisch').getAttribute('aria-pressed'),'false');assert.match(await page.textContent('#recipe-groups-feedback'),/Vegetarisch.*abgewählt/);
-    await pick('Vegetarisch').click();assert.equal(await pick('Fleisch').getAttribute('aria-pressed'),'false');
-    await page.fill('#recipe-group-custom','Omas Küche');await page.keyboard.press('Enter');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
+    const pick=name=>recipeGroupOption(page,name);
+    await pickRecipeGroup(page,'Vegetarisch');await pickRecipeGroup(page,'Schnell');await pickRecipeGroup(page,'Suppe');assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
+    await pickRecipeGroup(page,'Fleisch');assert.equal(await pick('Vegetarisch').getAttribute('aria-pressed'),'false');assert.match(await page.textContent('#recipe-groups-feedback'),/Vegetarisch.*abgewählt/);
+    await pickRecipeGroup(page,'Vegetarisch');assert.equal(await pick('Fleisch').getAttribute('aria-pressed'),'false');
+    await openCustomRecipeGroup(page);await page.fill('#recipe-group-custom','Omas Küche');await page.keyboard.press('Enter');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.equal(await page.locator('#recipe-groups-menu').isVisible(),true);
     await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-menu').isHidden(),true);assert.deepEqual(await page.locator('#recipe-groups-selection .recipe-group-chip').allTextContents(),['Schnell','Suppe','Vegetarisch','Omas Küche']);
     await page.fill('#recipe-form [name=name]','Gruppenmenü-Test');await page.locator('#ingredient-editor [data-field=name]').fill('Kartoffeln');await page.fill('#recipe-form [name=instructions]','Kochen.');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
     assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Gruppenmenü-Test').tags,['Schnell','Suppe','Vegetarisch','Omas Küche']);
@@ -7083,7 +7110,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const data=structuredClone(demo);data.recipes[0].tags=['Vegetarisch','Fleisch','Schnell','Eigene Gruppe'];const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator(`[data-recipe-id="${data.recipes[0].id}"]`);await card.locator('.recipe-details>summary').click();await card.locator('.recipe-edit').click();await sheetOpen(page);
     const before=await storedDemo(page);assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),4);
     await page.click('#recipe-form button[type=submit]');assert.equal(await page.locator('#recipe-dialog[open]').count(),1);assert.match(await page.textContent('#recipe-dialog [data-dialog-error]'),/passen nicht zusammen/);assert.deepEqual(await storedDemo(page),before);
-    await page.click('#recipe-groups-toggle');await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-warning').isHidden(),true);
+    await page.click('#recipe-groups-toggle');await pickRecipeGroup(page,'Fleisch');await page.click('#recipe-groups-done');assert.equal(await page.locator('#recipe-groups-warning').isHidden(),true);
     await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.id===data.recipes[0].id).tags,['Vegetarisch','Schnell','Eigene Gruppe']);assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -7097,10 +7124,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context({config:{theme,palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);await selectRecipeGroups(page,['Vegan','Vegetarisch','Glutenfrei','Laktosefrei','Schnell','Suppe','Mein Lieblingsrezept für Gäste']);
     assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#recipe-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);assert.equal(await page.locator('#recipe-groups-selection .recipe-group-chip').count(),7);
     await page.click('#recipe-groups-toggle');assert.ok(await page.locator('#recipe-groups-menu').evaluate(node=>node.scrollWidth<=node.clientWidth+1));
-    const menu=await page.locator('#recipe-groups-menu').boundingBox(),done=await page.locator('#recipe-groups-done').boundingBox();assert.ok(menu.height<=844*.6+1);assert.ok(done.y>=0&&done.y+done.height<=844,'Fertig bleibt ohne zusätzliche Suche im sichtbaren Menü');
-    const last=page.locator('#recipe-groups-options').getByRole('button',{name:'Low Carb',exact:true});await last.scrollIntoViewIfNeeded();const scroll=await page.locator('#recipe-groups-options').evaluate(node=>node.scrollTop);await last.click();assert.ok(await page.locator('#recipe-groups-options').evaluate(node=>node.scrollTop)>=scroll-1,'Eine Auswahl am Listenende springt nicht an den Anfang');
-    const doneAfter=await page.locator('#recipe-groups-done').boundingBox(),footer=await page.locator('#recipe-form>.sheet-actions').boundingBox();assert.ok(doneAfter.y+doneAfter.height<footer.y,'Fertig bleibt auch nach wachsenden Auswahlchips oberhalb der festen Speicherleiste');
-    if(width===390)await page.locator('#recipe-groups-field').screenshot({path:'/workspace/work/sattplan-2127-rezeptgruppen.png'});
+    assert.equal(await page.locator('#recipe-groups-menu').evaluate(node=>node.tagName),'DIALOG');assert.equal(await page.locator('#recipe-groups-options').evaluate(node=>getComputedStyle(node).overflowY),'visible','Eine einzige Scrollfläche verhindert abgeschnittene Optionen');
+    await pickRecipeGroup(page,'Low Carb');assert.equal(await recipeGroupOption(page,'Low Carb').getAttribute('aria-pressed'),'true');await page.locator('#recipe-groups-menu').getByRole('button',{name:'Vegan abwählen',exact:true}).click();assert.equal(await page.locator('#recipe-groups-menu .recipe-group-remove').count(),7);
+    for(const section of await page.locator('#recipe-groups-options details').all())if(await section.evaluate(node=>node.open))await section.locator('summary').click();await page.locator('#recipe-group-own').evaluate(node=>node.open=false);await page.locator('#recipe-groups-menu').evaluate(node=>node.scrollTop=0);
+    const done=await page.locator('#recipe-groups-done').boundingBox();assert.ok(done.y>=0&&done.y+done.height<=844);if(width===390)await page.screenshot({path:'/workspace/work/sattplan-2128-rezeptgruppen.png'});
     assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -7108,7 +7135,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context({config:{importProxy:'https://rezepte.test.workers.dev',publicProxy:false}});
     const html='<html><script type="application/ld+json">'+JSON.stringify({'@context':'https://schema.org','@type':'Recipe',name:'Import mit Gruppen',recipeYield:'2 Portionen',recipeIngredient:['1 Stück Kartoffel'],recipeInstructions:'Kochen.',keywords:'vegetarisch, Fleisch, schnell'})+'</script>'+('x'.repeat(300))+'</html>';
     await ctx.route('https://rezepte.test.workers.dev/**',route=>route.fulfill({status:200,contentType:'text/html',body:html}));await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');await page.waitForSelector('#recipe-dialog[open]');
-    assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);await page.click('#recipe-groups-toggle');await page.locator('#recipe-groups-options').getByRole('button',{name:'Fleisch',exact:true}).click();await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
+    assert.equal(await page.locator('#recipe-groups-warning').isVisible(),true);await page.click('#recipe-groups-toggle');await pickRecipeGroup(page,'Fleisch');await page.click('#recipe-groups-done');await page.click('#recipe-form button[type=submit]');await page.waitForSelector('#recipe-dialog',{state:'hidden'});
     assert.deepEqual((await storedDemo(page)).recipes.find(row=>row.name==='Import mit Gruppen').tags,['vegetarisch','schnell']);assert.deepEqual(problems,[]);await ctx.close();
   });
 
@@ -8167,6 +8194,34 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
     await page.waitForSelector('#daily-review-choices:not([hidden])'); return titles;
   }
+
+  for(const target of ['list','pantry'])test(`2.128: Reiterwechsel leert die Produktsuche in ${target} und erhält die Auswahl`,async()=>{
+    const data=pantryData278([{name:'Milch',available:true},{name:'Salz',available:true}]);data.productFavorites=[];const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);
+    if(target==='pantry')await openPantry(page,'all');else{await page.click('#open-products');await sheetOpen(page);await page.click('[data-product-mode=all]');}
+    await page.fill('#product-picker-search','Tomaten');await page.locator('.product-card[data-product=tomaten] .product-star').click();await page.locator('.product-card[data-product=tomaten] .product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');
+    for(const mode of target==='pantry'?['current','favorites','frequent','basics','recent','all']:['favorites','frequent','own','all']){
+      await page.fill('#product-picker-search','basilikum');await page.click(`[data-product-mode=${mode}]`);assert.equal(await page.inputValue('#product-picker-search'),'');assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');
+      if(mode==='current')assert.ok((await page.locator('.product-name').allTextContents()).includes('Milch'));
+    }
+    await page.fill('#product-picker-search','basilikum');await page.click('[data-product-mode=all]');assert.equal(await page.inputValue('#product-picker-search'),'basilikum','Ein Tipp auf den bereits aktiven Reiter ist kein Wechsel');assert.deepEqual((await storedDemo(page)).pantry,data.pantry);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
+  test('2.128: Tagesrückblick blättert über mehrere Tage und Lücken, bleibt offline erhalten und verändert den heutigen Fortschritt nicht',async()=>{
+    const {ctx,page,problems}=await context({context:{serviceWorkers:'allow',locale:'de-DE',timezoneId:'Europe/Berlin',viewport:{width:320,height:844}}});await withDayOffset(ctx);await open(page);await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>navigator.serviceWorker.controller);
+    const titles=new Map();for(const offset of [0,1,2,5]){
+      if(offset){await page.evaluate(value=>localStorage.setItem('test-day-offset',String(value)),offset);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});}
+      const names=await finishDailyForReview(page);titles.set(offset,names);await page.click('#daily-dialog [data-close]');
+    }
+    const before=await dailySaved(page),count=(await storedDemo(page)).recipes.length;assert.equal(before.history.length,4);await ctx.setOffline(true);await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);
+    await page.click('#daily-day-prev');assert.match(await page.textContent('#daily-card'),/Keine gespeicherte Auswahl/);assert.equal(await page.locator('#daily-day-prev').isDisabled(),false);
+    await page.click('#daily-day-prev');assert.match(await page.textContent('#daily-card'),/Keine gespeicherte Auswahl/);
+    await page.click('#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles.get(2)[0]);await page.click('#daily-review-next');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles.get(2)[1]);
+    await page.click('#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles.get(1)[0]);
+    await page.click('#daily-day-prev');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles.get(0)[0]);assert.equal(await page.locator('#daily-day-prev').isDisabled(),true);assert.equal(await page.locator('#daily-review-prev').isDisabled(),true);assert.ok(await horizontalOverflow(page)<=1);
+    await page.screenshot({path:'/workspace/work/sattplan-2128-tagesverlauf.png'});await page.click('#daily-add');assert.equal((await storedDemo(page)).recipes.length,count+1);assert.equal(await page.locator('#daily-add').isHidden(),true);
+    const after=await dailySaved(page);for(const field of ['day','index','decided','queue'])assert.deepEqual(after[field],before[field],`${field}: Rückblick verändert die heutige Auswahl nicht`);assert.equal(after.history[0].outcome[after.history[0].queue[0].key],'added');
+    await page.click('#daily-day-next');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles.get(1)[0]);await page.click('#daily-review-finish');await page.waitForSelector('#daily-review-choices:not([hidden])');assert.equal(await page.locator('#daily-day-next').isDisabled(),true);assert.deepEqual(problems.filter(text=>!/Failed to load resource/.test(text)),[]);await ctx.close();
+  });
   async function holdProduct(page, id) {
     const pick = page.locator(`.product-card[data-product="${id}"] .product-pick`);
     await pick.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));

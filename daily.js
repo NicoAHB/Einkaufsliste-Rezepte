@@ -103,18 +103,19 @@ export function draftFromBuiltin(entry) {
   return { name: entry.n, servings: entry.p, tags: entry.c ? [entry.c] : [], ingredients, instructions: `Gesamtzeit: ${durationLabel(entry.t)}\n\n${steps}`, warnings: [], via: 'schema', sourceUrl: '' };
 }
 
-/* Lokaler Tagesverlauf: nur die tatsächlichen Auswahlen von heute und gestern.
+/* Lokaler Tagesverlauf: alle tatsächlich gespeicherten Tagesauswahlen behalten.
    Keine neue Planung beim Zurückblättern und keine Änderung an „schon entschieden“. */
 export function dailyRecord(value) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value.day || '') || !Array.isArray(value.queue)) return null;
+  const stamp=Date.parse(`${value.day}T12:00:00Z`);if(!Number.isFinite(stamp)||new Date(stamp).toISOString().slice(0,10)!==value.day)return null;
   return JSON.parse(JSON.stringify({ day: value.day, source: value.source || '', queue: value.queue, index: value.index || 0,
     outcome: value.outcome || {}, drafts: value.drafts || {}, builtin: Boolean(value.builtin), found: value.found || 0 }));
 }
 export function dailyHistory(value, today) {
-  const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86400000).toISOString().slice(0, 10), records = new Map();
+  const records = new Map();
   for (const candidate of [...(Array.isArray(value?.history) ? value.history : []), value]) {
     const record = dailyRecord(candidate);
-    if (record && [yesterday, today].includes(record.day)) records.set(record.day, record);
+    if (record && record.day<=today) records.set(record.day, record);
   }
   return [...records.values()].sort((a, b) => a.day.localeCompare(b.day));
 }

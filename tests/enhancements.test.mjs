@@ -55,19 +55,25 @@ test('PDF: lange Rezeptnamen bleiben auch auf Notiz-Folgeseiten innerhalb der Se
     assert.ok(heading.x + textWidth(heading.text, heading.font, heading.size) <= PAGE.width - 42 + .01);
   }
 });
-test('Tagesverlauf: nur tatsächliche Auswahlen von heute und gestern, ohne Fortschritt zu verändern', () => {
+test('Tagesverlauf: alle tatsächlichen vergangenen Auswahlen bleiben erhalten, ohne Fortschritt zu verändern', () => {
   const old = { day: '2026-10-29', source: 'eingebaut', queue: [{ key: 'a', title: 'A' }], index: 1, outcome: { a: 'skipped' }, decided: ['a'] };
   const current = { day: '2026-10-30', source: 'eingebaut', queue: [{ key: 'b', title: 'B' }], index: 0, history: [dailyRecord(old), { day: '2026-10-28', queue: [{ key: 'gone' }] }] };
   const before = JSON.stringify(current), history = dailyHistory(current, '2026-10-30');
-  assert.deepEqual(history.map(row => row.day), ['2026-10-29', '2026-10-30']); assert.equal(JSON.stringify(current), before);
-  history[0].queue[0].title = 'geändert'; assert.equal(current.history[0].queue[0].title, 'A');
-  assert.deepEqual(dailyHistory(current, '2026-11-01'), []);
+  assert.deepEqual(history.map(row => row.day), ['2026-10-28','2026-10-29', '2026-10-30']); assert.equal(JSON.stringify(current), before);
+  history[1].queue[0].title = 'geändert'; assert.equal(current.history[0].queue[0].title, 'A');
+  assert.deepEqual(dailyHistory(current, '2026-11-01').map(row=>row.day),['2026-10-28','2026-10-29','2026-10-30']);
 });
 test('Tagesverlauf: Upgrade vom alten einzelnen Merkzettel bewahrt gestern', () => {
   const old = { day: '2026-10-29', source: 'eingebaut', queue: [{ key: 'old' }], index: 1, outcome: { old: 'added' } };
   assert.equal(dailyHistory(old, '2026-10-30')[0].queue[0].key, 'old');
   assert.deepEqual(dailyHistory({ day: '', queue: [] }, '2026-10-30'), []);
   assert.equal(dailyRecord({ day: '2026-10-30', queue: 'kaputt' }), null);
+});
+test('Tagesverlauf: auch lange Verläufe bleiben sortiert, pro Tag eindeutig und ohne erfundene oder zukünftige Tage',()=>{
+  const history=Array.from({length:400},(_,index)=>({day:new Date(Date.UTC(2025,0,1+index)).toISOString().slice(0,10),queue:[{key:`day-${index}`}],drafts:{}}));
+  const latest={...history.at(-1),index:1,outcome:{[history.at(-1).queue[0].key]:'added'},history:[...history,{day:'2025-02-30',queue:[]},{day:'2099-01-01',queue:[]}]};
+  const result=dailyHistory(latest,'2026-11-03');assert.equal(result.length,400);assert.equal(result[0].day,'2025-01-01');assert.equal(result.at(-1).index,1);assert.equal(result.at(-1).outcome['day-399'],'added');
+  assert.equal(dailyRecord({day:'2025-02-30',queue:[]}),null);
 });
 test('Tagesverlauf: Schnappschüsse enthalten das Rezept, keine rohen Webseiten oder fremde Felder', () => {
   const input = { name: 'Suppe', servings: 4, tags: ['schnell'], instructions: 'Kochen.', ingredients: [{ name: 'Linsen', quantity: 200, unit: 'g' }], raw: '<html>lang</html>', token: 'niemals', sourceUrl: 'https://example.com/rezept' };

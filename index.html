@@ -229,7 +229,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint">Version 2.127 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint">Version 2.128 · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -383,12 +383,9 @@
     <input name="id" type="hidden"><label>Name<input name="name" maxlength="120" required></label>
     <label class="recipe-portions-field">Portionen<input name="servings" inputmode="decimal" value="2" required></label>
     <div id="recipe-groups-field" class="recipe-groups-field"><input name="tags" type="hidden"><label for="recipe-groups-toggle">Rezeptgruppen</label>
-      <button id="recipe-groups-toggle" class="recipe-groups-toggle" type="button" aria-expanded="false" aria-controls="recipe-groups-menu"><span id="recipe-groups-selection" class="recipe-groups-selection"></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <button id="recipe-groups-toggle" class="recipe-groups-toggle" type="button" aria-expanded="false" aria-haspopup="dialog" aria-controls="recipe-groups-menu"><span id="recipe-groups-selection" class="recipe-groups-selection"></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <p id="recipe-groups-warning" class="dialog-error" role="alert" hidden></p>
-      <div id="recipe-groups-menu" class="recipe-groups-menu" hidden><p class="hint">Wähle alle passenden Gruppen. Unpassende Kombinationen werden beim Antippen automatisch ersetzt.</p><div id="recipe-groups-options"></div>
-        <div class="recipe-group-custom"><label for="recipe-group-custom">Eigene Gruppe (optional)<input id="recipe-group-custom" maxlength="30" autocomplete="off" placeholder="z. B. Familienküche"></label><button id="recipe-group-add" type="button" class="secondary" aria-label="Eigene Gruppe hinzufügen"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
-        <p id="recipe-groups-feedback" class="hint" role="status" aria-live="polite"></p><button id="recipe-groups-done" type="button" class="secondary">Fertig</button>
-      </div>
+      <div class="recipe-group-proposals" data-group-proposals hidden></div>
     </div>
     <div class="photo-field">
       <div id="photo-preview" class="photo-preview" hidden><img id="photo-preview-img" alt="Vorschau des Rezeptfotos"><button id="photo-remove" type="button" class="icon-button round" aria-label="Foto entfernen"><svg class="icon"><use href="#i-trash"/></svg></button></div>
@@ -401,16 +398,27 @@
     <details id="recipe-raw" hidden><summary>Erkannten Rohtext anzeigen</summary><pre id="recipe-raw-text"></pre></details>
     <button id="delete-recipe" class="recipe-manage-button recipe-delete danger" type="button" hidden>Rezept dauerhaft aus dem Rezeptbuch löschen</button>
     <div class="sheet-actions"><button type="submit">Rezept speichern</button><button id="discard-imported-recipe" class="secondary" type="button" hidden>Eingelesenes Rezept verwerfen</button></div></form></dialog>
+  <dialog id="recipe-groups-menu" aria-labelledby="recipe-groups-title"><div class="stack recipe-groups-body">
+    <div class="sheet-head"><h2 id="recipe-groups-title">Rezeptgruppen</h2><button type="button" data-group-close class="icon-button round" aria-label="Gruppenauswahl schließen"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <p class="recipe-group-help">Mehrere möglich. Zum Abwählen erneut antippen.</p>
+    <div class="recipe-group-selected" data-group-selection aria-label="Ausgewählte Gruppen"></div>
+    <p class="dialog-error" data-group-warning role="alert" hidden></p>
+    <div class="recipe-group-proposals" data-group-proposals hidden></div>
+    <div id="recipe-groups-options"></div>
+    <details id="recipe-group-own" class="recipe-group-section"><summary>Eigene Gruppe hinzufügen</summary><div class="recipe-group-custom"><label for="recipe-group-custom">Name der Gruppe<input id="recipe-group-custom" maxlength="30" autocomplete="off" placeholder="z. B. Familienküche"></label><button id="recipe-group-add" type="button" class="secondary" aria-label="Eigene Gruppe hinzufügen"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div></details>
+    <p id="recipe-groups-feedback" class="hint" role="status" aria-live="polite"></p><div class="sheet-actions"><button id="recipe-groups-done" type="button" class="primary-action">Fertig</button></div>
+  </div></dialog>
   <dialog id="template-dialog"><div class="stack"><div class="sheet-head"><h2>Vorlagen</h2><button type="button" data-close="template-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p class="hint">Eine Vorlage ist eine gespeicherte Liste, z. B. „Wocheneinkauf“. „Auf die Liste“ trägt alle Artikel ein; was schon offen auf der Liste steht, wird zusammengezählt. Vorlagen sehen beide Personen.</p>
     <ul id="template-list" class="template-list"></ul>
     <form id="template-form" class="stack"><label>Aktuelle Liste als Vorlage speichern<input name="name" maxlength="60" placeholder="z. B. Wocheneinkauf" required autocomplete="off"></label>
       <p id="template-hint" class="hint"></p><button type="submit">Als Vorlage speichern</button></form></div></dialog>
   <dialog id="daily-dialog"><div class="stack"><div class="sheet-head"><h2>Rezepte des Tages</h2><button type="button" data-close="daily-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div id="daily-days" class="daily-day-nav" hidden><button id="daily-day-prev" type="button" class="secondary" aria-label="Rezepte des vorherigen Tages anschauen"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg></button><strong id="daily-day-label" aria-live="polite"></strong><button id="daily-day-next" type="button" class="secondary" aria-label="Rezepte des nächsten Tages anschauen"><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button></div>
     <p id="daily-progress" class="hint" role="status"></p>
     <div id="daily-review-nav" hidden><div class="daily-review-arrows"><button id="daily-review-prev" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg>Zurück</button><button id="daily-review-next" type="button"><span>Weiter</span><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button></div><button id="daily-review-finish" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Zur Übersicht zurück</button></div>
     <div id="daily-card" class="daily-card" aria-live="polite"></div>
-    <div id="daily-review-choices" class="stack daily-review-choices" hidden><button id="daily-review-yesterday" type="button" class="secondary">Rezepte von gestern erneut anschauen</button><button id="daily-review-today" type="button" class="secondary">Rezepte von heute erneut anschauen</button><p id="daily-review-unavailable" class="hint" hidden>Von gestern ist auf diesem Gerät noch keine Auswahl gespeichert.</p></div>
+    <div id="daily-review-choices" class="stack daily-review-choices" hidden><button id="daily-review-yesterday" type="button" class="secondary">Vergangene Tagesrezepte anschauen</button><button id="daily-review-today" type="button" class="secondary">Rezepte von heute erneut anschauen</button><p id="daily-review-unavailable" class="hint" hidden>Für frühere Tage ist auf diesem Gerät noch keine Auswahl gespeichert.</p></div>
 
     <p id="daily-note" class="hint" role="status"></p>
     <div class="daily-actions"><button id="daily-skip" class="secondary" type="button">Überspringen</button><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button></div></div></dialog>

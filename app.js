@@ -51,7 +51,7 @@ import { namesFrom, rankRecipes, indexNames, availability, required, canCookReci
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
-const recipeTagPicker=mountRecipeTagPicker({field:$('#recipe-groups-field'),input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[])});
+const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
 const CONFIG_KEY = 'einkauf-settings-v1';
 // Nur neue Geräte starten mit diesen Werten; gespeicherte Einstellungen behalten ihre bisherigen Vorgaben.
 // Die Startwerte vor dem ersten Anzeigen müssen zu theme.js passen.
@@ -1978,7 +1978,7 @@ function setImportBusy(busy) {
   const form=$('#import-form'),run=$('#import-run');
   stopImportHold();
   for(const field of form.querySelectorAll('input,textarea,[data-source]')) field.disabled=busy;
-  // Der Knopf bleibt bedienbar: grau bedeutet hier Laden, langes Halten bedeutet Abbrechen.
+  // Der Knopf bleibt beim Laden bedienbar; langes Halten bricht den Import ab.
   run.disabled=false;run.type=busy?'button':'submit';
   $('#import-cancel').hidden = !busy;
   run.classList.toggle('is-loading',busy);run.setAttribute('aria-busy',String(busy));
@@ -2215,20 +2215,33 @@ async function fetchDailyDraft(item, record) {
   saveDaily(); return draft;
 }
 function dailyReviewChoices() {
-  const d = loadDaily(), records = dailyHistory(d, localDay()), yesterday = addDays(localDay(), -1);
+  const d = loadDaily(), records = dailyHistory(d, localDay());
   $('#daily-review-choices').hidden = false;
   $('#daily-review-today').disabled = !records.some(row => row.day === localDay() && row.queue.length);
-  $('#daily-review-yesterday').disabled = !records.some(row => row.day === yesterday && row.queue.length);
+  $('#daily-review-yesterday').disabled = !records.some(row => row.day < localDay() && row.queue.length);
   $('#daily-review-unavailable').hidden = !$('#daily-review-yesterday').disabled;
+}
+function dailyDayTitle(day){
+  if(day===localDay())return 'Heute';if(day===addDays(localDay(),-1))return 'Gestern';
+  return new Intl.DateTimeFormat('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${day}T12:00:00`));
+}
+function renderDailyDays(day=localDay()){
+  const records=dailyHistory(loadDaily(),localDay());$('#daily-days').hidden=false;
+  $('#daily-day-label').textContent=day===localDay()||day===addDays(localDay(),-1)?`${dailyDayTitle(day)} · ${new Intl.DateTimeFormat('de-DE',{day:'2-digit',month:'2-digit'}).format(new Date(`${day}T12:00:00`))}`:dailyDayTitle(day);
+  $('#daily-day-prev').disabled=!records.some(row=>row.day<day&&row.queue.length);
+  $('#daily-day-next').disabled=day>=localDay();
 }
 async function showDailyReview() {
   const review = dailyReview, record = review?.record;
-  if (!review || review.scope !== namespace() || ![localDay(), addDays(localDay(), -1)].includes(record.day)) { dailyReview = null; return showDaily(); }
+  if (!review || review.scope !== namespace() || record.day>localDay()) { dailyReview = null; return showDaily(); }
   const ticket = ++dailyTicket, item = record.queue[review.index]; dailyButtons(); $('#daily-dialog').scrollTop = 0;
+  renderDailyDays(record.day);
   $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = false;
   $('#daily-review-prev').disabled = review.index <= 0; $('#daily-review-next').disabled = review.index >= record.queue.length - 1;
-  $('#daily-progress').textContent = `${record.day === localDay() ? 'Heute' : 'Gestern'} erneut · Rezept ${review.index + 1} von ${record.queue.length}`;
-  $('#daily-note').textContent = ''; $('#daily-card').replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
+  $('#daily-progress').textContent = `${dailyDayTitle(record.day)} erneut${item?` · Rezept ${review.index + 1} von ${record.queue.length}`:''}`;
+  $('#daily-note').textContent = '';
+  if(!item){$('#daily-card').replaceChildren(element('h3','Keine gespeicherte Auswahl'),element('p','Für diesen Tag sind auf diesem Gerät keine Tagesrezepte gespeichert. Mit den Tagespfeilen kannst du weiterblättern.'));return;}
+  $('#daily-card').replaceChildren(element('h3', item.title), element('p', 'Rezept wird geladen …', 'hint'));
   try {
     const draft = await dailyDraft(item, record); if (ticket !== dailyTicket) return;
     fillDailyCard(draft, item, true); const known = dailyKnown(item, draft);
@@ -2237,9 +2250,10 @@ async function showDailyReview() {
   } catch (error) { if (ticket !== dailyTicket) return; $('#daily-note').textContent = error.message; dailyButtons({ retry: true }); }
 }
 function openDailyReview(day) {
+  if(day>localDay())return;
   const record = dailyHistory(loadDaily(), localDay()).find(row => row.day === day);
-  if (!record?.queue.length) return;
-  dailyReview = { record, index: 0, scope: namespace() }; return showDailyReview();
+  if(day===localDay()&&!record?.queue.length){dailyReview=null;return showDaily();}
+  dailyReview = { record:record||{day,queue:[],drafts:{},outcome:{}}, index: 0, scope: namespace() }; return showDailyReview();
 }
 function dailyButtons({ add = false, skip = false, retry = false } = {}) {
   $('#daily-add').hidden = !add; $('#daily-skip').hidden = !skip; $('#daily-retry').hidden = !retry;
@@ -2267,6 +2281,7 @@ function fillDailyCard(draft, item, full = false) {
 }
 async function showDaily() {
   loadDaily(); if (dailyReview) return showDailyReview();
+  renderDailyDays();
   $('#daily-review-choices').hidden = true; $('#daily-review-nav').hidden = true;
   const ticket = ++dailyTicket, card = $('#daily-card'), progress = $('#daily-progress'), note = $('#daily-note');
   note.textContent = ''; dailyButtons();
@@ -2278,7 +2293,7 @@ async function showDaily() {
     // Was inzwischen schon in den eigenen Rezepten steht (z. B. per Import), wird nicht noch einmal vorgeschlagen.
     const known = knownRecipeKeys();
     while (d.index < d.queue.length && known.has(d.queue[d.index].key)) { d.outcome[d.queue[d.index].key] = 'known'; d.index += 1; }
-    saveDaily(); renderDailyButton();
+    saveDaily(); renderDailyButton();renderDailyDays();
     if (!d.queue.length) {
       card.replaceChildren(element('p', d.builtin ? 'Heute gibt es keine neuen Vorschläge. Morgen geht es weiter.' : d.found ? 'Alle Rezepte dieser Seite hast du schon gesehen oder in deinen Rezepten. Morgen gibt es neue.' : 'Auf der Seite wurden keine Rezept-Links gefunden. Prüfe den Link in den Einstellungen. Seiten, die ihre Rezepte erst per JavaScript nachladen, kann die App nicht lesen.'));
       dailyButtons(); dailyReviewChoices(); return;
@@ -2351,6 +2366,8 @@ $('#daily-retry').addEventListener('click', () => guard(() => showDaily()));
 $('#daily-dialog').addEventListener('close', () => { dailyTicket += 1; dailyReview = null; });
 $('#daily-review-today').addEventListener('click', () => guard(() => openDailyReview(localDay())));
 $('#daily-review-yesterday').addEventListener('click', () => guard(() => openDailyReview(addDays(localDay(), -1))));
+$('#daily-day-prev').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-prev').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),-1));}));
+$('#daily-day-next').addEventListener('click',()=>guard(()=>{if(!$('#daily-day-next').disabled)return openDailyReview(addDays(dailyReview?.record.day||localDay(),1));}));
 $('#daily-review-prev').addEventListener('click', () => { if (dailyReview?.index > 0) { dailyReview.index--; showDailyReview(); } });
 $('#daily-review-next').addEventListener('click', () => { if (dailyReview && dailyReview.index < dailyReview.record.queue.length - 1) { dailyReview.index++; showDailyReview(); } });
 $('#daily-review-finish').addEventListener('click', () => { dailyReview = null; showDaily(); });
