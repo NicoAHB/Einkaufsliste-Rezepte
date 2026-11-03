@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.142: „Ausgabe nachträglich eintragen“ in Hellgrün
+
+- Der Knopf oben unter **Ausgaben** heißt jetzt **Ausgabe nachträglich eintragen**. Der Alltagsweg ist „Einkauf beenden“ mit dem Betrag; dieser Knopf ist für Nachträge.
+- Er ist nicht mehr kräftig grün gefüllt, sondern hellgrün mit grüner Schrift und grünem Rand, wie die Aktionen der Rezeptkarten (Einkaufen, Kochen) und der gewählte Filter. Lesbarkeit hell und dunkel mindestens 4,5 : 1.
+- Er steht immer in einer eigenen Zeile unter der Überschrift (bisher nur auf sehr schmalen Telefonen), damit der längere Text in eine Zeile passt.
+- Anleitung angepasst. Das Fenster heißt weiter „Ausgabe eintragen“.
+
+Offline-Paket `einkauf-shell-v154`.
+
 ## Neu in Version 2.141: „Optionen“ statt „Einstellungen“ – ruhige untere Leiste
 
 Die fünf Symbole standen schon seit 2.139 rechnerisch in gleichen Abständen, wirkten aber ungleich: Das Auge misst die Lücken zwischen den Wörtern, und „Einstellungen“ füllte seinen Reiter bis an den Rand (bei 390 px nur 12 px Abstand zu „Ausgaben“, zwischen „Plan“ und „Ausgaben“ dagegen 36 px). Außerdem mussten dafür alle Beschriftungen auf 10,3–10,7 px schrumpfen.
