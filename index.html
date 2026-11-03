@@ -268,6 +268,8 @@
         <progress id="storage-bar" max="100" value="0"></progress>
         <p id="storage-text"></p>
         <p id="storage-hint" class="hint"></p>
+        <p id="device-storage" class="hint" role="status"></p>
+        <button id="clear-daily-history" class="secondary" type="button">Älteren Tagesverlauf auf diesem Gerät löschen</button>
         <button id="compact-now" class="secondary" type="button">Jetzt aufräumen</button>
         <button id="clean-photos" class="secondary" type="button">Nicht mehr genutzte Fotos löschen</button>
         <p id="storage-note" class="hint" role="status"></p>
@@ -301,6 +303,10 @@
     <p>Die auf diesem Gerät gespeicherten Daten lassen sich nicht mehr lesen. Der gemeinsame Stand auf GitHub ist davon nicht betroffen.</p>
     <p class="hint">1. Sichere den lokalen Speicher als Datei. Darin stehen auch Änderungen, die noch nicht gesendet wurden. 2. Verwirf danach den lokalen Stand. Die App lädt dann neu.</p>
     <div class="sheet-actions"><button id="storage-recovery-save" type="button" class="secondary">Lokalen Speicher als Datei sichern</button><button id="storage-recovery-reload" type="button">Lokalen Stand verwerfen und neu laden</button></div></div></dialog>
+  <dialog id="incoming-add-dialog" aria-labelledby="incoming-add-title" aria-describedby="incoming-add-text"><div class="stack"><div class="sheet-head"><h2 id="incoming-add-title">Aus dem Link hinzufügen?</h2><button type="button" data-close="incoming-add-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <ul id="incoming-add-list" class="incoming-add-list"></ul>
+    <p id="incoming-add-text" class="hint"></p>
+    <div class="sheet-actions"><button id="incoming-add-confirm" type="button">Hinzufügen</button><button type="button" class="secondary" data-close="incoming-add-dialog">Abbrechen</button></div></div></dialog>
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><h3>Geschäfte & Listen</h3><button id="welcome-stores" class="secondary" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte auswählen</button><button type="submit">Los geht’s</button></form></dialog>
   <dialog id="product-picker-dialog" aria-labelledby="product-picker-title"><form id="product-picker-form" novalidate>
     <div class="sheet-head"><h2 id="product-picker-title">Produkte auswählen</h2><div class="product-picker-head-actions"><button id="product-picker-help-toggle" type="button" class="icon-button round" aria-label="Hilfe zur Produktauswahl anzeigen" aria-expanded="false" aria-controls="product-picker-help"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg></button><button type="button" data-close="product-picker-dialog" class="icon-button round" aria-label="Produktauswahl schließen"><svg class="icon"><use href="#i-x"/></svg></button></div></div>

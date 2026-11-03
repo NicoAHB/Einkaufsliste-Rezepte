@@ -31,7 +31,7 @@ import { bindWishHold, hasWishDetails, productLink } from './wishes.js';
 import { currentIds, newFromOthers } from './news.js';
 import { aliasKey, parseReceipt, storeForChain } from './receipt.js';
 import { NO_AMOUNT, firstUrl, hostLabel, htmlToText, ingredientLabel, parseIngredientLine, parseRecipeText, recipeFromAnyText, recipeFromHtml, webUrl, recipeTagKey, uniqueRecipeTags } from './recipe-import.js';
-import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerHost } from './page-source.js';
+import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerAddress, workerHost } from './page-source.js';
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
@@ -176,7 +176,7 @@ function guard(action) {
 }
 function storageWrite(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
-  catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Bitte Speicher freigeben und erneut versuchen. Diese Änderung wurde nicht übernommen.'); }
+  catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Diese Änderung wurde nicht übernommen. Unter Einstellungen → Datenumfang siehst du, was Platz belegt, und kannst den älteren Tagesverlauf löschen oder aufräumen.'); }
 }
 function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; confirmAutoSave(document.activeElement); }
 // Erst zusammenführen, dann schreiben: So wird nie eine Kombination gespeichert, die sich beim nächsten Start nicht laden ließe.
@@ -269,7 +269,7 @@ function tab(name) {
   if (name !== 'shopping' && selecting) setSelecting(false);
   if (name === 'settings') renderStorage();
   if (name === 'spending') renderSpending();
-  if (name === 'recipes') prefetchDaily();
+  if (name === 'recipes') { if (recipesStale) renderRecipes(); prefetchDaily(); }
   syncShopAwake(); syncChrome();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
@@ -400,7 +400,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); renderQuarantine(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
+  renderStoreChips(); renderItems(); renderRecipesWhenVisible(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); renderQuarantine(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
   if ($('#plan-recipe-dialog').open) renderPlanRecipe();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
@@ -1143,7 +1143,15 @@ function chip(text, pressed, action) {
   node.addEventListener('click', action);
   return node;
 }
+/* Die Rezeptliste ist die aufwendigste Ansicht (jede Karte prüft ihre Zutaten gegen Vorrat und Einkaufsliste). Ist der Reiter
+   nicht sichtbar, wird sie erst beim nächsten Öffnen neu gezeichnet; so bleibt das Abhaken auch bei vielen Rezepten schnell. */
+let recipesStale = false;
+function renderRecipesWhenVisible() {
+  if ($('#recipes').hidden) { recipesStale = true; return; }
+  renderRecipes();
+}
 function renderRecipes() {
+  recipesStale = false;
   recipeAvailabilitySnapshot=recipeStockSignature();
   const search = $('#recipe-search').value.trim().toLocaleLowerCase('de');
   const recipes = active(state.recipes);
@@ -2628,7 +2636,14 @@ async function loadWorkspace() {
     if (namespace() === 'einkauf-demo-v1' && all.length) saveLocal(merge(base, all), []);
     else if (ops.length) saveLocal(base, all);
   }
-  render(); restingStatus(); if (connected()) await sync(true);
+  render(); restingStatus(); requestPersistentStorage(); if (connected()) await sync(true);
+}
+// Bittet den Browser, die lokalen Daten nicht bei Speicherknappheit selbst zu löschen (wo unterstützt, z. B. als Home-Bildschirm-App).
+let persistAsked = false;
+function requestPersistentStorage() {
+  if (persistAsked || !ready || !navigator.storage?.persist) return;
+  persistAsked = true;
+  navigator.storage.persisted?.().then(already => already || navigator.storage.persist()).catch(() => {});
 }
 function fillSettings() {
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token', 'tokenExpires']) {
@@ -3544,7 +3559,7 @@ function scheduleStockRefresh(){
 }
 function recipeStockSignature(){return JSON.stringify([localDay(),[...pantryKeys(state.pantry)].sort()]);}
 function refreshTimedStock(){
-  renderPantry();if(recipeAvailabilitySnapshot!==recipeStockSignature())renderRecipes();productPicker?.refresh();
+  renderPantry();if(recipeAvailabilitySnapshot!==recipeStockSignature())renderRecipesWhenVisible();productPicker?.refresh();
   if($('#plan-recipe-dialog').open)renderPlanRecipe();
   if($('#cookable-dialog').open)renderCookable();
   refreshRecipePick();
@@ -3620,7 +3635,26 @@ function renderStorage() {
   $('#storage-text').textContent = `${kb(bytes)} von ${kb(LIMIT_BYTES)} belegt (${percent} %)`;
   $('#storage-hint').textContent = result?.changed ? `Aufräumbar: ${entries(result.removed)} Einträge, etwa ${kb(result.before - result.after)}.` : 'Nichts zum Aufräumen.';
   $('#clean-photos').hidden = !connected();
+  renderDeviceStorage();
 }
+/* Browserspeicher dieses Geräts (localStorage, meist rund 5 MB je Adresse): Familiendaten mit Warteschlange, Tagesverlauf und übrige Merkzettel. */
+function renderDeviceStorage() {
+  const sizes = { data: 0, daily: 0, other: 0 };
+  try {
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index), bytes = ((localStorage.getItem(key) || '').length + key.length) * 2;
+      sizes[key.startsWith('einkauf-data-v1:') || key === 'einkauf-demo-v1' ? 'data' : key.startsWith('einkauf-daily:') ? 'daily' : 'other'] += bytes;
+    }
+  } catch { $('#device-storage').textContent = ''; return; }
+  const mb = bytes => `${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(bytes / 1048576)} MB`;
+  const total = sizes.data + sizes.daily + sizes.other;
+  $('#device-storage').textContent = `Auf diesem Gerät belegt: ${mb(total)} von meist etwa 5 MB (Daten und Warteschlange ${mb(sizes.data)}, Tagesverlauf ${mb(sizes.daily)}, Sonstiges ${mb(sizes.other)}).`;
+  $('#clear-daily-history').hidden = sizes.daily < 2048;
+}
+$('#clear-daily-history').addEventListener('click', () => guard(() => {
+  if (!confirm('Den Tagesverlauf früherer Tage auf diesem Gerät löschen? Die heutigen Rezepte des Tages und deine Rezeptsammlung bleiben erhalten.')) return;
+  const current = loadDaily(); current.history = []; saveDaily(); renderDeviceStorage(); showNotice('Älterer Tagesverlauf gelöscht');
+}));
 function compactNow() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (connected()) { compactRequested = true; $('#storage-note').textContent = 'Räume auf …'; return sync(true); }
@@ -3718,7 +3752,11 @@ $('#syncline').addEventListener('click', () => guard(() => {
   if (connected() && tokenWarning() === null) return sync(true);
   tab('settings'); $('#connection-details').open = true;   // ohne Verbindung oder bei ablaufendem Token: dorthin, wo man ihn einträgt
 }));
-$('#reload').addEventListener('click', () => location.reload());
+let waitingWorker = null, reloadRequested = false;
+$('#reload').addEventListener('click', () => {
+  if (waitingWorker?.state === 'installed') { reloadRequested = true; waitingWorker.postMessage('skipWaiting'); setTimeout(() => location.reload(), 3000); }
+  else location.reload();
+});
 for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
 $('#item-form').elements.name.addEventListener('input', () => { delete $('#item-form').dataset.keepOpen; renderQuickPick(); });
@@ -4210,7 +4248,7 @@ $('#settings-form').addEventListener('submit', event => { event.preventDefault()
   updateSaveButtons();
 }); });
 $('#import-settings-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
-  const form = event.currentTarget, text = form.elements.importProxy.value.trim(), proxy = workerHost(text);
+  const form = event.currentTarget, text = form.elements.importProxy.value.trim(), proxy = workerAddress(text);
   if (text && !proxy) throw new Error('Bitte die Adresse deines Cloudflare-Workers eingeben. Sie beginnt mit https:// und endet auf .workers.dev.');
   const dailyText = form.elements.dailySource.value.trim(), dailyLink = webUrl(dailyText);
   if (dailyText && !dailyLink) throw new Error('Bitte bei „Rezepte des Tages“ einen vollständigen Link mit https:// eingeben oder das Feld leeren.');
@@ -4219,7 +4257,7 @@ $('#import-settings-form').addEventListener('submit', event => { event.preventDe
   form.elements.importProxy.value = proxy; updateSaveButtons(); confirmFormSave(form, 'Import-Einstellungen gespeichert'); message(); status('Import-Einstellungen gespeichert', 'ok'); setTimeout(restingStatus, 2500);
 }); });
 $('#test-proxy').addEventListener('click', () => guard(async () => {
-  const proxy = workerHost($('#import-settings-form').elements.importProxy.value);
+  const proxy = workerAddress($('#import-settings-form').elements.importProxy.value);
   if (!proxy) throw new Error('Bitte zuerst die Adresse deines Hilfsdienstes eintragen (https://…workers.dev).');
   saveConfig({ ...config, importProxy: proxy, importSavedAt: new Date().toISOString() }); updateSaveButtons();
   try { await fetchRecipePage('https://example.com/', { workerUrl: proxy, allowPublic: false }); }
@@ -4354,7 +4392,7 @@ $('#welcome-form').addEventListener('submit', event => { event.preventDefault();
   const next = { ...config, actor }; if (actor !== config.actor) { delete next.memberId; delete next.memberScope; }
   saveConfig(next); fillSettings(); render(); $('#welcome').close();
   if (deferredImport) { const link = deferredImport; deferredImport = null; openImport({ url: link }); }
-  if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => addFromLink(pending)); }
+  if (deferredAdd) { const pending = deferredAdd; deferredAdd = null; guard(() => askAddFromLink(pending)); }
 }); });
 
 // Link aus dem Teilen-Dialog oder aus einem iOS-Kurzbefehl: …/?import=https://…
@@ -4365,12 +4403,30 @@ function incomingAdd() {
   history.replaceState(null, '', location.pathname);
   return text.trim() ? { text: text.slice(0, 2000), store: (params.get('store') || '').slice(0, 80) } : null;
 }
-function addFromLink({ text, store }) {
+function linkRows({ text, store }) {
   const aliases = appliedAliases();
   const rows = text.split(/[\n;]+|,(?!\d)|\s+und\s+/i).map(part => part.trim()).filter(Boolean).slice(0, 30).map(part => parseIngredientLine(part)).filter(Boolean)
     .map(row => ({ name: aliases.find(alias => alias.from === aliasKey(row.name))?.name || row.name, quantity: row.unit === NO_AMOUNT ? 1 : row.quantity, unit: row.unit === NO_AMOUNT ? 'Stück' : row.unit }));
   if (!rows.length) throw new Error('Im Link stand nichts zum Hinzufügen.');
   const wanted = productKey(store), match = wanted ? active(state.stores).find(row => productKey(row.name).includes(wanted)) : null;
+  return { rows, match };
+}
+// Ein Link kann von überall kommen (Nachricht, Webseite). Deshalb zuerst zeigen, was er hinzufügen würde; ein Tipp bestätigt.
+let incomingRows = null;
+function askAddFromLink(adding) {
+  const { rows, match } = linkRows(adding);
+  incomingRows = adding;
+  $('#incoming-add-list').replaceChildren(...rows.map(row => element('li', `${format(row.quantity)} ${row.unit} ${row.name}`)));
+  $('#incoming-add-text').textContent = `${rows.length === 1 ? 'Dieser Artikel kommt' : `Diese ${rows.length} Artikel kommen`} ${match ? `bei ${match.name} ` : ''}auf die Einkaufsliste${connected() ? ' und werden mit der Familie geteilt' : ''}. Bestätige nur Links, die du selbst geöffnet hast, z. B. über einen Kurzbefehl oder Siri.`;
+  if (!$('#incoming-add-dialog').open) $('#incoming-add-dialog').showModal();
+}
+$('#incoming-add-confirm').addEventListener('click', () => guard(() => {
+  const adding = incomingRows; incomingRows = null; $('#incoming-add-dialog').close();
+  if (adding) addFromLink(adding);
+}));
+$('#incoming-add-dialog').addEventListener('close', () => { incomingRows = null; });
+function addFromLink(adding) {
+  const { rows, match } = linkRows(adding);
   lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
   const result = addToList(rows, match?.id || '', config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory());
   commit(result.ops, `Hinzugefügt: ${rows.map(row => row.name).join(', ')}${match ? ` (${match.name})` : ''}${connected() ? '' : ' · nur auf diesem Gerät: hier ist GitHub nicht verbunden'}`);
@@ -4412,7 +4468,7 @@ async function start() {
     prunePhotos(usedPhotos()).catch(() => {});
     if (!config.actor) { deferredImport = incoming; deferredAdd = adding; $('#welcome').showModal(); }
     else {
-      if (adding && ready) guard(() => addFromLink(adding));
+      if (adding && ready) guard(() => askAddFromLink(adding));
       if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
     }
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
@@ -4422,8 +4478,12 @@ async function start() {
     if ('serviceWorker' in navigator) {
       // Neue App-Version: Hinweis statt stillem Wechsel mitten in einer Eingabe.
       const hadController = Boolean(navigator.serviceWorker.controller);
-      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('#update-banner').hidden = false; });
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloadRequested) location.reload(); else if (hadController) $('#update-banner').hidden = false; });
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+        // Eine fertig geladene neue Version wartet (siehe sw.js), bis „Neu laden“ angetippt wird.
+        const offer = worker => { if (worker && navigator.serviceWorker.controller) { waitingWorker = worker; $('#update-banner').hidden = false; } };
+        offer(registration.waiting);
+        registration.addEventListener('updatefound', () => { const worker = registration.installing; worker?.addEventListener('statechange', () => { if (worker.state === 'installed') offer(worker); }); });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) registration?.update?.().catch(() => {}); });
       }).catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
     }

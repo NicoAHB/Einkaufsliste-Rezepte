@@ -4821,3 +4821,13 @@ button.recipe-delete { color:var(--danger) }
   flex-direction:column;
   gap:.5rem;
 }
+.incoming-add-list {
+  margin:0;
+  padding-left:1.2rem;
+  font-weight:600;
+}
+#incoming-add-dialog .sheet-actions {
+  display:flex;
+  flex-direction:column;
+  gap:.5rem;
+}

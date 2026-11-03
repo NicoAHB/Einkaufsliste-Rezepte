@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import worker from '../worker/recipe-proxy.js';
-import { fetchRecipePage, importRoutes, publicProxyEnabled, workerHost } from '../page-source.js';
+import { fetchRecipePage, importRoutes, publicProxyEnabled, workerAddress, workerHost, workerKey } from '../page-source.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -105,4 +105,14 @@ test('Importabbruch: während der Wiederholungspause startet kein weiterer Abruf
   globalThis.fetch=async()=>{calls++;setTimeout(()=>controller.abort(),10);return new Response('vorübergehend',{status:502});};
   await assert.rejects(fetchRecipePage('https://example.com/rezept',{allowPublic:true,retryDelayMs:80},controller.signal),{name:'AbortError'});
   assert.equal(calls,1);
+});
+
+test('Eigener Hilfsdienst mit Schlüssel: wird gespeichert und bei jedem Abruf mitgeschickt', () => {
+  assert.equal(workerKey('https://r.n.workers.dev/?key=geheim%201'), 'geheim 1');
+  assert.equal(workerKey('https://evil.example.com/?key=x'), '');
+  assert.equal(workerAddress('https://r.n.workers.dev/pfad?key=abc&x=1'), 'https://r.n.workers.dev/?key=abc');
+  assert.equal(workerAddress('https://r.n.workers.dev/'), 'https://r.n.workers.dev');
+  assert.equal(workerAddress('http://r.n.workers.dev/?key=abc'), '');
+  const [route] = importRoutes('https://a.de/rezept', { workerUrl: 'https://r.n.workers.dev/?key=a%26b' });
+  assert.equal(route.address, 'https://r.n.workers.dev/?key=a%26b&url=https%3A%2F%2Fa.de%2Frezept');
 });
