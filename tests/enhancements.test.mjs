@@ -69,10 +69,10 @@ test('Tagesverlauf: Upgrade vom alten einzelnen Merkzettel bewahrt gestern', () 
   assert.deepEqual(dailyHistory({ day: '', queue: [] }, '2026-10-30'), []);
   assert.equal(dailyRecord({ day: '2026-10-30', queue: 'kaputt' }), null);
 });
-test('Tagesverlauf: auch lange Verläufe bleiben sortiert, pro Tag eindeutig und ohne erfundene oder zukünftige Tage',()=>{
+test('Tagesverlauf: auch lange Verläufe bleiben sortiert, pro Tag eindeutig, ohne erfundene oder zukünftige Tage und auf ein Jahr begrenzt',()=>{
   const history=Array.from({length:400},(_,index)=>({day:new Date(Date.UTC(2025,0,1+index)).toISOString().slice(0,10),queue:[{key:`day-${index}`}],drafts:{}}));
   const latest={...history.at(-1),index:1,outcome:{[history.at(-1).queue[0].key]:'added'},history:[...history,{day:'2025-02-30',queue:[]},{day:'2099-01-01',queue:[]}]};
-  const result=dailyHistory(latest,'2026-11-03');assert.equal(result.length,400);assert.equal(result[0].day,'2025-01-01');assert.equal(result.at(-1).index,1);assert.equal(result.at(-1).outcome['day-399'],'added');
+  const result=dailyHistory(latest,'2026-11-03');assert.equal(result.length,366);assert.equal(result[0].day,history[400-366].day);assert.ok(result.every((row,index)=>!index||result[index-1].day<row.day));assert.equal(result.at(-1).index,1);assert.equal(result.at(-1).outcome['day-399'],'added');
   assert.equal(dailyRecord({day:'2025-02-30',queue:[]}),null);
 });
 test('Tagesverlauf: Schnappschüsse enthalten das Rezept, keine rohen Webseiten oder fremde Felder', () => {

@@ -10127,4 +10127,42 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const actor='Alexandra Beispielname', {ctx,page,problems}=await smartOpen2112({enabled:true,days:7},{config:{theme,actor},context:{viewport:{width,height:844},colorScheme:theme}});await openPantry(page,'recent');assert.equal(await page.locator('#smart-stock-controls').evaluate(n=>n.open),false);assert.match(await page.textContent('#smart-stock-summary'),/1 Woche/);assert.equal(await horizontalOverflow(page),0);await expandSmart113(page);await page.click('#smart-stock-save');const save=page.locator('#smart-stock-save');assert.equal(await save.isDisabled(),true);assert.match(await save.textContent(),new RegExp(`Gespeichert am 02.11.2026 von ${actor}`));assert.equal(await save.evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.ok((await save.boundingBox()).height>=44);assert.equal(await page.locator('#product-picker-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth),true);if(theme==='dark'){await page.waitForFunction(()=>getComputedStyle(document.querySelector('#smart-stock-save')).backgroundColor==='rgb(48, 57, 67)');assert.equal(await save.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(48, 57, 67)');}await saveShot(page,`sattplan-2113-save-${width}-${theme}.png`);assert.deepEqual(problems,[]);await ctx.close();
   });
 
+
+  // ---- 2.137 (T6): Eine Änderung, die sich nicht zusammenführen lässt, blockiert den Abgleich nicht; ein beschädigter Speicher führt zur Notfallansicht ----
+  test('2.137: ungültige Änderung in der Warteschlange wird beiseitegelegt, die übrigen werden gesendet und lassen sich verwerfen', async () => {
+    const remote = github(structuredClone(demo)), key = `einkauf-data-v1:${JSON.stringify(['haushalt', 'daten', 'main', 'daten.json'])}`;
+    const first = demo.items[0], second = demo.items[1], at = new Date(Date.parse(demo.updatedAt) + 60000).toISOString(), later = new Date(Date.parse(demo.updatedAt) + 61000).toISOString();
+    const bad = operation('items', first.id, { quantity: -3 }, 'Nico', at), good = operation('items', second.id, { checked: true }, 'Nico', later);
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await ctx.addInitScript(([key, base, pending]) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ base, pending })); }, [key, demo, [bad, good]]);
+    await open(page);
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(remote.content.items.find(row => row.id === second.id).checked, true, 'die gültige Änderung ist auf GitHub angekommen');
+    assert.equal(remote.content.items.find(row => row.id === first.id).quantity, first.quantity, 'die ungültige Änderung wurde nicht geschrieben');
+    assert.deepEqual(JSON.parse(await page.evaluate(key => localStorage.getItem(key), key)).pending, []);
+    await openSettings(page);
+    assert.equal(await page.locator('#quarantine-card').isVisible(), true);
+    assert.match(await page.textContent('#quarantine-text'), /Eine Änderung ließ sich nicht/);
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#quarantine-discard');
+    await page.waitForSelector('#quarantine-card', { state: 'hidden' });
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).some(name => name.startsWith('einkauf-quarantine-v1:'))), false);
+    assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    await ctx.close();
+  });
+  test('2.137: beschädigter lokaler Speicher öffnet die Notfallansicht; Verwerfen lädt den Stand neu', async () => {
+    const { ctx, page } = await context();
+    await ctx.addInitScript(() => { if (!sessionStorage.getItem('broken-2137')) { sessionStorage.setItem('broken-2137', '1'); localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: { version: 1 }, pending: [] })); } });
+    await open(page);
+    await page.waitForSelector('#storage-recovery[open]');
+    assert.match(await page.textContent('#storage-recovery'), /Lokalen Speicher als Datei sichern/);
+    assert.equal((await page.textContent('#storage-recovery-reload')).trim(), 'Lokalen Stand verwerfen und Beispieldaten laden');
+    page.once('dialog', dialog => dialog.accept());
+    await Promise.all([page.waitForEvent('load'), page.click('#storage-recovery-reload')]);
+    await page.waitForSelector('#items .item');
+    assert.equal(await page.locator('#storage-recovery[open]').count(), 0);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base.version, 1);
+    await ctx.close();
+  });
 });

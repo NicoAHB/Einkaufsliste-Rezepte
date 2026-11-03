@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { BUILTIN_PER_DAY, DAILY_MAX, builtinKey, dayNumber, draftFromBuiltin, extractRecipeLinks, fixedOrder, planBuiltin, planDay, recipeKey, slugTitle, validBuiltin } from '../daily.js';
+import { BUILTIN_PER_DAY, DAILY_HISTORY_CHARS, DAILY_HISTORY_DAYS, DAILY_MAX, dailyHistory, builtinKey, dayNumber, draftFromBuiltin, extractRecipeLinks, fixedOrder, planBuiltin, planDay, recipeKey, slugTitle, validBuiltin } from '../daily.js';
 import { NO_AMOUNT } from '../recipe-import.js';
 
 const BASE = 'https://www.chefkoch.de/rezepte/tagesrezepte/';
@@ -101,4 +101,20 @@ describe('Eingebaute Rezeptsammlung (ohne Hilfsdienst)', async () => {
     assert.deepEqual([...order].sort((a, b) => a - b), Array.from({ length: 50 }, (_, index) => index));
     assert.notDeepEqual(order, Array.from({ length: 50 }, (_, index) => index), 'wirklich gemischt');
   });
+});
+
+test('Tagesverlauf bleibt begrenzt: höchstens ein Jahr und etwa 400 KB, die neuesten Tage bleiben', () => {
+  const day = n => new Date(Date.UTC(2024, 0, 1 + n)).toISOString().slice(0, 10);
+  const record = (n, text = 'x') => ({ day: day(n), source: 'builtin', queue: [{ gen: n }], index: 0, outcome: {}, drafts: { a: { name: 'Rezept', instructions: text } }, builtin: true, found: 0 });
+  const many = Array.from({ length: 800 }, (_, n) => record(n));
+  const kept = dailyHistory({ ...record(800), history: many }, day(800));
+  assert.equal(kept.length, DAILY_HISTORY_DAYS);
+  assert.equal(kept.at(-1).day, day(800), 'heute bleibt');
+  assert.equal(kept[0].day, day(800 - DAILY_HISTORY_DAYS + 1));
+  const big = Array.from({ length: 50 }, (_, n) => record(n, 'y'.repeat(20000)));
+  const trimmed = dailyHistory({ ...record(50, 'y'.repeat(20000)), history: big }, day(50));
+  assert.ok(JSON.stringify(trimmed).length <= DAILY_HISTORY_CHARS + 25000);
+  assert.ok(trimmed.length < 51 && trimmed.at(-1).day === day(50));
+  const huge = dailyHistory({ ...record(1, 'z'.repeat(DAILY_HISTORY_CHARS * 2)), history: [] }, day(1));
+  assert.equal(huge.length, 1, 'ein einzelner großer Tag bleibt trotzdem erhalten');
 });

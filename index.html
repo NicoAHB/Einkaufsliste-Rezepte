@@ -192,6 +192,7 @@
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
       <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan</p><h2 id="settings-title">Einstellungen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
+      <div id="quarantine-card" class="card stack quarantine-card" role="region" aria-labelledby="quarantine-title" hidden><h3 id="quarantine-title">Nicht übernommene Änderungen</h3><p id="quarantine-text"></p><div class="quarantine-actions"><button id="quarantine-save" type="button" class="secondary">Als Datei sichern</button><button id="quarantine-discard" type="button" class="secondary">Verwerfen</button></div></div>
 
       <p class="settings-section-title">Aussehen und Bedienung</p><div id="display-card" data-auto-save class="card stack display-card"><details id="display-details" class="fold"><summary><h3>Darstellung</h3></summary><div class="stack">
         <label class="checkbox-label"><input id="group-items" type="checkbox"> Einkaufsliste nach Kategorien ordnen (Gänge im Laden)</label>
@@ -241,6 +242,7 @@
         <label>Token gültig bis (optional)<input name="tokenExpires" type="date"></label>
         <p class="hint">Das Ablaufdatum steht bei GitHub beim Token. Sieben Tage vorher erinnert dich die Statuszeile oben. Bei „No expiration“ leer lassen.</p>
         <p class="hint">Der Token bleibt im Browser dieses Geräts. Er gehört niemals ins öffentliche Repository. Verwende dafür nur vertrauenswürdige Geräte. „Token entfernen“ trennt dieses Gerät und öffnet den Beispielmodus; deine Daten auf GitHub bleiben unberührt.</p>
+        <p id="origin-hint" class="hint origin-hint" hidden></p>
         <button type="submit">Speichern & verbinden</button>
         <button id="disconnect" type="button" class="secondary">Token entfernen</button>
         </div>
@@ -295,6 +297,10 @@
     <p id="move-text" class="hint"></p><div id="move-choices" class="stack move-choices"></div><div class="move-delete-section"><hr class="move-delete-rule"><button id="move-delete" type="button" class="danger move-delete"><svg class="icon"><use href="#i-trash"/></svg><span id="move-delete-label">Artikel löschen</span></button></div></div></dialog>
   <aside id="notice" class="toast" role="status" hidden><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
+  <dialog id="storage-recovery" aria-labelledby="storage-recovery-title"><div class="stack"><div class="sheet-head"><h2 id="storage-recovery-title">Lokaler Speicher beschädigt</h2><button type="button" data-close="storage-recovery" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p>Die auf diesem Gerät gespeicherten Daten lassen sich nicht mehr lesen. Der gemeinsame Stand auf GitHub ist davon nicht betroffen.</p>
+    <p class="hint">1. Sichere den lokalen Speicher als Datei. Darin stehen auch Änderungen, die noch nicht gesendet wurden. 2. Verwirf danach den lokalen Stand. Die App lädt dann neu.</p>
+    <div class="sheet-actions"><button id="storage-recovery-save" type="button" class="secondary">Lokalen Speicher als Datei sichern</button><button id="storage-recovery-reload" type="button">Lokalen Stand verwerfen und neu laden</button></div></div></dialog>
   <dialog id="welcome"><form id="welcome-form" class="stack"><p class="eyebrow">Willkommen</p><h2>Wer bist du?</h2><p>Dein Name erscheint bei deinen Artikeln. Du kannst ihn später in den Einstellungen ändern.</p><label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label><h3>Geschäfte & Listen</h3><button id="welcome-stores" class="secondary" type="button"><svg class="icon"><use href="#i-store"/></svg>Geschäfte auswählen</button><button type="submit">Los geht’s</button></form></dialog>
   <dialog id="product-picker-dialog" aria-labelledby="product-picker-title"><form id="product-picker-form" novalidate>
     <div class="sheet-head"><h2 id="product-picker-title">Produkte auswählen</h2><div class="product-picker-head-actions"><button id="product-picker-help-toggle" type="button" class="icon-button round" aria-label="Hilfe zur Produktauswahl anzeigen" aria-expanded="false" aria-controls="product-picker-help"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg></button><button type="button" data-close="product-picker-dialog" class="icon-button round" aria-label="Produktauswahl schließen"><svg class="icon"><use href="#i-x"/></svg></button></div></div>
