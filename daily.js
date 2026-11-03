@@ -111,13 +111,23 @@ export function dailyRecord(value) {
   return JSON.parse(JSON.stringify({ day: value.day, source: value.source || '', queue: value.queue, index: value.index || 0,
     outcome: value.outcome || {}, drafts: value.drafts || {}, builtin: Boolean(value.builtin), found: value.found || 0 }));
 }
+/* Der Tagesverlauf liegt im Browserspeicher, den sich die App mit den Familiendaten teilt. Er bleibt deshalb begrenzt:
+   höchstens ein Jahr gespeicherter Tage und höchstens etwa 400 KB. Bei Überlänge fallen die ältesten Tage weg; heute bleibt immer. */
+export const DAILY_HISTORY_DAYS = 366, DAILY_HISTORY_CHARS = 400000;
 export function dailyHistory(value, today) {
   const records = new Map();
   for (const candidate of [...(Array.isArray(value?.history) ? value.history : []), value]) {
     const record = dailyRecord(candidate);
     if (record && record.day<=today) records.set(record.day, record);
   }
-  return [...records.values()].sort((a, b) => a.day.localeCompare(b.day));
+  const sorted = [...records.values()].sort((a, b) => a.day.localeCompare(b.day)), kept = [];
+  let size = 0;
+  for (const record of sorted.reverse()) {
+    size += JSON.stringify(record).length;
+    if (kept.length && (kept.length >= DAILY_HISTORY_DAYS || size > DAILY_HISTORY_CHARS)) break;
+    kept.push(record);
+  }
+  return kept.reverse();
 }
 export function dailySnapshot(draft) {
   return { name: String(draft.name || '').slice(0, 120), servings: Number(draft.servings) || 2, tags: Array.isArray(draft.tags) ? draft.tags.filter(t => typeof t === 'string') : [],

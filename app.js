@@ -44,6 +44,7 @@ import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, filterOptions, pickRecipes } from
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, removePhoto, retainedPhotoIds, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
 import { parseQuantity } from './numbers.js';
+import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
@@ -178,9 +179,26 @@ function storageWrite(key, value) {
   catch { throw new Error('Der Browser kann nichts mehr lokal speichern. Bitte Speicher freigeben und erneut versuchen. Diese Änderung wurde nicht übernommen.'); }
 }
 function saveConfig(next) { storageWrite(CONFIG_KEY, next); config = next; confirmAutoSave(document.activeElement); }
-function saveLocal(nextBase, nextPending) {
+// Erst zusammenführen, dann schreiben: So wird nie eine Kombination gespeichert, die sich beim nächsten Start nicht laden ließe.
+function saveLocal(nextBase, nextPending, nextState = merge(nextBase, nextPending)) {
   storageWrite(namespace(), { base: nextBase, pending: nextPending });
-  base = nextBase; pending = nextPending; state = merge(base, pending);
+  base = nextBase; pending = nextPending; state = nextState;
+}
+/* Beiseitegelegte Änderungen (siehe pending-guard.js): Sie blockieren den Abgleich nicht mehr, gehen aber auch nicht still verloren. */
+const quarantineKey = () => `einkauf-quarantine-v1:${namespace()}`;
+function quarantined() { try { const list = JSON.parse(localStorage.getItem(quarantineKey())); return Array.isArray(list) ? list : []; } catch { return []; } }
+function quarantine(entries) {
+  if (!entries.length) return;
+  let kept = true;
+  try { localStorage.setItem(quarantineKey(), JSON.stringify(addToQuarantine(quarantined(), entries))); } catch { kept = false; }
+  renderQuarantine();
+  message(`${entries.length === 1 ? 'Eine Änderung ließ' : `${entries.length} Änderungen ließen`} sich nicht mit dem gemeinsamen Stand zusammenführen. Alle anderen Änderungen werden weiter abgeglichen. ${kept ? 'Unter Einstellungen kannst du sie als Datei sichern oder verwerfen.' : 'Der Browser konnte sie nicht aufbewahren, weil der Speicher voll ist.'}`);
+}
+function renderQuarantine() {
+  const list = quarantined(), card = $('#quarantine-card');
+  card.hidden = !list.length;
+  if (!list.length) return;
+  $('#quarantine-text').textContent = `${list.length === 1 ? 'Eine Änderung ließ' : `${list.length} Änderungen ließen`} sich nicht mit dem gemeinsamen Stand zusammenführen und ${list.length === 1 ? 'wurde' : 'wurden'} beiseitegelegt. Alle anderen Änderungen werden normal abgeglichen. Letzter Grund: ${list.at(-1).error}`;
 }
 function status(text, mode = 'local') {
   $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode;
@@ -234,7 +252,7 @@ function commit(ops, notice = '') {
   const nextPending = [...pending, ...ops];
   const nextState = merge(base, nextPending);
   // Eine einzige atomare localStorage-Schreiboperation sichert Daten und Warteschlange.
-  saveLocal(connected() ? base : nextState, connected() ? nextPending : []);
+  saveLocal(connected() ? base : nextState, connected() ? nextPending : [], connected() ? nextState : undefined);
   if (notice) showNotice(notice);
   message(); render(); restingStatus(); confirmDataSave(ops);
   if (connected()) void sync();
@@ -382,7 +400,7 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
+  renderStoreChips(); renderItems(); renderRecipes(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); renderQuarantine(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
   if ($('#plan-recipe-dialog').open) renderPlanRecipe();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
@@ -2541,8 +2559,11 @@ async function sync(manual = false) {
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
       if (!file) { retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message(); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
-      const batch = pending.slice();
-      let merged = merge(remote, batch), tidy = null;
+      // Eine Änderung, die sich mit dem neuen gemeinsamen Stand nicht vereinbaren lässt, wird beiseitegelegt statt den Abgleich zu blockieren.
+      const split = applicableOps(remote, pending.slice());
+      if (split.bad.length) quarantine(split.bad);
+      const batch = split.good, setAside = split.bad.map(entry => entry.op.id);
+      let merged = split.state, tidy = null;
       const groupOps=productGroupMigration(merged);
       if(groupOps.length) merged=merge(merged,groupOps);
       // Haben zwei Geräte gleichzeitig denselben Artikel neu angelegt, wird das Doppel hier deterministisch zusammengeführt (siehe data.js).
@@ -2562,8 +2583,10 @@ async function sync(manual = false) {
           written = true;
         } catch (error) { if ([409, 422].includes(error.status) && attempt < 3) continue; throw error; }
       }
-      const sent = new Set(batch.map(op => op.id)), wasReady = ready, before = signature();
-      saveLocal(merged, pending.filter(op => !sent.has(op.id)));
+      const sent = new Set([...batch.map(op => op.id), ...setAside]), wasReady = ready, before = signature();
+      const rest = applicableOps(merged, pending.filter(op => !sent.has(op.id)));
+      if (rest.bad.length) quarantine(rest.bad);
+      saveLocal(merged, rest.good, rest.state);
       remoteEtag = written ? '' : file.etag;
       if (compactRequested) { compactRequested = false; noteCompaction(tidy); }
       ready = true; retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message();
@@ -2587,9 +2610,14 @@ async function loadWorkspace() {
   const cache = localStorage.getItem(namespace());
   if (cache) {
     let saved;
-    try { saved = JSON.parse(cache); validate(saved.base); if (!Array.isArray(saved.pending)) throw new Error('Warteschlange fehlt'); state = merge(saved.base, saved.pending); }
-    catch { throw new Error('Der lokale Speicher ist beschädigt. Bitte Browserdaten nicht löschen und zuerst eine Sicherung der Browserdaten anfertigen.'); }
-    base = saved.base; pending = saved.pending; ready = true;
+    try { saved = JSON.parse(cache); validate(saved.base); if (!Array.isArray(saved.pending)) throw new Error('Warteschlange fehlt'); }
+    catch {
+      openStorageRecovery(cache);
+      throw new Error('Der lokale Speicher ist beschädigt. In der Notfallansicht kannst du ihn als Datei sichern und den Stand neu laden.');
+    }
+    const split = applicableOps(saved.base, saved.pending);
+    base = saved.base; pending = split.good; state = split.state; ready = true;
+    if (split.bad.length) { quarantine(split.bad); saveLocal(base, pending, state); }
   } else if (!connected()) {
     const response = await fetch('./beispieldaten.json');
     if (!response.ok) throw new Error('Die Beispieldaten konnten nicht geladen werden. Bitte alle App-Dateien hochladen.');
@@ -2611,8 +2639,15 @@ function fillSettings() {
   fillDisplaySettings();
   // Nach dem Einrichten steht die Verbindung unten und eingeklappt; solange nichts verbunden ist, oben und offen.
   $('#settings').dataset.connected = connected() ? 'yes' : 'no';
+  showOriginHint();
   applyFolds();
   showConnectionState(); updateSaveButtons();
+}
+// Alle GitHub-Pages-Seiten eines Kontos teilen sich eine Herkunft und damit den Browserspeicher (auch den Token).
+function showOriginHint() {
+  const host = location.hostname, node = $('#origin-hint');
+  node.hidden = !/\.github\.io$/i.test(host);
+  if (!node.hidden) node.textContent = `Sicherheit: Die App läuft unter ${host}. Alle GitHub-Pages-Seiten dieses Kontos teilen sich den Browserspeicher und könnten den Token lesen. Veröffentliche unter diesem Konto keine weiteren Seiten oder nutze für die App eine eigene Organisation bzw. Domain (README, Abschnitt 4).`;
 }
 function fillDisplaySettings() {
   $('#theme').value = config.theme || 'system'; $('#store-style').value = config.storeStyle === 'logo' ? 'logo' : 'text'; $('#group-items').checked = config.groupItems !== false; $('#product-images').checked = imagesOn(); applyTheme();
@@ -4190,6 +4225,26 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
   try { await fetchRecipePage('https://example.com/', { workerUrl: proxy, allowPublic: false }); }
   catch (error) { throw new Error(`Der Hilfsdienst antwortet nicht wie erwartet. ${error.message}`); }
   message(); status('Hilfsdienst funktioniert', 'ok'); setTimeout(restingStatus, 2500);
+}));
+// Notfallansicht für einen beschädigten lokalen Speicher: erst sichern, dann bewusst verwerfen und neu laden.
+let brokenCache = '';
+function openStorageRecovery(raw) {
+  brokenCache = String(raw || '');
+  $('#storage-recovery-reload').textContent = connected() ? 'Lokalen Stand verwerfen und neu von GitHub laden' : 'Lokalen Stand verwerfen und Beispieldaten laden';
+  if (!$('#storage-recovery').open) $('#storage-recovery').showModal();
+}
+const backupName = kind => `sattplan-${kind}-${new Date().toISOString().slice(0, 10)}.json`;
+$('#storage-recovery-save').addEventListener('click', () => guard(() => deliverFile(new File([brokenCache], backupName('lokaler-speicher'), { type: 'application/json' }))));
+$('#storage-recovery-reload').addEventListener('click', () => guard(() => {
+  if (!confirm('Lokalen Stand auf diesem Gerät verwerfen? Noch nicht gesendete Änderungen gehen dabei verloren. Sichere ihn vorher als Datei.')) return;
+  try { localStorage.removeItem(namespace()); } catch { throw new Error('Der Browser lässt den Speicher gerade nicht ändern. Bitte die App ganz schließen und erneut öffnen.'); }
+  location.reload();
+}));
+$('#quarantine-save').addEventListener('click', () => guard(() => deliverFile(new File([JSON.stringify({ app: 'Sattplan', target: namespace(), changes: quarantined() }, null, 2)], backupName('nicht-uebernommene-aenderungen'), { type: 'application/json' }))));
+$('#quarantine-discard').addEventListener('click', () => guard(() => {
+  if (!confirm('Die beiseitegelegten Änderungen endgültig verwerfen? Sichere sie vorher als Datei, falls du sie noch brauchst.')) return;
+  try { localStorage.removeItem(quarantineKey()); } catch { /* bleibt sichtbar */ }
+  renderQuarantine(); showNotice('Beiseitegelegte Änderungen verworfen');
 }));
 $('#disconnect').addEventListener('click', () => guard(async () => {
   if (busy || restoring) throw new Error('Bitte den laufenden Abgleich oder die Wiederherstellung kurz abwarten.');
