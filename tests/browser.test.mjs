@@ -3437,7 +3437,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#manage-stores'); await sheetOpen(page);
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: ['touchEnd', 'touchCancel'].includes(type) ? [] : [{ x, y, id: 1 }] });
-    const rows = page.locator('#store-editor .store-row');
+    const rows = page.locator('#store-editor .store-row[data-id]');
     const a = await rows.first().locator('> summary').boundingBox(), b = await rows.last().locator('> summary').boundingBox();
     const x = a.x + a.width / 2, y = a.y + a.height / 2, end = b.y + b.height - 5;
     await touch('touchStart', x, y); await page.waitForTimeout(600);
@@ -3467,7 +3467,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context(); await open(page); await page.click('#manage-stores'); await sheetOpen(page);
     const original = (await storedDemo(page)).stores, cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: ['touchEnd', 'touchCancel'].includes(type) ? [] : [{ x, y, id: 1 }] });
-    const first = page.locator('#store-editor .store-row').first();
+    const first = page.locator('#store-editor .store-row[data-id]').first();
     await first.locator('> summary').click(); assert.equal(await first.evaluate(node => node.open), true);
     await first.locator('> summary').click(); assert.equal(await first.evaluate(node => node.open), false);
     let a = await first.boundingBox(); const x = a.x + 60, y = a.y + 20;
@@ -3475,11 +3475,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await storedDemo(page)).stores, original);
     await page.locator('#stores-dialog').evaluate(node => { node.scrollTop = 0; });
     a = await first.boundingBox();
-    const target = await page.locator('#store-editor .store-row').last().boundingBox();
+    const target = await page.locator('#store-editor .store-row[data-id]').last().boundingBox();
     await touch('touchStart', a.x + 60, a.y + 20); await page.waitForTimeout(600);
     await touch('touchMove', a.x + 60, target.y + target.height - 2); await touch('touchCancel');
     assert.deepEqual((await storedDemo(page)).stores, original);
-    assert.deepEqual(await page.locator('#store-editor .store-row').evaluateAll(nodes => nodes.map(node => node.dataset.id)), original.map(row => row.id));
+    assert.deepEqual(await page.locator('#store-editor .store-row[data-id]').evaluateAll(nodes => nodes.map(node => node.dataset.id)), original.map(row => row.id));
     await page.waitForTimeout(850);
     await page.mouse.move(a.x + 60, a.y + 20); await page.mouse.down(); await page.waitForTimeout(600);
     await page.mouse.move(a.x + 60, target.y + target.height - 2); await page.keyboard.press('Escape'); await page.mouse.up();
@@ -3553,10 +3553,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
     await open(page);
     await page.click('#manage-stores'); await sheetOpen(page);
-    const rows = page.locator('#store-editor .store-row');
+    const rows = page.locator('#store-editor .store-row[data-id]');
     assert.equal(await rows.count(), 3);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.tagName + ':' + node.open)), ['DETAILS:false', 'DETAILS:false', 'DETAILS:false'], 'alle zugeklappt');
-    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe'], 'nur der Name steht da');
+    assert.deepEqual(await rows.locator('> summary').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Edeka', 'Lidl', 'Rewe'], 'nur der Name steht da');
     for (const box of await rows.locator('> summary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 48, `gut zu treffen (${box} px)`);
     assert.equal(await rows.first().locator('input[name=name]').isVisible(), false, 'die Felder sind verborgen');
     const arrow = await rows.first().locator('> summary').evaluate(node => getComputedStyle(node, '::after').content);
@@ -3580,15 +3580,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await rows.nth(0).locator('> summary').click();
     await page.fill('#store-form input[name=name]', 'Aldi');
     await page.click('#store-form button[type=submit]');
-    await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row').length === 4);
+    await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row[data-id]').length === 4);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [true, false, false, false], 'Edeka bleibt offen, das neue Aldi ist zu');
-    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
+    assert.deepEqual(await rows.locator('> summary').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Edeka', 'Lidl', 'Rewe', 'Aldi']);
     assert.equal(await rows.nth(3).evaluate(node => node.classList.contains('fresh')), true, 'das neue Geschäft leuchtet kurz auf');
     assert.equal(await page.inputValue('#store-form input[name=name]'), '', 'das Formular ist wieder leer');
     // Ein Geschäft bearbeiten und speichern: bleibt offen, andere Karten bleiben unberührt
     await rows.nth(0).locator('input[name=name]').fill('Edeka Nord');
     await rows.nth(0).getByRole('button', { name: /speichern/ }).click();
-    assert.deepEqual(await rows.locator('> summary').allTextContents(), ['Edeka Nord', 'Lidl', 'Rewe', 'Aldi']);
+    assert.deepEqual(await rows.locator('> summary').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Edeka Nord', 'Lidl', 'Rewe', 'Aldi']);
     assert.equal(await rows.nth(0).evaluate(node => node.open), true, 'die bearbeitete Karte bleibt offen');
     // Wieder geöffnet: alles zu
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
@@ -8184,6 +8184,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   // ---- Vorratsgesten, Tagesrückblick und Rezeptnotizen (2.69) ----
   const storedDemo = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
   const dailySaved = page => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-daily:einkauf-demo-v1')));
+  test('2.130: große Schrift auf schmalem Bildschirm verdeckt weder Gruppen-Schließen noch Produkt- und Hauptnavigation',async()=>{
+    const {ctx,page,problems}=await context({config:{theme:'dark',palette:'gruen',glass:true,glassLevel:65},context:{viewport:{width:280,height:640},colorScheme:'dark'}});await open(page);await page.evaluate(()=>document.documentElement.style.setProperty('font-size','24px','important'));
+    const shortcuts=page.locator('#open-products,#open-pantry');for(const node of await shortcuts.all())assert.ok(await node.evaluate(element=>element.scrollWidth<=element.clientWidth+1),'Die Produkt-Schaltflächen bleiben vollständig lesbar');
+    assert.equal(await page.locator('.tabs .tab-label').evaluateAll(nodes=>nodes.every(node=>{const b=node.getBoundingClientRect(),p=node.closest('button').getBoundingClientRect();return b.left>=p.left-1&&b.right<=p.right+1;})),true,'Beschriftungen bleiben im eigenen Hauptreiter');
+    await goTab(page,'recipes');await page.click('#add-recipe');await sheetOpen(page);await page.click('#recipe-groups-toggle');await sheetOpen(page);assert.equal(await page.locator('#recipe-groups-menu').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);const close=await page.locator('[data-group-close]').boundingBox();assert.ok(close.x>=0&&close.x+close.width<=280);await page.click('[data-group-close]');assert.equal(await page.locator('#recipe-dialog').isVisible(),true);await page.click('#recipe-dialog [data-close]');await openPantry(page);assert.equal(await page.locator('#product-picker-count').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);assert.ok(await horizontalOverflow(page)<=1);assert.deepEqual(problems,[]);await ctx.close();
+  });
   for(const [width,theme] of [[280,'light'],[390,'dark']])test(`2.129: alle heutigen Tagesrezepte lassen sich bei ${width}px ${theme} ohne Hinzufügen oder Überspringen ansehen`,async()=>{
     const {ctx,page,problems}=await context({config:{theme,glass:true,palette:'gruen',glassLevel:65},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.waitForSelector('#daily-card .daily-ingredients');
     const before=await dailySaved(page),recipes=(await storedDemo(page)).recipes.length,titles=[await page.textContent('#daily-card h3')];assert.equal(before.index,0);assert.equal(await page.locator('#daily-review-prev').isDisabled(),true);assert.equal(await page.locator('#daily-review-next').isEnabled(),true);assert.equal(await page.locator('#daily-day-next').isDisabled(),true,'Tages- und Rezeptpfeile sind getrennt');
@@ -8386,6 +8392,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   };
   const seedLocal = (ctx,data) => ctx.addInitScript(data=>{if(!localStorage.getItem('einkauf-demo-v1'))localStorage.setItem('einkauf-demo-v1',JSON.stringify({base:data,pending:[]}));},data);
   async function transferMilk(page,title){await goTab(page,'recipes');await page.locator('.recipe-card',{hasText:title}).getByRole('button',{name:'Einkaufen',exact:true}).click();await page.selectOption('#transfer-form [name=storeId]','store-edeka');await page.click('#transfer-form button:not([data-close])');await page.waitForSelector('#transfer-dialog[open]',{state:'detached'});}
+  function jointRecipeWeek(data){
+    const at='2026-10-29T12:00:00.000Z';data.meals=data.recipes.map((recipe,index)=>({id:`joint-week-${index}`,recipeId:recipe.id,date:isoDate(),servings:recipe.servings,done:false,createdBy:'Nico',createdAt:at,updatedAt:at,deletedAt:null,_clock:{}}));return data;
+  }
+  async function transferJointRecipeWeek(page){await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);await page.selectOption('#week-form [name=storeId]','store-edeka');await page.click('#week-form button[type=submit]');await page.waitForSelector('#week-dialog[open]',{state:'detached'});}
   async function choosePack(page,form,label,size,unit){await page.click(`${form} [name=unit]`);await page.click('#purchase-unit-dialog .purchase-custom summary');await page.fill('#purchase-unit-dialog [name=label]',label);await page.fill('#purchase-unit-dialog [name=size]',size);await page.selectOption('#purchase-unit-dialog [name=base]',unit);await page.click('#purchase-unit-dialog button[type=submit]');}
   test('Einkaufsmengen: Fertig schließt Tastatur, Pfeile zählen ab eins und speichern erst nach Bestätigung',async()=>{
     const {ctx,page,problems}=await context();await open(page);await page.fill('#item-form [name=name]','Milch');await page.keyboard.press('Enter');
@@ -8404,7 +8414,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#item-form [name=quantity]','0,5');await page.click('#item-form button[type=submit]');const row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch'&&!r.storeId);assert.equal(row.quantity,.5);assert.equal(row.purchaseUnit,null);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('Einkaufsmengen: zwei Rezepte ergeben zwei Packungen, Bearbeiten erhält exakten Bedarf und andere Größe zeigt drei Flaschen',async()=>{
-    const {ctx,page,problems}=await context();await seedLocal(ctx,milkRecipes());await open(page);await transferMilk(page,'Milchgericht A');await transferMilk(page,'Milchgericht B');await goTab(page,'shopping');
+    const {ctx,page,problems}=await context();await seedLocal(ctx,jointRecipeWeek(milkRecipes()));await open(page);await transferJointRecipeWeek(page);await goTab(page,'shopping');
     let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Milch');assert.equal(row.quantity,1.4);assert.equal(row.unit,'l');assert.equal(await page.locator('#items .item').count(),1);assert.match(await page.textContent('#items'),/2 Packungen à 1 l/);
     await page.locator('#items .item-copy').click();assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'2');await page.click('#edit-item-form button[type=submit]');row=(await storedDemo(page)).items.find(r=>r.id===row.id);assert.equal(row.quantity,1.4,'unverändertes Speichern rundet den Bedarf nicht auf');
     await page.locator('#items .item-copy').click();await choosePack(page,'#edit-item-form','Flasche','500','ml');assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'3');await page.click('#edit-item-form button[type=submit]');
@@ -8426,7 +8436,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const api=github(milkRecipes()),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});for(const d of [a,b]){await d.ctx.route('https://api.github.com/**',api.handler);await open(d.page);await synced(d.page);}
     await transferMilk(a.page,'Milchgericht A');await synced(a.page);await pollNow(b.page);await goTab(a.page,'shopping');await a.page.locator('#items .item-copy').click();
     await transferMilk(b.page,'Milchgericht B');await synced(b.page);await pollNow(a.page);await a.page.fill('#edit-item-form [name=name]','Milch');await a.page.click('#edit-item-form button[type=submit]');await synced(a.page);
-    const row=api.content.items.find(r=>!r.deletedAt&&r.name==='Milch');assert.equal(row.quantity,1.4);assert.equal(row.unit,'l');assert.match(await a.page.textContent('#items'),/2 Packungen/);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
+    const row=api.content.items.find(r=>!r.deletedAt&&r.name==='Milch');assert.equal(row.quantity,900);assert.equal(row.unit,'ml');assert.match(await a.page.textContent('#items'),/1 Packung/);assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
   for(const width of [280,320,390])for(const theme of ['light','dark'])test(`Einkaufsmengen Layout (${width} px ${theme}): Pfeile, Einheit und Menü bleiben bedienbar`,async()=>{
     const {ctx,page,problems}=await context({config:{theme},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await page.fill('#item-form [name=name]','Milch');await page.keyboard.press('Enter');assert.ok(await horizontalOverflow(page)<=1);
@@ -8477,7 +8487,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   const eggRecipes=()=>{const d=milkRecipes();d.recipes[0].name='Eiergericht A';d.recipes[1].name='Eiergericht B';d.ingredients[0]={...d.ingredients[0],name:'Eier',quantity:2,unit:'Stück'};d.ingredients[1]={...d.ingredients[1],name:'Eier',quantity:5,unit:'Stück'};return d;};
   test('Packungsgrößen: sieben Eier aus zwei Rezepten, persönliche Größe ändern und exakten Bedarf erhalten',async()=>{
-    const {ctx,page,problems}=await context();await seedLocal(ctx,eggRecipes());await open(page);await transferMilk(page,'Eiergericht A');await transferMilk(page,'Eiergericht B');await goTab(page,'shopping');
+    const {ctx,page,problems}=await context();await seedLocal(ctx,jointRecipeWeek(eggRecipes()));await open(page);await transferJointRecipeWeek(page);await goTab(page,'shopping');
     let row=(await storedDemo(page)).items.find(r=>!r.deletedAt&&r.name==='Eier');assert.equal(row.quantity,7);assert.match(await page.textContent('#items'),/7 Stück/);
     await page.locator('#items .item-copy').click();await page.click('#edit-item-form .pack-size-link');await page.getByRole('button',{name:'Packung · 6 Eier',exact:true}).click();
     assert.equal(await page.inputValue('#edit-item-form [name=quantity]'),'2');assert.match(await page.textContent('#edit-item-form .purchase-hint'),/Bedarf: 7 Eier.*Einkauf: 12 Eier/);await page.click('#edit-item-form button[type=submit]');assert.match(await page.textContent('#items'),/2 Packungen à 6 Eier/);
@@ -8503,7 +8513,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await pickStore(page,'Edeka');await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'100');assert.equal(await page.inputValue('#item-form [name=unit]'),'g');
     await page.click('#item-form .quantity-up');assert.equal(await page.inputValue('#item-form [name=quantity]'),'150');await page.click('#item-form .quantity-down');assert.equal(await page.inputValue('#item-form [name=quantity]'),'100');await page.click('#item-form .quantity-down');assert.equal(await page.inputValue('#item-form [name=quantity]'),'90');
     await page.fill('#item-form [name=quantity]','450');await page.click('#item-form button[type=submit]');await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'450');await page.click('#item-form button[type=submit]');
-    await transferMilk(page,'Milchgericht A');await goTab(page,'shopping');let row=(await storedDemo(page)).items.find(r=>r.name==='Hackfleisch gemischt'&&!r.deletedAt);assert.equal(row.quantity,1.1);assert.equal(row.unit,'kg');assert.equal(row.purchaseAmount.quantity,450);
+    await transferMilk(page,'Milchgericht A');await goTab(page,'shopping');let row=(await storedDemo(page)).items.find(r=>r.name==='Hackfleisch gemischt'&&!r.deletedAt);assert.equal(row.quantity,900,'Der bestehende Einkaufsbedarf deckt die Rezeptmenge bereits ab');assert.equal(row.unit,'g');assert.equal(row.purchaseAmount.quantity,450);
     await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'450');await page.fill('#item-form [name=name]','');
     await page.locator('#items .item-copy').click();await page.fill('#edit-item-form [name=quantity]','700');await page.click('#edit-item-form button[type=submit]');await page.locator('#items .item-copy').click();await chooseUnit(page,'#edit-item-form [name=unit]','kg');await page.click('#edit-item-form button[type=submit]');
     await page.fill('#item-form [name=name]','Hackfleisch gemischt');assert.equal(await page.inputValue('#item-form [name=quantity]'),'0,7');assert.equal(await page.inputValue('#item-form [name=unit]'),'kg');assert.deepEqual(problems,[]);await ctx.close();
@@ -8650,7 +8660,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   for(const choice of ['cancel','keep','apply'])test(`2.77: Löschen eines geplanten Rezepts – ${choice} erhält die passenden Mengen und das Bibliotheksrezept`,async()=>{
     const {ctx,page,problems}=await context277();await pick277(page);await page.click('#meal-save-shopping');const before=await data277(page);
     await page.getByRole('button',{name:'Tomaten-Pasta aus dem Plan entfernen',exact:true}).click();await page.waitForSelector('#plan-adjust-dialog[open]');
-    assert.match(await page.textContent('#plan-adjust-intro'),/Zutaten.*Einkaufszettel entfernen/);assert.match(await page.textContent('#plan-adjust-apply'),/^Ja,/);assert.match(await page.textContent('#plan-adjust-keep'),/^Nein,.*Zutaten bleiben/);assert.equal(await page.textContent('#plan-adjust-cancel'),'Abbrechen');
+    assert.match(await page.textContent('#plan-adjust-intro'),/hinzugefügten Mengen.*Einkaufszettel entfernen/);assert.match(await page.textContent('#plan-adjust-apply'),/^Ja,/);assert.match(await page.textContent('#plan-adjust-keep'),/^Nein,.*Zutaten bleiben/);assert.equal(await page.textContent('#plan-adjust-cancel'),'Abbrechen');
     await page.click(`#plan-adjust-${choice}`);const after=await data277(page);assert.equal(after.recipes.filter(row=>!row.deletedAt).length,3);
     if(choice==='cancel')assert.deepEqual(after,before);
     else{assert.equal(after.meals.filter(row=>!row.deletedAt).length,0);if(choice==='keep')assert.deepEqual(after.items,before.items);else assert.equal(after.items.filter(row=>!row.deletedAt&&!row._planEmpty).length,0);}

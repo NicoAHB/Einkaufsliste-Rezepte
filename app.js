@@ -65,7 +65,7 @@ for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStora
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
 let restoring = false, restoreController = null;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null, expenseCategoryPicker = null;
-let stockClockTimer=0;
+let stockClockTimer=0,recipeAvailabilitySnapshot='';
 const storeReorders = [];
 let recipeBaseline = null, ingredientBaseline = [], transferRecipe = null;
 let itemBaseline = null;
@@ -1124,6 +1124,7 @@ function chip(text, pressed, action) {
   return node;
 }
 function renderRecipes() {
+  recipeAvailabilitySnapshot=recipeStockSignature();
   const search = $('#recipe-search').value.trim().toLocaleLowerCase('de');
   const recipes = active(state.recipes);
   const tags = uniqueRecipeTags(recipes.flatMap(recipe => recipe.tags)).sort((a, b) => a.localeCompare(b, 'de'));
@@ -3466,8 +3467,9 @@ function scheduleStockRefresh(){
   clearTimeout(stockClockTimer);const at=nextStockBoundary(state);
   if(at!==null)stockClockTimer=setTimeout(()=>{if(!document.hidden)refreshTimedStock();},Math.max(10,Math.min(2147483000,at-Date.now()+5)));
 }
+function recipeStockSignature(){return JSON.stringify([localDay(),[...pantryKeys(state.pantry)].sort()]);}
 function refreshTimedStock(){
-  renderPantry();renderRecipes();productPicker?.refresh();
+  renderPantry();if(recipeAvailabilitySnapshot!==recipeStockSignature())renderRecipes();productPicker?.refresh();
   if($('#plan-recipe-dialog').open)renderPlanRecipe();
   if($('#cookable-dialog').open)renderCookable();
   refreshRecipePick();
