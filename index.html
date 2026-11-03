@@ -44,6 +44,7 @@
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
     <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM20 2v4m-2-2h4M4 18v4m-2-2h4"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
@@ -138,6 +139,7 @@
         <button id="cookable-open" class="secondary daily-open" type="button"><svg class="icon"><use href="#i-cart"/></svg><span>Was kann ich kochen?</span></button>
       </div>
       <div id="tag-chips" class="chips" role="group" aria-label="Nach Tag filtern" hidden></div>
+      <div id="recipe-toolbar" class="recipe-toolbar" hidden><p id="recipe-count" class="recipe-count"></p><label class="recipe-sort"><span class="recipe-sort-face" aria-hidden="true"><svg class="icon"><use href="#i-sort"/></svg><span id="recipe-sort-label">A–Z</span><svg class="icon recipe-sort-chevron"><use href="#i-chevron"/></svg></span><select id="recipe-sort" aria-label="Rezepte sortieren"><option value="name">A–Z</option><option value="new">Zuletzt hinzugefügt</option><option value="cooked">Lange nicht gekocht</option></select></label></div>
       <p id="recipes-save-note" class="save-feedback" data-save-feedback role="status" hidden></p><div id="recipe-list" class="recipe-grid"></div><button class="trash-link" type="button" data-trash-kind="recipes" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Kürzlich gelöschte Rezepte</span><span class="trash-link-count"></span></button>
     </section>
 

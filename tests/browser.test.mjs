@@ -5748,7 +5748,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#cook-done');
     assert.match(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-meta').textContent(), /gekocht heute/);
     assert.equal(await page.locator('.recipe-card', { hasText: 'Kichererbsen-Curry' }).locator('.recipe-details').evaluate(node => node.open), true, 'Rezept bleibt nach dem Eintragen aufgeklappt');
-    await page.getByRole('button', { name: 'Lange nicht gekocht' }).click();
+    await page.selectOption('#recipe-sort', 'cooked');
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Tomaten-Pasta', 'Kichererbsen-Curry'], 'Nie Gekochtes zuerst, gerade Gekochtes zuletzt');
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -10396,6 +10396,59 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#trash-dialog [data-close]');
     assert.match(await page.textContent('#trash-summary'), /^Leer/);
     await goTab(page, 'shopping'); assert.equal(await page.locator('#shopping .trash-link').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.140: Rezepte sortieren ----
+  for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.140: Rezepte sortieren bei ${width}px ${theme}: A–Z, Zuletzt hinzugefügt (gemerkt, neue oben) und Lange nicht gekocht`, async () => {
+    const data = structuredClone(demo), now = Date.now(), daysAgo = days => new Date(now - days * 86400000).toISOString();
+    const set = (id, extra) => Object.assign(data.recipes.find(row => row.id === id), extra);
+    set('recipe-pfannkuchen', { createdAt: daysAgo(0) }); set('recipe-curry', { createdAt: daysAgo(1), lastCookedAt: isoDate() }); set('recipe-pasta', { createdAt: daysAgo(10), favorite: true });
+    const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await goTab(page, 'recipes');
+    const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents();
+    const label = () => page.textContent('#recipe-sort-label');
+    // Standard wie bisher: Favoriten zuerst, dann A–Z; „Lange nicht gekocht“ ist kein Filterknopf mehr, sondern eine Sortierung
+    assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
+    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry']);
+    assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
+    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht']);
+    assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
+    // Zuletzt hinzugefügt: strikt nach dem Anlegen, auch vor Favoriten; die Karte sagt, wann
+    await page.selectOption('#recipe-sort', 'new');
+    assert.equal(await label(), 'Zuletzt hinzugefügt');
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
+    assert.deepEqual(await page.locator('#recipe-list .recipe-meta').evaluateAll(nodes => nodes.map(node => node.textContent.split(' · ')[0])), ['hinzugefügt heute', 'hinzugefügt gestern', 'hinzugefügt vor 10 Tagen']);
+    // Anzahl und Pille in einer Zeile, gut antippbar, nichts ragt über den Rand
+    const [count, pill, face] = await Promise.all([page.locator('#recipe-count').boundingBox(), page.locator('#recipe-sort').boundingBox(), page.locator('.recipe-sort-face').boundingBox()]);
+    assert.ok(Math.abs((count.y + count.height / 2) - (pill.y + pill.height / 2)) <= 2, 'Anzahl und Sortierung stehen auf einer Höhe');
+    assert.ok(pill.height >= 44 && pill.x + pill.width <= width - 8, `Pille ${JSON.stringify(pill)}`);
+    assert.ok(Math.abs(face.width - pill.width) <= 1, 'das Auswahlfeld deckt genau die sichtbare Pille ab');
+    assert.equal(await page.locator('#recipe-sort-label').evaluate(node => node.scrollWidth <= node.clientWidth), true, '„Zuletzt hinzugefügt“ passt ungekürzt');
+    assert.equal(await horizontalOverflow(page), 0);
+    await saveShot(page, `2140-rezepte-sortieren-${width}-${theme}.png`);
+    // Suche: die Anzahl sagt, wie viele von allen zu sehen sind
+    await page.fill('#recipe-search', 'Curry');
+    assert.equal(await page.textContent('#recipe-count'), '1 von 3 Rezepten');
+    await page.fill('#recipe-search', '');
+    // Die Wahl bleibt auf dem Gerät gemerkt
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await goTab(page, 'recipes');
+    assert.equal(await label(), 'Zuletzt hinzugefügt');
+    assert.equal(await page.locator('#recipe-sort').inputValue(), 'new');
+    // Ein neues Rezept steht sofort oben
+    await page.click('#add-recipe'); await sheetOpen(page);
+    await page.fill('#recipe-form input[name=name]', 'Zucchini-Frittata');
+    await page.fill('#ingredient-editor .ingredient-row [data-field=name]', 'Zucchini');
+    await page.click('#recipe-form button[type=submit]'); await page.waitForSelector('#recipe-dialog[open]', { state: 'detached' });
+    assert.equal((await titles())[0], 'Zucchini-Frittata');
+    assert.equal(await page.textContent('#recipe-count'), '4 Rezepte');
+    // Lange nicht gekocht: noch nie Gekochtes zuerst und so beschriftet, gerade Gekochtes zuletzt
+    await page.selectOption('#recipe-sort', 'cooked');
+    assert.equal(await label(), 'Lange nicht gekocht');
+    assert.equal((await titles()).at(-1), 'Kichererbsen-Curry');
+    assert.match(await page.locator('#recipe-list .recipe-card').first().locator('.recipe-meta').textContent(), /noch nie gekocht/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });

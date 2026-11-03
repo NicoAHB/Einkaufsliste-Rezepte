@@ -2,9 +2,18 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
-## Neu in Version 2.140: „Der Papierkorb ist leer“
+## Neu in Version 2.140: Rezepte sortieren und „Der Papierkorb ist leer“
 
-Ist im Papierkorb nichts (mehr), steht dort jetzt **Der Papierkorb ist leer** statt „Nichts gelöscht“. Direkt nach **Papierkorb leeren** las sich „Nichts gelöscht“ unter der grünen Bestätigung „1 Eintrag endgültig gelöscht“ wie ein Widerspruch. Offline-Paket `einkauf-shell-v152`.
+**Rezepte sortieren.** Über der Rezeptliste steht links die Anzahl („12 Rezepte“, bei Suche oder Filter „3 von 12 Rezepten“), rechts eine Sortier-Pille mit der aktuellen Wahl. Ein Tipp öffnet die Auswahl (auf dem iPhone das gewohnte Drehrad):
+- **A–Z**: Favoriten zuerst, dann nach Namen (wie bisher, Standard).
+- **Zuletzt hinzugefügt**: neu angelegte, importierte und aus den Rezepten des Tages übernommene Rezepte zuerst, auch vor Favoriten. Die Karte nennt vorn, wann („hinzugefügt heute“, „gestern“, „vor 3 Tagen“). Ein gerade gespeichertes Rezept steht sofort oben.
+- **Lange nicht gekocht**: noch nie oder am längsten nicht Gekochtes zuerst; nie Gekochtes trägt „noch nie gekocht“. Bisher war das ein Knopf zwischen den Stichworten; Sortierungen stehen jetzt an einer Stelle, die Knöpfe darüber filtern nur noch.
+
+Die Wahl bleibt auf dem Gerät gespeichert (`einkauf-recipe-sort-v1`). Auf schmalen Telefonen (320 px) passt „Zuletzt hinzugefügt“ ungekürzt neben die Anzahl; wird die Anzahl bei einer Suche länger, rückt die Pille in die nächste Zeile.
+
+**„Der Papierkorb ist leer“.** Ist im Papierkorb nichts (mehr), steht dort jetzt **Der Papierkorb ist leer** statt „Nichts gelöscht“. Direkt nach **Papierkorb leeren** las sich „Nichts gelöscht“ unter der grünen Bestätigung „1 Eintrag endgültig gelöscht“ wie ein Widerspruch.
+
+Offline-Paket `einkauf-shell-v152`.
 
 ## Neu in Version 2.139: Papierkorb, Offline-Anzeige und gleichmäßige untere Leiste
 
