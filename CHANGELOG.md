@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.143: Internationale Produkte und eigene Produkte löschen
+
+- Unter **Produkte → Internationale Produkte** stehen gängige Zutaten nach zwölf Ländern/Küchen sortiert. 32 neue Produkte ergänzen den Bestand, darunter Buchweizen, mit 32 neu erzeugten lokalen Beispielbildern. Bereits bekannte Zutaten verwenden ihre vorhandenen Bilder; normale Einkaufs-Gänge bleiben erhalten.
+- **Nur im Reiter Eigene** können selbst angelegte Produkte nach Bestätigung dauerhaft aus der Produktauswahl entfernt werden. Katalogprodukte sind auch in der Datenlogik geschützt. Favoriten werden bereinigt; bestehende Einkaufspositionen, Vorräte und Belege bleiben erhalten.
+- Eine dauerhafte, synchronisierte Löschmarkierung verhindert, dass alte Käufe oder ein anderes Gerät den Namen wieder in der Auswahl anbieten. Datenrevision 17 schützt die Markierungen vor alten App-Versionen; ältere Sicherungen bleiben lesbar.
+- Länder/Küchen sind eine Orientierung für die Auswahl, kein Nachweis ausschließlicher Herkunft oder aktueller Verfügbarkeit in einem bestimmten Geschäft. Fotos sind selbst erzeugte illustrative Motive.
+
+Offline-Paket `einkauf-shell-v155`.
+
 ## Neu in Version 2.142: „Ausgabe nachträglich eintragen“ in Hellgrün
 
 - Der Knopf oben unter **Ausgaben** heißt jetzt **Ausgabe nachträglich eintragen**. Der Alltagsweg ist „Einkauf beenden“ mit dem Betrag; dieser Knopf ist für Nachträge.

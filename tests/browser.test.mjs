@@ -2895,7 +2895,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#open-products'); await sheetOpen(page);
     assert.equal(await page.inputValue('#product-picker-store'), 'store-edeka');
     assert.equal(await page.locator('.product-card').count(), 96);
-    assert.match(await page.textContent('#product-picker-status'), /680 Produkte.*96 angezeigt/);
+    assert.match(await page.textContent('#product-picker-status'), /712 Produkte.*96 angezeigt/);
     assert.equal(await page.locator('#product-picker-add').isDisabled(), true);
     await page.fill('#product-picker-search', 'Milch');
     await page.locator('.product-card[data-product=milch] .product-star').click();
@@ -7910,7 +7910,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('Großer Produktkatalog: 1024 Namen durchsuchbar, Darstellung in Portionen und Auswahl bleibt beim Filtern erhalten', async () => {
+  test('Großer Produktkatalog: 1056 Namen durchsuchbar, Darstellung in Portionen und Auswahl bleibt beim Filtern erhalten', async () => {
     const { ctx, page, problems } = await context(); await open(page); await page.click('#open-products'); await sheetOpen(page);
     assert.equal(await page.locator('.product-card').count(), 96);
     await page.click('#product-picker-more'); assert.equal(await page.locator('.product-card').count(), 192);
@@ -10525,4 +10525,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems.filter(text => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text)), []);
     await ctx.close();
   });
+  test('Internationale Produkte und eigene Produkte löschen: Länder, lokales Buchweizenbild, Bestätigung und dauerhafter Schutz',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await page.click('#open-products');await sheetOpen(page);
+    await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Keckd');const own=page.locator('.product-card');await own.locator('.product-star').click();await page.click('[data-product-mode=own]');await own.locator('.product-pick').click();
+    page.once('dialog',d=>d.dismiss());await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();assert.equal(await own.count(),1);assert.match(await page.textContent('#product-picker-count'),/1/);
+    page.once('dialog',d=>d.accept());await own.getByRole('button',{name:'Keckd dauerhaft löschen',exact:true}).click();assert.equal(await page.locator('.product-card').count(),0);assert.match(await page.textContent('#product-picker-feedback'),/gelöscht/);assert.equal(await page.textContent('#product-picker-count'),'0 ausgewählt');
+    await page.click('#product-picker-dialog [data-close]');await page.reload();await page.click('#open-products');await page.click('[data-product-mode=own]');await page.fill('#product-picker-search','Keckd');assert.equal(await page.locator('.product-card').count(),0);
+    await page.click('[data-product-mode=all]');await page.fill('#product-picker-search','Äpfel');assert.equal(await page.locator('.product-delete').count(),0);
+    await page.fill('#product-picker-search','');await page.selectOption('#product-picker-category','international');assert.equal(await page.locator('.product-group h3').count(),12);assert.match(await page.textContent('#product-picker-list'),/Ukraine/);const buckwheat=page.locator('.product-card[data-product=buchweizen]');assert.equal(await buckwheat.locator('[data-photo-key=buchweizen]').count(),1);assert.equal(await page.locator('.product-delete').count(),0);
+    await buckwheat.locator('.product-pick').click();assert.equal(await page.textContent('#product-picker-count'),'1 ausgewählt');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(problems,[]);await ctx.close();
+  });
+
 });

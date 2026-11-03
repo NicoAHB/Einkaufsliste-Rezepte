@@ -17,7 +17,7 @@ afterEach(()=>{globalThis.fetch=realFetch;});
 
 test('Produktgruppen: jede bekannte Variante findet genau eine Kachel und ihr lokales Bild bleibt erreichbar',()=>{
   const library=productLibrary();
-  assert.equal(library.length,680);assert.equal(new Set(library.map(row=>row.name)).size,library.length);
+  assert.equal(library.length,712);assert.equal(new Set(library.map(row=>row.name)).size,library.length);
   for(const group of PRODUCT_FAMILIES) {
     assert.equal(library.filter(row=>row.name===group.name).length,1);assert.equal(imageForProduct({name:group.name}).key,group.id);
     for(const name of group.aliases) assert.ok(filterProducts(library,{query:name}).some(row=>row.name===group.name),`${name} → ${group.name}`);

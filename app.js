@@ -18,7 +18,7 @@ import { privateView, privateViewId } from './private-list.js';
 import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
 import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
-import { GROCERY_PRODUCTS, favoriteId } from './product-catalog.js';
+import { GROCERY_PRODUCTS, favoriteId, ownProductRemoval } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
@@ -4073,7 +4073,7 @@ for (const [selector, horizontal, itemSelector, handleSelector] of [
 productPicker = mountProductPicker({
   getScope: namespace,
   getStores: () => orderedStores(state.stores).filter(store => visibleStore(store)&&!isSeparate(store)),
-  getData: () => ({ recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [], stockSettings:state.stockSettings||[],
+  getData: () => ({ productRemovals:state.productRemovals||[], recentItems: withoutSeparate(state.items,state.stores), favorites: state.productFavorites || [], items: listItems(), pantry: state.pantry || [], stockSettings:state.stockSettings||[],
     history: itemHistory().filter(item => !item.storeId || !state.stores.some(store => store.id === item.storeId && isSeparate(store))) }),
   onAdd: (rows, storeId) => addRows(rows, currentStore(storeId)),
   onPantry: products => { const changes=pantrySelectionChanges(products,state.pantry||[]),removals=products.filter(product=>product.pantryAvailable===false);const ops=[...changes.map(({id,patch})=>nextOp('pantry',id,patch)),...stockRemovalOperations(removals)];if(ops.length)commit(ops);return removals.filter(product=>isOptionalBasic(product.name)).map(product=>product.name); },
@@ -4081,6 +4081,7 @@ productPicker = mountProductPicker({
   onConsume:product=>{commit(stockRemovalOperations([product]));return isOptionalBasic(product.name);},
   recognizeName,
   onQuickBuy: product => pantryBuyer.buyProduct(product),
+  onDeleteOwn:product=>{const removal=ownProductRemoval(product);const ids=(state.productFavorites||[]).filter(row=>!row.deletedAt&&productKey(row.name)===productKey(product.name)).map(row=>row.id);commit([nextOp('productRemovals',removal.id,removal.patch),...ids.map(id=>nextOp('productFavorites',id,{deletedAt:new Date().toISOString()}))]);},
   onFavorite: product => {
     const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
     const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {

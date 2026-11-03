@@ -55,3 +55,9 @@ Die Zuordnung steht in `../../product-catalog-data.js`; `product-catalog.js` erg
 Keine unendliche Produktdatenbank: Neue frei eingegebene Artikel dürfen weiterhin ein Gruppenbild haben. Bilder sind illustrative Beispiele und treffen keine Aussagen über Marke, Allergene, Zusammensetzung oder Verpackungsgröße.
 
 Der alte Satz von 82 Emojis stammte aus der Geräteschrift. Er ist keine externe Fotoquelle und wird für diese Ansichten nicht mehr verwendet.
+
+## Ergänzung 2.143
+
+`international-selection.webp` ergänzt am Ende die unveränderten vorhandenen Bildpositionen 1024–1055: 32 selbst erzeugte Produktmotive in acht Spalten und vier Zeilen. Das ursprüngliche PNG wurde ausschließlich als WebP kodiert. Enthalten sind u. a. Buchweizen, Wareniki, Smetana, Sucuk, Paneer, Miso und Kimchi. Zuordnung und Reihenfolge stehen in `product-catalog-data.js`. Bestehende eigene Buchweizen-Einträge erkennen das Produktfoto automatisch über den vollständigen Namen.
+
+Die Länder-/Küchenansicht verwendet `international-products.js`, mit vorhandenen und neuen Produkten. Das ist keine ausschließliche Herkunftsangabe und keine Live-Bestandsabfrage.

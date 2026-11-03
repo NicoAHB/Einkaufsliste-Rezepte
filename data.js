@@ -14,15 +14,15 @@ import { expenseCategoryId } from './expense-categories.js';
 import { parseQuantity } from './numbers.js';
 // Zusatzsammlungen (u. a. Ausgaben, Monatsbudget, Personen und Produktfavoriten)
 // sind optionale Erweiterungen von v1: ältere Dateien besitzen sie noch nicht.
-export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings'];
-const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings'];
+export const collections = ['stores', 'items', 'recipes', 'ingredients', 'prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings', 'productRemovals'];
+const optionalCollections = ['prices', 'meals', 'pantry', 'aliases', 'templates', 'purchases', 'budgets', 'productFavorites', 'members', 'expenseCategories', 'stockSettings', 'productRemovals'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const uid = () => crypto.randomUUID();
 export const active = rows => rows.filter(row => !row.deletedAt && !row._planEmpty);
 
 export function emptyData() {
   return { version: 1, updatedAt: new Date().toISOString(), stores: [], items: [],
-    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], expenseCategories: [], stockSettings: [], sync: { applied: [] } };
+    recipes: [], ingredients: [], prices: [], meals: [], pantry: [], aliases: [], templates: [], purchases: [], budgets: [], productFavorites: [], members: [], expenseCategories: [], stockSettings: [], productRemovals: [], sync: { applied: [] } };
 }
 
 // Fotos liegen als Dateien im Daten-Repository; die Kennung wird Teil eines Dateipfads und darf nur harmlose Zeichen enthalten.
@@ -46,6 +46,7 @@ export function validateRow(key, row) {
       (row._clock !== undefined && (!row._clock || typeof row._clock !== 'object' || Array.isArray(row._clock)))) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
+  if(key==='productRemovals'&&(typeof row.name!=='string'||!row.name.trim()||row.name.length>120||row.id!==`own-${productKey(row.name)}`))throw new Error('Ungültige Löschmarkierung für ein eigenes Produkt.');
   if (key === 'expenseCategories' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 200 || !Number.isSafeInteger(Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) || row.id !== expenseCategoryId(row.name,Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) ||
       (row.sortOrder !== undefined && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) ||
       (row.replacementId !== undefined && row.replacementId !== null && (typeof row.replacementId !== 'string' || !row.replacementId || row.replacementId.length > 2048 || row.replacementId === row.id)))) throw new Error('Ungültige Ausgabenkategorie.');
@@ -191,7 +192,8 @@ export function validateRow(key, row) {
 // Offline-Änderungen dürfen den ausdrücklich zurückgesetzten Stand nicht ersetzen.
 // Revision 15: gemeinsame Ausgabenkategorien und Weiterleitungen nach dem Löschen.
 // Revision 16: gemeinsame Smart-Stock-Einstellung, Ablaufzeiten und Aufbrauchen.
-export const SCHEMA_REV = 16;
+// Revision 17: dauerhaft aus der eigenen Produktauswahl entfernte Namen.
+export const SCHEMA_REV = 17;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -277,11 +279,12 @@ const REVISION_RULES = [
   [12, data => data.stores.some(row => LIST_SYMBOL_IDS.includes(row.symbol) && row.symbol !== 'gift')],
   [13, data => data.stores.some(row => row.symbol === 'secret')],
   [15, data => data.expenseCategories.length > 0 || data.purchases.some(row => row.categoryId !== undefined)],
+  [17, data => data.productRemovals.length > 0],
   [16, data => data.stockSettings.length > 0 || data.pantry.some(row => row.autoStock) || data.items.some(row => row.stockConsumedAt !== undefined)],
 ];
 export function merge(data, operations) {
   let next = clone(validate(data));
-  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= []; next.stockSettings ||= [];
+  next.prices ||= []; next.meals ||= []; next.pantry ||= []; next.aliases ||= []; next.templates ||= []; next.purchases ||= []; next.budgets ||= []; next.productFavorites ||= []; next.members ||= []; next.expenseCategories ||= []; next.stockSettings ||= []; next.productRemovals ||= [];
   const applied = new Set(next.sync.applied); let created = [], touched = new Set();
   // Nachschlagen per Kennung statt linearer Suche: bei vielen Änderungen und Datensätzen sonst Änderungen × Datensätze Schritte.
   let indexes = new Map();

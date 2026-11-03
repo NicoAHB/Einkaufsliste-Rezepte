@@ -7,10 +7,10 @@ import { GROCERY_PRODUCTS, PRODUCT_PHOTOS } from '../product-catalog.js';
 import { GROUP_PHOTO, PRODUCT_GROUP_IMAGES, groupImageFor, productImageById, resolveProductImage } from '../product-images.js';
 import { addToList } from '../data.js';
 
-test('Jeder vorgegebene Artikelname hat ein eigenes Bild; alle 1024 Katalogbilder sind eindeutig erreichbar', () => {
+test('Jeder vorgegebene Artikelname hat ein eigenes Bild; alle 1056 Katalogbilder sind eindeutig erreichbar', () => {
   for (const name of GROCERY_NAMES) assert.equal(resolveProductImage(name).kind, 'product', name);
   for (const product of GROCERY_PRODUCTS) assert.equal(resolveProductImage(product.name, product.category), productImageById(product.id), product.name);
-  assert.equal(new Set(GROCERY_PRODUCTS.map(product => `${productImageById(product.id).url}:${product.cell}`)).size, 1024);
+  assert.equal(new Set(GROCERY_PRODUCTS.map(product => `${productImageById(product.id).url}:${product.cell}`)).size, 1056);
   assert.equal(productImageById('unbekannt'), null);
 });
 
@@ -52,7 +52,7 @@ test('Neue Artikel jeder Kategorie erhalten ein Gruppenmotiv; Sonderzeichen sind
   assert.equal(groupImageFor('Milch', 'kuehl').group, 'dairy');
 });
 
-test('1056 eigene Motive: 1024 Produkte und 32 Gruppen, vollständig offline und zusammen unter 9 MB', async () => {
+test('1088 eigene Motive: 1056 Produkte und 32 Gruppen, vollständig offline und zusammen unter 9 MB', async () => {
   assert.equal(PRODUCT_GROUP_IMAGES.length, 32);
   assert.equal(new Set(PRODUCT_GROUP_IMAGES.map(group => group.cell)).size, 32);
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8'); let bytes = 0;

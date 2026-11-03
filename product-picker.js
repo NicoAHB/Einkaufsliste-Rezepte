@@ -1,9 +1,10 @@
 /* Produktauswahl als eigenes Fenster. Keine Händler-/Bilddienste: Fotos und Katalog liegen in der App.
    Änderungen gehen ausschließlich über die vorhandenen Speicher-Callbacks der App. */
+import { INTERNATIONAL_CATEGORY, internationalProductGroups, isInternationalProduct } from './international-products.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { shoppingAmount, preferredPurchase, rawPurchase, unitChoice, preferredQuantity } from './buying.js';
 import { CATEGORIES } from './categories.js';
-import { GROCERY_PRODUCTS, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic, pantryProductsForMode } from './product-catalog.js';
+import { GROCERY_PRODUCTS, internationalProductLibrary, filterProducts, ownProduct, productLibrary, selectedProducts, pantryProductLibrary, pantryProductAllowed, isPantryBasic, pantryProductsForMode } from './product-catalog.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { productKey, unitSpec } from './prices.js';
 import { pantryKey, pantryKeys, pantryRows } from './data.js';
@@ -20,9 +21,10 @@ const svg = name => {
   icon.classList.add('icon'); icon.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); icon.append(use); return icon;
 };
 
-export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName, onStockSettings, onConsume }) {
+export function mountProductPicker({ getData, getStores, getScope, onAdd, onPantry, onFavorite, onQuickBuy, recognizeName, onStockSettings, onConsume, onDeleteOwn }) {
   const $ = id => document.getElementById(id), dialog = $('product-picker-dialog'), form = $('product-picker-form');
   const search = $('product-picker-search'), category = $('product-picker-category'), store = $('product-picker-store'), grid = $('product-picker-list');
+  if(![...category.options].some(option=>option.value===INTERNATIONAL_CATEGORY))category.add(new Option('Internationale Produkte',INTERNATIONAL_CATEGORY),1);
   const selection = new Map();
   const PAGE_SIZE = 96;
   let mode = 'all', scope = '', submitting = false, target = 'list', visibleLimit = PAGE_SIZE;
@@ -81,7 +83,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     onChange: order => tabOrder.setOrder(order)
   }));
   const library = () => {
-    const data=getData(),products=(target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry);
+    const data=getData(),products=(target==='list'&&category.value===INTERNATIONAL_CATEGORY?internationalProductLibrary:target==='pantry'?pantryProductLibrary:productLibrary)(data.history,data.favorites,data.pantry,data.productRemovals);
     if(target==='pantry')for(const product of selection.values())if(!products.some(row=>pantryKey(row.name)===pantryKey(product.name)))products.push(product);
     return products;
   };
@@ -153,7 +155,7 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     const purchases=target==='pantry'&&mode==='recent'?recentPurchases(getData().recentItems||[]):[];
     const products = target === 'pantry' ? mode==='recent'?purchases.map(row=>({...allProducts.find(product=>pantryKey(product.name)===pantryKey(row.name))||ownProduct(row.name,row),name:row.name,shopBoughtAt:row.shopBoughtAt,boughtBy:purchaseBuyer(row),stockConsumedAt:row.stockConsumedAt||null,...(row.imageKey?{imageKey:row.imageKey}:{})})):pantryProductsForMode(allProducts, mode, currentViewKeys) : allProducts;
     const categories = new Set(products.map(product => product.category));
-    for (const option of category.options) option.disabled = target === 'pantry' && mode !== 'all' && Boolean(option.value) && !categories.has(option.value);
+    for (const option of category.options) option.disabled = option.value===INTERNATIONAL_CATEGORY&&target==='pantry'|| target === 'pantry' && mode !== 'all' && Boolean(option.value) && !(option.value===INTERNATIONAL_CATEGORY?products.some(isInternationalProduct):categories.has(option.value));
     if (category.selectedOptions[0]?.disabled) category.value = '';
     const visible = filterProducts(products, {mode:target === 'pantry' && ['current','basics','recent'].includes(mode) ? 'all' : mode,
       query:search.value, category:category.value, includeOwn:target === 'pantry'});
@@ -164,14 +166,15 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
     // Neuer eigener Name ist ausdrücklich möglich, ohne eine unklare Schreibweise in ein bekanntes Produkt umzudeuten.
     if (!visible.length && ['all', 'own'].includes(mode) && search.value.trim().length >= 2) {
       const own = products.find(product => productKey(product.name) === productKey(search.value)) || ownProduct(search.value);
-      if ((!category.value || category.value === own.category) && (target !== 'pantry' || pantryProductAllowed(own))) visible.push(own);
+      if (!(getData().productRemovals||[]).some(row=>!row.deletedAt&&productKey(row.name)===productKey(own.name)) && (!category.value || category.value === own.category) && (target !== 'pantry' || pantryProductAllowed(own))) visible.push(own);
     }
     grid.replaceChildren();
+    if(category.value===INTERNATIONAL_CATEGORY)grid.append(node('p','Länder und Küchen als Orientierung. Verfügbarkeit und Packungsgrößen hängen vom Geschäft ab.','hint product-international-hint'));
     // Favoriten und häufige Käufe bleiben ein kompaktes Raster, auch wenn sie aus vielen Gängen stammen.
     const shown = visible.slice(0, visibleLimit);
-    const groups = ['favorites','frequent','recent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':mode==='recent'?'Letzte Einkäufe':'Oft auf deiner Liste'}]:CATEGORIES;
+    const groups = category.value===INTERNATIONAL_CATEGORY?internationalProductGroups(shown):['favorites','frequent','recent'].includes(mode)?[{label:mode==='favorites'?'Deine Favoriten':mode==='recent'?'Letzte Einkäufe':'Oft auf deiner Liste'}]:CATEGORIES;
     for (const group of groups) {
-      const matches = group.id ? shown.filter(product => product.category === group.id) : shown; if (!matches.length) continue;
+      const matches = group.matches || (group.id ? shown.filter(product => product.category === group.id) : shown); if (!matches.length) continue;
       const section = node('section', undefined, 'product-group'), heading = node('h3', group.label), cards = node('div', undefined, 'product-grid');
       section.append(heading, cards); grid.append(section);
       for (const product of matches) {
@@ -212,6 +215,18 @@ export function mountProductPicker({ getData, getStores, getScope, onAdd, onPant
         star.setAttribute('aria-pressed', String(Boolean(product.favorite))); star.append(svg('star'));
         star.addEventListener('click', () => { try { clearError(); onFavorite(product); renderProducts(); } catch (error) { fail(error); } });
         card.append(pick,star);
+        if(target==='list'&&mode==='own'&&product.own&&onDeleteOwn){
+          card.classList.add('has-own-delete');
+          const remove=node('button','Löschen','product-delete');remove.type='button';remove.dataset.productAction='delete';remove.dataset.product=product.id;remove.setAttribute('aria-label',`${product.name} dauerhaft löschen`);
+          remove.addEventListener('click',()=>{try{
+            if(!dialog.open||scope!==getScope()||target!=='list'||mode!=='own'||submitting)throw new Error('Bitte den Reiter „Eigene“ erneut öffnen.');
+            const current=library().find(row=>row.id===product.id);if(!current?.own)throw new Error('Nur eigene Produkte können gelöscht werden.');
+            if(!window.confirm(`„${current.name}“ dauerhaft aus deinen eigenen Produkten löschen?\n\nDer Eintrag verschwindet aus der Produktauswahl und den Favoriten. Bereits angelegte Einkaufspositionen, Vorräte und Belege bleiben erhalten.`))return;
+            onDeleteOwn(current);selection.delete(current.id);clearError();renderCart();renderProducts();$('product-picker-feedback').textContent=`„${current.name}“ aus eigenen Produkten gelöscht.`;$('product-picker-feedback').hidden=false;
+            (grid.querySelector('button')||search).focus({preventScroll:true});
+          }catch(error){fail(error);}});card.append(remove);
+        }
+
         if(target==='pantry'&&mode==='recent'&&!consumed&&onConsume){
           const consume=node('button',isOptionalBasic(product.name)?'Aufgebraucht & nachkaufen':'Aufgebraucht','secondary pantry-consume');consume.type='button';consume.dataset.productAction='consume';consume.dataset.product=product.id;consume.setAttribute('aria-label',`${product.name} als aufgebraucht markieren`);if(isOptionalBasic(product.name))consume.setAttribute('aria-description','Wird automatisch auf den Einkaufszettel gesetzt.');
           consume.addEventListener('click',()=>{try{if(scope!==getScope())throw new Error('Bitte die Vorratsauswahl erneut öffnen.');const restocked=onConsume(purchaseStart(product));for(const [id,selected]of selection)if(pantryKey(selected.name)===pantryKey(product.name))selection.delete(id);renderCart();renderProducts();$('product-picker-feedback').textContent=restocked?`${product.name} ist aufgebraucht und steht auf dem Einkaufszettel.`:`${product.name} ist aufgebraucht. Der Einkauf bleibt in der Historie.`;$('product-picker-feedback').hidden=false;}catch(error){fail(error);}});card.append(consume);

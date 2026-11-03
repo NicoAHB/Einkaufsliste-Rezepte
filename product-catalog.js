@@ -9,6 +9,7 @@ import { amountChoice } from './buying.js';
 
 import { canonicalProductName, productGroup, productGroupById } from './product-groups.js';
 import { PRODUCT_ROWS, PRODUCT_SHEETS } from './product-catalog-data.js';
+import { INTERNATIONAL_CATEGORY, internationalSearchText, isInternationalProduct } from './international-products.js';
 
 export const PRODUCT_PHOTOS = PRODUCT_SHEETS.map(name => `assets/products/${name}.webp`);
 export const GROCERY_PRODUCTS = Object.freeze(PRODUCT_ROWS.map(([id, name, quantity, unit, category], index) => Object.freeze({
@@ -28,7 +29,7 @@ export function ownProduct(name, extra = {}) {
     ...(typeof extra.imageKey === 'string' ? { imageKey: extra.imageKey } : {}), own: true };
 }
 // Nur genaue Namen teilen sich ein Katalogbild. „Apfeltasche“ bekommt niemals das Foto von „Äpfel“.
-export function productLibrary(history = [], favorites = [], pantry = []) {
+export function productLibrary(history = [], favorites = [], pantry = [], removals = []) {
   const products = new Map(GROCERY_PRODUCTS.map(raw => { const product=productById(raw.id); return [productKey(product.name), { ...product, count:0 }]; }));
   const latest = new Map(), latestImage = new Map();
   for (const row of history) {
@@ -56,13 +57,28 @@ export function productLibrary(history = [], favorites = [], pantry = []) {
     if (row.imageKey) product.imageKey = row.imageKey;
     products.set(key, product);
   }
-  return [...products.values()];
+  const removed=new Set(removals.filter(row=>!row.deletedAt).map(row=>productKey(row.name)));
+  return [...products.values()].filter(product=>!product.own||!removed.has(productKey(product.name)));
+}
+/** A caller cannot turn a built-in or known spelling into a deletable custom row. */
+export function ownProductRemoval(product) {
+  if(!product?.own||!product.name?.trim()||product.id!==ownProduct(product.name).id||productGroup(product.name)||GROCERY_PRODUCTS.some(p=>productKey(p.name)===productKey(product.name)))throw new Error('Nur selbst angelegte Produkte können gelöscht werden.');
+  return {id:product.id,patch:{name:product.name.trim(),deletedAt:null}};
+}
+/** The international view deliberately shows concrete variants such as sushi rice,
+ * while the regular catalog continues to use its established product groups. */
+export function internationalProductLibrary(history=[],favorites=[]) {
+  return GROCERY_PRODUCTS.filter(isInternationalProduct).map(raw=>{
+    const entries=history.filter(row=>productKey(row.name)===productKey(raw.name));
+    const fav=favorites.filter(row=>!row.deletedAt&&(row.productId===raw.id||productKey(row.name)===productKey(raw.name))).sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))).at(-1);
+    return {...raw,count:entries.reduce((n,row)=>n+(Number(row.weight)||1)+(row._adds?.length||0),0),...(fav?{favorite:{...fav,ids:[fav.id]},quantity:fav.quantity,unit:fav.unit,...fav.imageKey?{imageKey:fav.imageKey}:{}}:{})};
+  });
 }
 export function filterProducts(products, { mode = 'all', query = '', category = '', includeOwn = false } = {}) {
   const words = searchProductText(query).split(/\s+/).filter(Boolean);
-  const eligible = products.filter(product => (!category || product.category === category) &&
+  const eligible = products.filter(product => (!category || (category===INTERNATIONAL_CATEGORY?isInternationalProduct(product):product.category===category)) &&
     (mode === 'favorites' ? product.favorite : mode === 'frequent' ? product.count >= 2 : mode === 'own' ? product.own : includeOwn || words.length || !product.own));
-  let found = eligible.filter(product => words.every(word => searchProductText([product.name,...(product.aliases || productGroup(product.name)?.aliases || [])].join(' ')).includes(word)));
+  let found = eligible.filter(product => words.every(word => searchProductText([product.name,...(product.aliases || productGroup(product.name)?.aliases || []),internationalSearchText(product)].join(' ')).includes(word)));
   // Erst die normale Suche; bei Tippfehlern passende ganze Namen anbieten.
   if (!found.length && words.length) {
     const near = new Set(matchProductName(query, eligible).suggestions);
@@ -92,11 +108,11 @@ export function pantryProductAllowed(product) {
   // Eindeutige Nicht-Vorräte auch bei selbst eingegebenen Namen ausschließen.
   return !/(?:^| )(?:tv|fernseher|smart ?tv|television|laptop|notebook|computer|monitor|smartphone|handy|tablet|konsole|playstation|xbox|kopfhorer|ladekabel|drucker|blumenerde|rasenmaher|gartenmobel|sofa|sessel|regal|springseil)(?: |$)/.test(searchProductText(product.name));
 }
-export function pantryProductLibrary(history = [], favorites = [], pantry = []) {
+export function pantryProductLibrary(history = [], favorites = [], pantry = [], removals = []) {
   const inventory=new Map(pantryRows(pantry).map(row=>[pantryKey(row.name),row]));
   const allowed=product=>inventory.has(pantryKey(product.name)) || (pantryProductAllowed(product)&&(catalogNames.has(productKey(product.name))||product.favorite||(product.category&&product.category!=='sonstiges')));
   const merged=new Map();
-  for(const product of productLibrary(history.filter(allowed),favorites.filter(product=>inventory.has(pantryKey(product.name))||pantryProductAllowed(product)),pantry).filter(allowed)){
+  for(const product of productLibrary(history.filter(allowed),favorites.filter(product=>inventory.has(pantryKey(product.name))||pantryProductAllowed(product)),pantry,removals).filter(allowed)){
     const key=pantryKey(product.name),previous=merged.get(key);
     if(previous){previous.count+=product.count;previous.favorite ||= product.favorite;if(product.imageKey)previous.imageKey=product.imageKey;}
     else merged.set(key,{...product});

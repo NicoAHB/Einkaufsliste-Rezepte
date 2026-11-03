@@ -15,10 +15,10 @@ const favorite = (id, extra = {}, date = at) => {
     quantity: product.quantity, unit: product.unit, category: product.category, deletedAt: null, ...extra }, 'Nico', date);
 };
 
-test('1024 Alltagsprodukte: eindeutige Kennungen, sichere Mengen, richtige Gänge und vollständig lokale Fotos', async () => {
-  assert.equal(GROCERY_PRODUCTS.length, 1024);
-  assert.equal(new Set(GROCERY_PRODUCTS.map(row => row.id)).size, 1024);
-  assert.equal(new Set(GROCERY_PRODUCTS.map(row => row.name)).size, 1024);
+test('1056 Alltagsprodukte: eindeutige Kennungen, sichere Mengen, richtige Gänge und vollständig lokale Fotos', async () => {
+  assert.equal(GROCERY_PRODUCTS.length, 1056);
+  assert.equal(new Set(GROCERY_PRODUCTS.map(row => row.id)).size, 1056);
+  assert.equal(new Set(GROCERY_PRODUCTS.map(row => row.name)).size, 1056);
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   let bytes = 0;
   for (const photo of PRODUCT_PHOTOS) {
@@ -27,7 +27,7 @@ test('1024 Alltagsprodukte: eindeutige Kennungen, sichere Mengen, richtige Gäng
     assert.equal(file.subarray(0, 4).toString(), 'RIFF'); assert.equal(file.subarray(8, 12).toString(), 'WEBP');
     assert.ok(sw.includes(`'./${photo}'`), 'Foto muss offline mitkommen');
   }
-  assert.ok(bytes < 8500000, 'alle 1024 Produktbilder zusammen höchstens 8,5 MB');
+  assert.ok(bytes < 8500000, 'alle 1056 Produktbilder zusammen höchstens 8,5 MB');
   for (const product of GROCERY_PRODUCTS) {
     assert.ok(product.quantity > 0 && product.unit && product.name);
     assert.ok(isCategory(product.category), product.name + ': gültiger Gang');

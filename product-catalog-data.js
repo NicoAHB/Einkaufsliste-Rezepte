@@ -1,7 +1,7 @@
 /* Sattplan: feste Produktkennungen und Bildpositionen. Jede Tafel: 8 Spalten × 4 Zeilen.
    Reihenfolge niemals ändern: vorhandene Favoriten und Bildverweise bleiben dadurch gültig.
    Neue Produkte nur mit ihrer eigenen Bildtafel am Ende ergänzen. */
-export const PRODUCT_SHEETS = Object.freeze(["produce", "fresh", "everyday", "household", "produce-more", "pantry-more", "fruit-varieties", "vegetable-varieties", "greens-herbs", "bakery-selection", "cheese-selection", "dairy-selection", "plant-based-selection", "meat-deli-selection", "meat-fish-selection", "frozen-selection", "pasta-grains-selection", "canned-selection", "sauces-selection", "spices-selection", "baking-nuts-selection", "breakfast-selection", "sweets-selection", "savoury-selection", "drinks-selection", "coffee-tea-selection", "cleaning-selection", "laundry-kitchen-selection", "body-care-selection", "hygiene-selection", "baby-pets-selection", "home-garden-selection"]);
+export const PRODUCT_SHEETS = Object.freeze(["produce", "fresh", "everyday", "household", "produce-more", "pantry-more", "fruit-varieties", "vegetable-varieties", "greens-herbs", "bakery-selection", "cheese-selection", "dairy-selection", "plant-based-selection", "meat-deli-selection", "meat-fish-selection", "frozen-selection", "pasta-grains-selection", "canned-selection", "sauces-selection", "spices-selection", "baking-nuts-selection", "breakfast-selection", "sweets-selection", "savoury-selection", "drinks-selection", "coffee-tea-selection", "cleaning-selection", "laundry-kitchen-selection", "body-care-selection", "hygiene-selection", "baby-pets-selection", "home-garden-selection", "international-selection"]);
 export const PRODUCT_ROWS = Object.freeze([
   // produce.webp
   ["aepfel", "Äpfel", 1, "kg", "obst"],
@@ -1058,5 +1058,38 @@ export const PRODUCT_ROWS = Object.freeze([
   ["schuhcreme", "Schuhcreme", 1, "Dose", "haushalt"],
   ["impraegnierspray", "Imprägnierspray", 1, "Flasche", "haushalt"],
   ["insektenschutz", "Insektenschutz", 1, "Flasche", "haushalt"],
-  ["kuehlakku", "Kühlakku", 1, "Stück", "sonstiges"]
+  ["kuehlakku", "Kühlakku", 1, "Stück", "sonstiges"],
+  // international-selection.webp: feste Reihenfolge der 32 neu erzeugten Motive
+  ["buchweizen", "Buchweizen", 500, "g", "vorrat"],
+  ["wareniki", "Wareniki", 500, "g", "tiefkuehl"],
+  ["borschtsch", "Borschtsch", 500, "ml", "vorrat"],
+  ["smetana", "Smetana", 200, "g", "kuehl"],
+  ["pierogi", "Pierogi", 500, "g", "tiefkuehl"],
+  ["kabanossi", "Kabanossi", 200, "g", "fleisch"],
+  ["polnische-salzgurken", "Polnische Salzgurken", 1, "Glas", "vorrat"],
+  ["makowiec", "Makowiec (Mohnrolle)", 1, "Stück", "brot"],
+  ["yufkateig", "Yufkateig", 1, "Packung", "kuehl"],
+  ["sucuk", "Sucuk", 250, "g", "fleisch"],
+  ["ayran", "Ayran", 250, "ml", "kuehl"],
+  ["pekmez", "Pekmez", 1, "Glas", "vorrat"],
+  ["tzatziki", "Tzatziki", 200, "g", "kuehl"],
+  ["kalamata-oliven", "Kalamata-Oliven", 1, "Glas", "vorrat"],
+  ["kritharaki", "Kritharaki", 500, "g", "vorrat"],
+  ["dolmadakia", "Dolmadakia", 1, "Dose", "vorrat"],
+  ["paneer", "Paneer", 200, "g", "kuehl"],
+  ["tamarindenpaste", "Tamarindenpaste", 1, "Glas", "gewuerze"],
+  ["papadam", "Papadam", 1, "Packung", "brot"],
+  ["chapati", "Chapati", 1, "Packung", "brot"],
+  ["nori-algen", "Nori-Algen", 1, "Packung", "vorrat"],
+  ["misopaste", "Misopaste", 1, "Packung", "gewuerze"],
+  ["soba-nudeln", "Soba-Nudeln", 250, "g", "vorrat"],
+  ["mirin", "Mirin", 1, "Flasche", "gewuerze"],
+  ["kimchi", "Kimchi", 1, "Glas", "kuehl"],
+  ["gochujang", "Gochujang", 1, "Packung", "gewuerze"],
+  ["gochugaru", "Gochugaru", 1, "Packung", "gewuerze"],
+  ["dangmyeon", "Dangmyeon (Süßkartoffel-Glasnudeln)", 250, "g", "vorrat"],
+  ["jalapenos-eingelegt", "Jalapeños eingelegt", 1, "Glas", "vorrat"],
+  ["chipotle-adobo", "Chipotle in Adobosauce", 1, "Dose", "vorrat"],
+  ["masa-harina", "Masa Harina (Maismehl)", 500, "g", "vorrat"],
+  ["taco-gewuerzmischung", "Taco-Gewürzmischung", 1, "Packung", "gewuerze"]
 ]);
