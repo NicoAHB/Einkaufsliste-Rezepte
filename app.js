@@ -1,4 +1,4 @@
-import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion } from './ui-controls.js';
+import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion, scrollHints } from './ui-controls.js';
 import { createDraftStore } from './drafts.js';
 import { checkedRecipeGroups } from './recipe-tags.js';
 import { mountRecipeTagPicker } from './recipe-tag-picker.js';
@@ -59,6 +59,7 @@ const CONFIG_KEY = 'einkauf-settings-v1';
 // Die Startwerte vor dem ersten Anzeigen müssen zu theme.js passen.
 const DISPLAY_DEFAULTS = Object.freeze({theme:'light',storeStyle:'text',palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65,groupItems:true,productImages:true});
 watchSaveForms();
+scrollHints();
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
 const imagesOn = () => config.productImages !== false;
@@ -202,6 +203,7 @@ function renderQuarantine() {
 }
 function status(text, mode = 'local') {
   $('#status').textContent = text; $('#status').dataset.state = mode; document.body.dataset.sync = mode;
+  $('#sync-tab-state').textContent = ['pending', 'error'].includes(mode) ? `Abgleich: ${text}` : '';
   syncDetail();
   if (mode === 'ok' && connectFailed) { connectFailed = false; updateSaveButtons(); }
 }
@@ -1579,6 +1581,7 @@ function renderPlan() {
     const card = element('article', undefined, `day${day === today ? ' today' : ''}${past ? ' past' : ''}`); card.dataset.day = day;
     const head = element('div', undefined, 'day-head'), title = element('h3', dayName(day));
     title.append(element('small', dayMonthLabel(day)));
+    if (day === today) title.append(element('span', 'Heute', 'day-today-badge'));
     head.append(title); if (!past) head.append(iconButton('plus', `${dayName(day)}: Gericht planen`, () => openMeal({ date: day })));
     card.append(head);
     for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
@@ -2448,6 +2451,19 @@ function moveDailyRecipe(delta){
 }
 $('#daily-review-prev').addEventListener('click',()=>guard(()=>moveDailyRecipe(-1)));
 $('#daily-review-next').addEventListener('click',()=>guard(()=>moveDailyRecipe(1)));
+// Zusätzlich zu den Pfeilen: nach links wischen zeigt das nächste, nach rechts das vorherige Rezept des Tages.
+(()=>{
+  const area=$('#daily-content');let start=null;
+  area.addEventListener('pointerdown',event=>{start=event.pointerType==='mouse'?null:{x:event.clientX,y:event.clientY,at:Date.now(),id:event.pointerId};},{passive:true});
+  area.addEventListener('pointercancel',()=>{start=null;});
+  area.addEventListener('pointerup',event=>{
+    if(!start||start.id!==event.pointerId)return;
+    const dx=event.clientX-start.x,dy=event.clientY-start.y,quick=Date.now()-start.at<800;start=null;
+    if(!quick||Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.5)return;
+    const target=$(dx<0?'#daily-review-next':'#daily-review-prev');
+    if(!target.disabled&&!target.hidden&&!target.closest('[hidden]'))target.click();
+  });
+})();
 
 /* ---------- Was kann ich kochen? ---------- */
 const cookableMode = () => config.cookableMode === 'shopping' ? 'shopping' : 'pantry';
@@ -2645,7 +2661,14 @@ function requestPersistentStorage() {
   persistAsked = true;
   navigator.storage.persisted?.().then(already => already || navigator.storage.persist()).catch(() => {});
 }
+// Namensvorschläge nur aus den eigenen Daten (Personen, Ersteller von Einträgen); ohne bekannte Namen kein Auswahlpfeil.
+function fillActorNames() {
+  const names = [...new Set([...liveMembers(state.members).map(row => row.name), ...active(state.items).map(row => row.createdBy)].map(name => String(name || '').trim()).filter(name => name && name !== 'Unbekannt'))].slice(0, 12);
+  $('#actors').replaceChildren(...names.map(name => new Option(name, name)));
+  document.querySelectorAll('input[name=actor]').forEach(input => { if (names.length) input.setAttribute('list', 'actors'); else input.removeAttribute('list'); });
+}
 function fillSettings() {
+  fillActorNames();
   for (const key of ['actor', 'owner', 'repo', 'branch', 'path', 'token', 'tokenExpires']) {
     $('#settings-form').elements[key].value = config[key] || ({ branch: 'main', path: 'daten.json' }[key] || '');
   }
@@ -3397,7 +3420,7 @@ const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter
 function renderBudget(spent) {
   const box = $('#spending-budget'), budget = budgetCents(), status = budgetStatus(spent, budget);
   box.replaceChildren();
-  if (!status) { box.append(button('Monatsbudget festlegen', openBudget, 'text-button')); box.classList.add('empty-budget'); return; }
+  if (!status) { box.append(element('p', 'Noch kein Monatsbudget. Lege fest, wie viel ihr im Monat ausgeben wollt; die App zeigt dann, wie viel noch übrig ist.', 'hint empty-budget-text'), button('Monatsbudget festlegen', openBudget, 'text-button')); box.classList.add('empty-budget'); return; }
   box.classList.remove('empty-budget');
   const head = element('div', undefined, 'spend-budget-head'), copy = element('div');
   copy.append(element('strong', `Budget ${euros(budget)}`), element('small', status.left >= 0 ? `${status.percent} % verbraucht · noch ${euros(status.left)}` : `${euros(-status.left)} über dem Budget (${status.percent} %)`, `budget-${status.level}`));
@@ -3464,7 +3487,8 @@ function openPurchase(id = '') {
   $('#purchase-delete').hidden = !row;
 
   $('#purchase-dialog').showModal();
-  if (!row) form.elements.amount.focus();
+  // Wie beim Monatsbudget: Die Tastatur öffnet sich erst, wenn das Betragsfeld angetippt wird.
+  $('#purchase-dialog [data-close]').focus({ preventScroll: true });
 }
 // Foto oder Screenshot eines Kassenbons: Text erkennen, Summe/Datum/Geschäft als Vorschlag in die Felder eintragen. Gespeichert wird erst mit „Speichern“.
 async function readPurchasePhoto(files) {
@@ -3646,7 +3670,7 @@ function renderDeviceStorage() {
       sizes[key.startsWith('einkauf-data-v1:') || key === 'einkauf-demo-v1' ? 'data' : key.startsWith('einkauf-daily:') ? 'daily' : 'other'] += bytes;
     }
   } catch { $('#device-storage').textContent = ''; return; }
-  const mb = bytes => `${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(bytes / 1048576)} MB`;
+  const mb = bytes => bytes < 102400 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(bytes / 1048576)} MB`;
   const total = sizes.data + sizes.daily + sizes.other;
   $('#device-storage').textContent = `Auf diesem Gerät belegt: ${mb(total)} von meist etwa 5 MB (Daten und Warteschlange ${mb(sizes.data)}, Tagesverlauf ${mb(sizes.daily)}, Sonstiges ${mb(sizes.other)}).`;
   $('#clear-daily-history').hidden = sizes.daily < 2048;
@@ -4466,7 +4490,7 @@ async function start() {
     const adding = incomingAdd(), incoming = incomingLink();
     await loadWorkspace();
     prunePhotos(usedPhotos()).catch(() => {});
-    if (!config.actor) { deferredImport = incoming; deferredAdd = adding; $('#welcome').showModal(); }
+    if (!config.actor) { deferredImport = incoming; deferredAdd = adding; fillActorNames(); $('#welcome').showModal(); }
     else {
       if (adding && ready) guard(() => askAddFromLink(adding));
       if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
@@ -4482,8 +4506,8 @@ async function start() {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
         // Eine fertig geladene neue Version wartet (siehe sw.js), bis „Neu laden“ angetippt wird.
         const offer = worker => { if (worker && navigator.serviceWorker.controller) { waitingWorker = worker; $('#update-banner').hidden = false; } };
-        offer(registration.waiting);
-        registration.addEventListener('updatefound', () => { const worker = registration.installing; worker?.addEventListener('statechange', () => { if (worker.state === 'installed') offer(worker); }); });
+        offer(registration?.waiting);
+        registration?.addEventListener?.('updatefound', () => { const worker = registration.installing; worker?.addEventListener('statechange', () => { if (worker.state === 'installed') offer(worker); }); });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) registration?.update?.().catch(() => {}); });
       }).catch(() => message('Offline-Start konnte nicht vorbereitet werden. Online funktioniert die App weiter. Bitte HTTPS und alle App-Dateien prüfen.'));
     }

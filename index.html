@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ecf0f9" id="theme-color">
+  <meta name="theme-color" content="#ecf9f3" id="theme-color">
   <script src="theme.js"></script>
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -283,7 +283,7 @@
     <button type="button" data-tab="recipes"><span class="tab-icon"><svg class="icon"><use href="#i-book"/></svg></span><span class="tab-label">Rezepte</span></button>
     <button type="button" data-tab="plan"><span class="tab-icon"><svg class="icon"><use href="#i-calendar"/></svg></span><span class="tab-label">Plan</span></button>
     <button type="button" data-tab="spending"><span class="tab-icon"><svg class="icon"><use href="#i-chart"/></svg></span><span class="tab-label">Ausgaben</span></button>
-    <button type="button" data-tab="settings"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span></button>
+    <button type="button" data-tab="settings" aria-describedby="sync-tab-state"><span class="tab-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><span class="tab-label">Einstellungen</span><span id="sync-tab-state" hidden></span></button>
   </nav>
   <div id="trash-zone" class="trash-zone" aria-hidden="true"><svg class="icon"><use href="#i-trash"/></svg></div>
   <div id="shop-lockbar" class="lockbar" hidden><svg class="icon"><use href="#i-lock"/></svg><span>Gesperrt</span><button id="shop-unlock" type="button" class="hold-button"><span>Zum Entsperren gedrückt halten</span></button><span id="shop-lock-live" class="visually-hidden" role="status"></span></div>
@@ -576,7 +576,7 @@
   <dialog id="transfer-dialog"><form id="transfer-form" class="stack"><div class="sheet-head"><h2>Zutaten übernehmen</h2><button type="button" data-close="transfer-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p>Vorrat und Einkaufszettel werden berücksichtigt. Packungen zählen mit; vorausgewählt sind nur noch fehlende Mengen.</p><div class="price-grid unit-grid"><label>Portionen<input name="servings" inputmode="decimal" required></label><label>Geschäft<select name="storeId"></select></label></div><p id="transfer-plan-note" class="hint" hidden></p>
     <div id="transfer-ingredients"></div><label class="checkbox-label"><input name="rememberPantry" type="checkbox"> Abgewählte Zutaten als Vorrat merken</label><button type="submit">Ausgewählte Zutaten hinzufügen</button></form></dialog>
   <datalist id="units"><option value="Stück"><option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL"><option value="Packung"><option value="Prise"><option value="Bund"><option value="Dose"><option value="nach Bedarf"></datalist>
-  <datalist id="actors"><option value="Nico"><option value="Partnerin"></datalist>
+  <datalist id="actors"></datalist>
   <!-- Nur im Querformat auf Handys sichtbar (siehe syncTurned in app.js): die App steht immer hochkant -->
   <dialog id="plan-adjust-dialog" aria-labelledby="plan-adjust-title"><div class="stack"><div class="sheet-head"><h2 id="plan-adjust-title">Einkaufsliste anpassen?</h2><button type="button" data-close="plan-adjust-dialog" class="icon-button round" aria-label="Abbrechen">×</button></div><p id="plan-adjust-intro">Diese Zutaten werden weniger benötigt. Manuelle Zusatzmengen bleiben erhalten.</p><ul id="plan-adjust-list" class="adjust-list"></ul><p id="plan-adjust-note" class="hint"></p><p id="plan-adjust-remaining" class="hint" role="status" hidden></p><ul id="plan-adjust-removed" class="adjust-list hint" aria-label="Bereits entfernte oder geänderte Zutaten" hidden></ul><details id="plan-adjust-existing" hidden><summary id="plan-adjust-existing-title">Schon vorher notiert</summary><p class="hint">Diese Artikel waren schon vor der Zutatenübernahme auf dem Einkaufszettel. Das Gericht hat sie nicht neu hinzugefügt; diese Aktion verändert sie nicht.</p><ul id="plan-adjust-existing-list" class="adjust-list"></ul></details><button id="plan-adjust-apply" type="button">Einkaufsliste anpassen</button><button id="plan-adjust-keep" type="button" class="secondary">Einkaufsliste unverändert lassen</button><button id="plan-adjust-cancel" type="button" class="secondary" data-close="plan-adjust-dialog">Abbrechen</button><p id="plan-adjust-error" role="alert" class="dialog-error" hidden></p></div></dialog>
   <dialog id="past-meal-dialog" aria-labelledby="past-meal-title" aria-describedby="past-meal-detail"><div class="stack"><h2 id="past-meal-title">Gericht aus der Übersicht entfernen, da nicht gekocht?</h2><p id="past-meal-detail" class="hint"></p><div class="past-meal-actions"><button id="past-meal-yes" type="button">Ja</button><button id="past-meal-no" class="secondary" type="button" data-close="past-meal-dialog">Nein</button></div><p id="past-meal-error" class="dialog-error" role="alert" hidden></p></div></dialog>
