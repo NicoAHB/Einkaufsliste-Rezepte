@@ -1,6 +1,6 @@
 # Sattplan als App für iPhone und Android: Fahrplan
 
-Stand: Version 2.145. Dieses Dokument beschreibt, was für eine Veröffentlichung im **App Store** (Apple) und bei **Google Play** nötig ist, was schon vorbereitet ist und in welcher Reihenfolge es sinnvoll ist.
+Stand: Version 2.146. Dieses Dokument beschreibt, was für eine Veröffentlichung im **App Store** (Apple) und bei **Google Play** nötig ist, was schon vorbereitet ist und in welcher Reihenfolge es sinnvoll ist.
 
 ## Kurzfassung
 
@@ -9,7 +9,7 @@ Stand: Version 2.145. Dieses Dokument beschreibt, was für eine Veröffentlichun
 - **Rechtliches vor der Einreichung klären**, vor allem die **Händlerlogos**, den Datenschutz und das Löschen von Konten.
 - **Zwischenschritt ohne Backend:** Für euch als Familie lässt sich die App schon vorher als Capacitor-App bauen und über **TestFlight** (iPhone) bzw. einen **internen Test** (Google Play) verteilen, mit der heutigen GitHub-Verbindung.
 
-## Was in 2.145 schon vorbereitet ist
+## Was in 2.146 schon vorbereitet ist
 
 | Baustein | Warum er für die App wichtig ist |
 |---|---|

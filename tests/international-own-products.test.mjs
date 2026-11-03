@@ -36,6 +36,8 @@ test('2.144: weitere Küchen mit vorhandenen Katalogbildern, deutsch sortiert; j
   assert.ok(INTERNATIONAL_COUNTRIES.find(c=>c.id===country).products.includes(id),`${country}: ${id}`);
   assert.equal(imageForProduct(byId.get(id)).kind,'product',`${id} hat ein eigenes Katalogbild`);
  }
+ for(const product of lib)assert.equal(imageForProduct(product).key,product.id,`${product.name}: Variantenfoto statt allgemeines Gruppenbild`);
+ const custom=internationalProductLibrary([],[{id:'favorite-mie',productId:'mie-nudeln',name:'Mie-Nudeln',quantity:250,unit:'g',imageKey:'group-pantry'}]).find(p=>p.id==='mie-nudeln');assert.equal(imageForProduct(custom).key,'group-pantry','bewusst gewähltes Favoritenbild bleibt erhalten');
  for(const country of INTERNATIONAL_COUNTRIES)assert.equal(new Set(country.products).size,country.products.length,`${country.label} ohne Doppel`);
  const groups=internationalProductGroups(filterProducts(lib,{category:INTERNATIONAL_CATEGORY}));assert.equal(groups.length,14);assert.ok(groups.every(group=>group.matches.length>=3));
 });

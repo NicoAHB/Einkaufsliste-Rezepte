@@ -2,7 +2,7 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
-## Neu in Version 2.145: Eigene Rückfragen, Papierkorb für alles, Vorratssorten getrennt, Vorbereitung für eine App
+## Neu in Version 2.146: Eigene Rückfragen, Papierkorb für alles, Vorratssorten getrennt, Vorbereitung für eine App
 
 **Rückfragen im Stil der App.** Alle 15 Rückfragen (z. B. Artikel oder Rezept löschen, Papierkorb leeren, Liste freigeben, Token entfernen) erscheinen nicht mehr als graues Browser-Fenster, sondern als eigenes Fenster der App:
 - mittig, mit Überschrift, kurzem Text und beschrifteten Knöpfen („Löschen“, „Freigeben“, „Verwerfen“ statt „OK“),
@@ -21,7 +21,7 @@ Nicht dabei sind geheime Listen (nur auf diesem Gerät, das Löschen fragt ausdr
 - Gleiche Wörter bleiben gleich: „Äpfel“/„Apfel“, „Knoblauchzehen“/„Knoblauch“, „Tomaten, gehackt“/„Tomaten“.
 - **Rezepte, Wochenplan und Einkaufszettel prüfen weiter nach Gruppe:** Ein Rezept mit „Reis“ zählt jede Reissorte im Vorrat mit. So kommt nichts auf den Zettel, was schon (in einer anderen Sorte) da ist.
 - Eine Kachel nennt andere vorhandene Sorten derselben Gruppe, z. B. „Reis vorhanden“ auf „Sushi-Reis“.
-- Auch die Ansicht „Internationale Produkte“ zeigt jetzt das Foto der Sorte statt des Gruppenbilds (z. B. Sushi-Reis).
+- Wie die Ansicht „Internationale Produkte“ seit 2.145 zeigt auch der Vorrat das Foto der Sorte statt des Gruppenbilds.
 - Technisch: neuer Schlüssel `stockKey` (Sorte) neben `pantryKey` (Gruppe).
 
 **Vorbereitung für eine App (iOS/Android).**
@@ -32,6 +32,15 @@ Nicht dabei sind geheime Listen (nur auf diesem Gerät, das Löschen fragt ausdr
 - Neue Browser- und Logiktests für die Rückfragen, den Papierkorb und getrennte Sorten.
 - Die Test-Helfer warten jetzt verlässlicher: auf die verarbeitete Antwort statt auf einen festen Takt, und auf eine leere Warteschlange statt nur auf den grünen Status.
 - Die Tests für geheime Listen laufen auch unter fünffacher Last stabil.
+
+Offline-Paket `einkauf-shell-v158`.
+
+## Neu in Version 2.145: passende Bilder für internationale Varianten
+
+- Internationale Produkte verwenden das Foto der genauen Sorte: Mie-Nudeln statt des allgemeinen Nudelbildes, Sesamöl statt Olivenöl, rotes Pesto statt grünem Pesto und schwarze statt rote Bohnen. Die vorhandenen Einzelbilder werden weiterverwendet.
+- Bewusst gewählte Favoritenbilder bleiben erhalten. Die normalen Produktgruppen, vorhandene Einkäufe und Bilder werden nicht umsortiert.
+- Die Prüfung kontrolliert jetzt die genaue Bildkennung aller 97 internationalen Produkte und die sichtbaren Variantenbilder in der mobilen Auswahl.
+- Fehlgeschlagene Browsertests sind zusätzlich in der GitHub-Actions-Zusammenfassung lesbar.
 
 Offline-Paket `einkauf-shell-v157`.
 
