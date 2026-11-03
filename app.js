@@ -2236,7 +2236,6 @@ function dailyRecipeNavigation(record,index,review=false){
   $('#daily-review-nav').hidden=!review&&!record.queue.length;
   $('#daily-review-prev').disabled=index<=0;
   $('#daily-review-next').disabled=index>=record.queue.length-1;
-  $('#daily-review-finish').hidden=!review;
 }
 async function showDailyReview() {
   const review = dailyReview, record = review?.record;
@@ -2383,7 +2382,6 @@ function moveDailyRecipe(delta){
 }
 $('#daily-review-prev').addEventListener('click',()=>guard(()=>moveDailyRecipe(-1)));
 $('#daily-review-next').addEventListener('click',()=>guard(()=>moveDailyRecipe(1)));
-$('#daily-review-finish').addEventListener('click', () => { dailyReview = null; showDaily(); });
 
 /* ---------- Was kann ich kochen? ---------- */
 const cookableMode = () => config.cookableMode === 'shopping' ? 'shopping' : 'pantry';
