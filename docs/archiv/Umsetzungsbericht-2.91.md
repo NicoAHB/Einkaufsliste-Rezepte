@@ -23,11 +23,11 @@ Browserdaten löschen entfernt geheime Listen dauerhaft; gemeinsame Sicherungen 
 
 | Bereich | Dateien |
 | --- | --- |
-| Plus-Formular, SVG-Schlösser, entfallene Aktivierungskarten | [index.html](../index.html), [styles.css](../styles.css) |
-| Eigene Symbole, Geheim-Haken, Umstellung und lokale Geschäftskarten | [app.js](../app.js): `storeLabel`, `listPrivacyField`, `makeSharedListPrivate`, `sharePrivateList`, `privateStoreEditorRow`, `syncNewStoreForm` |
-| Lokale Mehrfachlisten und Kompatibilität | [private-list.js](../private-list.js), [private-list-view.js](../private-list-view.js) |
-| Symbolkatalog und Revisionsschutz | [list-symbols.js](../list-symbols.js), [data.js](../data.js) |
-| Offline-Paket und Anleitung | [sw.js](../sw.js): `einkauf-shell-v103`, [help.js](../help.js), [README.md](../README.md) |
+| Plus-Formular, SVG-Schlösser, entfallene Aktivierungskarten | [index.html](../../index.html), [styles.css](../../styles.css) |
+| Eigene Symbole, Geheim-Haken, Umstellung und lokale Geschäftskarten | [app.js](../../app.js): `storeLabel`, `listPrivacyField`, `makeSharedListPrivate`, `sharePrivateList`, `privateStoreEditorRow`, `syncNewStoreForm` |
+| Lokale Mehrfachlisten und Kompatibilität | [private-list.js](../../private-list.js), [private-list-view.js](../../private-list-view.js) |
+| Symbolkatalog und Revisionsschutz | [list-symbols.js](../../list-symbols.js), [data.js](../../data.js) |
+| Offline-Paket und Anleitung | [sw.js](../../sw.js): `einkauf-shell-v103`, [help.js](../../help.js), [README.md](../../README.md) |
 
 ## Kurze Klick-Testliste
 

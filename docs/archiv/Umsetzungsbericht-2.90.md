@@ -20,12 +20,12 @@ Die bestehenden gemeinsamen Daten bleiben im Format v1. Zusätzliche Reitersymbo
 
 | Bereich | Dateien und Stellen |
 | --- | --- |
-| Geschäftsbuttons und Speicherstatus | [app.js](../app.js): `storeEditorRow`, `storePatch`, `updateSave`, `syncNewStoreForm`; [styles.css](../styles.css): Abschnitt „Geschäfte und eigene Listen“; [index.html](../index.html): `#store-form`. |
-| Symbole | [list-symbols.js](../list-symbols.js), [brand.js](../brand.js): `symbolOf`; [app.js](../app.js): `storeSymbolPicker`; [index.html](../index.html): SVG-Symbole `i-pharmacy`, `i-travel`, `i-home`, `i-checklist`, `i-pets`; [data.js](../data.js): Validierung und Revisionsschutz. |
-| Bilder und Händlertrennung | [wish-images.js](../wish-images.js): `wishGroup`, `wishImage`; [brand.js](../brand.js): `chainForStore`; [prices.js](../prices.js): `storeOfferUrl`; [app.js](../app.js): `storeLabel`, `renderWishImage`, `syncStoreKind`. |
-| Geheime Daten | [private-list.js](../private-list.js): eigene Validierung, Schlüssel, Lesen und atomisches Schreiben; [private-list-view.js](../private-list-view.js): Aktivierung und eigene Formulare ohne gemeinsamen Datenzugriff. |
-| Geheim-Reiter und Oberfläche | [app.js](../app.js): `PRIVATE_VIEW`, `syncPrivateView`, `renderStoreChips`, Initialisierung unter `start`; [index.html](../index.html): `#private-list-panel`, `#private-item-dialog`, `#settings-private-list`, `#stores-private-list`. |
-| Offline und Anleitung | [sw.js](../sw.js): Paket `einkauf-shell-v102` einschließlich der drei neuen Module; [README.md](../README.md), [help.js](../help.js). |
+| Geschäftsbuttons und Speicherstatus | [app.js](../../app.js): `storeEditorRow`, `storePatch`, `updateSave`, `syncNewStoreForm`; [styles.css](../../styles.css): Abschnitt „Geschäfte und eigene Listen“; [index.html](../../index.html): `#store-form`. |
+| Symbole | [list-symbols.js](../../list-symbols.js), [brand.js](../../brand.js): `symbolOf`; [app.js](../../app.js): `storeSymbolPicker`; [index.html](../../index.html): SVG-Symbole `i-pharmacy`, `i-travel`, `i-home`, `i-checklist`, `i-pets`; [data.js](../../data.js): Validierung und Revisionsschutz. |
+| Bilder und Händlertrennung | [wish-images.js](../../wish-images.js): `wishGroup`, `wishImage`; [brand.js](../../brand.js): `chainForStore`; [prices.js](../../prices.js): `storeOfferUrl`; [app.js](../../app.js): `storeLabel`, `renderWishImage`, `syncStoreKind`. |
+| Geheime Daten | [private-list.js](../../private-list.js): eigene Validierung, Schlüssel, Lesen und atomisches Schreiben; [private-list-view.js](../../private-list-view.js): Aktivierung und eigene Formulare ohne gemeinsamen Datenzugriff. |
+| Geheim-Reiter und Oberfläche | [app.js](../../app.js): `PRIVATE_VIEW`, `syncPrivateView`, `renderStoreChips`, Initialisierung unter `start`; [index.html](../../index.html): `#private-list-panel`, `#private-item-dialog`, `#settings-private-list`, `#stores-private-list`. |
+| Offline und Anleitung | [sw.js](../../sw.js): Paket `einkauf-shell-v102` einschließlich der drei neuen Module; [README.md](../../README.md), [help.js](../../help.js). |
 
 ## Kurze Klick-Testliste
 
@@ -38,7 +38,7 @@ Die bestehenden gemeinsamen Daten bleiben im Format v1. Zusätzliche Reitersymbo
 
 ## Prüfungen
 
-Die automatisierten Fälle stehen in [tests/private-list.test.mjs](../tests/private-list.test.mjs), [tests/product-groups.test.mjs](../tests/product-groups.test.mjs), [tests/brand.test.mjs](../tests/brand.test.mjs), [tests/templates.test.mjs](../tests/templates.test.mjs) und [tests/browser.test.mjs](../tests/browser.test.mjs) unter dem Präfix `2.90:`.
+Die automatisierten Fälle stehen in [tests/private-list.test.mjs](../../tests/private-list.test.mjs), [tests/product-groups.test.mjs](../../tests/product-groups.test.mjs), [tests/brand.test.mjs](../../tests/brand.test.mjs), [tests/templates.test.mjs](../../tests/templates.test.mjs) und [tests/browser.test.mjs](../../tests/browser.test.mjs) unter dem Präfix `2.90:`.
 
 Die Browserfälle prüfen echte Klicks aus fokussierten Feldern, schmale Ansichten in Hell/Dunkel, Speicherfehler ohne falsche Bestätigung, unveränderte Nachbarkarten, zwei Geräte, Produktbilder und unterdrückte Bilder. Die private Liste wird zusätzlich gegen Partneransicht, GitHub-Inhalt sowie beide gemeinsamen Backup-Arten geprüft. Die Darstellung wurde in lokalem Chromium mit iPhone-Profil untersucht; ein echtes iPhone mit Safari wurde nicht verwendet.
 
