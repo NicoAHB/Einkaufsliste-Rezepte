@@ -1,4 +1,4 @@
-import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion, scrollHints } from './ui-controls.js';
+import { openOrderControls, watchSaveForms, resetSaveFeedback, confirmDataSave, confirmFormSave, confirmAutoSave, singleOpenAccordion, scrollHints, evenTabs } from './ui-controls.js';
 import { createDraftStore } from './drafts.js';
 import { checkedRecipeGroups } from './recipe-tags.js';
 import { mountRecipeTagPicker } from './recipe-tag-picker.js';
@@ -47,10 +47,11 @@ import { parseQuantity } from './numbers.js';
 import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
+import { TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
-import { LIMIT_BYTES, POLICY, compact, due, sizeOf } from './compact.js';
+import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
@@ -62,6 +63,7 @@ const CONFIG_KEY = 'einkauf-settings-v1';
 const DISPLAY_DEFAULTS = Object.freeze({theme:'light',storeStyle:'text',palette:'gruen',glass:true,glassBg:'schlicht',glassLevel:65,groupItems:true,productImages:true});
 watchSaveForms();
 scrollHints();
+evenTabs(document.querySelector('.tabs'));
 document.querySelectorAll('[data-app-version]').forEach(node => { node.textContent = `Version ${APP_VERSION}`; });
 let config = {}, base = emptyData(), pending = [], state = emptyData();
 // Produktbilder: eigene lokale Motive rechts in der Artikelzeile, sonst Gruppenbild (Einstellung „Produktbilder anzeigen“, Standard an).
@@ -69,6 +71,7 @@ const imagesOn = () => config.productImages !== false;
 // Frühere Fassungen (2.13) hatten einen Speicher für Internet-Fotos; er wird nicht mehr gebraucht.
 for (const old of ['einkauf-images-v1', 'einkauf-images-v2']) { try { localStorage.removeItem(old); } catch { /* ohne Speicher nichts zu löschen */ } }
 let busy = false, ready = false, view = 'all', lastTime = 0, noticeTimer = 0;
+let trashFilter = 'all', trashUndo = null, networkDown = false, bandTimer = 0;   // Papierkorb und Offline-Anzeige
 let restoring = false, restoreController = null;
 let productPicker = null, pantryBuyer = null, spendingView = null, privateList = null, expenseCategoryPicker = null;
 let stockClockTimer=0,recipeAvailabilitySnapshot='';
@@ -405,7 +408,9 @@ function render() {
   const form = $('#item-form'), formStore = form.elements.storeId.value;
   renderStorePick();
   if (form.elements.storeId.value !== formStore) storeChanged();
-  renderStoreChips(); renderItems(); renderRecipesWhenVisible(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); renderQuarantine(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
+  renderStoreChips(); renderItems(); renderRecipesWhenVisible(); renderPlan(); renderSpending(); renderPantry(); renderAliases(); renderStorage(); renderQuarantine(); renderTrashLinks(); applyMode(); syncForm(); expenseCategoryPicker?.refresh();
+  if ($('#trash-dialog').open) renderTrash();
+  renderConnectionBand();
   if ($('#plan-recipe-dialog').open) renderPlanRecipe();
   if ($('#template-dialog').open) renderTemplates();
   if ($('#week-dialog').open && weekSignature(weekPlan()) !== weekSignature($('#week-form')._plan)) { refreshWeekRows(); showNotice('Der Wochenplan hat sich geändert: Die Vorschau ist aktualisiert.'); }   // z. B. hat die andere Person gerade übernommen
@@ -878,10 +883,10 @@ function renderWishImage() {
   $('#wish-image-group').textContent=hidden?'':group.name;
   $('#wish-remove-image').hidden=hidden; $('#wish-image-removed').hidden=!hidden;
 }
-function deleteOps(collection, ids) {
+function deleteOps(collection, ids, extra = {}) {
   const rows = active(state[collection]).filter(row => ids.includes(row.id));
   const at = new Date().toISOString();
-  return rows.map(row => nextOp(collection, row.id, { deletedAt: at }));
+  return rows.map(row => nextOp(collection, row.id, { deletedAt: at, ...extra }));
 }
 function removeRows(collection, ids) { commit(deleteOps(collection, ids)); }
 // Geschäfte-Dialog: Jedes vorhandene Geschäft ist eine zugeklappte Karte (Pfeil rechts); welche aufgeklappt sind, merkt sich nur das geöffnete Fenster.
@@ -2536,7 +2541,7 @@ async function sync(manual = false) {
     for (let attempt = 0; attempt < 4; attempt++) {
       // Ohne eigene Änderungen genügt die Frage „hat sich etwas geändert?“ (HTTP 304).
       const file = await api('GET', undefined, !pending.length && !manual && ready && attempt === 0 ? remoteEtag : '');
-      if (!file) { retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message(); restingStatus(); hydratePhotos(); return; }
+      if (!file) { retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message(); if (networkDown) { networkDown = false; renderConnectionBand('online'); } renderConnectionBand('synced'); restingStatus(); hydratePhotos(); return; }
       const remote = decodeFile(file);
       // Eine Änderung, die sich mit dem neuen gemeinsamen Stand nicht vereinbaren lässt, wird beiseitegelegt statt den Abgleich zu blockieren.
       const split = applicableOps(remote, pending.slice());
@@ -2548,8 +2553,8 @@ async function sync(manual = false) {
       // Haben zwei Geräte gleichzeitig denselben Artikel neu angelegt, wird das Doppel hier deterministisch zusammengeführt (siehe data.js).
       const folds = duplicateFolds(merged.items);
       if (folds.length) merged = merge(merged, folds);
-      // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB oder auf Wunsch. Es darf den Abgleich nie verhindern.
-      if (compactRequested || due(merged)) {
+      // Aufräumen auf dem gerade gelesenen gemeinsamen Stand: automatisch ab 250 KB, nach „Papierkorb leeren“ oder auf Wunsch. Es darf den Abgleich nie verhindern.
+      if (compactRequested || due(merged) || purgeDue(merged)) {
         try { tidy = compact(merged); if (tidy.changed) merged = tidy.data; } catch { tidy = null; }
       }
       // Schon bestätigte Operationen brauchen nach einem verlorenen HTTP-Ergebnis
@@ -2569,6 +2574,8 @@ async function sync(manual = false) {
       remoteEtag = written ? '' : file.etag;
       if (compactRequested) { compactRequested = false; noteCompaction(tidy); }
       ready = true; retryAt = 0; lastSyncAt = Date.now(); rememberSyncTime(); message();
+      if (networkDown) { networkDown = false; renderConnectionBand('online'); }
+      renderConnectionBand('synced');
       // Nur neu zeichnen, wenn sich etwas geändert hat: So bleiben geöffnete Rezepte, Auswahllisten und Eingaben stehen.
       if (!wasReady || signature() !== before) render();
       restingStatus(); hydratePhotos();
@@ -2576,6 +2583,7 @@ async function sync(manual = false) {
     }
   } catch (error) {
     compactRequested = false;
+    if (error.network) { networkDown = true; renderConnectionBand('offline'); }
     retryAt = error.retryAt || Date.now() + ([401, 404].includes(error.status) ? 60000 : 15000);
     status(pending.length ? 'Lokal gesichert · Abgleich später' : 'Abgleich nicht möglich', 'error'); message(error.message);
   } finally {
@@ -3948,7 +3956,7 @@ function moveSelected(storeId) {
     // Wie beim einzelnen Verschieben: Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt; sonst wechselt nur das Geschäft.
     const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit:item.purchaseUnit }], target, items).counted[0] : null;
     if (same) {
-      ops.push(nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [item.id])); merged++;
+      ops.push(nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [item.id], { mergedInto: same.id })); merged++;
       items = items.map(row => row.id === same.id ? { ...row, quantity: same.after.quantity, unit: same.after.unit } : row.id === item.id ? { ...row, deletedAt: stamp } : row);
     } else { ops.push(nextOp('items', item.id, { storeId: target })); moved++; items = items.map(row => row.id === item.id ? { ...row, storeId: target } : row); }
   }
@@ -3971,7 +3979,7 @@ function moveItem(id, storeId) {
   const label = target ? storeName(target) : 'ohne Geschäft';
   // Ein offener Artikel ohne eigenen Preis wird zu einem gleichen Artikel im Ziel dazugezählt (wie beim Hinzufügen); sonst wechselt nur das Geschäft.
   const same = !item.checked && !hasWishDetails(item) && (item.price === undefined || item.price === null) ? foldIntoList([{ name: item.name, quantity: item.quantity, unit: item.unit, purchaseUnit:item.purchaseUnit }], target, state.items).counted[0] : null;
-  if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id])], `„${item.name}“ → ${label}: jetzt ${shoppingAmount({ ...state.items.find(row=>row.id===same.id), ...same.after, name:same.name })}`);
+  if (same) commit([nextOp('items', same.id, { add: same.add }), ...deleteOps('items', [id], { mergedInto: same.id })], `„${item.name}“ → ${label}: jetzt ${shoppingAmount({ ...state.items.find(row=>row.id===same.id), ...same.after, name:same.name })}`);
   else commit([nextOp('items', id, { storeId: target })], `„${item.name}“ → ${label}`);
   $('#move-dialog').close();
 }
@@ -4243,6 +4251,128 @@ $('#test-proxy').addEventListener('click', () => guard(async () => {
   catch (error) { throw new Error(`Der Hilfsdienst antwortet nicht wie erwartet. ${error.message}`); }
   message(); status('Hilfsdienst funktioniert', 'ok'); setTimeout(restingStatus, 2500);
 }));
+/* ---------- Papierkorb „Kürzlich gelöscht“ (siehe trash.js) ---------- */
+const TRASH_ICON = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entry.icon]));
+const TRASH_LABEL = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entry.label]));
+const timeOf = at => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+// Die Hinweise unter Einkaufsliste, Rezepten, Wochenplan und Ausgaben erscheinen nur, wenn dort etwas zurückzuholen ist.
+function renderTrashLinks() {
+  const entries = ready ? trashEntries(state) : [], counts = trashCounts(entries);
+  for (const node of document.querySelectorAll('[data-trash-kind]')) {
+    const count = node.dataset.trashKind.split(' ').reduce((sum, kind) => sum + (counts[kind] || 0), 0);
+    node.hidden = !count; node.querySelector('.trash-link-count').textContent = count ? `(${count})` : '';
+    node.setAttribute('aria-label', `${node.querySelector('span').textContent}: ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} wiederherstellbar`);
+  }
+  $('#trash-summary').textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} aus den letzten ${TRASH_DAYS} Tagen wiederherstellbar` : `Leer · Gelöschtes bleibt hier ${TRASH_DAYS} Tage`;
+}
+function openTrash(kind = 'all') {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  // Ein Hinweis kann mehrere Arten zusammenfassen (Einkaufsliste: Artikel und Listen); markiert wird die erste vorhandene.
+  const counts = trashCounts(trashEntries(state));
+  trashFilter = kind === 'all' ? 'all' : kind.split(' ').find(entry => counts[entry]) || 'all'; trashUndo = null; $('#trash-status').hidden = true;
+  renderTrash(); if (!$('#trash-dialog').open) $('#trash-dialog').showModal();
+}
+function renderTrash() {
+  const entries = trashEntries(state), counts = trashCounts(entries);
+  const kinds = trashFilter.split(' ').filter(kind => counts[kind]);
+  if (trashFilter !== 'all' && !kinds.length) trashFilter = 'all';
+  const shown = trashFilter === 'all' ? entries : entries.filter(entry => trashFilter.split(' ').includes(entry.kind));
+  const filter = $('#trash-filter'); filter.replaceChildren();
+  const chip = (value, label, count) => {
+    const node = element('button', undefined, 'chip'); node.type = 'button'; node.setAttribute('aria-pressed', String(trashFilter === value));
+    node.append(element('span', label), element('span', String(count), 'count'));
+    node.addEventListener('click', () => { trashFilter = value; renderTrash(); });
+    filter.append(node);
+  };
+  if (entries.length) chip('all', 'Alle', entries.length);
+  for (const { kind, label } of TRASH_KINDS) if (counts[kind]) chip(kind, label, counts[kind]);
+  filter.hidden = TRASH_KINDS.filter(({ kind }) => counts[kind]).length < 2;
+  const list = $('#trash-list'); list.replaceChildren();
+  let day = '';
+  for (const entry of shown) {
+    const label = trashDayLabel(entry.deletedAt);
+    if (label !== day) { day = label; list.append(element('h3', label, 'trash-day')); }
+    const row = element('article', undefined, 'trash-row'); row.dataset.kind = entry.kind;
+    const badge = element('span', undefined, 'trash-row-icon'); badge.append(icon(TRASH_ICON[entry.kind]));
+    const copy = element('div', undefined, 'trash-row-copy');
+    copy.append(element('strong', entry.title), element('small', [TRASH_LABEL[entry.kind], entry.detail, `gelöscht ${timeOf(entry.deletedAt)} Uhr`].filter(Boolean).join(' · ')));
+    const restore = button('', () => restoreFromTrash(entry), 'secondary trash-restore');
+    restore.append(icon('undo'), element('span', 'Wiederherstellen')); restore.setAttribute('aria-label', `${entry.title} wiederherstellen`);
+    row.append(badge, copy, restore); list.append(row);
+  }
+  $('#trash-empty').hidden = entries.length > 0;
+  list.hidden = !shown.length;
+  // „Papierkorb leeren“ steht klein am Ende und nur, wenn es etwas zu leeren gibt.
+  $('#trash-purge').hidden = !entries.length;
+  $('#trash-purge').setAttribute('aria-label', `Papierkorb leeren: ${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} endgültig löschen`);
+}
+function restoredWhere(entry, changes) {
+  const name = `„${entry.title}“`;
+  if (entry.kind === 'items') return `${name} steht wieder auf der Einkaufsliste${changes[0].patch.storeId === '' ? ' (ohne Geschäft, weil das Geschäft gelöscht ist)' : ''}`;
+  if (entry.kind === 'recipes') return `${name} ist wieder im Rezeptbuch`;
+  if (entry.kind === 'meals') return `${name} steht wieder im Wochenplan${changes.length > 1 ? ', das Rezept ebenfalls wieder im Rezeptbuch' : ''}`;
+  if (entry.kind === 'purchases') return 'Die Ausgabe ist wieder eingetragen';
+  if (entry.kind === 'stores') return `${name} ist wieder da`;
+  return `Vorlage ${name} ist wieder da`;
+}
+function restoreFromTrash(entry) {
+  const changes = restoreChanges(state, entry.collection, entry.id);
+  if (!changes.length) throw new Error('Dieser Eintrag ist nicht mehr im Papierkorb.');
+  commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
+  trashUndo = changes.map(change => ({ collection: change.collection, id: change.id }));
+  $('#trash-status-text').textContent = restoredWhere(entry, changes); $('#trash-status').hidden = false; $('#trash-undo').hidden = false;
+  renderTrash();
+}
+$('#trash-undo').addEventListener('click', () => guard(() => {
+  const undo = trashUndo; trashUndo = null; if (!undo) return;
+  const at = new Date().toISOString();
+  commit(undo.filter(change => active(state[change.collection] || []).some(row => row.id === change.id)).map(change => nextOp(change.collection, change.id, { deletedAt: at })));
+  $('#trash-status-text').textContent = 'Wieder in den Papierkorb gelegt'; $('#trash-undo').hidden = true; renderTrash();
+}));
+/* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
+   „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
+$('#trash-purge').addEventListener('click', () => guard(() => {
+  const changes = purgeChanges(state), count = changes.length;
+  if (!count) return;
+  const what = count === 1 ? 'Den Eintrag' : `Alle ${count} Einträge`;
+  if (!confirm(`${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`)) return;
+  if (connected()) compactRequested = true;
+  commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
+  if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
+  trashUndo = null; trashFilter = 'all';
+  $('#trash-status-text').textContent = `Papierkorb geleert · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} endgültig gelöscht`;
+  $('#trash-status').hidden = false; $('#trash-undo').hidden = true;
+  renderTrash();
+}));
+$('#trash-open').addEventListener('click', () => guard(() => openTrash()));
+document.querySelectorAll('[data-trash-kind]').forEach(node => node.addEventListener('click', () => guard(() => openTrash(node.dataset.trashKind))));
+
+/* ---------- Offline-Anzeige ---------- */
+// Ein schmales Band oben: ohne Netz (oder wenn GitHub nicht erreichbar ist) mit der Zahl der wartenden Änderungen,
+// nach der Rückkehr kurz „Wieder online“. Gearbeitet werden kann jederzeit; nichts geht verloren.
+function renderConnectionBand(event = '') {
+  const band = $('#connection-band'), offline = navigator.onLine === false || networkDown, use = band.querySelector('use');
+  if (offline) {
+    clearTimeout(bandTimer);
+    const waiting = connected() && pending.length ? ` · ${pending.length} ${pending.length === 1 ? 'Änderung wartet' : 'Änderungen warten'}` : '';
+    const text = navigator.onLine === false ? `Offline${waiting || (connected() ? ' · Änderungen werden später gesendet' : ' · die App funktioniert weiter')}` : `GitHub nicht erreichbar${waiting || ' · Änderungen bleiben auf diesem Gerät'}`;
+    if ($('#connection-text').textContent !== text) $('#connection-text').textContent = text;
+    use.setAttribute('href', '#i-wifi-off'); band.dataset.state = 'offline'; band.hidden = false;
+    return;
+  }
+  if (band.hidden || band.dataset.state === 'idle') return;
+  if (band.dataset.state === 'offline' || event === 'online') {
+    band.dataset.state = 'online'; use.setAttribute('href', '#i-wifi');
+    $('#connection-text').textContent = connected() && (pending.length || busy) ? 'Wieder online · gleiche ab …' : 'Wieder online';
+    clearTimeout(bandTimer); bandTimer = setTimeout(() => { band.hidden = true; band.dataset.state = 'idle'; }, connected() && pending.length ? 6000 : 2400);
+  } else if (band.dataset.state === 'online' && event === 'synced') {
+    $('#connection-text').textContent = 'Wieder online · alles abgeglichen';
+    clearTimeout(bandTimer); bandTimer = setTimeout(() => { band.hidden = true; band.dataset.state = 'idle'; }, 1800);
+  }
+}
+addEventListener('offline', () => renderConnectionBand('offline'));
+addEventListener('online', () => { networkDown = false; renderConnectionBand('online'); });
+
 // Notfallansicht für einen beschädigten lokalen Speicher: erst sichern, dann bewusst verwerfen und neu laden.
 let brokenCache = '';
 function openStorageRecovery(raw) {

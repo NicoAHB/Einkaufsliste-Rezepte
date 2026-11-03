@@ -2,6 +2,18 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.139: Papierkorb, Offline-Anzeige und gleichmäßige untere Leiste
+
+**Kürzlich gelöscht (Papierkorb).** Gelöschte Artikel, Rezepte, Gerichte im Wochenplan, Ausgaben, Geschäfte & Listen und Vorlagen der letzten 14 Tage lassen sich mit einem Tipp wiederherstellen, auf allen verbundenen Geräten. Geöffnet wird der Papierkorb unter **Einstellungen → Kürzlich gelöscht** oder über den Hinweis **Kürzlich gelöscht (n)** direkt unter Einkaufsliste, Rezepten, Wochenplan und Ausgaben (nur sichtbar, wenn dort etwas zurückzuholen ist). Einträge sind nach Tagen gruppiert und nach Art filterbar. Nach dem Wiederherstellen sagt die App, wo der Eintrag jetzt steht, und bietet **Rückgängig**. Ein Gericht bringt sein gelöschtes Rezept mit; ein Artikel eines inzwischen gelöschten Geschäfts kommt ohne Geschäft zurück. Gekaufte (abgehakte) Artikel und Artikel, die beim Verschieben zu einem gleichen Artikel dazugezählt wurden, erscheinen nicht, weil dabei nichts verloren ging. Neues Modul `trash.js`; Artikel tragen beim Zusammenzählen das optionale Feld `mergedInto`.
+
+**Papierkorb leeren.** Klein und grau ganz unten im Papierkorb (erst beim Antippen rot, nur sichtbar, wenn etwas darin liegt) steht **Papierkorb leeren**. Nach einer Rückfrage („Alle 3 Einträge im Papierkorb endgültig löschen? Das lässt sich nicht rückgängig machen und gilt auf allen Geräten.“) sind die Einträge sofort weg und lassen sich nicht mehr wiederherstellen. Technisch erhalten sie die Marke `purgedAt`; der nächste Abgleich räumt sie aus der gemeinsamen Datei, auch wenn die Datei noch klein ist oder das Leeren ohne Netz geschah. Nur gelöschte Ausgaben behalten eine kleine Löschmarke, damit ein lange offline gewesenes Gerät sie nicht als neue Ausgabe wieder einträgt. Wird ein Eintrag später zurückgeholt und erneut gelöscht, steht er wieder ganz normal im Papierkorb.
+
+**Offline-Anzeige.** Fehlt das Netz oder ist GitHub nicht erreichbar, erscheint oben ein schmales Band mit der Zahl der wartenden Änderungen. Nach der Rückkehr zeigt es kurz **Wieder online** bzw. **alles abgeglichen** und verschwindet.
+
+### Gleichmäßige Abstände in der unteren Leiste
+
+Die fünf Symbole **Einkauf, Rezepte, Plan, Ausgaben, Einstellungen** stehen wieder in gleichen Abständen. Seit 2.133 bekam jeder Reiter so viel Platz wie sein Wort, damit „Einstellungen“ in eine Zeile passt; dadurch rückten die Symbole ungleich auseinander. Jetzt sind alle Reiter gleich breit, und die Beschriftung wird nur so weit verkleinert, wie das längste Wort es verlangt (bei 430 Punkten Breite gar nicht, bei 390 auf etwa 10,7 px, bei 375 auf etwa 10,3 px). Jede Beschriftung bleibt vollständig und einzeilig in ihrem Reiter. Auf sehr schmalen Bildschirmen (etwa 320 Punkte und weniger), wo die Schrift sonst unter 9,5 px fiele, bleibt die bisherige Aufteilung nach Wortlänge. Offline-Paket **einkauf-shell-v151**.
+
 ## Neu in Version 2.138: Knoblauch aus dem Vorrat und Dosen als Konserve erkennen
 
 **Zubereitungsangaben und Knoblauchzehen.** Rezeptzeilen wie „1 Zehe Knoblauch, gepresst“, „2 Knoblauchzehen“, „Knoblauch (fein gehackt)“ oder „1 Zwiebel, geschält und gewürfelt“ gelten als vorhanden, wenn Knoblauch bzw. Zwiebeln im Vorrat stehen. Bisher machte der Zusatz hinter dem Komma aus der Zutat ein unbekanntes Produkt, sodass sie auf den Einkaufszettel kam. Übergangen werden nur bekannte Zubereitungen (gehackt, gepresst, gewürfelt, in Scheiben, geschält, gerieben, zum Anbraten …); Zusätze, die ein anderes Produkt meinen (getrocknet, gemahlen, laktosefrei), bleiben bedeutend. „2 Knoblauchzehen“ wird beim Import als „2 Zehen Knoblauch“ eingelesen; neue Listenzeilen tragen den reinen Produktnamen.

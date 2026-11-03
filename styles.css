@@ -4927,3 +4927,288 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
   font-weight:600;
   line-height:1.2;
 }
+/* 2.139: Gleich breite Reiter, damit die Symbole der unteren Leiste gleichmäßig verteilt sind (evenTabs in ui-controls.js) */
+.tabs.even-tabs {
+  gap:0;
+}
+.tabs.even-tabs button {
+  flex:1 1 0;
+  min-width:0;
+  font-size:var(--tab-font);
+}
+
+/* 2.139: Papierkorb „Kürzlich gelöscht“ */
+.trash-link {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+  min-height:44px;
+  margin:10px 0 0;
+  padding:8px 12px;
+  border:1px dashed var(--line-strong);
+  border-radius:14px;
+  background:transparent;
+  color:var(--muted);
+  font-size:.9rem;
+  font-weight:600;
+}
+.trash-link .icon {
+  width:18px;
+  height:18px;
+}
+.trash-link:hover, .trash-link:focus-visible {
+  color:var(--accent);
+  border-color:var(--accent);
+}
+.trash-link-count {
+  font-variant-numeric:tabular-nums;
+}
+.trash-card {
+  padding:0;
+}
+.trash-card-button {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  width:100%;
+  min-height:64px;
+  padding:12px 16px;
+  border:0;
+  border-radius:inherit;
+  background:transparent;
+  color:var(--text);
+  text-align:left;
+}
+.trash-card-icon, .trash-row-icon, .trash-empty-icon {
+  display:grid;
+  flex:none;
+  place-items:center;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent);
+}
+.trash-card-copy {
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.trash-card-copy strong {
+  font-size:1.05rem;
+}
+.trash-card-copy small {
+  color:var(--muted);
+  font-weight:500;
+}
+.trash-card-chevron {
+  flex:none;
+  color:var(--muted);
+}
+.trash-intro {
+  margin:-4px 0 0;
+}
+.trash-filter {
+  margin-bottom:0;
+}
+.trash-filter .chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.trash-status {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0;
+  padding:10px 12px;
+  border:1px solid var(--accent);
+  border-radius:14px;
+  background:var(--accent-soft);
+  color:var(--text);
+  font-weight:600;
+  animation:trash-in .2s ease;
+}
+.trash-status > .icon {
+  flex:none;
+  color:var(--accent);
+}
+.trash-status > span {
+  flex:1;
+  min-width:0;
+}
+.trash-status .text-button {
+  flex:none;
+}
+.trash-list {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.trash-day {
+  margin:10px 2px 0;
+  color:var(--muted);
+  font-size:.78rem;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.trash-day:first-child {
+  margin-top:0;
+}
+.trash-row {
+  display:grid;
+  grid-template-columns:44px minmax(0, 1fr) auto;
+  align-items:center;
+  gap:12px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--card);
+  animation:trash-in .18s ease;
+}
+.trash-row-copy {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.trash-row-copy strong {
+  overflow-wrap:anywhere;
+}
+.trash-row-copy small {
+  color:var(--muted);
+  line-height:1.35;
+}
+.trash-restore {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:44px;
+  padding:8px 12px;
+  white-space:nowrap;
+}
+.trash-restore .icon {
+  width:18px;
+  height:18px;
+}
+.trash-empty {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  padding:20px 12px 8px;
+  text-align:center;
+}
+.trash-empty-icon {
+  width:64px;
+  height:64px;
+}
+.trash-empty-icon .icon {
+  width:28px;
+  height:28px;
+}
+.trash-empty .hint {
+  max-width:28ch;
+  margin:0;
+}
+.trash-foot {
+  margin:4px 0 0;
+}
+.trash-purge {
+  display:flex;
+  justify-content:center;
+  margin-top:-6px
+}
+/* Bewusst leise: kleine graue Schrift ohne Rahmen, erst beim Zeigen oder Antippen rot. Endgültiges Löschen soll man finden, aber nicht versehentlich treffen.
+   (Die doppelte ID schlägt die gemeinsamen Rahmen der Textknöpfe weiter oben.) */
+:root #trash-dialog #trash-purge, :root[data-glass] #trash-dialog #trash-purge {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:44px;
+  padding:6px 12px;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  color:var(--muted);
+  font-size:.82rem;
+  font-weight:600
+}
+#trash-purge .icon {
+  width:15px;
+  height:15px
+}
+:root #trash-dialog #trash-purge:hover, :root #trash-dialog #trash-purge:focus-visible, :root #trash-dialog #trash-purge:active,
+:root[data-glass] #trash-dialog #trash-purge:hover, :root[data-glass] #trash-dialog #trash-purge:focus-visible, :root[data-glass] #trash-dialog #trash-purge:active {
+  color:var(--danger)
+}
+:root #trash-dialog #trash-purge[hidden] {
+  display:none
+}
+@media (max-width:400px) {
+  .trash-row {
+    grid-template-columns:40px minmax(0, 1fr);
+  }
+  .trash-row-icon {
+    width:40px;
+    height:40px;
+  }
+  .trash-restore {
+    grid-column:2;
+    justify-self:start;
+  }
+}
+@keyframes trash-in {
+  from { opacity:0; transform:translateY(4px); }
+  to { opacity:1; transform:none; }
+}
+
+/* 2.139: Offline-Anzeige oben */
+.connection-band {
+  position:sticky;
+  top:calc(env(safe-area-inset-top) + 6px);
+  z-index:30;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:fit-content;
+  max-width:calc(100% - 32px);
+  margin:8px auto 0;
+  padding:8px 14px;
+  border:1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  border-radius:999px;
+  background:color-mix(in srgb, var(--warn) 16%, var(--card));
+  box-shadow:var(--shadow);
+  color:var(--text);
+  font-size:.88rem;
+  font-weight:650;
+  line-height:1.3;
+  -webkit-backdrop-filter:blur(14px) saturate(1.4);
+  backdrop-filter:blur(14px) saturate(1.4);
+  animation:band-in .22s ease;
+}
+.connection-band .icon {
+  flex:none;
+  width:18px;
+  height:18px;
+  color:var(--warn);
+}
+.connection-band[data-state=online] {
+  border-color:color-mix(in srgb, var(--accent) 55%, transparent);
+  background:color-mix(in srgb, var(--accent-soft) 85%, var(--card));
+}
+.connection-band[data-state=online] .icon {
+  color:var(--accent);
+}
+@keyframes band-in {
+  from { opacity:0; transform:translateY(-6px); }
+  to { opacity:1; transform:none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .connection-band, .trash-row, .trash-status { animation:none }
+}

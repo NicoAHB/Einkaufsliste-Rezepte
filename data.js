@@ -111,6 +111,10 @@ export function validateRow(key, row) {
   if (key === 'stores' && row.wishlistEnabled !== undefined && typeof row.wishlistEnabled !== 'boolean') throw new Error('Ungültige Wunschlisten-Einstellung.');
   if (key === 'stores' && row.listEnabled !== undefined && typeof row.listEnabled !== 'boolean') throw new Error('Ungültige Sichtbarkeit der Liste.');
   if (key === 'items' && row.planLinked !== undefined && typeof row.planLinked !== 'boolean') throw new Error('Ungültige Wochenplan-Zuordnung.');
+  // `purgedAt` (2.139): im Papierkorb endgültig gelöscht; wird beim Aufräumen entfernt (Ausgaben behalten ihre Löschmarke).
+  if (row.purgedAt !== undefined && row.purgedAt !== null && (typeof row.purgedAt !== 'string' || !Number.isFinite(Date.parse(row.purgedAt)))) throw new Error(`Ungültige endgültige Löschung in ${key}.`);
+  // `mergedInto` (2.139): beim Verschieben zu einem gleichen Artikel dazugezählt; erscheint deshalb nicht im Papierkorb.
+  if (key === 'items' && row.mergedInto !== undefined && row.mergedInto !== null && (typeof row.mergedInto !== 'string' || !row.mergedInto || row.mergedInto.length > 200)) throw new Error('Ungültige Zusammenführung eines Artikels.');
   if (key === 'items' && row._planCuts !== undefined && (!Array.isArray(row._planCuts) || !row._base || row._planCuts.some(cut => !cut || typeof cut.sourceId !== 'string' || !Number.isFinite(Date.parse(cut.at)) || !Number.isFinite(cut.quantity) || cut.quantity < 0 || !Number.isFinite(cut.originalQuantity) || cut.quantity > cut.originalQuantity || typeof cut.unit !== 'string'))) throw new Error('Ungültige Wochenplan-Korrektur.');
   // Mengenzuwächse (Version 1.8): interne Liste, siehe merge().
   if (key === 'items' && row._adds !== undefined && (!Array.isArray(row._adds) || !row._base || row._adds.some(entry => !entry || typeof entry.id !== 'string' ||

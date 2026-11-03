@@ -10271,4 +10271,153 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []);
     await ctx.close();
   });
+  // ---- 2.139: Gleichmäßige Abstände der fünf Symbole in der unteren Leiste ----
+  for (const [width, theme, glass] of [[375, 'light', true], [390, 'dark', true], [430, 'light', false]]) test(`2.139: Symbole der unteren Leiste stehen bei ${width}px ${theme} gleichmäßig, Beschriftungen passen in ihren Reiter`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, glass }, context: { viewport: { width, height: 800 }, colorScheme: theme } });
+    await open(page);
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('.tabs button')].map(button => {
+      const box = button.getBoundingClientRect(), icon = button.querySelector('.tab-icon').getBoundingClientRect(), range = document.createRange();
+      range.selectNodeContents(button.querySelector('.tab-label')); const text = range.getBoundingClientRect();
+      return { center: icon.left + icon.width / 2, width: box.width, inside: text.left >= box.left - 0.5 && text.right <= box.right + 0.5, lines: Math.round(text.height / parseFloat(getComputedStyle(button).lineHeight || 13)) || 1, font: parseFloat(getComputedStyle(button).fontSize) };
+    }));
+    const steps = tabs.slice(1).map((tab, index) => tab.center - tabs[index].center);
+    assert.ok(Math.max(...steps) - Math.min(...steps) <= 1, `gleichmäßige Abstände: ${steps.map(Math.round).join(', ')}`);
+    assert.ok(tabs.every(tab => tab.inside), 'jede Beschriftung steht vollständig in ihrem Reiter');
+    assert.ok(tabs.every(tab => tab.font >= 9.5), `lesbare Schrift: ${tabs[0].font}`);
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.tabs .tab-label')].every(node => node.getClientRects().length === 1)), true, 'eine Zeile je Beschriftung');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  // ---- 2.139 (E1): Papierkorb „Kürzlich gelöscht“ ----
+  test('2.139: gelöschter Artikel landet im Papierkorb, lässt sich wiederherstellen und rückgängig machen; Gekauftes erscheint nicht', async () => {
+    const data = structuredClone(demo);
+    const bought = data.items.find(row => row.id === 'item-milch'); Object.assign(bought, { checked: true, deletedAt: new Date(Date.now() - 3600000).toISOString() });
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page);
+    const link = page.locator('#shopping .trash-link');
+    assert.equal(await link.isHidden(), true, 'gekaufte Artikel zählen nicht als gelöscht');
+    await page.getByRole('button', { name: /^Tomaten, .*bearbeiten$/ }).click(); await sheetOpen(page);
+    await page.click('#delete-item'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten' }).count(), 0);
+    await link.waitFor(); assert.match(await link.textContent(), /Kürzlich gelöscht\s*\(1\)/);
+    await link.click(); await sheetOpen(page);
+    assert.equal(await page.locator('#trash-filter').isHidden(), true, 'nur eine Art: kein Filter nötig');
+    assert.deepEqual(await page.locator('#trash-list .trash-day').allTextContents(), ['Heute']);
+    assert.match(await page.locator('.trash-row').textContent(), /Tomaten.*Artikel · 500 g · Edeka · gelöscht \d\d:\d\d Uhr/s);
+    assert.equal(await page.locator('.trash-row', { hasText: 'Milch' }).count(), 0);
+    await page.getByRole('button', { name: 'Tomaten wiederherstellen' }).click();
+    assert.match(await page.textContent('#trash-status-text'), /„Tomaten“ steht wieder auf der Einkaufsliste/);
+    assert.equal(await page.locator('#trash-empty').isVisible(), true);
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten' }).count(), 1, 'wieder auf der Liste');
+    await page.click('#trash-undo');
+    assert.match(await page.textContent('#trash-status-text'), /Wieder in den Papierkorb gelegt/);
+    assert.equal(await page.locator('.trash-row', { hasText: 'Tomaten' }).count(), 1);
+    assert.equal(await page.locator('#items .item', { hasText: 'Tomaten' }).count(), 0);
+    await page.click('#trash-dialog [data-close]');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.139: Papierkorb mit Rezept, Gericht und Ausgabe bei ${width}px ${theme}: Filter, Gruppen nach Tag und Wiederherstellen samt Rezept`, async () => {
+    const data = structuredClone(demo), now = Date.now(), at = ms => new Date(now - ms).toISOString();
+    data.recipes.find(row => row.id === 'recipe-curry').deletedAt = at(26 * 3600000);
+    data.meals = [{ id: 'meal-curry', recipeId: 'recipe-curry', date: isoDate(), servings: 2, done: false, createdBy: 'Nico', createdAt: at(30 * 86400000), updatedAt: at(30 * 86400000), deletedAt: at(25 * 3600000), _clock: {} }];
+    data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 4730, storeId: data.stores[0].id, buyerName: 'Anna', note: 'Wocheneinkauf', source: 'hand', createdAt: at(4 * 86400000), updatedAt: at(4 * 86400000), deletedAt: at(3 * 86400000), _clock: {} }];
+    const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page);
+    await goTab(page, 'recipes'); assert.match(await page.textContent('#recipes .trash-link'), /Kürzlich gelöschte Rezepte\s*\(1\)/);
+    await goTab(page, 'plan'); assert.match(await page.textContent('#plan .trash-link'), /Kürzlich entfernte Gerichte\s*\(1\)/);
+    await goTab(page, 'spending'); assert.match(await page.textContent('#spending .trash-link'), /Kürzlich gelöschte Ausgaben\s*\(1\)/);
+    await openSettings(page); assert.match(await page.textContent('#trash-summary'), /3 Einträge aus den letzten 14 Tagen/);
+    await page.click('#trash-open'); await sheetOpen(page);
+    assert.deepEqual(await page.locator('#trash-filter button').evaluateAll(nodes => nodes.map(node => node.textContent)), ['Alle3', 'Rezepte1', 'Wochenplan1', 'Ausgaben1']);
+    assert.deepEqual(await page.locator('#trash-list .trash-day').allTextContents(), ['Gestern', await page.locator('#trash-list .trash-day').nth(1).textContent()]);
+    await page.locator('#trash-filter button', { hasText: 'Wochenplan' }).click();
+    assert.equal(await page.locator('.trash-row').count(), 1); assert.match(await page.locator('.trash-row').textContent(), /Rezept wird mit wiederhergestellt/);
+    for (const row of await page.locator('.trash-row').all()) { const box = await row.boundingBox(); assert.ok(box.x >= 0 && box.x + box.width <= width); }
+    const restore = await page.locator('.trash-restore').boundingBox(); assert.ok(restore.height >= 44 && restore.x + restore.width <= width);
+    await page.locator('.trash-restore').click();
+    assert.match(await page.textContent('#trash-status-text'), /steht wieder im Wochenplan, das Rezept ebenfalls wieder im Rezeptbuch/);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    assert.equal(saved.meals.find(row => row.id === 'meal-curry').deletedAt, null);
+    assert.equal(saved.recipes.find(row => row.id === 'recipe-curry').deletedAt, null);
+    assert.equal(await page.locator('#trash-dialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    await page.click('#trash-dialog [data-close]'); await goTab(page, 'plan');
+    assert.equal(await page.locator('.day.today .meal', { hasText: 'Kichererbsen-Curry' }).count(), 1);
+    assert.equal(await page.locator('#plan .trash-link').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+  test('2.139: „Papierkorb leeren“ steht unauffällig am Ende, fragt nach und löscht alles endgültig; Ausgaben behalten nur ihre Löschmarke', async () => {
+    const data = structuredClone(demo), now = Date.now(), at = ms => new Date(now - ms).toISOString();
+    const tomato = data.items.find(row => row.name === 'Tomaten'); tomato.deletedAt = at(3600000);
+    data.recipes.find(row => row.id === 'recipe-curry').deletedAt = at(26 * 3600000);
+    data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 4730, storeId: data.stores[0].id, buyerName: 'Anna', note: 'Wocheneinkauf', source: 'hand', createdAt: at(4 * 86400000), updatedAt: at(4 * 86400000), deletedAt: at(3 * 86400000), _clock: {} }];
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page);
+    await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    const purge = page.locator('#trash-purge');
+    assert.equal(await purge.isVisible(), true); assert.equal((await purge.textContent()).trim(), 'Papierkorb leeren');
+    assert.equal(await purge.getAttribute('aria-label'), 'Papierkorb leeren: 3 Einträge endgültig löschen');
+    // Unauffällig: unter allen Einträgen und dem Hinweis, kleiner als „Wiederherstellen“, in der gedämpften Hinweisfarbe statt rot
+    const [box, foot, lastRow] = await Promise.all([purge.boundingBox(), page.locator('.trash-foot').boundingBox(), page.locator('.trash-row').last().boundingBox()]);
+    assert.ok(box.y > lastRow.y + lastRow.height && box.y + box.height / 2 > foot.y + foot.height, `ganz unten (${JSON.stringify({ box, foot })})`);
+    assert.ok(box.height >= 44, 'trotzdem gut antippbar');
+    const sizes = await page.evaluate(() => [parseFloat(getComputedStyle(document.querySelector('#trash-purge')).fontSize), parseFloat(getComputedStyle(document.querySelector('.trash-restore')).fontSize)]);
+    assert.ok(sizes[0] < sizes[1], `kleiner als Wiederherstellen (${sizes})`);
+    const colors = await page.evaluate(() => [getComputedStyle(document.querySelector('#trash-purge')).color, getComputedStyle(document.querySelector('.trash-foot')).color]);
+    assert.equal(colors[0], colors[1], 'gedämpfte Farbe wie der Hinweis');
+    await purge.scrollIntoViewIfNeeded(); await saveShot(page, '2139-papierkorb-leeren.png');
+    // Abbrechen ändert nichts
+    let question = '';
+    page.once('dialog', dialog => { question = dialog.message(); void dialog.dismiss(); });
+    await purge.click();
+    assert.match(question, /^Alle 3 Einträge im Papierkorb endgültig löschen\?/); assert.match(question, /nicht rückgängig/);
+    assert.equal(await page.locator('.trash-row').count(), 3);
+    // Bestätigen leert den Papierkorb
+    page.once('dialog', dialog => void dialog.accept());
+    await purge.click();
+    await page.locator('#trash-empty').waitFor();
+    assert.match(await page.textContent('#trash-status-text'), /Papierkorb geleert · 3 Einträge endgültig gelöscht/);
+    assert.equal(await page.locator('#trash-undo').isHidden(), true, 'kein Rückgängig');
+    assert.equal(await purge.isHidden(), true);
+    assert.equal(await page.locator('.trash-row').count(), 0);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    assert.equal(saved.items.some(row => row.id === tomato.id), false, 'Artikel aus den Daten entfernt');
+    assert.equal(saved.recipes.some(row => row.id === 'recipe-curry'), false, 'Rezept entfernt');
+    assert.equal(saved.ingredients.some(row => row.recipeId === 'recipe-curry'), false, 'samt Zutaten');
+    const purchase = saved.purchases.find(row => row.id === 'gone-purchase');
+    assert.ok(purchase.deletedAt && purchase.purgedAt, 'die Ausgabe bleibt als Löschmarke, damit ein Gerät ohne Netz sie nicht neu einträgt');
+    await page.click('#trash-dialog [data-close]');
+    assert.match(await page.textContent('#trash-summary'), /^Leer/);
+    await goTab(page, 'shopping'); assert.equal(await page.locator('#shopping .trash-link').isHidden(), true);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  // ---- 2.139 (E12): Offline-Anzeige ----
+  test('2.139: ohne Netz erscheint oben ein Offline-Band mit wartenden Änderungen; nach der Rückkehr kurz „Wieder online“', async () => {
+    const remote = github(structuredClone(demo));
+    const { ctx, page, problems } = await context({ config: connectedConfig });
+    await ctx.route('https://api.github.com/**', route => remote.handler(route));
+    await open(page); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    assert.equal(await page.locator('#connection-band').isHidden(), true);
+    await ctx.setOffline(true);
+    await page.waitForSelector('#connection-band:not([hidden])');
+    assert.match(await page.textContent('#connection-text'), /^Offline · Änderungen werden später gesendet$/);
+    await page.getByRole('button', { name: 'Tomaten: abhaken' }).click();
+    await page.waitForFunction(() => /1 Änderung wartet/.test(document.querySelector('#connection-text').textContent));
+    const band = await page.locator('#connection-band').boundingBox(); assert.ok(band.y >= 0 && band.width <= 390);
+    await ctx.setOffline(false);
+    await page.waitForFunction(() => /Wieder online/.test(document.querySelector('#connection-text').textContent));
+    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
+    await page.waitForSelector('#connection-band', { state: 'hidden', timeout: 10000 });
+    assert.equal(remote.content.items.find(row => row.id === 'item-tomaten').checked, true, 'die Änderung ist angekommen');
+    assert.deepEqual(problems.filter(text => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text)), []);
+    await ctx.close();
+  });
 });
