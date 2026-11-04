@@ -2,6 +2,24 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.149: Fehlerbehebungen aus einer zweiten Prüfung
+
+ChatGPT hat Version 2.146 geprüft und sieben Fehler gemeldet. Alle sieben sind nachgestellt, bestätigt und behoben, jeweils mit einem Test, der vorher fehlschlug.
+
+- **Vorrat: Sorten lassen sich unabhängig auswählen.** „Öl“ und „Olivenöl“ hatten dieselbe interne Kennung. Tippte man Olivenöl an, stand auch bei Öl „Wird entfernt“; beide zusammen ließen sich nicht entfernen. Jede Sorte hat jetzt ihre eigene Kennung; Foto und Katalog bleiben gleich.
+- **Vorrat: Der Stern sitzt auf der Sorte.** Ein Stern für „Basmati-Reis“ stand bei „Reis“, und auf Basmati-Reis ließ er sich nicht sichtbar setzen; weitere Tipps änderten unsichtbar den gespeicherten Zustand. Jetzt zeigt jede Sorte ihren eigenen Stern. Steht die Sorte nicht im Vorrat, bleibt ihr Stern wie bisher bei der Gruppe.
+- **Papierkorb leeren: keine Kategorie kehrt zurück.** Wurde eine Kategorie gelöscht, gleichnamig neu angelegt und wieder gelöscht, löschte „Papierkorb leeren“ nur die neuere endgültig; die ältere tauchte danach wieder auf. Jetzt werden gleichnamige Kategorien zusammen endgültig gelöscht.
+- **Wiederherstellen → Rückgängig stellt den alten Stand genau her.** Vorher ging dabei die Weiterleitung einer gelöschten Kategorie verloren (später eintreffende Offline-Buchungen landeten bei „Ohne Kategorie“). Jetzt merkt sich die App beim Wiederherstellen den bisherigen Stand und setzt ihn mit „Rückgängig“ vollständig zurück, auch das Geschäft eines Artikels.
+- **Endgültig gelöscht bleibt gelöscht.** Ein altes „Rückgängig“ unter „Eigene“ holte ein eigenes Produkt zurück, obwohl der Papierkorb inzwischen geleert war; ein erneutes Löschen erschien dann nicht mehr im Papierkorb. Jetzt meldet „Rückgängig“: „… wurde inzwischen endgültig gelöscht und lässt sich nicht mehr zurückholen.“ Ein erneutes Löschen steht wieder im Papierkorb.
+- **Zwei Rückfragen nacheinander.** Öffnete sich eine zweite Rückfrage, während die erste noch offen war, wirkte ihr Bestätigen-Knopf nicht. Jetzt ersetzt die zweite die erste, und ihre Knöpfe funktionieren.
+- **Sterne eigener Produkte.** Beim Wiederherstellen eines eigenen Produkts kamen alle Sterne zurück, die innerhalb von zehn Sekunden entfernt worden waren, auch ein bewusst vorher entfernter. Jetzt merkt sich die Löschung genau die mitgelöschten Sterne. Ältere Löschungen nutzen weiter das Zeitfenster.
+
+**Vorbereitung für eine App.** Auch das Rezeptblatt (PDF teilen und speichern) und alle Links, die in einem neuen Tab öffnen, laufen jetzt über `platform.js`. Die Beschreibung in `docs/APP-STORE.md` ist präzisiert: Für Teilen, Dateien, Haptik und Links genügt dort eine Anpassung; Speicher und Rezept-Import brauchen eigene Schritte.
+
+**Tests.** Neue Logiktests (`tests/chatgpt-findings.test.mjs`) und Browsertests für Sorten, Sterne, das alte „Rückgängig“ und zwei Rückfragen nacheinander. Die Browsertests schlagen mit Version 2.148 fehl und laufen mit 2.149 durch.
+
+Offline-Paket `einkauf-shell-v161`.
+
 ## Neu in Version 2.148: Geheime Liste ohne Abhak-Kreis
 
 - Auch in der **geheimen Liste** gibt es unter **Planen** keinen Abhak-Kreis mehr, wie in allen anderen Listen seit 2.147. Was erledigt ist, wird lange gehalten und nach rechts in den **Mülleimer** gezogen; danach steht unten **Rückgängig**, und der Eintrag bleibt 14 Tage unter **Kürzlich gelöscht** (nur auf diesem Gerät).

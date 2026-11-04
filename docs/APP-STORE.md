@@ -1,6 +1,6 @@
 # Sattplan als App für iPhone und Android: Fahrplan
 
-Stand: Version 2.146. Dieses Dokument beschreibt, was für eine Veröffentlichung im **App Store** (Apple) und bei **Google Play** nötig ist, was schon vorbereitet ist und in welcher Reihenfolge es sinnvoll ist.
+Stand: Version 2.149. Dieses Dokument beschreibt, was für eine Veröffentlichung im **App Store** (Apple) und bei **Google Play** nötig ist, was schon vorbereitet ist und in welcher Reihenfolge es sinnvoll ist.
 
 ## Kurzfassung
 
@@ -9,12 +9,12 @@ Stand: Version 2.146. Dieses Dokument beschreibt, was für eine Veröffentlichun
 - **Rechtliches vor der Einreichung klären**, vor allem die **Händlerlogos**, den Datenschutz und das Löschen von Konten.
 - **Zwischenschritt ohne Backend:** Für euch als Familie lässt sich die App schon vorher als Capacitor-App bauen und über **TestFlight** (iPhone) bzw. einen **internen Test** (Google Play) verteilen, mit der heutigen GitHub-Verbindung.
 
-## Was in 2.146 schon vorbereitet ist
+## Was bis 2.149 schon vorbereitet ist
 
 | Baustein | Warum er für die App wichtig ist |
 |---|---|
 | `ask.js`: eigene Rückfrage-Fenster statt `window.confirm` | Die grauen Browser-Fenster sehen in einer App fremd aus und lassen sich nicht gestalten. Alle 15 Rückfragen laufen jetzt über ein eigenes Fenster. |
-| `platform.js`: Dateien, Teilen, Haptik, externe Links, Service Worker | Genau diese Stellen verhalten sich in einer App anders. In Capacitor wird nur diese Datei angepasst (Plugins *Share*, *Filesystem*, *Haptics*, *Browser*). Der Service Worker wird in der App automatisch nicht verwendet. |
+| `platform.js`: Dateien, Teilen, Haptik, externe Links, Service Worker | Genau diese Stellen verhalten sich in einer App anders. Seit 2.149 laufen auch das Rezeptblatt (PDF teilen und speichern) und alle Links, die in einem neuen Tab öffnen, über diese Datei. Für diese Bereiche wird in Capacitor nur `platform.js` angepasst (Plugins *Share*, *Filesystem*, *Haptics*, *Browser*). Der Service Worker wird in der App automatisch nicht verwendet. **Nicht** in `platform.js` liegen der Speicher (`localStorage`) und der Rezept-Import aus Links; dafür gibt es eigene Schritte (siehe unten). |
 | Datenmodell mit Änderungen („Operationen“) und Zusammenführen | Offline arbeiten, mehrere Geräte und Konflikte sind gelöst. Das funktioniert mit jedem Server, nicht nur mit GitHub. |
 | Papierkorb für alles, Löschmarken | Gelöschtes lässt sich zurückholen; dauerhaftes Löschen ist ausdrücklich und nachvollziehbar. Das hilft auch beim Datenschutz. |
 | Rund 630 Browsertests und 590 Logiktests | Sie laufen im Chromium-Browser und prüfen auch kleine Bildschirme (bis 280 px), Hell/Dunkel und Bedienung per Touch. |
@@ -27,7 +27,7 @@ Ziel: eine installierbare App für euch, zunächst mit der heutigen GitHub-Verbi
 
 - Capacitor-Projekt anlegen (`@capacitor/core`, `@capacitor/ios`, `@capacitor/android`). Die App-Dateien bleiben im Hauptordner.
 - Plugins: *Share* und *Filesystem* (Sicherungen, CSV, Rezeptblatt), *Haptics* (Rückmeldung beim langen Drücken), *Browser* (Rezeptquellen, Angebote), *Preferences* (Einstellungen), *App* (Zurück-Taste unter Android), *Status Bar* und *Splash Screen*.
-- In `platform.js` die jeweilige Funktion auf das Plugin umstellen. Die übrigen Module bleiben unverändert.
+- In `platform.js` die jeweilige Funktion auf das Plugin umstellen (`shareFile`, `downloadFile`, `saveFile`, `vibrate`, `mountExternalLinks`). Für Teilen, Dateien, Haptik und Links bleiben die übrigen Module unverändert.
 - **Rezept-Import aus Links:** In der App gilt die Browser-Sperre für fremde Seiten (CORS) nicht, wenn die Seite über *CapacitorHttp* geladen wird. Der Cloudflare-Hilfsdienst wird dann überflüssig.
 - **Speicher:** Wichtige Daten (Warteschlange, Einstellungen) aus `localStorage` in *Preferences* oder SQLite verschieben. Am einfachsten: beim Start laden, dann wie bisher synchron arbeiten.
 - Für iOS wird ein **Mac mit Xcode** gebraucht, oder ein Cloud-Dienst mit macOS (z. B. GitHub Actions mit macOS-Runner).

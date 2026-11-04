@@ -47,6 +47,8 @@ export function validateRow(key, row) {
     throw new Error(`Ungültiger Eintrag in ${key}. Die Datei wird nicht verändert.`);
   }
   if(key==='productRemovals'&&(typeof row.name!=='string'||!row.name.trim()||row.name.length>120||row.id!==`own-${productKey(row.name)}`))throw new Error('Ungültige Löschmarkierung für ein eigenes Produkt.');
+  // favoriteIds (2.149): die beim Löschen mitgelöschten Sterne. Ältere Löschmarken haben das Feld nicht.
+  if(key==='productRemovals'&&row.favoriteIds!==undefined&&row.favoriteIds!==null&&(!Array.isArray(row.favoriteIds)||row.favoriteIds.length>200||row.favoriteIds.some(id=>typeof id!=='string'||!id||id.length>300)))throw new Error('Ungültige Löschmarkierung für ein eigenes Produkt.');
   if (key === 'expenseCategories' && (typeof row.name !== 'string' || !row.name.trim() || row.name.length > 200 || !Number.isSafeInteger(Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) || row.id !== expenseCategoryId(row.name,Number(row.id.match(/:g(\d+)$/)?.[1] || 0)) ||
       (row.sortOrder !== undefined && (!Number.isSafeInteger(row.sortOrder) || row.sortOrder < 0)) ||
       (row.replacementId !== undefined && row.replacementId !== null && (typeof row.replacementId !== 'string' || !row.replacementId || row.replacementId.length > 2048 || row.replacementId === row.id)))) throw new Error('Ungültige Ausgabenkategorie.');
