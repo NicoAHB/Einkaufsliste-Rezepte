@@ -1071,7 +1071,7 @@ function renderStoreCatalog() {
     const used = existing.has(chain.key), choice = button('', () => {
       const form = $('#store-form');
       form.elements.chainKey.value = chain.key; form.elements.name.value = chain.name; form.elements.offersUrl.value = chain.offers;
-      showStoreNameError(false); renderStoreTemplate(); $('#store-catalog-dialog').close(); form.elements.name.focus();
+      showStoreNameError(false); renderStoreTemplate(); $('#store-catalog-dialog').close();   // der Name ist schon eingetragen: keine Tastatur
     }, 'catalog-choice');
     choice.dataset.chain = chain.key; choice.disabled = used;
     choice.setAttribute('aria-label', `${chain.name}${used ? ': bereits hinzugefügt' : ' auswählen'}`);
@@ -1085,7 +1085,7 @@ function renderStoreTemplate() {
   const chain = catalogByKey($('#store-form').elements.chainKey.value), preview = $('#store-template'); preview.replaceChildren(); preview.hidden = !chain;
   if (!chain) return;
   preview.append(chainLogo(chain), element('span', `Vorlage: ${chain.name}`), button('Auswahl aufheben', () => {
-    const form = $('#store-form'); form.elements.chainKey.value = ''; form.elements.name.value = ''; form.elements.offersUrl.value = ''; renderStoreTemplate(); form.elements.name.focus();
+    const form = $('#store-form'); form.elements.chainKey.value = ''; form.elements.name.value = ''; form.elements.offersUrl.value = ''; renderStoreTemplate(); $('#choose-store').focus({ preventScroll: true });
   }, 'text-button small'));
 }
 function renderStores() {
@@ -1394,8 +1394,9 @@ function showStoreAddStep(kind) {
   $('#store-add-dialog').scrollTop = 0;
   if (!kind) return;
   form.elements.kind.value = kind; syncNewStoreForm();
-  // Geschäft: zuerst der Händlerkatalog; eigene Listen und Notizen: zuerst der Name
-  (kind === 'store' ? $('#choose-store') : form.elements.name).focus({ preventScroll: true });
+  // Die Tastatur öffnet sich erst, wenn man selbst ins Namensfeld tippt (2.153). Der Fokus geht deshalb nie von selbst in ein Textfeld:
+  // beim Geschäft auf „Händler auswählen“, bei eigenen Listen und Notizlisten auf die Überschrift (Bildschirmleser lesen sie vor).
+  (kind === 'store' ? $('#choose-store') : $('#store-add-title')).focus({ preventScroll: true });
 }
 function syncNewStoreForm() {
   const form = $('#store-form'), kind = form.elements.kind.value, info = ADD_KINDS[kind] || ADD_KINDS.store, shop = kind === 'store';
@@ -4432,7 +4433,7 @@ $('#store-add-dialog').addEventListener('close',resetStoreAdd);
 $('#store-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
   const form = event.currentTarget, kind = form.elements.kind.value, name = form.elements.name.value.trim();
   if (form.dataset.busy) return;   // ein zweiter schneller Tipp legt nichts doppelt an
-  if (!name) { showStoreNameError(true); form.elements.name.focus(); return; }
+  if (!name) { showStoreNameError(true); form.elements.name.closest('label').scrollIntoView({ block: 'center' }); return; }   // Hinweis zeigen, Tastatur erst beim Antippen
   showStoreNameError(false);
   if (kind === 'list' && newListPrivacy.input.checked) {
     form.dataset.busy = '1';

@@ -5470,6 +5470,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 /* Hinzufügen: erst die Aufgabe wählen */
 .store-add-dialog .sheet-head { gap:8px }
 .store-add-dialog .sheet-head h2 { flex:1; min-width:0 }
+#store-add-title:focus { outline:none }   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
 .store-add-question { margin:2px 0 12px; font-size:1.05rem; font-weight:700 }
 .store-add-choice { display:grid; gap:10px }
 .store-add-choice .store-group-line { margin:8px 0 2px }
