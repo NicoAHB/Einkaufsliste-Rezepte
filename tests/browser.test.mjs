@@ -11925,4 +11925,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  test('2.162: Rezepte des Tages öffnet ohne Fokusring am Schließen-× (Fokus auf der Überschrift)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await goTab(page, 'recipes'); await page.click('#daily-open'); await sheetOpen(page);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'daily-title');
+    assert.equal(await page.locator('#daily-dialog [data-close]').evaluate(node => node.matches(':focus')), false, 'das × hat keinen Fokus');
+    assert.equal(await page.locator('#daily-title').evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+    await page.keyboard.press('Tab'); assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'daily-title', 'Tastatur kommt weiter');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

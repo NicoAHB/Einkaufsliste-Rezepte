@@ -2758,6 +2758,7 @@ function addDailyRecipe() {
 $('#daily-open').addEventListener('click', () => guard(() => {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   loadDaily(); dailyReview = null; $('#daily-dialog').showModal(); showDaily();
+  $('#daily-title').focus({ preventScroll: true });   // nicht das ×: Safari zeichnet sonst um den Schließen-Knopf einen Fokusring (2.162)
 }));
 function confirmDailyRecipe() {
   const added=addDailyRecipe();if(added===null)return;
