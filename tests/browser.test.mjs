@@ -1303,7 +1303,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.ok(await page.locator('#spending-stores-card').isVisible());
     assert.deepEqual(await page.locator('#spending-stores .spend-store-head').evaluateAll(nodes => nodes.map(node => [...node.children].map(child => child.textContent.replace(/\s+/g, ' ').trim()).join(' | '))), ['Ohne Geschäft | 23,45 €', 'Lidl | 10,00 €']);
     // 5. Ändern: Betrag und Geschäft, dann löschen
-    await page.locator('#purchase-list .spend-row', { hasText: '23,45' }).click(); await sheetOpen(page);
+    await page.locator('#purchase-list .spend-item', { hasText: '23,45' }).locator('.spend-edit').click(); await sheetOpen(page);
     assert.equal(await page.textContent('#purchase-title'), 'Ausgabe bearbeiten');
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '23,45');
     assert.equal(await page.inputValue('#purchase-form input[name=note]'), 'Wocheneinkauf');
@@ -1312,11 +1312,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#spending-summary'), /40,00\s€[\s\S]*2 Einkäufe/);
     assert.match(await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).textContent(), /Edeka[\s\S]*30,00\s€/);
     assert.ok(!/Wocheneinkauf/.test(await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).textContent()), 'die geleerte Notiz bleibt leer (kein Standard beim Ändern)');
-    await page.locator('#purchase-list .spend-row', { hasText: 'Edeka' }).click(); await sheetOpen(page);
+    await page.locator('#purchase-list .spend-item', { hasText: 'Edeka' }).locator('.spend-edit').click(); await sheetOpen(page);
     await page.selectOption('#purchase-form select[name=storeId]', ''); await page.click('#purchase-save');
     assert.match(await page.textContent('#purchase-list'), /Einkauf[\s\S]*30,00\s€/);
-    await page.locator('#purchase-list .spend-row', { hasText: '30,00' }).click(); await sheetOpen(page);
-    await page.click('#purchase-delete'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    await page.locator('#purchase-list .spend-item', { hasText: '30,00' }).locator('.spend-edit').click(); await sheetOpen(page);
+    await page.click('#purchase-delete'); await answerAsk(page, true, /Einkauf löschen\?/); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.match(await page.textContent('#spending-summary'), /10,00\s€[\s\S]*1 Einkauf/);
     // 6. Nach dem Neuladen noch da (Beispielmodus speichert auf dem Gerät)
     await open(page); await page.click('[data-tab=spending]');
@@ -1425,10 +1425,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');await addPurchase(page,{amount:'5',note:'Getränke'});
     for(const amount of ['6','7'])await addPurchase(page,{amount,note:'Grillabend'});
     await page.click('#add-purchase');await page.click('#purchase-note-toggle');const names=await page.locator('#purchase-category-list .expense-category-choice').allTextContents();assert.equal(names[0],'Wocheneinkauf');assert.equal(names.at(-1),'Grillabend');assert.equal(new Set(names).size,names.length);await page.keyboard.press('Escape');
-    await page.locator('#purchase-list .spend-row',{hasText:'5,00'}).click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'Getränke');await chooseExpenseCategory(page,'');await page.click('#purchase-save');await page.locator('#purchase-list .spend-row',{hasText:'5,00'}).click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'');assert.deepEqual(problems,[]);await ctx.close();
+    await page.locator('#purchase-list .spend-item', { hasText: '5,00' }).locator('.spend-edit').click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'Getränke');await chooseExpenseCategory(page,'');await page.click('#purchase-save');await page.locator('#purchase-list .spend-item', { hasText: '5,00' }).locator('.spend-edit').click();assert.equal(await page.inputValue('#purchase-form [name=note]'),'');assert.deepEqual(problems,[]);await ctx.close();
   });
 
-  test('Ausgaben: Eintrag lange halten und in den roten Mülleimer ziehen löscht ihn; kurzer Tipp ändert weiter, Loslassen daneben und Escape löschen nichts', async () => {
+  test('Ausgaben: Eintrag lange halten und in den roten Mülleimer ziehen löscht ihn; kurzer Tipp klappt die Produkte auf, der Stift ändert, Loslassen daneben und Escape löschen nichts', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
     await page.click('[data-tab=spending]');
@@ -1460,8 +1460,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.keyboard.press('Escape'); await page.mouse.up();
     await page.waitForSelector('.drag-ghost', { state: 'detached' });
     assert.equal((await amounts()).length, 3, 'abgebrochen: nichts gelöscht');
-    // Kurzer Tipp öffnet weiterhin die Bearbeitung
-    await page.locator('#purchase-list .spend-row', { hasText: '22,22' }).click(); await sheetOpen(page);
+    // Kurzer Tipp auf die Zeile klappt seit 2.160 die Produkte auf; der Stift öffnet die Bearbeitung
+    await page.locator('#purchase-list .spend-row', { hasText: '22,22' }).click();
+    assert.equal(await page.locator('#purchase-list .spend-item.open').count(), 1); assert.equal(await page.locator('dialog[open]').count(), 0);
+    await page.locator('#purchase-list .spend-row', { hasText: '22,22' }).click();
+    assert.equal(await page.locator('#purchase-list .spend-item.open').count(), 0);
+    await page.locator('#purchase-list .spend-item', { hasText: '22,22' }).locator('.spend-edit').click(); await sheetOpen(page);
     assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '22,22');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
     // In die Fläche ziehen und loslassen löscht
@@ -1582,12 +1586,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const rows = page.locator('#purchase-list .spend-row');
     assert.equal(await rows.count(), 3);
     assert.equal(await page.locator('#purchase-list .spend-dot').count(), 0, 'die Liste zeigt nur die tatsächlichen Beträge');
-    const red = rows.filter({ hasText: '99,00' });
     // Beim Ändern steht der Vergleich in Worten
-    await red.click(); await sheetOpen(page); await page.locator('#purchase-more summary').click();
+    await page.locator('#purchase-list .spend-item', { hasText: '99,00' }).locator('.spend-edit').click(); await sheetOpen(page); await page.locator('#purchase-more summary').click();
     assert.equal(await page.locator('#purchase-estimate').count(), 0, 'kein Vergleich mehr im Formular');
     await page.keyboard.press('Escape');
-    await rows.filter({ hasText: '7,00' }).click(); await sheetOpen(page);
+    await page.locator('#purchase-list .spend-item', { hasText: '7,00' }).locator('.spend-edit').click(); await sheetOpen(page);
     assert.equal(await page.locator('#purchase-estimate').count(), 0);
     await page.keyboard.press('Escape');
     // Ohne genug Preise keine Schätzung: ein Artikel ohne Preis, abgehakt, beendet mit Betrag
@@ -1595,6 +1598,76 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await finish('Rewe', ['Gartenschlauch'], async () => { await page.fill('#finish-form input[name=amount]', '15'); await page.click('#finish-save'); });
     await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     assert.ok(!('estimate' in (await stored()).purchases.filter(row => !row.deletedAt).at(-1)), 'zu wenige Preise: keine Schätzung gespeichert');
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
+  for (const width of [320, 390]) test(`2.160: abgehakte Produkte gehören zum Einkauf; Pfeil klappt sie auf (immer nur einer), Stift bearbeitet, Löschen fragt nach (${width} px)`, async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
+    await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt));
+    // Im Laden bei Edeka Tomaten und Nudeln abhaken, mit Betrag beenden
+    await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    for (const name of ['Tomaten', 'Nudeln']) await shopTap(page, name).click();
+    await finishShop(page); await sheetOpen(page);
+    await page.fill('#finish-form input[name=amount]', '18,02'); await page.click('#finish-save'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
+    const saved = (await stored()).find(row => row.cents === 1802);
+    assert.deepEqual(saved.items.map(entry => entry.name), ['Tomaten', 'Nudeln'], 'die abgehakten Artikel sind dem Einkauf zugeordnet');
+    assert.ok(saved.items.every(entry => entry.amount && typeof entry.amount === 'string'), 'mit Menge');
+    // Ein Eintrag von Hand hat keine Produkte
+    await page.click('[data-tab=spending]');
+    await addPurchase(page, { amount: '5' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    const shop = page.locator(`#purchase-list .spend-item[data-id="${saved.id}"]`), hand = page.locator('#purchase-list .spend-item', { hasText: '5,00' });
+    assert.match(await shop.locator('.spend-row small').textContent(), /2 Produkte/);
+    assert.ok(!/Produkt/.test(await hand.locator('.spend-row small').textContent()));
+    assert.equal(await page.locator('#purchase-list .spend-products:visible').count(), 0, 'zu Beginn ist alles zugeklappt');
+    assert.equal(await shop.locator('.spend-row').getAttribute('aria-expanded'), 'false');
+    // Aufklappen: Betrag und Datum bleiben oben, darunter die Produkte
+    await shop.locator('.spend-arrow').click();
+    assert.equal(await shop.locator('.spend-row').getAttribute('aria-expanded'), 'true');
+    assert.match(await shop.locator('.spend-products-head').textContent(), /2 Produkte aus diesem Einkauf/);
+    assert.deepEqual(await shop.locator('.spend-product-name').allTextContents(), ['Tomaten', 'Nudeln']);
+    assert.equal(await shop.locator('.spend-product-amount').count(), 2);
+    assert.match(await shop.locator('.spend-row').textContent(), /Edeka[\s\S]*Heute[\s\S]*18,02\s€/);
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'Aufklappen öffnet keine Bearbeitung');
+    const box = await shop.locator('.spend-products').boundingBox(), row = await shop.locator('.spend-row').boundingBox();
+    assert.ok(box.y >= row.y + row.height - 1, 'die Übersicht steht unter der Zeile');
+    assert.equal(await horizontalOverflow(page), 0);
+    // Einen anderen Einkauf aufklappen schließt den ersten
+    await hand.locator('.spend-row').click();
+    assert.equal(await page.locator('#purchase-list .spend-item.open').count(), 1);
+    assert.equal(await shop.locator('.spend-products').isHidden(), true);
+    assert.match(await hand.locator('.spend-products').textContent(), /keine Produkte gespeichert[\s\S]*Im Laden[\s\S]*Einkauf beenden/);
+    // Zuklapppfeil schließt
+    await hand.locator('.spend-arrow').click();
+    assert.equal(await page.locator('#purchase-list .spend-item.open').count(), 0);
+    // Aufgeklappt bleibt aufgeklappt, auch wenn die Liste neu gezeichnet wird (z. B. nach dem Bearbeiten eines anderen Eintrags)
+    await shop.locator('.spend-row').click();
+    await hand.locator('.spend-edit').click(); await sheetOpen(page);
+    assert.equal(await page.textContent('#purchase-title'), 'Ausgabe bearbeiten');
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '5,00');
+    await page.fill('#purchase-form input[name=amount]', '6'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal(await shop.locator('.spend-products').isVisible(), true);
+    // Bearbeiten (Stift) behält die Produkte
+    await shop.locator('.spend-edit').click(); await sheetOpen(page);
+    assert.equal(await page.inputValue('#purchase-form input[name=amount]'), '18,02');
+    await page.fill('#purchase-form input[name=amount]', '19'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.deepEqual((await stored()).find(entry => entry.id === saved.id).items, saved.items);
+    // Löschen fragt nach: Abbrechen behält den Einkauf und die Maske
+    await shop.locator('.spend-edit').click(); await sheetOpen(page);
+    await page.click('#purchase-delete');
+    await answerAsk(page, false, /Einkauf löschen\?/, /19,00\s€ bei Edeka vom \d{1,2}\.\d{1,2}\.\d{4} wird gelöscht/, /Kürzlich gelöscht/);
+    assert.equal(await page.locator('#purchase-dialog[open]').count(), 1, 'nach „Abbrechen“ bleibt die Maske offen');
+    assert.equal((await stored()).length, 2, 'nichts gelöscht');
+    // Bestätigen löscht, mit Rückgängig
+    await page.click('#purchase-delete'); await answerAsk(page, true, /Einkauf löschen\?/);
+    await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
+    assert.equal((await stored()).length, 1);
+    assert.match(await page.textContent('#notice-text'), /19,00\s€ gelöscht/);
+    await page.click('#notice-undo');
+    await page.waitForFunction(() => /19,00/.test(document.querySelector('#purchase-list').textContent));
+    assert.deepEqual((await stored()).find(entry => entry.id === saved.id).items, saved.items, 'Rückgängig bringt die Produkte mit');
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -1859,8 +1932,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await a.page.waitForFunction(() => /57,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
     assert.equal(remote.content.purchases.filter(row => !row.deletedAt).length, 3);
     // A löscht einen Eintrag, B sieht das
-    await a.page.locator('#purchase-list .spend-row', { hasText: 'Kleinigkeit' }).click(); await sheetOpen(a.page);
-    await a.page.click('#purchase-delete'); await synced(a.page);
+    await a.page.locator('#purchase-list .spend-item', { hasText: 'Kleinigkeit' }).locator('.spend-edit').click(); await sheetOpen(a.page);
+    await a.page.click('#purchase-delete'); await answerAsk(a.page, true, /Einkauf löschen\?/); await synced(a.page);
     await pollNow(b.page);
     await b.page.waitForFunction(() => /55,50/.test(document.querySelector('#spending-summary').textContent), null, { timeout: 20000 });
     assert.deepEqual([...a.problems, ...b.problems].filter(text => !/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text)), []);
@@ -1895,7 +1968,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#purchase-form input[name=amount]', '41,00'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.equal(await count(), 5);
     // Beim Ändern eines Eintrags zählt er selbst nicht
-    await page.locator('#purchase-list .spend-row', { hasText: '41,00' }).click(); await sheetOpen(page);
+    await page.locator('#purchase-list .spend-item', { hasText: '41,00' }).locator('.spend-edit').click(); await sheetOpen(page);
     // Seit 2.147 speichert erst eine Änderung; „41“ statt „41,00“ ist dieselbe Summe
     await page.fill('#purchase-form input[name=amount]', '41'); await page.click('#purchase-save'); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     assert.equal(await count(), 5);
@@ -7981,7 +8054,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Keine Preisschätzung: Altbestände bleiben im Backup, erzeugen weder Summe noch Vergleich', async () => {
     const data = familyExpenseData(); data.purchases[0].estimate = 2580;
     const { ctx, page, problems } = await localExpenses({}, data);
-    await page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(page);
+    await page.locator('#purchase-list li[data-id=nico-buy] .spend-edit').click(); await sheetOpen(page);
     await page.locator('#purchase-more summary').click();
     assert.doesNotMatch(await page.textContent('#purchase-dialog'), /geschätzt|Zum Vergleich/i);
     await page.fill('#purchase-form input[name=amount]', '24,45'); await page.click('#purchase-save');
@@ -8045,7 +8118,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const after = await expenseStored(page); assert.equal(JSON.stringify(after.purchases.find(row => row.id === purchase.id)), original, 'keine Massenänderung historischer Ausgaben');
     assert.equal(after.members.find(row => row.id === 'member-lena').name, 'Helena'); assert.equal(after.members.find(row => row.id === 'member-lena').archived, true);
     assert.match(await page.locator(`#purchase-list li[data-id="${purchase.id}"]`).textContent(), /Helena/);
-    await page.locator(`#purchase-list li[data-id="${purchase.id}"] button`).click(); await sheetOpen(page);
+    await page.locator(`#purchase-list li[data-id="${purchase.id}"] .spend-edit`).click(); await sheetOpen(page);
     assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), 'member-lena');
     assert.match(await page.locator('#purchase-form select[name=buyerId] option:checked').textContent(), /Helena.*ausgeblendet/);
     await page.keyboard.press('Escape'); await page.click('#add-purchase'); await sheetOpen(page);
@@ -8064,7 +8137,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Familienausgaben: alte Ausgabe ausdrücklich zuordnen, Rückerstattung eintragen und gefilterte CSV herunterladen', async () => {
     const data=familyExpenseData();data.purchases.find(row=>row.id==='unknown-buy').date=isoDay(new Date());
     const {ctx,page,problems}=await localExpenses({},data);
-    await page.locator('#purchase-list li[data-id=unknown-buy] button').click(); await sheetOpen(page);
+    await page.locator('#purchase-list li[data-id=unknown-buy] .spend-edit').click(); await sheetOpen(page);
     assert.equal(await page.inputValue('#purchase-form select[name=buyerId]'), '');
     await page.selectOption('#purchase-form select[name=buyerId]', 'member-anna'); await page.click('#purchase-save');
     assert.equal((await expenseStored(page)).purchases.find(row => row.id === 'unknown-buy').buyerId, 'member-anna');
@@ -8090,8 +8163,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('Familienausgaben: anderer Editor, offene Eingabe und gleichzeitige Personenänderung überschreiben die Zuordnung nicht', async () => {
     const remote = github(familyExpenseData()), a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
     for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', route => remote.handler(route)); await open(device.page); await synced(device.page); await goTab(device.page, 'spending'); }
-    await a.page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(a.page);
-    await b.page.locator('#purchase-list li[data-id=nico-buy] button').click(); await sheetOpen(b.page);
+    await a.page.locator('#purchase-list li[data-id=nico-buy] .spend-edit').click(); await sheetOpen(a.page);
+    await b.page.locator('#purchase-list li[data-id=nico-buy] .spend-edit').click(); await sheetOpen(b.page);
     assert.equal(await b.page.inputValue('#purchase-form select[name=buyerId]'), 'member-nico', 'Editor übernimmt nicht seinen eigenen Namen');
     await b.page.selectOption('#purchase-form select[name=buyerId]', 'member-anna'); await b.page.click('#purchase-save'); await synced(b.page);
     await pollNow(a.page); await synced(a.page);
@@ -10030,7 +10103,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const oldCategory=await page.evaluate(()=>import('./expense-categories.js').then(m=>m.expenseCategoryId('Grillen')));api.remoteChange(data=>data.purchases.push({...data.purchases[0],id:'late-old-category',note:'Grillen',categoryId:oldCategory}));await page.click('#purchase-dialog [data-close]');await pollNow(page);await synced(page);await page.waitForFunction(()=>document.querySelectorAll('#purchase-list .spend-row').length===6);assert.ok(!(await page.textContent('#purchase-list')).includes('Grillen'));assert.match(await page.textContent('#purchase-list'),/Haushalt/);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.106: fremde Kategorieänderung bleibt bei eigener reiner Betragsänderung erhalten',async()=>{
-    const api=github(categoryData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'spending');await page.locator('#purchase-list .spend-item[data-id=nico-buy] .spend-row').click();await page.fill('#purchase-form [name=amount]','27');
+    const api=github(categoryData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',r=>api.handler(r));await open(page);await synced(page);await goTab(page,'spending');await page.locator('#purchase-list .spend-item[data-id=nico-buy] .spend-edit').click();await page.fill('#purchase-form [name=amount]','27');
     api.remoteChange(data=>{data.purchases.find(row=>row.id==='nico-buy').note='Haushalt';});await pollNow(page);await synced(page);await page.waitForFunction(()=>document.querySelector('#purchase-category-value').textContent==='Haushalt');await page.click('#purchase-save');await synced(page);assert.equal(api.content.purchases.find(row=>row.id==='nico-buy').note,'Haushalt');assert.equal(api.content.purchases.find(row=>row.id==='nico-buy').cents,2700);assert.deepEqual(problems,[]);await ctx.close();
   });
   for(const touch of [false,true])test(`2.106: Kategorien lassen sich per ${touch?'Touch':'Maus'} am Griff verschieben und bleiben nach Neustart sortiert`,async()=>{
@@ -10961,7 +11034,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#private-items .private-copy').first().click(); await page.waitForSelector('#private-item-dialog[open]');
     assert.match((await state(privateSave))[0], /^Gespeichert um \d\d:\d\d Uhr$/); await page.click('#private-item-dialog [data-close]');
     // Ausgabe bearbeiten: beide Absende-Knöpfe grau; neue Ausgabe wie bisher
-    await goTab(page, 'spending'); await page.locator('#purchase-list .spend-item[data-id="purchase-2147"] .spend-row').click(); await page.waitForSelector('#purchase-dialog[open]');
+    await goTab(page, 'spending'); await page.locator('#purchase-list .spend-item[data-id="purchase-2147"] .spend-edit').click(); await page.waitForSelector('#purchase-dialog[open]');
     assert.equal((await state('#purchase-save'))[1], true); assert.equal(await page.locator('#purchase-plus').isDisabled(), true);
     await page.fill('#purchase-form [name=amount]', '13,34'); assert.deepEqual(await state('#purchase-save'), ['Änderungen speichern', false]);
     await page.click('#purchase-dialog [data-close]');

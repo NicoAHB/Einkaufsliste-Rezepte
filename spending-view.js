@@ -10,8 +10,18 @@ const euros = value => new Intl.NumberFormat('de-DE', { style: 'currency', curre
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const compactEuros = value => Math.abs(value) >= 1000000 ? `${Math.round(value / 100000)}k` : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(value / 100));
 const shortDate = day => new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${day}T12:00:00`));
+const svgIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 
 export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onExport, onMessage }) {
+  // Aufgeklappter Einkauf (2.160): höchstens einer; ein zweiter Tipp oder das Aufklappen eines anderen schließt ihn
+  let expanded = '';
+  const setOpen = (li, open) => { li.classList.toggle('open', open); li.querySelector('.spend-row').setAttribute('aria-expanded', String(open)); li.querySelector('.spend-products').hidden = !open; };
+  const toggle = li => {
+    const open = !li.classList.contains('open');
+    for (const other of li.parentElement.querySelectorAll('.spend-item.open')) if (other !== li) setOpen(other, false);
+    setOpen(li, open); expanded = open ? li.dataset.id : '';
+    if (open) li.scrollIntoView({ block: 'nearest' });
+  };
   const $ = id => document.getElementById(id), rangeDialog = $('spending-period-dialog'), rangeForm = $('spending-period-form');
   const membersDialog = $('members-dialog'), memberForm = $('member-form');
   let range = null, person = 'all', analysis = 'expenses', scope = getScope(), editingMember = '', editingName = '', returnSelect = null;
@@ -169,14 +179,31 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     const list = $('purchase-list'); list.replaceChildren();
     if (!current.count && !none) list.append(node('li', 'Für diese Person und diesen Zeitraum gibt es keine Einträge.', 'empty'));
     const twins = possibleDuplicates(filterPurchases(allRows, period()));
+    /* Jede Zeile (2.160): oben Betrag und Kaufdatum wie bisher. Ein Tipp auf die Zeile oder den Pfeil klappt darunter die Produkte dieses
+       Einkaufs auf (die bei „Einkauf beenden“ abgehakten Artikel); es ist immer nur ein Einkauf aufgeklappt. „Bearbeiten“ öffnet die Maske. */
+    if (expanded && !current.list.some(entry => entry.id === expanded)) expanded = '';
     for (const entry of current.list) {
-      const li = node('li', undefined, 'spend-item'), open = button(undefined, () => onEdit(entry.id), 'spend-row'), copy = node('span', undefined, 'spend-copy');
+      const li = node('li', undefined, 'spend-item'), line = node('div', undefined, 'spend-line'), open = button(undefined, () => toggle(li), 'spend-row'), copy = node('span', undefined, 'spend-copy');
       li.dataset.id = entry.id;
+      const products = Array.isArray(entry.items) ? entry.items : [];
       const store = storeNameOf(entry, shops), buyer = buyerNameOf(entry, members()), date = entry.date === today() ? 'Heute' : entry.date.slice(0, 4) === today().slice(0, 4) ? dayLabel(entry.date) : shortDate(entry.date);
-      copy.append(node('strong', store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')), node('small', [date, buyer, entry.kind === 'refund' ? 'Rückerstattung' : '', entry.note && entry.note !== DEFAULT_NOTE ? entry.note : '', twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
-      const value = purchaseValue(entry), amount = node('span', euros(value), `spend-amount${entry.kind === 'refund' ? ' refund-amount' : ''}`);
-      open.setAttribute('aria-label', `${date}, ${store || 'ohne Geschäft'}, ${buyer}, ${euros(value)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: ändern`);
-      open.append(copy, amount); li.append(open); list.append(li);
+      copy.append(node('strong', store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')), node('small', [date, buyer, entry.kind === 'refund' ? 'Rückerstattung' : '', entry.note && entry.note !== DEFAULT_NOTE ? entry.note : '', products.length ? plural(products.length, 'Produkt', 'Produkte') : '', twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
+      const value = purchaseValue(entry), amount = node('span', euros(value), `spend-amount${entry.kind === 'refund' ? ' refund-amount' : ''}`), arrow = svgIcon('down');
+      arrow.classList.add('spend-arrow');
+      const panel = node('div', undefined, 'spend-products'); panel.id = `spend-products-${entry.id}`;
+      if (products.length) {
+        panel.append(node('p', `${plural(products.length, 'Produkt', 'Produkte')} aus diesem Einkauf`, 'spend-products-head'));
+        const items = node('ul', undefined, 'spend-product-list');
+        for (const product of products) { const row = node('li'); row.append(node('span', product.name, 'spend-product-name')); if (product.amount) row.append(node('span', product.amount, 'spend-product-amount')); items.append(row); }
+        panel.append(items);
+      } else panel.append(node('p', 'Zu diesem Einkauf sind keine Produkte gespeichert. Sie werden zugeordnet, wenn du sie „Im Laden“ abhakst und bei „Einkauf beenden“ den Betrag speicherst.', 'hint spend-products-empty'));
+      open.setAttribute('aria-label', `${date}, ${store || 'ohne Geschäft'}, ${buyer}, ${euros(value)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: Produkte ${products.length ? `(${products.length}) ` : ''}anzeigen`);
+      open.setAttribute('aria-controls', panel.id);
+      open.append(copy, amount, arrow);
+      const edit = button(undefined, () => onEdit(entry.id), 'icon-button spend-edit'); edit.append(svgIcon('edit'));
+      edit.setAttribute('aria-label', `${store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')} ${date} über ${euros(value)} bearbeiten`); edit.title = 'Bearbeiten';
+      line.append(open, edit); li.append(line, panel); list.append(li);
+      setOpen(li, entry.id === expanded);
     }
   }
   $('spending-analysis').addEventListener('change', event => { analysis = event.target.value === 'frequency' ? 'frequency' : 'expenses'; render(); });

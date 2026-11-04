@@ -5561,3 +5561,21 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 #stores-dialog input.store-switch:disabled { opacity:.5 }
 .store-shop-settings .aisle-fold { margin-top:0 }
 @media (prefers-reduced-motion:reduce) { #stores-dialog input.store-switch,#stores-dialog input.store-switch::after { transition:none } }
+
+/* 2.160: Ausgaben – Zeile mit Pfeil zum Aufklappen der Produkte und eigenem „Bearbeiten“ */
+.spend-line { display:flex; align-items:stretch }
+.spend-line>.spend-row { flex:1; min-width:0; padding-right:6px }
+.spend-arrow { flex:none; width:20px; height:20px; color:var(--muted); transition:transform .18s ease }
+.spend-item.open .spend-arrow { transform:rotate(180deg); color:var(--accent) }
+.spend-line>.spend-edit { flex:none; align-self:center; width:44px; height:44px; min-height:44px; margin-right:8px; padding:0; border:1px solid var(--line-strong); border-radius:12px; background:var(--card); color:var(--accent); box-shadow:none }
+.spend-line>.spend-edit .icon { width:20px; height:20px }
+.spend-line>.spend-edit:focus-visible,.spend-line>.spend-row:focus-visible { outline:3px solid var(--accent); outline-offset:-3px }
+.spend-products { margin:0 14px 12px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--bg) }
+.spend-products-head { margin:0 0 6px; font-size:.82rem; font-weight:700; color:var(--muted) }
+.spend-product-list { list-style:none; margin:0; padding:0 }
+.spend-list .spend-product-list li { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-top:1px solid var(--line); font-size:.92rem }
+.spend-list .spend-product-list li:first-child { border-top:0 }
+.spend-product-name { min-width:0; overflow-wrap:anywhere }
+.spend-product-amount { flex:none; color:var(--muted); font-variant-numeric:tabular-nums; text-align:right }
+.spend-products-empty { margin:0; line-height:1.45 }
+@media (prefers-reduced-motion:reduce) { .spend-arrow { transition:none } }

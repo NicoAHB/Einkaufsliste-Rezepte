@@ -8,7 +8,14 @@ import { buyerKey, buyerNameOf, validMemberId } from './family.js';
 import { isSeparate } from './shop.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
-export const SOURCES = ['bon', 'hand'];     // aus einem Kassenbon-Foto/-Screenshot erkannt oder von Hand eingegeben
+export const SOURCES = ['bon', 'hand'];
+/* Produkte eines Einkaufs (2.160): Was „Im Laden“ abgehakt und mit „Einkauf beenden“ samt Betrag gespeichert wurde, bleibt als kurze Liste
+   (Name und Menge als Text) an der Ausgabe. Höchstens 300 Einträge, damit die gemeinsame Datei klein bleibt. */
+export const PURCHASE_ITEMS_MAX = 300;
+export function purchaseItems(items, amountOf = () => '') {
+  return items.map(item => ({ name: String(item?.name || '').trim().replace(/\s+/g, ' ').slice(0, 120), amount: String(amountOf(item) || '').trim().slice(0, 80) }))
+    .filter(row => row.name).slice(0, PURCHASE_ITEMS_MAX).map(row => row.amount ? row : { name: row.name });
+}     // aus einem Kassenbon-Foto/-Screenshot erkannt oder von Hand eingegeben
 
 const AMOUNT_ERROR = 'Bitte einen Betrag in Euro eingeben, zum Beispiel 23,45.';
 

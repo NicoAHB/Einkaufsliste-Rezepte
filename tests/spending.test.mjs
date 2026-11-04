@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { active, emptyData, merge, operation, validate } from '../data.js';
 import { compact, POLICY } from '../compact.js';
-import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, purchaseFrequency, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, parseBudgetAmount, purchaseFields, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
+import { DEFAULT_NOTE, budgetStatus, compareTotals, dayLabel, duplicatePurchase, possibleDuplicates, purchaseFrequency, firstMonth, formatAmount, lastDay, latestMonth, monthLabel, monthName, monthOf, noteSuggestions, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, PURCHASE_ITEMS_MAX, purchasesOf, receiptAmount, recentMonths, shiftMonth, storeNameOf, summarize, validMonth } from '../spending.js';
 import { parseReceipt } from '../receipt.js';
 
 const make = (id, patch, at = '2026-03-01T10:00:00.000Z') => operation('purchases', id, patch, 'Nico', at);
@@ -331,5 +331,32 @@ describe('Einkaufshäufigkeit je Geschäft',()=>{
       const result=purchaseFrequency(rows,'2026-11',stores);assert.equal(result.count,0);assert.deepEqual(result.byStore.map(shop=>shop.name),['Edeka','Lidl','Rewe']);assert.ok(result.byStore.every(shop=>shop.count===0));
     }
     assert.deepEqual(purchaseFrequency([],'2026-11',[]),{count:0,byStore:[]});
+  });
+});
+
+describe('2.160: Produkte eines Einkaufs', () => {
+  test('purchaseItems übernimmt Name und Menge der abgehakten Artikel, ohne leere Zeilen', () => {
+    const items = [{ name: ' Tomaten ', quantity: 500 }, { name: 'Nudeln' }, { name: '   ' }, null, { name: 'Milch  extra   frisch' }];
+    const amountOf = item => item?.quantity ? `${item.quantity} g` : '';
+    assert.deepEqual(purchaseItems(items, amountOf), [{ name: 'Tomaten', amount: '500 g' }, { name: 'Nudeln' }, { name: 'Milch extra frisch' }]);
+    assert.deepEqual(purchaseItems([]), []);
+    const long = purchaseItems([{ name: 'x'.repeat(500) }], () => 'y'.repeat(200))[0];
+    assert.equal(long.name.length, 120); assert.equal(long.amount.length, 80);
+    assert.equal(purchaseItems(Array.from({ length: PURCHASE_ITEMS_MAX + 20 }, (_, index) => ({ name: `P${index}` }))).length, PURCHASE_ITEMS_MAX);
+  });
+
+  test('Ein Einkauf mit Produkten wird gespeichert, geprüft und bleibt beim Ändern des Betrags erhalten', () => {
+    const items = purchaseItems([{ name: 'Tomaten' }, { name: 'Nudeln' }], item => item.name === 'Tomaten' ? '500 g' : '');
+    let data = merge(emptyData(), [make('e1', { date: '2026-03-01', cents: 1802, items })]);
+    assert.deepEqual(data.purchases[0].items, [{ name: 'Tomaten', amount: '500 g' }, { name: 'Nudeln' }]);
+    assert.doesNotThrow(() => validate(data));
+    data = merge(data, [make('e1', { cents: 1900 }, '2026-03-02T10:00:00.000Z')]);
+    assert.equal(data.purchases[0].cents, 1900); assert.deepEqual(data.purchases[0].items, items, 'eine Betragsänderung lässt die Produkte stehen');
+    assert.deepEqual(compact(data, new Date('2026-03-03T10:00:00.000Z')).data.purchases[0].items, items, 'das Aufräumen behält sie');
+    for (const broken of ['Tomaten', [{ name: '' }], [{ name: 3 }], [{ name: 'A', amount: 5 }], [{ name: 'x'.repeat(121) }], Array.from({ length: 301 }, () => ({ name: 'A' }))]) {
+      const copy = structuredClone(data); copy.purchases[0].items = broken;
+      assert.throws(() => validate(copy), /Ungültige Produkte eines Einkaufs/, JSON.stringify(broken).slice(0, 40));
+    }
+    const plain = structuredClone(data); delete plain.purchases[0].items; assert.doesNotThrow(() => validate(plain), 'Einträge ohne Produkte bleiben gültig');
   });
 });

@@ -56,7 +56,7 @@ import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.j
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
-import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
@@ -3431,6 +3431,7 @@ function finishShopping(amount = '') {
   const category = defaultExpenseCategory(state);
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: category?.name || '', categoryId: category?.id || null,
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
+  if (fields && checked.length) fields.items = purchaseItems(checked, shoppingAmount);   // die abgehakten Produkte gehören zu diesem Einkauf (2.160)
   if (fields) duplicateWarning(fields, '', 'tippe auf „Einkauf beenden & Betrag speichern“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   const notice = [fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '',stockTransferNotice(state,checked)].filter(Boolean).join(' · ');
@@ -4889,10 +4890,16 @@ dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
 }), '.spend-item[data-id]');
 $('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
 $('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
-$('#purchase-delete').addEventListener('click', () => guard(() => {
+$('#purchase-delete').addEventListener('click', () => guard(async () => {
   const id = $('#purchase-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
+  if (!row) { $('#purchase-dialog').close(); return; }
+  // Erst nachfragen (2.160): Ein Tipp daneben löscht keinen Einkauf.
+  const store = row.storeName || active(state.stores).find(entry => entry.id === row.storeId)?.name || '';
+  const what = `${euros(row.cents)}${store ? ` bei ${store}` : ''} vom ${new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE')}`;
+  if (!await ask({ title: row.kind === 'refund' ? 'Rückerstattung löschen?' : 'Einkauf löschen?', message: `${what} wird gelöscht. 14 Tage lang lässt er sich unter „Kürzlich gelöscht“ zurückholen.`, confirmLabel: 'Löschen', danger: true })) return;
+  if (!purchaseRows().some(entry => entry.id === id)) { $('#purchase-dialog').close(); return; }   // inzwischen anderswo gelöscht
   $('#purchase-dialog').close();
-  if (row) { removeRows('purchases', [id]); const scope = namespace(); showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([id], scope, 'purchases'), { trash: true }); }
+  removeRows('purchases', [id]); const scope = namespace(); showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([id], scope, 'purchases'), { trash: true });
 }));
 $('#purchase-dialog').addEventListener('close', () => { purchaseAbort?.abort(); duplicateWarned = ''; });
 $('#finish-dialog').addEventListener('close', () => { duplicateWarned = '';finishSaveIntent=0; });
