@@ -9723,7 +9723,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await addSecret290(page,'Milch');assert.equal(await page.locator('#private-items [data-photo-key=milch]').count(),1);
     const secret='Überraschung nur für mich';await addSecret290(page,secret);
     await page.getByRole('button',{name:secret+' privat bearbeiten',exact:true}).click();await sheetOpen(page);await page.fill('#private-item-form [name=note]','Diese Notiz bleibt privat.');await page.click('#private-item-form button[type=submit]');
-    await page.getByRole('button',{name:'Milch: abhaken',exact:true}).click();await page.click('#private-done>summary');assert.equal(await page.locator('#private-done-items .private-row').count(),1);
+    assert.equal(await page.locator('#private-items .check').count(),0,'seit 2.148 ohne Abhak-Kreis');assert.equal(await page.getByRole('button',{name:'Milch: abhaken',exact:true}).count(),0);
     assert.equal(await page.evaluate(()=>localStorage.getItem('einkauf-demo-v1')),shared);assert.equal(await horizontalOverflow(page),0);
     await page.click('#manage-stores');await row.locator('summary').click();await row.locator('[name=private]').uncheck();
     await row.locator('.store-save').click();await answerAsk(page,false);assert.equal(await page.locator('#store-chips [data-private]').count(),1);
@@ -10967,6 +10967,33 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.setInputFiles('#recipe-form [name=photo]', { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
     await page.waitForFunction(selector => !document.querySelector(selector).disabled, recipeSave);
     assert.equal((await state(recipeSave))[0], 'Änderungen speichern');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.148: Geheime Liste ohne Abhak-Kreis ----
+  for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.148: geheime Liste ohne Abhak-Kreis; früher Erledigtes mit Haken, beides in den Mülleimer (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme, productImages: theme === 'dark' }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await seedPrivate2117(ctx); await open(page);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-private-list-v1:einkauf-demo-v1')).items);
+    await page.locator('#store-chips [data-private=private-a]').click(); await page.waitForSelector('#private-list-panel:not([hidden])');
+    assert.equal(await page.locator('#private-list-panel .check').count(), 0, 'kein Abhak-Kreis');
+    assert.equal(await page.getByRole('button', { name: /abhaken|wieder öffnen/ }).count(), 0);
+    assert.match(await page.textContent('#private-list-panel .private-list-intro'), /Erledigt\? Eintrag lange halten und nach rechts in den Mülleimer ziehen\./);
+    // Tipp auf den Eintrag öffnet weiter das Bearbeiten, ohne abzuhaken
+    await page.locator('#private-items .private-copy').first().click(); await page.waitForSelector('#private-item-dialog[open]'); await page.click('#private-item-dialog [data-close]');
+    assert.equal((await stored()).find(row => row.id === 'secret-a').checked, false);
+    // Früher abgehakt: unter „Erledigt“ mit Haken (kein Knopf), lässt sich in den Mülleimer ziehen
+    await page.locator('#store-chips [data-private=private-b]').click(); await page.click('#private-done>summary');
+    const done = page.locator('#private-done-items .private-row', { hasText: 'PrivatesGeschenk2117' });
+    assert.equal(await done.locator('.bought-mark').getAttribute('aria-label'), 'erledigt');
+    assert.equal(await done.locator('button:not(.private-copy)').count(), 0);
+    assert.equal(await horizontalOverflow(page), 0);
+    const nameBox = await done.locator('.private-copy').boundingBox(), rowBox = await done.boundingBox();
+    assert.ok(nameBox.x - rowBox.x < 60, 'der Name rückt nach links');
+    await dragToTrash147(page, done);
+    assert.equal(await noticeText147(page), '„PrivatesGeschenk2117“ gelöscht');
+    assert.ok((await stored()).find(row => row.id === 'secret-b').deletedAt, 'im Papierkorb dieses Geräts');
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2148-geheim-${width}-${theme}.png` });
     assert.deepEqual(problems, []); await ctx.close();
   });
 
