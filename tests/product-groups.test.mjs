@@ -88,12 +88,14 @@ test('Eigene Listen übernehmen bekannte Produktbilder, behalten freie Namen und
   assert.match(wishGroup('Schöner Roman für den Urlaub').image.url,/^assets\/wishes\//);
 });
 test('Neue Listensymbole erhalten den Aktualisierungsschutz und parallele Listenänderungen',()=>{
-  const baseline=merge(emptyData(),[operation('stores','extra',{name:'Apotheke',separate:true,symbol:'gift'},'Nico',at)]);
+  // Seit 2.152 ist ein vergebenes Symbol fest. Eine Liste ohne Motiv („none“) bekommt ihr erstes Symbol, ein späterer Tausch bleibt wirkungslos.
+  const baseline=merge(emptyData(),[operation('stores','extra',{name:'Apotheke',separate:true,symbol:'none'},'Nico',at)]);
   assert.ok((baseline.sync.minRev||1)<12);
   const icon=operation('stores','extra',{symbol:'pharmacy'},'Nico','2026-11-01T10:00:01.000Z');
   const name=operation('stores','extra',{name:'Hausapotheke'},'Anna','2026-11-01T10:00:02.000Z');
   for(const ops of [[icon,name],[name,icon]]) {
     const next=merge(baseline,ops);assert.equal(next.sync.minRev,12);assert.equal(next.stores[0].symbol,'pharmacy');assert.equal(next.stores[0].name,'Hausapotheke');assert.equal(next.stores[0].separate,true);
+    assert.equal(merge(next,[operation('stores','extra',{symbol:'gift'},'Anna','2026-11-01T10:00:03.000Z')]).stores[0].symbol,'pharmacy','kein Tausch');
   }
 });
 test('Das Schloss-Symbol einer geteilten eigenen Liste schützt vor älteren App-Versionen',()=>{

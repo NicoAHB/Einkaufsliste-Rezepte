@@ -2,6 +2,55 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.152: Geschäfte & Listen übersichtlich ergänzen
+
+Umgesetzt nach der Arbeitsanweisung „Geschäfte und Listen übersichtlich ergänzen“. Die vier Anforderungen sind erfüllt, die zwölf Abnahmeszenarien sind als Tests hinterlegt.
+
+**Einfach ergänzen.**
+- Die Verwaltung heißt **Geschäfte & Listen**. Ganz oben steht **Hinzufügen**, auch bei vielen Einträgen sofort sichtbar.
+- Ein eigenes Fenster fragt **„Was möchtest du anlegen?“**:
+  - **Geschäft**: Händler aus dem Katalog oder eigener Name. Der Angebotslink steht unter „Weitere Angaben (optional)“.
+  - **Eigene Liste**: zuerst der Listenname, dann optional ein Symbol mit Namen statt Nummern.
+  - **Notizliste anlegen**: unter einer Linie in einem eigenen Bereich.
+- Die technische Checkbox „Eigene Liste ohne Supermarktverknüpfung“ entfällt beim Anlegen.
+- Die Hauptaktion heißt passend „Geschäft hinzufügen“, „Liste anlegen“, „Notizliste anlegen“ oder „Geheime Liste anlegen“.
+- **Zurück** behält die Eingaben, **Abbrechen** legt nichts an. Ein leerer Name zeigt „Bitte einen Namen eingeben.“
+- Ein doppelter Tipp legt nichts doppelt an.
+- Danach: kurze Bestätigung mit Namen und **Liste öffnen**, der neue Eintrag ist in der Verwaltung hervorgehoben.
+- Die ausgeschriebene Listenauswahl (Reiter lange drücken) endet mit **Geschäfte & Listen verwalten**.
+
+**Drei Anzeigeoptionen.**
+- Pro eigener Liste: **Nur Symbol**, **Nur Name** oder **Symbol und Name**, mit Vorschau. Gilt auch für Notizlisten und geheime Listen; bei geheimen Listen wird die Wahl nur auf dem Gerät gespeichert.
+- Neue Listen mit Symbol starten mit „Symbol und Name“. Ohne Symbol gibt es nur „Nur Name“, mit Hinweis.
+- Bestehende Listen behalten ihre bisherige Ansicht.
+- Verwaltung und Listenauswahl zeigen immer den vollständigen Namen.
+- Supermärkte behalten Name oder Händlerlogo.
+
+**Notizen separat.**
+- Notizlisten stehen in der Verwaltung im Bereich **Notizen** unter einer Linie. In den Reitern stehen sie hinter einer senkrechten Linie, in der Listenauswahl unter einer waagerechten.
+- Die Reihenfolge ändert sich nur innerhalb der Bereiche.
+- Eine Notizliste bleibt Notizliste, auch mit „Nur Name“: Texteditor, „von …“, Abgleich, Löschen und Papierkorb bleiben unverändert.
+- Sie lässt sich nicht in ein Geschäft umstellen.
+
+**Symbol bleibt fest.**
+- Ein gespeichertes Symbol wird nur noch angezeigt („Symbol: Reisen · festgelegt“); es gibt keine Galerie zum Tauschen.
+- Eine Liste ohne Symbol kann einmalig eines bekommen (**Symbol festlegen**). Das Klemmbrett gibt es dabei nicht, sodass keine Liste nachträglich zur Notizliste wird.
+- Die Sperre greift auch im Datenabgleich. Weder Umbenennen, „Nur Name“, Aus- und Einblenden, eine Umstellung Liste ↔ Geschäft, ein gleichzeitiges Speichern auf zwei Geräten noch eine alte Offline-Änderung tauschen ein Symbol aus.
+- Das bisher nur aus dem Namen abgeleitete Geschenk der „Wünsche“ bleibt auch nach dem Umbenennen erhalten.
+
+**Rezepte des Tages: „✓ Fertig“ beim letzten Rezept.**
+- Beim letzten Rezept steht an derselben Stelle wie „Weiter“ ein aktives, grün umrandetes **✓ Fertig**, das die Rezepte des Tages schließt. Bisher stand dort ein grauer „Weiter“-Knopf ohne Funktion.
+- Ein schneller Doppeltipp auf „Weiter“ schließt nicht aus Versehen mit, ebenso wenig ein Wischen. „Zurück“ macht daraus wieder „Weiter“.
+- Bildschirmleser lesen „Fertig – Rezepte des Tages schließen“.
+- Es kommt kein zusätzlicher Knopf hinzu (wie seit 2.131).
+
+**Daten und ältere Geräte.**
+- Neuer Wert `displayMode` (`symbol` | `name` | `both`), getrennt vom Symbol.
+- Datenrevision 18: Sobald eine Anzeige gespeichert ist, werden ältere App-Versionen zum Aktualisieren aufgefordert, statt Symbole auszutauschen. Bitte alle Geräte aktualisieren.
+- Bestehende Kennungen, Einträge und Sichtbarkeit bleiben unverändert.
+
+Offline-Paket `einkauf-shell-v164`.
+
 ## Neu in Version 2.151: Wer hat die Notiz geschrieben?
 
 In den **Notizen** steht jetzt in jeder Notiz oben rechts klein und schwach grau, wer sie angelegt hat, z. B. **von Nico** oder **von Anna**.
