@@ -100,15 +100,17 @@ export function trashEntries(data, now = Date.now()) {
     entries.push({ kind: 'aliases', collection: 'aliases', id: row.id, title: `${row.from} → ${row.name}`, detail: 'gemerkte Schreibweise', deletedAt: row.deletedAt });
   }
   // Eine Kategorie kann (nach gleichzeitigem Anlegen auf zwei Geräten) mehrfach gespeichert sein; der Papierkorb zeigt sie einmal.
-  const categories = new Map(), live = new Map((data.expenseCategories || []).filter(row => !row.deletedAt).map(row => [row.id, row]));
+  // `ids` (2.149): alle gleichnamigen gelöschten Zeilen, damit „Papierkorb leeren“ sie zusammen endgültig löscht (sonst tauchte die ältere danach auf).
+  const categories = new Map(), same = new Map(), live = new Map((data.expenseCategories || []).filter(row => !row.deletedAt).map(row => [row.id, row]));
   for (const row of data.expenseCategories || []) {
     if (!recent(row, since) || live.size && [...live.values()].some(other => categoryKey(other.name) === categoryKey(row.name))) continue;
     const key = categoryKey(row.name), previous = categories.get(key);
+    same.set(key, [...(same.get(key) || []), row.id]);
     if (!previous || row.deletedAt > previous.deletedAt) categories.set(key, row);
   }
-  for (const row of categories.values()) {
+  for (const [key, row] of categories) {
     const target = live.get(row.replacementId);
-    entries.push({ kind: 'expenseCategories', collection: 'expenseCategories', id: row.id, title: row.name, detail: target ? `Ausgabenkategorie · Buchungen jetzt bei „${target.name}“` : 'Ausgabenkategorie', deletedAt: row.deletedAt });
+    entries.push({ kind: 'expenseCategories', collection: 'expenseCategories', id: row.id, ids: same.get(key), title: row.name, detail: target ? `Ausgabenkategorie · Buchungen jetzt bei „${target.name}“` : 'Ausgabenkategorie', deletedAt: row.deletedAt });
   }
   return entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.title.localeCompare(b.title, 'de'));
 }
@@ -124,8 +126,10 @@ export function restoreChanges(data, collection, id, at = new Date().toISOString
   if (collection === 'productRemovals') {
     // Eigenes Produkt: Löschmarke aufheben und die dabei mitgelöschten Favoriten (gleicher Name, im selben Moment) zurückholen.
     if (!row || row.deletedAt || row.purgedAt) return [];
-    const when = Date.parse(removedAt(row)), key = productKey(row.name);
-    const favorites = (data.productFavorites || []).filter(fav => fav.deletedAt && productKey(fav.name) === key && Math.abs(Date.parse(fav.deletedAt) - when) <= 10000);
+    // Seit 2.149 merkt sich die Löschmarke die mitgelöschten Sterne (favoriteIds). Nur ältere Marken schätzen sie über den Zeitpunkt (±10 s);
+    // so kehrt kein Stern zurück, den jemand kurz vorher bewusst entfernt hatte.
+    const when = Date.parse(removedAt(row)), key = productKey(row.name), remembered = Array.isArray(row.favoriteIds) ? new Set(row.favoriteIds) : null;
+    const favorites = (data.productFavorites || []).filter(fav => fav.deletedAt && (remembered ? remembered.has(fav.id) : productKey(fav.name) === key && Math.abs(Date.parse(fav.deletedAt) - when) <= 10000));
     return [{ collection, id, patch: { deletedAt: at } }, ...favorites.map(fav => ({ collection: 'productFavorites', id: fav.id, patch: { deletedAt: null } }))];
   }
   if (!row || !row.deletedAt || isPurged(row)) return [];
@@ -143,16 +147,26 @@ export function restoreChanges(data, collection, id, at = new Date().toISOString
   return changes;
 }
 
-/* „Rückgängig“ nach dem Wiederherstellen: die Gegenänderungen. Eigene Produkte werden wieder als gelöscht markiert (deletedAt: null). */
+/* Vorher-Stand zu den Änderungen eines Wiederherstellens (2.149): für jedes geänderte Feld der bisherige Wert. „Rückgängig“ setzt damit genau
+   diesen Stand zurück, auch die Weiterleitung einer Kategorie (replacementId) oder das Geschäft eines Artikels. */
+export function withBefore(data, changes) {
+  return changes.map(change => {
+    const row = (data[change.collection] || []).find(entry => entry.id === change.id);
+    return { ...change, before: Object.fromEntries(Object.keys(change.patch).map(field => [field, row?.[field] ?? null])) };
+  });
+}
+
+/* „Rückgängig“ nach dem Wiederherstellen: die Gegenänderungen. Mit Vorher-Stand (withBefore) genau dieser; sonst wie früher nur die Löschmarke
+   (eigene Produkte werden wieder als gelöscht markiert: deletedAt null). */
 export function undoRestoreChanges(changes, at = new Date().toISOString()) {
-  return changes.map(({ collection, id }) => ({ collection, id, patch: { deletedAt: collection === 'productRemovals' ? null : at } }));
+  return changes.map(({ collection, id, before }) => ({ collection, id, patch: before ? { ...before } : { deletedAt: collection === 'productRemovals' ? null : at } }));
 }
 
 /* „Papierkorb leeren“: alle Einträge, die gerade im Papierkorb stehen, als endgültig gelöscht markieren. Die Marke verteilt sich
    wie jede Änderung auf alle Geräte; das anschließende Aufräumen (compact.js) entfernt die Daten aus der Datei. Nur bei Ausgaben
    bleibt die kleine Löschmarke dauerhaft, damit ein lange offline gewesenes Gerät sie nicht als neue Ausgabe wieder einträgt. */
 export function purgeChanges(data, at = new Date().toISOString(), now = Date.parse(at)) {
-  return trashEntries(data, now).map(entry => ({ collection: entry.collection, id: entry.id, patch: { purgedAt: at } }));
+  return trashEntries(data, now).flatMap(entry => (entry.ids || [entry.id]).map(id => ({ collection: entry.collection, id, patch: { purgedAt: at } })));
 }
 
 // Überschriften für die Gruppierung nach Tag: „Heute“, „Gestern“, sonst Wochentag und Datum.

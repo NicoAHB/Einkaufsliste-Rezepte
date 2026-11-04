@@ -63,7 +63,8 @@ export function productLibrary(history = [], favorites = [], pantry = [], remova
 /** A caller cannot turn a built-in or known spelling into a deletable custom row. */
 export function ownProductRemoval(product) {
   if(!product?.own||!product.name?.trim()||product.id!==ownProduct(product.name).id||productGroup(product.name)||GROCERY_PRODUCTS.some(p=>productKey(p.name)===productKey(product.name)))throw new Error('Nur selbst angelegte Produkte können gelöscht werden.');
-  return {id:product.id,patch:{name:product.name.trim(),deletedAt:null}};
+  // purgedAt: null (2.149): Ein erneutes Löschen ist eine neue Löschung und steht wieder im Papierkorb, auch wenn eine frühere endgültig war.
+  return {id:product.id,patch:{name:product.name.trim(),deletedAt:null,purgedAt:null}};
 }
 /** The international view deliberately shows concrete variants such as sushi rice,
  * while the regular catalog continues to use its established product groups. */
@@ -126,6 +127,27 @@ export function pantryProductLibrary(history = [], favorites = [], pantry = [], 
     // Eine Sorte aus dem Katalog zeigt ihr eigenes Foto (imageKey = Katalogkennung), nicht das Bild ihrer Gruppe.
     const known=merged.get(key)||(catalogByStock.has(key)?{...catalogByStock.get(key),imageKey:catalogByStock.get(key).id,count:0}:{...ownProduct(row.name,row),count:0});
     merged.set(key,{...known,name:row.name,category:isCategory(row.category)?row.category:known.category,...(row.imageKey?{imageKey:row.imageKey}:{})});
+  }
+  /* Eindeutige Kennungen (2.149): Die Gruppe „Öl“ trägt die Kennung ihrer Katalogsorte „Olivenöl“ (olivenoel). Steht Olivenöl als eigene Sorte im
+     Vorrat, hätten beide Kacheln dieselbe Kennung, und die Auswahl der einen hätte die andere mitgeschaltet. Die Sorte bekommt dann eine eigene
+     Kennung; catalogId behält die Katalogkennung (Foto, Favorit). */
+  const owners=new Map();
+  for(const [key,card] of merged){
+    const owner=owners.get(card.id);
+    if(owner===undefined){owners.set(card.id,key);continue;}
+    if(owner===key)continue;
+    merged.set(key,{...card,catalogId:card.catalogId||card.id,id:`sorte-${encodeURIComponent(key)}`});
+  }
+  /* Sterne je Sorte (2.149): Ein Favorit gehört zu der Kachel mit derselben Sorte (stockKey seines Namens), etwa „Basmati-Reis“. Nur wenn es
+     diese Kachel nicht gibt, bleibt er wie bisher bei der Gruppe („Reis“). Vorher stand ein Stern für Basmati-Reis bei Reis, und der Stern auf
+     Basmati-Reis ließ sich nicht sichtbar setzen. */
+  const activeFavorites=favorites.filter(row=>row&&!row.deletedAt&&row.name?.trim()).sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))||String(a.id||'').localeCompare(String(b.id||'')));
+  const own=new Map(),claimed=new Set();
+  for(const row of activeFavorites){const key=stockKey(row.name);if(!merged.has(key))continue;own.set(key,[...(own.get(key)||[]),row]);claimed.add(row.id);}
+  for(const [key,card] of merged){
+    const inherited=(card.favorite?.ids||[]).filter(id=>!claimed.has(id)).map(id=>activeFavorites.find(row=>row.id===id)).filter(Boolean);
+    const rows=[...(own.get(key)||[]),...inherited];
+    if(rows.length)card.favorite={...rows.at(-1),ids:rows.map(row=>row.id)};else delete card.favorite;
   }
   return [...merged.values()];
 }

@@ -7,12 +7,15 @@
    - danger: roter Knopf, und der Fokus liegt zuerst auf „Abbrechen“, damit ein versehentliches Enter nichts löscht.
    - Liegt das Fenster nicht in der Seite (z. B. in einem Test ohne index.html), fällt ask auf window.confirm zurück.
    Achtung: Zwischen Frage und Antwort kann ein Abgleich Daten ändern. Aufrufer lesen den Stand nach dem await neu. */
-let pending = null;
+let pending = null, listener = null;
 
 export function ask({ title = '', message = '', confirmLabel = 'OK', cancelLabel = 'Abbrechen', danger = false } = {}) {
   const dialog = typeof document !== 'undefined' && document.getElementById('ask-dialog');
   if (!dialog) return Promise.resolve(typeof confirm === 'function' ? confirm([title, message].filter(Boolean).join('\n\n')) : false);
-  if (pending) { const previous = pending; pending = null; previous(false); if (dialog.open) dialog.close('cancel'); }
+  /* Eine neue Rückfrage ersetzt eine noch offene (2.149): Die alte gilt als abgebrochen, das Fenster bleibt aber offen und zeigt die neue.
+     Früher wurde es dafür geschlossen; das Schließen-Ereignis kommt jedoch erst später an und beendete dann auch die neue Rückfrage,
+     deren Knöpfe danach nichts mehr bewirkten. */
+  if (pending) { const previous = pending; pending = null; if (listener) dialog.removeEventListener('close', listener); listener = null; previous(false); }
   const ok = dialog.querySelector('#ask-ok'), cancel = dialog.querySelector('#ask-cancel');
   dialog.querySelector('#ask-title').textContent = title;
   const text = dialog.querySelector('#ask-message'); text.textContent = message; text.hidden = !message;
@@ -23,14 +26,17 @@ export function ask({ title = '', message = '', confirmLabel = 'OK', cancelLabel
   return new Promise(resolve => {
     pending = resolve;
     const done = () => {
+      if (dialog.open) return;                  // veraltetes Schließen-Ereignis: das Fenster ist inzwischen wieder offen
       dialog.removeEventListener('close', done);
+      if (listener === done) listener = null;
       if (pending !== resolve) return;          // durch eine neuere Rückfrage ersetzt
       pending = null; resolve(dialog.returnValue === 'ok');
       // Zähler für Tests und Hilfsmittel: steigt, sobald eine Antwort verarbeitet ist (die Fortsetzung läuft direkt danach).
       dialog.dataset.answers = String(Number(dialog.dataset.answers || 0) + 1);
     };
+    listener = done;
     dialog.addEventListener('close', done);
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     (danger ? cancel : ok).focus({ preventScroll: true });
   });
 }

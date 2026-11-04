@@ -10997,4 +10997,66 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.149: von ChatGPT gemeldete Fehler (geprüft, bestätigt, behoben) ----
+  const card2149 = (page, name) => page.locator('.product-card').filter({ has: page.locator('.product-name', { hasText: new RegExp(`^${name}$`) }) });
+  test('2.149: „Öl“ und „Olivenöl“ im Vorrat lassen sich unabhängig auswählen und zusammen entfernen; der Stern sitzt auf der Sorte', async () => {
+    // productGroupVersion: 1 wie bei Einträgen der aktuellen App (ältere Einträge ohne Kennzeichen werden beim Laden auf den Gruppennamen umgestellt)
+    const data = pantryData278(['Öl', 'Olivenöl', 'Reis', 'Basmati-Reis'].map(name => ({ name, available: true, productGroupVersion: 1 })));
+    const { ctx, page, problems } = await context(); await seedLocal(ctx, data); await open(page); await openPantry(page, 'current');
+    const live = async () => (await storedDemo(page)).pantry.filter(row => !row.deletedAt && row.available !== false).map(row => row.name).sort();
+    const ids = await page.locator('.product-card').evaluateAll(nodes => nodes.map(node => node.dataset.product));
+    assert.equal(new Set(ids).size, ids.length, `jede Kachel hat eine eigene Kennung: ${ids.join(', ')}`);
+    await card2149(page, 'Olivenöl').locator('.product-pick').click();
+    assert.match(await card2149(page, 'Olivenöl').textContent(), /Wird entfernt/);
+    assert.doesNotMatch(await card2149(page, 'Öl').textContent(), /Wird entfernt/, 'Öl bleibt unberührt');
+    await card2149(page, 'Öl').locator('.product-pick').click();
+    assert.match(await card2149(page, 'Öl').textContent(), /Wird entfernt/); assert.match(await card2149(page, 'Olivenöl').textContent(), /Wird entfernt/, 'beide ausgewählt');
+    await page.click('#product-picker-add'); await page.waitForFunction(() => !document.querySelector('#product-picker-feedback').hidden);
+    assert.deepEqual(await live(), ['Basmati-Reis', 'Reis'], 'Öl und Olivenöl zusammen entfernt');
+    // Stern auf Basmati-Reis: sichtbar dort, nicht bei Reis; erneut antippen nimmt ihn sichtbar zurück
+    const star = name => card2149(page, name).locator('.product-star');
+    await star('Basmati-Reis').click();
+    assert.equal(await star('Basmati-Reis').getAttribute('aria-pressed'), 'true');
+    assert.equal(await star('Reis').getAttribute('aria-pressed'), 'false');
+    assert.deepEqual((await storedDemo(page)).productFavorites.filter(row => !row.deletedAt).map(row => [row.name, row.productId]), [['Basmati-Reis', 'basmati-reis']]);
+    await star('Basmati-Reis').click();
+    assert.equal(await star('Basmati-Reis').getAttribute('aria-pressed'), 'false');
+    assert.equal((await storedDemo(page)).productFavorites.filter(row => !row.deletedAt).length, 0, 'gespeicherter und sichtbarer Zustand stimmen überein');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.149: altes „Rückgängig“ holt ein endgültig gelöschtes eigenes Produkt nicht zurück', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.click('#open-products'); await sheetOpen(page);
+    await page.click('[data-product-mode=all]'); await page.fill('#product-picker-search', 'Keckd');
+    await page.locator('.product-card .product-star').click(); await page.fill('#product-picker-search', ''); await page.click('[data-product-mode=own]');
+    await page.locator('.product-card', { hasText: 'Keckd' }).locator('.product-delete').click(); await answerAsk(page, true, /Kürzlich gelöscht/);
+    const undo = page.locator('#product-picker-feedback .product-undo'); await undo.waitFor();
+    // Papierkorb über den Hinweis öffnen und leeren, dann schließen
+    await page.click('#product-picker-trash'); await page.locator('#trash-dialog[open]').waitFor();
+    await page.click('#trash-purge'); await answerAsk(page, true, /Papierkorb leeren/); await page.click('#trash-dialog [data-close]');
+    await undo.click();
+    assert.match(await page.textContent('#product-picker-dialog'), /endgültig gelöscht und lässt sich nicht mehr zurückholen/);
+    const removal = (await storedDemo(page)).productRemovals.find(row => row.name === 'Keckd');
+    assert.equal(removal.deletedAt, null, 'bleibt gelöscht'); assert.ok(removal.purgedAt);
+    assert.equal(await page.locator('.product-card', { hasText: 'Keckd' }).count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.149: eine zweite Rückfrage ersetzt die erste; ihr Bestätigen wirkt', async () => {
+    const { ctx, page, problems } = await context(); await open(page);
+    await page.evaluate(() => import('./ask.js').then(({ ask }) => {
+      window.__first = ask({ title: 'Erste Rückfrage', confirmLabel: 'Ja' });
+      window.__second = ask({ title: 'Zweite Rückfrage', confirmLabel: 'Löschen', danger: true });
+    }));
+    assert.equal(await page.evaluate(() => window.__first), false, 'die erste gilt als abgebrochen');
+    assert.equal(await page.textContent('#ask-title'), 'Zweite Rückfrage');
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));   // ein später eintreffendes Schließen-Ereignis darf nichts beenden
+    assert.equal(await page.locator('#ask-dialog[open]').count(), 1, 'das Fenster bleibt offen');
+    await page.click('#ask-ok');
+    assert.equal(await page.evaluate(() => window.__second), true, 'das Bestätigen der zweiten wirkt');
+    assert.equal(await page.locator('#ask-dialog[open]').count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

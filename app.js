@@ -48,14 +48,14 @@ import { addToQuarantine, applicableOps } from './pending-guard.js';
 import { APP_VERSION } from './version.js';
 import { contentsRequest, decodeFile, encodeFile } from './github.js';
 import { armDirty, disarmDirty, refreshDirty } from './dirty-save.js';
-import { SINGLE_DELETE, TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges } from './trash.js';
+import { SINGLE_DELETE, TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, trashCounts, trashDayLabel, trashEntries, undoRestoreChanges, withBefore } from './trash.js';
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
-import { externalLink, saveFile, usesServiceWorker, vibrate } from './platform.js';
+import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
@@ -770,7 +770,7 @@ function renderShoppingInfo() {
   details.dataset.context=context;details.hidden=!url;
   $('#offers-link').hidden = !url;
   if (url) {
-    $('#offers-link').href = url;
+    externalLink($('#offers-link'), url);
     $('#offers-link .label').textContent = `Angebote bei ${store.name} ansehen`;
     $('#offers-link').setAttribute('aria-label', `Angebote bei ${store.name} ansehen – öffnet extern`);
   } else $('#offers-link').removeAttribute('href');
@@ -881,7 +881,7 @@ function showWishProductLink() {
   const link = $('#wish-product-link');
   let url = ''; try { url = productLink($('#wish-form').elements.wishUrl.value); } catch { /* unfertige Eingabe */ }
   link.hidden = !url;
-  if (url) link.href = url; else link.removeAttribute('href');
+  if (url) externalLink(link, url); else link.removeAttribute('href');
 }
 function openWish(id) {
   const item = active(state.items).find(row => row.id === id);
@@ -3206,7 +3206,6 @@ async function recipeLayout(recipeId, servings) {
     ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo });
 }
 let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
-const canShareFiles = () => { try { return Boolean(navigator.canShare?.({ files: [new File(['%PDF'], 'rezept.pdf', { type: 'application/pdf' })] })); } catch { return false; } };
 function sheetStatus(text = '', error = false) { const node = $('#sheet-status'); node.textContent = text; node.classList.toggle('error', error); }
 // Die Größe der Seiten: 1 = Breite des Bildschirms, 2 und 3 = größer (zum Lesen). Die Mitte des gerade Sichtbaren bleibt dabei in der Mitte.
 function setSheetZoom(level) {
@@ -3233,16 +3232,14 @@ function sheetFile() {
   const { layout } = sheet;
   return new File([makePdf(layout.pages, { title: layout.title, subject: 'Rezept' })], pdfName(layout.title), { type: 'application/pdf' });
 }
+// Teilen und Speichern laufen über platform.js (2.149), damit eine spätere App nur dort ihr Teilen-Plugin einsetzt.
 async function shareSheet() {
-  const file = sheetFile();
-  try { await navigator.share({ files: [file], title: sheet.layout.title }); sheetStatus('Geteilt.'); }
-  catch (error) { if (error?.name !== 'AbortError') throw error; }
+  if (await shareFile(sheetFile(), sheet.layout.title) === 'shared') sheetStatus('Geteilt.');
 }
 // Speichern: eine Datei herunterladen. In einer Homescreen-App auf dem iPhone führt ein Download oft in eine Seite ohne Rückweg; dort ist der Teilen-Dialog („In Dateien sichern“) der sichere Weg.
 async function saveSheet() {
-  if (navigator.standalone === true && canShareFiles()) return shareSheet();
-  const file = sheetFile(), url = URL.createObjectURL(file), link = element('a');
-  link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  if (isStandaloneApp() && canShareFiles()) return shareSheet();
+  const file = sheetFile(); downloadFile(file, 4000);
   sheetStatus(`„${file.name}“ wird gespeichert.`);
 }
 const sheetAction = action => async () => { sheetStatus(); try { await action(); } catch (error) { sheetStatus(error.message || 'Das hat nicht geklappt.', true); } };
@@ -4130,13 +4127,14 @@ productPicker = mountProductPicker({
   onConsume:product=>{commit(stockRemovalOperations([product]));return isOptionalBasic(product.name);},
   recognizeName,
   onQuickBuy: product => pantryBuyer.buyProduct(product),
-  onDeleteOwn:product=>{const removal=ownProductRemoval(product);const ids=(state.productFavorites||[]).filter(row=>!row.deletedAt&&productKey(row.name)===productKey(product.name)).map(row=>row.id);commit([nextOp('productRemovals',removal.id,removal.patch),...ids.map(id=>nextOp('productFavorites',id,{deletedAt:new Date().toISOString()}))]);return {removalId:removal.id,favoriteIds:ids};},
+  onDeleteOwn:product=>{const removal=ownProductRemoval(product);const ids=(state.productFavorites||[]).filter(row=>!row.deletedAt&&productKey(row.name)===productKey(product.name)).map(row=>row.id);commit([nextOp('productRemovals',removal.id,{...removal.patch,favoriteIds:ids}),...ids.map(id=>nextOp('productFavorites',id,{deletedAt:new Date().toISOString()}))]);return {removalId:removal.id,favoriteIds:ids};},   // favoriteIds (2.149): genau diese Sterne kommen beim Wiederherstellen zurück
   // „Rückgängig“ nach dem Löschen (2.144): Die Löschmarke wird aufgehoben, gelöschte Favoriten kommen zurück.
-  onRestoreOwn:({removalId,favoriteIds=[]})=>{const at=new Date().toISOString();commit([nextOp('productRemovals',removalId,{deletedAt:at}),...favoriteIds.filter(id=>(state.productFavorites||[]).some(row=>row.id===id&&row.deletedAt)).map(id=>nextOp('productFavorites',id,{deletedAt:null}))]);},
+  // Endgültig gelöscht (Papierkorb geleert, 2.149): Ein altes „Rückgängig“ holt nichts mehr zurück.
+  onRestoreOwn:({removalId,favoriteIds=[]})=>{const removal=(state.productRemovals||[]).find(row=>row.id===removalId);if(removal?.purgedAt&&!removal.deletedAt)throw new Error(`„${removal.name}“ wurde inzwischen endgültig gelöscht und lässt sich nicht mehr zurückholen.`);if(removal?.deletedAt)return;const at=new Date().toISOString();commit([nextOp('productRemovals',removalId,{deletedAt:at}),...favoriteIds.filter(id=>(state.productFavorites||[]).some(row=>row.id===id&&row.deletedAt)).map(id=>nextOp('productFavorites',id,{deletedAt:null}))]);},
   onFavorite: product => {
     const id = product.favorite?.id || favoriteId(product), existing = (state.productFavorites || []).find(row => row.id === id);
     const patch = existing && !existing.deletedAt ? { deletedAt: new Date().toISOString() } : {
-      name: product.name, productId: product.own ? null : product.id, quantity: product.quantity, unit: product.unit, category: product.category,
+      name: product.name, productId: product.own ? null : product.catalogId || product.id, quantity: product.quantity, unit: product.unit, category: product.category,
       imageKey: product.imageKey || null, deletedAt: null
     };
     const ids=existing && !existing.deletedAt ? (product.favorite?.ids || [id]) : [id];
@@ -4406,8 +4404,9 @@ function restoreFromTrash(entry) {
   }
   const changes = restoreChanges(state, entry.collection, entry.id, new Date().toISOString());
   if (!changes.length) throw new Error('Dieser Eintrag ist nicht mehr im Papierkorb.');
+  const undo = withBefore(state, changes);   // Vorher-Stand vor dem Speichern merken (2.149): „Rückgängig“ stellt ihn genau wieder her
   commit(changes.map(change => nextOp(change.collection, change.id, change.patch)));
-  trashUndo = changes.map(change => ({ collection: change.collection, id: change.id }));
+  trashUndo = undo;
   $('#trash-status-text').textContent = restoredWhere(entry, changes); $('#trash-status').hidden = false; $('#trash-undo').hidden = false;
   renderTrash();
 }
@@ -4683,6 +4682,7 @@ async function start() {
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) {refreshTimedStock();void sync();} });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+    mountExternalLinks();   // in einer späteren App: Links mit neuem Tab im In-App-Browser öffnen (im Browser ohne Wirkung)
     // Offline-Paket nur im Browser; eine spätere App (native Hülle) bringt ihre Dateien selbst mit (platform.js).
     if (usesServiceWorker()) {
       // Neue App-Version: Hinweis statt stillem Wechsel mitten in einer Eingabe.
