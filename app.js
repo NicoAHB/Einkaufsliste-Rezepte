@@ -3293,7 +3293,7 @@ function renderShop() {
     chips.append(all);
   }
   for (const store of stores) {
-    const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store.name));
+    const chip = element('button', undefined, 'chip'); chip.type = 'button'; chip.append(storeLabel(store));
     chip.dataset.storeId = store.id; describeStoreChip(chip, store.id, store.name, store.id === shopStore);
     const count = shopCount(everything, store.id, takesAnywhere(store)); if (count) chip.append(element('span', String(count), 'count'));
     chip.addEventListener('click', () => { shopStore = store.id; renderShop(); });
@@ -4151,7 +4151,7 @@ const moveBar = {
       const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
     };
     add('', document.createTextNode('Ohne Geschäft'));
-    for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) add(store.id, storeLabel(store.name));
+    for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) add(store.id, storeLabel(store));
     bar.hidden = false;
     return bar.getBoundingClientRect().bottom;
   },
@@ -4260,7 +4260,7 @@ function moveSelected(storeId) {
 }
 function fillMoveChoices(choice) {
   choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
-  for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) choice(store.id, storeLabel(store.name), store.name);
+  for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) choice(store.id, storeLabel(store), store.name);
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
