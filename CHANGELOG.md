@@ -2,6 +2,24 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.161: Verschieben nur in Geschäfte, Grün zuerst, geheime Liste getrennt
+
+**Nie in eine Liste verschieben.** Artikel der Einkaufsliste lassen sich nur noch in ein Geschäft oder nach **Ohne Geschäft** verschieben, nie in eine Liste (Wünsche, eigene Listen wie „Nadiias Reise“, Notizen). Das gilt überall:
+- in der Leiste oben beim Ziehen einer Zeile,
+- in **Verschieben nach** (Zeile lange halten und loslassen),
+- bei mehreren ausgewählten Artikeln unter **Geschäft zuordnen**,
+- im Fenster **Artikel bearbeiten** im Feld **Geschäft**.
+
+**Anzeigefehler behoben:** In der Leiste beim Ziehen ragte bei einer Liste mit Symbol und langem Namen das Symbol (z. B. der blaue Koffer) in das Nachbarfeld. Die Listen stehen dort nicht mehr, und jede Beschriftung bleibt in ihrem eigenen Feld.
+
+**Grün zuerst.** Unter **Optionen → Darstellung → Farbe** steht Grün, die Standardfarbe der App, jetzt an erster Stelle und Blau an zweiter. Die gewählte Farbe bleibt unverändert.
+
+**Geheime Liste getrennt.**
+- **Reiter:** Vor der geheimen Liste steht jetzt eine senkrechte Linie, wie vor den Notizen. In der Listenauswahl (Reiter lange drücken) wird sie zur waagerechten Linie.
+- **Reihenfolge ändern:** Die geheime Liste fehlte hier bisher. Jetzt steht sie unter einer eigenen Linie im Bereich **Geheim**, immer am Ende. Gibt es eine Notizliste, folgt nur diese noch danach. Die geheime Liste lässt sich nicht verschieben (beide Pfeile gesperrt). Ausgeblendete geheime Listen erscheinen dort nicht. Geheime Listen bleiben dabei nur auf diesem Gerät; die gemeinsame Reihenfolge enthält sie nicht.
+
+Offline-Paket `einkauf-shell-v173`.
+
 ## Neu in Version 2.160: Einkäufe mit Produktliste, Bearbeiten-Stift und Rückfrage beim Löschen
 
 **Löschen fragt nach.** **Eintrag löschen** im Fenster „Ausgabe bearbeiten“ löschte den Einkauf bisher sofort. Jetzt fragt die App erst: **„Einkauf löschen? 18,02 € bei Edeka vom 4.11.2026 wird gelöscht …“** mit **Abbrechen** und **Löschen**. Abbrechen lässt Einkauf und Fenster unverändert. Nach dem Löschen steht unten weiter **Rückgängig**, und der Einkauf bleibt 14 Tage unter **Kürzlich gelöscht**. Das Ziehen in den roten Mülleimer bleibt ohne Rückfrage, weil es schon eine bewusste Geste ist und sofort **Rückgängig** anbietet.

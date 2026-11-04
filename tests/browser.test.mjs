@@ -11744,7 +11744,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#shop-back');
     await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]');
     assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=store-notes]').count(), 0);
-    assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=trip-152]').count(), 1);
+    assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=trip-152]').count(), 0, 'seit 2.161 auch keine gewöhnliche Liste: Artikel der Einkaufsliste wandern nie in eine Liste');
     await page.click('#item-dialog [data-close]');
     stored = (await storedDemo(page)).stores.find(store => store.id === 'store-notes');
     assert.equal(stored.symbol, 'checklist');
