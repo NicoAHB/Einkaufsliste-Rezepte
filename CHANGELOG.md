@@ -2,6 +2,16 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.158: Verständliche Erklärung beim Schalter „Artikel ohne Geschäft“
+
+Unter **Geschäfte & Listen → Geschäft → Im Laden** beschreibt die Erklärung jetzt den **aktuellen Zustand** des Schalters, jeweils mit demselben Beispiel. Beim Umschalten wechselt sie sofort:
+- **An:** „„Brot“ steht ohne Geschäft auf der Liste? Dann siehst du es beim Einkaufen bei Rewe unter „Überall möglich“ und kannst es dort abhaken.“
+- **Aus:** „„Brot“ ohne Geschäft siehst du beim Einkaufen bei Rewe nicht. Es erscheint nur in Geschäften, bei denen dieser Schalter an ist, und unter „Alle“.“
+
+Der Name des Geschäfts passt sich weiter beim Umbenennen an. Bildschirmleser lesen die jeweils gültige Erklärung vor.
+
+Offline-Paket `einkauf-shell-v170`.
+
 ## Neu in Version 2.157: Geheimes bleibt im Papierkorb der geheimen Liste
 
 **Bisher:** Was in einer geheimen Liste gelöscht wurde, stand auch im allgemeinen Papierkorb (Optionen → „Kürzlich gelöscht“). Bei mehreren geheimen Listen stand es zudem im Papierkorb jeder anderen geheimen Liste.

@@ -4748,16 +4748,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await shop.isVisible(), true);
     assert.equal(await shop.locator('.store-settings-title').textContent(), 'Im Laden');
     assert.equal(await shop.locator('input[name=anywhere]').getAttribute('role'), 'switch');
-    assert.match(await shop.locator('.store-setting').textContent(), /Artikel ohne Geschäft auch hier zeigen.*Brot.*bei Rewe zusätzlich unter „Überall möglich“/);
+    const hint = () => shop.locator('.store-setting small').textContent();
+    assert.match(await shop.locator('.store-setting').textContent(), /^Artikel ohne Geschäft auch hier zeigen/);
+    assert.equal(await hint(), 'An: „Brot“ steht ohne Geschäft auf der Liste? Dann siehst du es beim Einkaufen bei Rewe unter „Überall möglich“ und kannst es dort abhaken.', 'Erklärung beschreibt den aktuellen Zustand mit Beispiel (2.158)');
     assert.equal(await shop.locator('.aisle-fold').count(), 1, 'die Reihenfolge der Gänge steht im selben Bereich');
     // Der Hinweis nennt den Namen, auch während man ihn ändert
-    await row(2).locator('input[name=name]').fill('Rewe City'); assert.match(await shop.locator('.store-setting small').textContent(), /bei Rewe City/);
+    await row(2).locator('input[name=name]').fill('Rewe City'); assert.match(await hint(), /bei Rewe City/);
     await row(2).locator('input[name=name]').fill('Rewe');
     // Schalter: gut zu treffen, ändert den Speichern-Knopf, wird gespeichert
     const toggle = await shop.locator('input[name=anywhere]').boundingBox(), setting = await shop.locator('.store-setting').boundingBox();
     assert.ok(toggle.width >= 44 && setting.height >= 48, `${toggle.width}×${setting.height}`);
     assert.equal(await shop.locator('input[name=anywhere]').isChecked(), true);
     await shop.locator('.store-setting').click(); assert.equal(await shop.locator('input[name=anywhere]').isChecked(), false, 'die ganze Zeile schaltet');
+    assert.equal(await hint(), 'Aus: „Brot“ ohne Geschäft siehst du beim Einkaufen bei Rewe nicht. Es erscheint nur in Geschäften, bei denen dieser Schalter an ist, und unter „Alle“.', 'die Erklärung wechselt mit dem Schalter');
     await row(2).getByRole('button', { name: /speichern/ }).click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').anywhere, false);

@@ -1278,7 +1278,13 @@ function storeEditorRow(store) {
     anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.className = 'store-switch'; anywhere.setAttribute('role', 'switch'); anywhere.checked = takesAnywhere(store);
     anywhere.setAttribute('aria-label', 'Artikel ohne Geschäft auch hier zeigen'); anywhereHint.id = `store-anywhere-${store.id}`; anywhere.setAttribute('aria-describedby', anywhereHint.id);
     anywhereText.append(element('strong', 'Artikel ohne Geschäft auch hier zeigen'), anywhereHint); anywhereRow.append(anywhereText, anywhere);
-    const describeAnywhere = () => { anywhereHint.textContent = `Hat ein Artikel kein Geschäft (z. B. Brot), steht er „Im Laden“ bei ${input.value.trim() || store.name} zusätzlich unter „Überall möglich“.`; };
+    /* Die Erklärung beschreibt den aktuellen Zustand mit demselben Beispiel (2.158): Was passiert mit „Brot“ ohne Geschäft beim Einkaufen hier? */
+    const describeAnywhere = () => {
+      const here = input.value.trim() || store.name;
+      anywhereHint.replaceChildren(element('strong', anywhere.checked ? 'An: ' : 'Aus: '), anywhere.checked
+        ? `„Brot“ steht ohne Geschäft auf der Liste? Dann siehst du es beim Einkaufen bei ${here} unter „Überall möglich“ und kannst es dort abhaken.`
+        : `„Brot“ ohne Geschäft siehst du beim Einkaufen bei ${here} nicht. Es erscheint nur in Geschäften, bei denen dieser Schalter an ist, und unter „Alle“.`);
+    };
     // Symbol (2.152): festgelegt und nur angezeigt. Eine Liste ohne Symbol darf einmalig eines bekommen; danach gilt dieselbe Sperre.
     const symbolBox=element('div',undefined,'store-symbol-section');let firstPick=null;
     if(fixed)symbolBox.append(fixedSymbolInfo(fixed,shownSymbol(fixed)));
