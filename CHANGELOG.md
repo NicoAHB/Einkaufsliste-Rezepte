@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.153: Keine Tastatur von selbst beim Hinzufügen
+
+Unter **Geschäfte & Listen → Hinzufügen** öffnet sich die Tastatur erst, wenn du selbst ins Namensfeld tippst.
+- **Eigene Liste** und **Notizliste anlegen** zeigen das Formular, ohne das Feld „Listenname“ zu aktivieren. Du siehst erst alles (Symbol, Anzeige, Vorschau), dann tippst du.
+- Ebenso nach der Wahl eines Händlers (der Name steht schon da), nach **Auswahl aufheben** und beim Hinweis **Bitte einen Namen eingeben.** (das Feld wird nur in Sicht gerollt).
+- Bildschirmleser lesen beim Öffnen die Überschrift, z. B. „Eigene Liste anlegen“.
+
+Offline-Paket `einkauf-shell-v165`.
+
 ## Neu in Version 2.152: Geschäfte & Listen übersichtlich ergänzen
 
 Umgesetzt nach der Arbeitsanweisung „Geschäfte und Listen übersichtlich ergänzen“. Die vier Anforderungen sind erfüllt, die zwölf Abnahmeszenarien sind als Tests hinterlegt.

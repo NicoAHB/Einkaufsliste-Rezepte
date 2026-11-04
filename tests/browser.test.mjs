@@ -11282,7 +11282,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#store-add');
     assert.equal(await page.locator('#store-name-error').isVisible(), true); assert.equal(await page.textContent('#store-name-error'), 'Bitte einen Namen eingeben.');
     assert.equal(await page.getAttribute('#store-form [name=name]', 'aria-invalid'), 'true');
-    assert.equal(await page.evaluate(() => document.activeElement?.name), 'name', 'der Fokus steht im Namensfeld');
+    assert.notEqual(await page.evaluate(() => document.activeElement?.tagName), 'INPUT', 'keine Tastatur von selbst (2.153)');
+    assert.equal(await page.locator('#store-form [name=name]').isVisible(), true, 'das Namensfeld ist in Sicht');
     await page.fill('#store-form [name=name]', 'Baumarkt'); assert.equal(await page.locator('#store-name-error').isVisible(), false);
     await page.click('#store-add');
     let state = await storedDemo(page); const shop = state.stores.find(row => row.name === 'Baumarkt');
@@ -11293,7 +11294,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // (02) Eigene Liste: Name zuerst, keine Händlerangaben, aktuelle Vorschau, genau eine Liste nach dem Speichern
     await page.click('#store-create'); await page.click('#store-add-choice .store-kind[data-kind=list]');
     assert.equal(await page.textContent('#store-add-title'), 'Eigene Liste anlegen');
-    assert.equal(await page.evaluate(() => document.activeElement?.name), 'name', 'Listenname zuerst');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'store-add-title', 'keine Tastatur, bevor man selbst ins Feld tippt (2.153)');
     const fields = await page.locator('#store-form').evaluate(form => [...form.querySelectorAll('label, fieldset, button[type=submit]')].filter(node => node.getClientRects().length).map(node => node.querySelector('legend')?.textContent || node.textContent.trim().slice(0, 20)));
     assert.equal(fields[0], 'Listenname'); assert.ok(fields.indexOf('Symbol (optional)') > 0 && fields.indexOf('Anzeige im Reiter') > fields.indexOf('Symbol (optional)'), fields.join(' | '));
     assert.equal(await page.locator('#choose-store').isVisible(), false); assert.equal(await page.locator('#store-new-more').isVisible(), false, 'keine Händlerangaben');
@@ -11302,7 +11303,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#store-form input[name=displayMode][value=symbol]').isDisabled(), true);
     assert.equal(await page.locator('#store-form input[name=displayMode][value=both]').isDisabled(), true);
     assert.equal(await page.locator('#store-form .store-display-need').isVisible(), true);
-    await page.keyboard.type('Urlaub 152');
+    await page.click('#store-form [name=name]'); await page.keyboard.type('Urlaub 152');
     assert.equal(await page.textContent('#store-form .store-preview-chip'), 'Urlaub 152', 'Vorschau ohne Symbol: der Name');
     await chooseStoreSymbol(page.locator('#store-form'), 'travel');
     assert.equal(await page.inputValue('#store-form input[name=displayMode]:checked'), 'both', 'mit Symbol: „Symbol und Name“ voreingestellt');
@@ -11346,6 +11347,37 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
     assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.153: Die Tastatur öffnet sich erst, wenn man selbst ins Namensfeld tippt ----
+  test('2.153: Hinzufügen auf dem Handy – „Eigene Liste“, „Notizliste“, Händlerwahl, „Auswahl aufheben“ und leerer Name öffnen keine Tastatur; Antippen des Felds schon', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' }, context: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } });
+    await open(page); await page.waitForFunction(() => localStorage.getItem('einkauf-demo-v1'));
+    const typing = () => page.evaluate(() => document.activeElement?.matches('input:not([type=radio]):not([type=checkbox]),textarea') || false);
+    await page.locator('#manage-stores').tap(); await sheetOpen(page);
+    await page.locator('#store-create').tap(); await sheetOpen(page);
+    for (const kind of ['list', 'notes', 'store']) {
+      await page.locator(`#store-add-choice .store-kind[data-kind=${kind}]`).tap();
+      assert.equal(await page.locator('#store-form').isVisible(), true);
+      assert.equal(await typing(), false, `${kind}: keine Tastatur von selbst`);
+      if (kind === 'store') assert.equal(await page.evaluate(() => document.activeElement?.id), 'choose-store');
+      else assert.equal(await page.evaluate(() => document.activeElement?.id), 'store-add-title');
+      await page.locator('#store-form-back').tap();
+    }
+    // Händler gewählt: der Name ist eingetragen, keine Tastatur; „Auswahl aufheben“ ebenso
+    await page.locator('#store-add-choice .store-kind[data-kind=store]').tap(); await page.locator('#choose-store').tap(); await sheetOpen(page);
+    await page.locator('[data-chain=dm]').tap(); await page.waitForSelector('#store-catalog-dialog', { state: 'hidden' });
+    assert.equal(await page.inputValue('#store-form [name=name]'), 'dm'); assert.equal(await typing(), false, 'nach der Händlerwahl');
+    await page.locator('#store-template .text-button').tap();
+    assert.equal(await page.inputValue('#store-form [name=name]'), ''); assert.equal(await typing(), false, 'nach „Auswahl aufheben“');
+    // Leerer Name: Hinweis, Feld in Sicht, trotzdem keine Tastatur
+    await page.locator('#store-add').tap();
+    assert.equal(await page.locator('#store-name-error').isVisible(), true); assert.equal(await typing(), false, 'beim Hinweis „Bitte einen Namen eingeben.“');
+    // Erst das eigene Antippen öffnet die Tastatur
+    await page.locator('#store-form [name=name]').tap(); assert.equal(await typing(), true, 'Antippen des Felds');
+    await page.keyboard.type('Baumarkt'); await page.locator('#store-add').tap();
+    assert.ok((await storedDemo(page)).stores.some(row => row.name === 'Baumarkt'));
     assert.deepEqual(problems, []); await ctx.close();
   });
 
