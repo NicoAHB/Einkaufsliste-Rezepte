@@ -4463,6 +4463,15 @@ spendingView = mountSpending({
   onMemberArchive: (id, archived) => {
     if (!liveMembers(state.members).some(row => row.id === id)) throw new Error('Diese Person ist nicht mehr vorhanden.');
     commit([nextOp('members', id, { archived })]);
+  },
+  // Versehentlich angelegte Person löschen (2.162): nur ohne Einkäufe; mit Einkäufen bleibt nur Ausblenden, damit die Historie stimmt
+  onMemberDelete: async id => {
+    const member = liveMembers(state.members).find(row => row.id === id), scope = namespace();
+    if (!ready || !member) throw new Error('Diese Person ist nicht mehr vorhanden.');
+    if (!await ask({ title: `„${member.name}“ löschen?`, message: 'Die Person hat keine Einkäufe und verschwindet aus der Personenliste – auf allen verbundenen Geräten. Du kannst sie jederzeit neu hinzufügen.', confirmLabel: 'Löschen', danger: true })) return;
+    if (scope !== namespace() || !liveMembers(state.members).some(row => row.id === id)) return;
+    if ((state.purchases || []).some(row => row.buyerId === id)) throw new Error('Inzwischen gibt es Einkäufe dieser Person. Sie lässt sich nur noch ausblenden.');
+    commit(deleteOps('members', [id]), `„${member.name}“ gelöscht`);
   }
 });
 $('#open-pantry').addEventListener('click',()=>guard(()=>{if(!ready)throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');productPicker.open('',{target:'pantry'});}));

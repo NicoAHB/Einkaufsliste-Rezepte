@@ -11936,4 +11936,32 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  test('2.162: Familienmitglieder – eine versehentlich angelegte Person ohne Einkäufe lässt sich nach Rückfrage löschen; wer Einkäufe hat oder man selbst ist, nur ausblenden', async () => {
+    const { ctx, page, problems } = await localExpenses();
+    // Eigener Einkauf legt „Nico“ an; dazu eine Person mit Einkauf (Lena) und eine ohne (Nadiia)
+    await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', '18,90');
+    await page.click('#purchase-person-add'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Lena'); await page.click('#member-form button[type=submit]'); await page.click('#purchase-save');
+    await page.click('#spending-members'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Lena löschen', exact: true }).count(), 0, 'Lena hat einen Einkauf');
+    assert.equal(await page.getByRole('button', { name: 'Nico löschen', exact: true }).count(), 0, 'die eigene Person bleibt');
+    // Abbrechen behält sie
+    await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).click(); await answerAsk(page, false, /„Nadiia“ löschen\?/, /keine Einkäufe/);
+    assert.equal((await expenseStored(page)).members.some(row => row.name === 'Nadiia' && !row.deletedAt), true);
+    await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).click(); await answerAsk(page, true);
+    assert.equal(await page.locator('#members-list li', { hasText: 'Nadiia' }).count(), 0);
+    assert.match(await page.textContent('#notice-text'), /„Nadiia“ gelöscht/);
+    const after = await expenseStored(page);
+    assert.ok(after.members.find(row => row.name === 'Nadiia').deletedAt, 'als gelöscht gespeichert');
+    assert.equal(after.members.find(row => row.id === 'member-lena').deletedAt ?? null, null);
+    // Neu hinzufügen geht wieder
+    await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.locator('#members-list li', { hasText: 'Nadiia' }).count(), 1);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });
