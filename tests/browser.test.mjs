@@ -11347,6 +11347,43 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.159: Nach dem Hinzufügen klappt das Artikel-Formular immer zu ----
+  test('2.159: Artikel-Formular klappt nach dem Hinzufügen zu – auch wenn vorher auf dem Feld „Einheit“ gescrollt wurde; die Einheitenwahl selbst hält es offen', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } });
+    await open(page);
+    const form = page.locator('#item-form'), compact = () => form.evaluate(node => node.classList.contains('compact'));
+    const swipeOnUnit = end => page.locator('#item-form [name=unit]').evaluate((unit, type) => {
+      const r = unit.getBoundingClientRect(), o = { bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, pointerId: 9, clientX: r.x + 10, clientY: r.y + 10 };
+      unit.dispatchEvent(new PointerEvent('pointerdown', o)); unit.dispatchEvent(new PointerEvent(type, o));
+    }, end);
+    assert.equal(await compact(), true, 'zu Beginn zugeklappt');
+    for (const end of ['pointercancel', 'pointerup']) {
+      await page.locator('#item-form [name=name]').tap(); await page.keyboard.type(`G&G Hähnchenbrust ${end}`); await page.keyboard.press('Enter');
+      assert.equal(await compact(), false, 'beim Eintippen offen');
+      // Scrollen, das auf „Einheit“ beginnt: keine Einheitenauswahl, aber auch keine hängende Marke
+      await swipeOnUnit(end); await page.waitForTimeout(600);
+      assert.equal(await page.locator('dialog[open]').count(), 0);
+      assert.equal(await form.evaluate(node => node.dataset.choosingUnit || ''), '');
+      await page.locator('#add-item-confirm').tap();
+      await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+      assert.equal(await page.inputValue('#item-form [name=name]'), '');
+      assert.ok((await storedDemo(page)).items.some(row => row.name === `G&G Hähnchenbrust ${end}`));
+    }
+    // Die richtige Einheitenwahl: Formular bleibt offen, solange die Auswahl offen ist; danach Hinzufügen klappt zu
+    await page.locator('#item-form [name=name]').tap(); await page.keyboard.type('Putenbrust'); await page.keyboard.press('Enter');
+    await page.locator('#item-form [name=unit]').tap(); await page.waitForSelector('dialog[open]');
+    await page.waitForTimeout(600); assert.equal(await compact(), false, 'während der Auswahl offen');
+    await page.locator('dialog[open] button', { hasText: /^g$/ }).first().tap(); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await page.inputValue('#item-form [name=unit]'), 'g'); assert.equal(await compact(), false, 'mit Namen weiter offen');
+    await page.locator('#add-item-confirm').tap(); await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+    assert.ok((await storedDemo(page)).items.some(row => row.name === 'Putenbrust' && row.unit === 'g'));
+    // Notfalls hilft das Hinzufügen selbst: eine hängengebliebene Marke wird dabei gelöscht
+    await page.locator('#item-form [name=name]').tap(); await page.keyboard.type('Lachs'); await page.keyboard.press('Enter');
+    await form.evaluate(node => { node.dataset.choosingUnit = 'yes'; });
+    await page.locator('#add-item-confirm').tap(); await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
   // ---- 2.157: Gelöschtes aus geheimen Listen nur in deren eigenem Papierkorb ----
   test('2.157: geheime Löschungen erscheinen nur im Papierkorb ihrer geheimen Liste – nicht unter Optionen, nicht in der Einkaufsliste, nicht in der anderen geheimen Liste', async () => {
     const { ctx, page, problems } = await context(); await seedPrivate2117(ctx); await open(page);

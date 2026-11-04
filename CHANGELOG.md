@@ -2,6 +2,19 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.159: Das Artikel-Formular klappt nach dem Hinzufügen wieder zu
+
+**Fehler:** Nach dem Hinzufügen eines Artikels (z. B. „G&G Hähnchenbrust“) blieben **Menge, Einheit und „Hinzufügen“** manchmal aufgeklappt, obwohl das Namensfeld schon leer war.
+
+**Ursache:** Beginnt man auf dem iPhone auf dem Feld **Einheit** zu scrollen, merkt sich die App „Einheit wird gerade gewählt“, damit das Feld beim Antippen nicht wegspringt. Wird aus der Berührung aber kein Antippen (Scrollen, Finger verrutscht), öffnet sich keine Auswahl. Die Merkmarke blieb dann hängen und hielt das Formular offen.
+
+**Behoben:**
+- Ohne Antippen wird die Marke nach kurzer Zeit wieder gelöscht.
+- Jedes Hinzufügen setzt sie zusätzlich zurück. Nach dem Hinzufügen ist das Formular damit immer zugeklappt.
+- Die echte Einheitenwahl hält das Formular weiterhin offen, solange die Auswahl offen ist.
+
+Offline-Paket `einkauf-shell-v171`.
+
 ## Neu in Version 2.158: Verständliche Erklärung beim Schalter „Artikel ohne Geschäft“
 
 Unter **Geschäfte & Listen → Geschäft → Im Laden** beschreibt die Erklärung jetzt den **aktuellen Zustand** des Schalters, jeweils mit demselben Beispiel. Beim Umschalten wechselt sie sofort:

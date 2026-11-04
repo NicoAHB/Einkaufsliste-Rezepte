@@ -4090,7 +4090,7 @@ $('#change-remembered-amount').addEventListener('click',()=>{
 $('#reset-remembered-amount').addEventListener('click',()=>guard(()=>saveRememberedAmount(null)));
 $('#save-remembered-amount').addEventListener('click',()=>guard(()=>saveRememberedAmount({quantity:positive($('#edit-item-form').elements.memoryQuantity.value),unit:$('#edit-item-form').elements.memoryUnit.value.trim()})));
 $('#edit-item-form').elements.name.addEventListener('input',renderRememberedAmount);
-for (const event of ['focusin', 'focusout', 'input', 'toggle']) $('#item-form').addEventListener(event, () => setTimeout(syncForm, 0), true);
+for (const event of ['focusin', 'focusout', 'input', 'toggle', 'unitchoiceend']) $('#item-form').addEventListener(event, () => setTimeout(syncForm, 0), true);
 $('#item-form').elements.name.addEventListener('input', () => categoryHint($('#item-form').elements.category, $('#item-form').elements.name.value));
 $('#item-form').elements.name.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); const form=$('#item-form'); const correction=isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?null:recognizeName(form.elements.name.value).correction; if(correction && form.dataset.keepName!==form.elements.name.value.trim()) form.elements.name.value=correction; itemQuantity.suggest(isSeparate(state.stores.find(store=>store.id===form.elements.storeId.value))?'':form.elements.name.value.trim()); $('#item-suggestions').hidden=true; document.activeElement?.blur?.(); return; }
@@ -4158,7 +4158,7 @@ function clearItemDraft() {
   const form=$('#item-form'),kept=form.elements.storeId.value;
   document.activeElement?.blur?.(); form.reset();form.elements.storeId.value=kept;
   form.querySelector('.price-fields').open=false;
-  delete form.dataset.manualPrice;delete form.dataset.keepName;delete form.dataset.keepOpen;
+  delete form.dataset.manualPrice;delete form.dataset.keepName;delete form.dataset.keepOpen;delete form.dataset.choosingUnit;   // nach dem Hinzufügen immer zugeklappt (2.159)
   renderStorePick();itemQuantity.reset();rememberPriceInForm();$('#item-suggestions').hidden=true;renderQuickPick();syncForm();
 }
 // Fertig/Enter prüft den Namen und schließt die Tastatur. Das „+“ bestätigt die Einkaufsmenge.
