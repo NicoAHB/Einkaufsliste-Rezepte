@@ -167,6 +167,11 @@ export function validateRow(key, row) {
   if (key === 'purchases' && ((row.buyerId !== undefined && row.buyerId !== null && row.buyerId !== '' && !validMemberId(row.buyerId)) ||
       (row.buyerName !== undefined && (typeof row.buyerName !== 'string' || row.buyerName.length > 30)) ||
       (row.kind !== undefined && !['purchase', 'refund'].includes(row.kind)))) throw new Error('Ungültige Person oder Art der Ausgabe.');
+  // Produkte eines Einkaufs (2.160): bei „Einkauf beenden“ abgehakte Artikel, Name und Menge als Text, dazu Bildkennung und Kategorie
+  if (key === 'purchases' && row.items !== undefined && (!Array.isArray(row.items) || row.items.length > 300 ||
+      row.items.some(entry => !entry || typeof entry.name !== 'string' || !entry.name.trim() || entry.name.length > 120 || (entry.amount !== undefined && (typeof entry.amount !== 'string' || entry.amount.length > 80)) ||
+        (entry.imageKey !== undefined && (typeof entry.imageKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(entry.imageKey))) ||
+        (entry.category !== undefined && (typeof entry.category !== 'string' || !/^[a-z0-9-]{1,40}$/.test(entry.category)))))) throw new Error('Ungültige Produkte eines Einkaufs.');
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
