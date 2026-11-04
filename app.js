@@ -371,7 +371,12 @@ function noteInput(item = null) {
 function noteRow(item) {
   const row = element('li', undefined, 'note-row'); row.dataset.id = item.id;
   if (noteEditing === item.id) { row.classList.add('editing'); row.append(noteInput(item)); return row; }
-  const text = element('button', item.name, 'note-text'); text.type = 'button'; text.setAttribute('aria-label', `Notiz „${item.name}“ ändern`);
+  // Wer die Notiz angelegt hat (2.151): klein und schwach grau oben rechts, der Text fließt darunter weiter.
+  const by = String(item.createdBy || '').trim(), author = by && by !== 'Unbekannt' ? by : '';
+  const text = element('button', undefined, 'note-text'); text.type = 'button';
+  if (author) text.append(element('span', `von ${author}`, 'note-by'));
+  text.append(document.createTextNode(item.name));
+  text.setAttribute('aria-label', `Notiz „${item.name}“${author ? ` von ${author}` : ''} ändern`);
   text.addEventListener('click', () => guard(() => editNote(item.id)));
   row.append(text); return row;
 }

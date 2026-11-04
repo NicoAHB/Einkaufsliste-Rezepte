@@ -2,6 +2,17 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.151: Wer hat die Notiz geschrieben?
+
+In den **Notizen** steht jetzt in jeder Notiz oben rechts klein und schwach grau, wer sie angelegt hat, z. B. **von Nico** oder **von Anna**.
+- Der Notiztext beginnt wie bisher links und läuft neben und unter dem Namen weiter; der Name verdeckt nie Text.
+- Ändert jemand anderes die Notiz, bleibt der Name der Person, die sie angelegt hat.
+- Sehr lange Namen werden mit „…“ gekürzt und nehmen höchstens knapp die halbe Breite ein. Alte Notizen ohne bekannten Namen zeigen keinen Namen (kein „von Unbekannt“).
+- Beim Ändern steht in der Zeile nur der Text. Bildschirmleser lesen „Notiz „…“ von Nico ändern“.
+- Lesbar in allen Farbschemata, hell und dunkel (Kontrast mindestens 4,5 : 1), auch auf schmalen Geräten (320 px).
+
+Offline-Paket `einkauf-shell-v163`.
+
 ## Neu in Version 2.150: Notizen
 
 Eine eigene Liste mit dem **Klemmbrett-Symbol** (jetzt **Symbol 5 · Notizen**, bisher „Aufgaben“) ist ein Notizzettel für die Familie:
