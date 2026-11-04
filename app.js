@@ -302,10 +302,11 @@ function tab(name) {
   syncShopAwake(); syncChrome();
 }
 // Auswahlliste der Geschäfte; mit `allowNone` zusätzlich „Kein Geschäft“ (Wert ''), z. B. für Artikel, die noch nirgends gekauft werden sollen.
-function storeOptions(select, preferred = select.value, allowNone = false, keepHidden = false) {
+// `storesOnly`: nur echte Geschäfte, keine Listen (Artikel bearbeiten: ein Artikel der Einkaufsliste wandert nie in eine Liste, 2.161).
+function storeOptions(select, preferred = select.value, allowNone = false, keepHidden = false, storesOnly = false) {
   select.replaceChildren();
   if (allowNone) select.add(new Option('Kein Geschäft', ''));
-  for (const store of orderedStores(state.stores).filter(store=>(visibleStore(store)||(keepHidden&&store.id===preferred))&&(!isNotesStore(store)||store.id===preferred))) select.add(new Option(store.name, store.id));   // Notizen sind kein Ziel für Artikel
+  for (const store of orderedStores(state.stores).filter(store=>(visibleStore(store)||(keepHidden&&store.id===preferred))&&(!isNotesStore(store)||store.id===preferred)&&!(storesOnly&&isSeparate(store)))) select.add(new Option(store.name, store.id));   // Notizen sind kein Ziel für Artikel
   select.value = [...select.options].some(option => option.value === preferred) ? preferred : allowNone ? '' : select.options[0]?.value ?? '';
 }
 function currentStore(id) {
@@ -571,9 +572,13 @@ function renderStoreChips() {
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
   const shown = displayStores(state.stores).filter(visibleStore), notes = shown.filter(isNotesStore);
   for (const store of shown.filter(store => !isNotesStore(store))) add(store.id, store.name, open(store.id), store);
-  for(const list of privateList?.lists||[])if(list.enabled)add(privateView(list.id),list.name,privateList.count(list.id),null,list);
+  const divider = () => { const line = element('span', undefined, 'chip-divider'); line.setAttribute('aria-hidden', 'true'); box.append(line); };
+  // Geheime Listen (2.161): ebenfalls hinter einer senkrechten Linie, immer nach allen Geschäften und Listen, vor den Notizen
+  const secrets = (privateList?.lists || []).filter(list => list.enabled);
+  if (secrets.length) divider();
+  for (const list of secrets) add(privateView(list.id), list.name, privateList.count(list.id), null, list);
   // Notizen (2.152): ein eigener Bereich hinter einer senkrechten Linie, weil sie anders funktionieren
-  if (notes.length) { const line = element('span', undefined, 'chip-divider'); line.setAttribute('aria-hidden', 'true'); box.append(line); }
+  if (notes.length) divider();
   for (const store of notes) add(store.id, store.name, open(store.id), store);
   // Nur die Chip-Leiste verschieben, nie die ganze Seite.
   const selected = box.querySelector('[aria-selected=true]');
@@ -583,7 +588,7 @@ function openStoreQuickMenu(root) {
   const box = $('#store-quick-options'); box.replaceChildren();
   const inStore = root.id === 'shop-chips', scope = namespace();
   for (const chip of root.children) {
-    // Die senkrechte Linie vor den Notizen wird in der ausgeschriebenen Auswahl eine waagerechte (2.152).
+    // Die senkrechten Linien vor den geheimen Listen und den Notizen werden in der ausgeschriebenen Auswahl waagerechte (2.152, 2.161).
     if (chip.classList.contains('chip-divider')) { const line = element('div', undefined, 'quick-divider'); line.setAttribute('role', 'separator'); box.append(line); continue; }
     if (!chip.classList.contains('chip')) continue;
     const id = chip.dataset.id, label = chip.getAttribute('aria-label'), count = chip.querySelector('.count');
@@ -614,8 +619,14 @@ for (const root of [$('#store-chips'), $('#shop-chips')]) bindWishHold(root, '[d
   () => guard(() => openStoreQuickMenu(root)), () => !ready || !root.getClientRects().length || isLocked());
 $('#store-order-open').addEventListener('click', () => openOrderControls({
   title: 'Geschäfte und Listen sortieren', scope: namespace(), getScope: namespace,
-  getRows: () => displayStores(state.stores).map(store => ({id:store.id,name:store.name,group:isNotesStore(store)?'Notizen':''})), onChange: saveStoreOrder
+  getRows: storeOrderRows, onChange: saveStoreOrder
 }));
+// Geheime Listen (2.161) stehen fest am Ende unter einer eigenen Linie, nur hinter den Notizen; sie gelten nur auf diesem Gerät und werden nicht verschoben.
+function storeOrderRows() {
+  const stores = displayStores(state.stores), row = store => ({ id: store.id, name: store.name, group: isNotesStore(store) ? 'Notizen' : '' });
+  const secrets = (privateList?.lists || []).filter(list => list.enabled).map(list => ({ id: privateView(list.id), name: list.name, group: 'Geheim', fixed: true }));
+  return [...stores.filter(store => !isNotesStore(store)).map(row), ...secrets, ...stores.filter(isNotesStore).map(row)];
+}
 const byName = (a, b) => a.name.localeCompare(b.name, 'de');
 /* „Neu von …“: Artikel, die andere angelegt (oder in der Menge erhöht) haben, stehen oben, bis man sie übernimmt. Welche man schon gesehen hat,
    merkt sich nur dieses Gerät. Beim ersten Start (und auf einem neuen Gerät nach dem ersten Abgleich) gilt alles Vorhandene als gesehen. */
@@ -978,7 +989,7 @@ function editItem(id) {
   form.elements.rowId.value = item.id; form.elements.name.value = item.name;
   editQuantity.load(item);
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
-  storeOptions(form.elements.storeId, item.storeId || '', true, true);
+  storeOptions(form.elements.storeId, item.storeId || '', true, true, true);
   setQuoteFields(form, itemQuote(item), item.unit);
   form.elements.onSale.checked = Boolean(item.onSale);
   setSaleFields(form, item.salePrice, item.saleUntil);
@@ -3032,7 +3043,7 @@ document.querySelectorAll('#settings details.fold').forEach(node => node.addEven
 const tokenDaysLeft = () => /^\d{4}-\d{2}-\d{2}$/.test(config.tokenExpires || '') ? Math.round((Date.parse(`${config.tokenExpires}T12:00:00`) - Date.parse(`${localDay()}T12:00:00`)) / 86400000) : null;
 const tokenLabel = days => days < 0 ? 'abgelaufen' : days === 0 ? 'läuft heute ab' : days === 1 ? 'läuft morgen ab' : `läuft in ${days} Tagen ab`;
 const tokenWarning = () => { const left = tokenDaysLeft(); return left !== null && left <= 7 ? left : null; };
-const PALETTES = ['blau', 'gruen', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
+const PALETTES = ['gruen', 'blau', 'tuerkis', 'flieder', 'rose', 'pfirsich'];
 const GLASS_BACKGROUNDS = ['lichter', 'verlauf', 'schlicht'];
 const glassOn = () => config.glass !== false;
 const glassBackground = () => GLASS_BACKGROUNDS.includes(config.glassBg) ? config.glassBg : 'lichter';
@@ -4194,6 +4205,9 @@ $('#delete-item').addEventListener('click', () => guard(() => {
 }));
 // Zeile lange halten und über den Bildschirm auf ein Geschäft ziehen: oben erscheint eine Leiste mit allen Geschäften (und „Ohne Geschäft“); außerdem zählt jeder
 // sichtbare Abschnitt der Gesamtliste unter „Planen“ als Ziel. Beim Loslassen über einem Ziel landet der Artikel dort (siehe moveItem).
+// Ziele sind nur echte Geschäfte: Artikel der Einkaufsliste lassen sich nie in eine Liste (Wünsche, eigene Listen, Notizen) verschieben (2.161).
+const moveTargets = () => orderedStores(state.stores).filter(store => visibleStore(store) && !isSeparate(store));
+const intoList = storeId => isSeparate(active(state.stores).find(store => store.id === storeId));
 const moveBar = {
   show(id) {
     const item = state.items.find(row => row.id === id && !row.deletedAt), bar = $('#move-bar');
@@ -4203,7 +4217,7 @@ const moveBar = {
       const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
     };
     add('', document.createTextNode('Ohne Geschäft'));
-    for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) add(store.id, storeLabel(store));
+    for (const store of moveTargets()) add(store.id, storeLabel(store));
     bar.hidden = false;
     return bar.getBoundingClientRect().bottom;
   },
@@ -4219,7 +4233,7 @@ const moveBar = {
         if (node.classList.contains('store-head')) { key = node.dataset.store ?? null; break; }
       }
     }
-    return key === null || key === own ? null : key;
+    return key === null || key === own || (key && !moveTargets().some(store => store.id === key)) ? null : key;   // nie in eine Liste (2.161)
   },
   mark(key) {
     const bar = $('#move-bar'), list = $('#items');
@@ -4292,6 +4306,7 @@ $('#move-delete').addEventListener('click', () => guard(async () => {
   deleteItems(still, { notice: still.length === 1 ? 'Artikel gelöscht' : `${still.length} Artikel gelöscht` });
 }));
 function moveSelected(storeId) {
+  if (intoList(storeId)) throw new Error('Artikel der Einkaufsliste lassen sich nicht in eine Liste verschieben.');
   const target = currentStore(storeId), label = target ? storeName(target) : 'ohne Geschäft', rows = selectedItems(), ops = [];
   let items = state.items, merged = 0, moved = 0;
   const stamp = new Date().toISOString();
@@ -4312,13 +4327,14 @@ function moveSelected(storeId) {
 }
 function fillMoveChoices(choice) {
   choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
-  for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) choice(store.id, storeLabel(store), store.name);
+  for (const store of moveTargets()) choice(store.id, storeLabel(store), store.name);
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
   if(isWish(state.items.find(row=>row.id===id))) return;
   const item = state.items.find(row => row.id === id && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
+  if (intoList(storeId)) throw new Error('Artikel der Einkaufsliste lassen sich nicht in eine Liste verschieben.');
   const target = currentStore(storeId);
   if ((item.storeId || '') === target) { $('#move-dialog').close(); return; }
   const label = target ? storeName(target) : 'ohne Geschäft';

@@ -102,6 +102,7 @@ function drawOrder() {
   const list = byId('order-list'); list.replaceChildren();
   const rows = ordering.getRows();
   // Gruppen (z. B. „Notizen“, 2.152): eine Überschrift mit Linie davor; verschoben wird nur innerhalb der eigenen Gruppe.
+  // `fixed` (z. B. geheime Listen, 2.161): steht fest an seinem Platz, beide Pfeile bleiben gesperrt.
   const groupOf = row => row?.group || '';
   rows.forEach((row, index) => {
     if (index && groupOf(row) !== groupOf(rows[index - 1])) {
@@ -111,15 +112,15 @@ function drawOrder() {
     for (const [direction, symbol, label] of [[-1, '↑', 'nach oben'], [1, '↓', 'nach unten']]) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary order-arrow';
       button.textContent = symbol; button.setAttribute('aria-label', `${row.name} ${label}`);
-      button.disabled = index + direction < 0 || index + direction >= rows.length || groupOf(rows[index + direction]) !== groupOf(row);
+      button.disabled = Boolean(row.fixed || rows[index + direction]?.fixed) || index + direction < 0 || index + direction >= rows.length || groupOf(rows[index + direction]) !== groupOf(row);
       button.addEventListener('click', async () => {
         const session = ordering;
         try {
           if (!session || session.scope !== session.getScope()) throw new Error('Die Liste hat sich geändert. Bitte erneut öffnen.');
           const fresh = session.getRows(), at = fresh.findIndex(entry => entry.id === row.id), to = at + direction;
-          if (at < 0 || to < 0 || to >= fresh.length || groupOf(fresh[to]) !== groupOf(fresh[at])) return;
+          if (at < 0 || to < 0 || to >= fresh.length || groupOf(fresh[to]) !== groupOf(fresh[at]) || fresh[at].fixed || fresh[to].fixed) return;
           [fresh[at], fresh[to]] = [fresh[to], fresh[at]];
-          await session.onChange(fresh.map(entry => entry.id));
+          await session.onChange(fresh.filter(entry => !entry.fixed).map(entry => entry.id));
           if (ordering !== session || !byId('order-dialog').open) return;
           drawOrder(); byId('order-feedback').textContent = `${row.name}: Position ${to + 1} von ${fresh.length}. Reihenfolge geändert.`;
           const target = [...list.children].filter(node => !node.classList.contains('order-group'))[to];

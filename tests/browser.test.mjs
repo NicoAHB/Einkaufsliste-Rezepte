@@ -11841,4 +11841,82 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
+
+  // ---- 2.161: nie in Listen verschieben, Grün zuerst, geheime Liste hinter einer Linie und fest am Ende der Reihenfolge ----
+  const listData161 = () => {
+    const data = notesData152(), at = '2026-11-01T09:00:00.000Z';
+    data.stores.push({ id: 'wishes-161', name: 'Wünsche', separate: true, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.stores.push({ id: 'trip-161', name: 'Nadiias Reise', separate: true, symbol: 'travel', displayMode: 'both', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    return data;
+  };
+  test('2.161: Artikel der Einkaufsliste lassen sich nie in eine Liste verschieben – Leiste beim Ziehen, „Verschieben nach“, Auswahl und Bearbeiten; Grün ist die erste Farbe', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' }, context: { viewport: { width: 390, height: 844 } } });
+    await seedLocal(ctx, listData161()); await open(page);
+    const lists = ['wishes-161', 'trip-161', 'trip-152', 'plain-152', 'store-notes'], targets = ['Ohne Geschäft', 'Edeka', 'Lidl', 'Rewe'];
+    // Leiste beim Ziehen: nur „Ohne Geschäft“ und die Geschäfte, kein Geschenk und kein Koffer
+    await holdRow(page, 'Nudeln'); await page.waitForSelector('.drag-ghost');
+    assert.deepEqual(await page.locator('#move-bar .move-target').allTextContents(), targets);
+    assert.equal(await page.locator('#move-bar .store-symbol, #move-bar svg').count(), 0, 'keine Listensymbole');
+    assert.equal(await page.locator('#move-bar').evaluate(bar => [...bar.children].every(node => node.scrollWidth <= node.clientWidth + 1)), true, 'nichts ragt aus seinem Feld');
+    await page.mouse.up(); await page.waitForSelector('#move-dialog[open]');
+    // „Verschieben nach“ (lange halten und loslassen): dieselben Ziele
+    const choices = () => page.locator('#move-choices button').evaluateAll(nodes => nodes.map(node => node.firstChild.textContent.trim()));
+    assert.deepEqual(await choices(), targets);
+    await page.click('#move-dialog [data-close]'); await page.waitForSelector('#move-dialog', { state: 'hidden' });
+    // Mehrere auswählen → „Geschäft zuordnen“: ebenfalls keine Listen
+    await page.click('#select-mode'); await page.locator('#items .item', { hasText: 'Tomaten' }).locator('.item-copy').click();
+    await page.click('#select-move'); await sheetOpen(page);
+    assert.deepEqual(await choices(), targets);
+    await page.click('#move-dialog [data-close]'); await page.waitForSelector('#move-dialog', { state: 'hidden' }); await page.click('#select-done');
+    // Artikel bearbeiten: im Feld „Geschäft“ stehen nur Geschäfte
+    await page.locator('#items .item', { hasText: 'Milch' }).locator('.item-copy').click(); await page.waitForSelector('#item-dialog[open]');
+    assert.deepEqual(await page.locator('#edit-item-form [name=storeId] option').allTextContents(), ['Kein Geschäft', 'Edeka', 'Lidl', 'Rewe']);
+    await page.click('#item-dialog [data-close]');
+    const stored = await storedDemo(page);
+    assert.equal(stored.items.filter(row => !row.deletedAt && lists.includes(row.storeId) && !['note-152', 'trip-item-152'].includes(row.id)).length, 0, 'kein Artikel ist in einer Liste gelandet');
+    // Farbe: Grün (Standard) steht an erster Stelle, Blau an zweiter
+    await openSettings(page);
+    assert.deepEqual((await page.locator('#palette button').evaluateAll(nodes => nodes.map(node => node.dataset.palette))).slice(0, 2), ['gruen', 'blau']);
+    assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'gruen');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.161: Geheime Listen stehen hinter einer senkrechten Linie vor den Notizen; unter „Reihenfolge ändern“ fest am Ende (vor den Notizen) unter eigener Linie', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' } });
+    await seedLocal(ctx, notesData152()); await seedPrivate2117(ctx); await open(page);
+    const chips = () => page.locator('#store-chips').evaluate(node => [...node.children].map(child => child.classList.contains('chip-divider') ? '|' : child.getAttribute('aria-label')));
+    assert.deepEqual((await chips()).slice(-6), ['Baumarkt-Ideen', '|', 'Reise privat', 'Geschenke privat', '|', 'Notizen']);
+    // Ausgeschriebene Listenwahl: zwei waagerechte Linien
+    await page.locator('#store-chips [data-all-stores]').focus(); await page.keyboard.press('Shift+F10'); await page.locator('#store-quick-dialog[open]').waitFor();
+    const quick = await page.locator('#store-quick-options').evaluate(node => [...node.children].map(child => child.classList.contains('quick-divider') ? '|' : child.dataset.view || child.textContent.trim()));
+    assert.deepEqual(quick.slice(-7, -1), ['plain-152', '|', '@private:private-a', '@private:private-b', '|', 'store-notes']);
+    await page.click('#store-quick-dialog .sheet-head [data-close]');
+    // Reihenfolge ändern: Geheim als eigene, feste Gruppe zwischen den Listen und den Notizen
+    const orderRows = () => page.locator('#order-list').evaluate(node => [...node.children].map(child => child.classList.contains('order-group') ? `#${child.textContent}` : child.querySelector('span').textContent));
+    await page.click('#manage-stores'); await sheetOpen(page); await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    assert.deepEqual(await orderRows(), ['Edeka', 'Lidl', 'Rewe', 'Urlaub', 'Baumarkt-Ideen', '#Geheim', 'Reise privat', 'Geschenke privat', '#Notizen', 'Notizen']);
+    for (const name of ['Reise privat nach oben', 'Reise privat nach unten', 'Geschenke privat nach oben', 'Geschenke privat nach unten', 'Baumarkt-Ideen nach unten', 'Notizen nach oben'])
+      assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true, name);
+    // Verschieben der übrigen klappt weiter; die geheimen Listen bleiben am Platz und gelangen nicht in die gemeinsamen Daten
+    await page.getByRole('button', { name: 'Urlaub nach unten', exact: true }).click();
+    assert.deepEqual(await orderRows(), ['Edeka', 'Lidl', 'Rewe', 'Baumarkt-Ideen', 'Urlaub', '#Geheim', 'Reise privat', 'Geschenke privat', '#Notizen', 'Notizen']);
+    const stored = await storedDemo(page);
+    assert.deepEqual(orderedStores(stored.stores).map(store => store.id), ['store-edeka', 'store-lidl', 'store-rewe', 'plain-152', 'trip-152', 'store-notes']);
+    assert.doesNotMatch(JSON.stringify(stored), /private-a|Reise privat/);
+    await page.click('#order-dialog [data-close]');
+    // Ausgeblendet: Die geheime Liste fehlt in Reitern und Reihenfolge
+    await page.locator('.private-store-row[data-private-list-id=private-a] .store-visibility').click();
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    assert.deepEqual((await orderRows()).slice(-4), ['#Geheim', 'Geschenke privat', '#Notizen', 'Notizen']);
+    await page.click('#order-dialog [data-close]');
+    await page.locator('.private-store-row[data-private-list-id=private-b] .store-visibility').click();
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    assert.deepEqual((await orderRows()).slice(-3), ['Urlaub', '#Notizen', 'Notizen'], 'ohne sichtbare geheime Liste keine Gruppe „Geheim“');
+    await page.click('#order-dialog [data-close]'); await page.click('#stores-dialog .sheet-head [data-close]');
+    assert.equal((await chips()).filter(entry => entry === '|').length, 1, 'nur noch die Linie vor den Notizen');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

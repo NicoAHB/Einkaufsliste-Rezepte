@@ -2556,6 +2556,7 @@ body.in-store .tabs {
     font-size:.78rem
   }
 }
+.move-target>* { max-width:100% }   /* lange Namen bleiben im eigenen Feld (2.161) */
 .move-target.current {
   opacity:.45;
   border-style:solid
