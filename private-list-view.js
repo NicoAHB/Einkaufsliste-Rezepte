@@ -44,16 +44,17 @@ export function mountPrivateList({getScope,onChange,onError,onDeleted=()=>{},onE
     if(!list(selected))selected=lists().find(row=>row.enabled)?.id||lists()[0]?.id||'';
     render();
   }
-  function createList(name,rows=[]){
+  // `displayMode` (2.152): Anzeige im Reiter, nur auf diesem Gerät gespeichert; das Schloss bleibt fest.
+  function createList(name,rows=[],displayMode=undefined){
     const id=makeId(),now=new Date().toISOString();
     if(!mutate(data=>{
       if(data.lists.some(row=>row.name.toLocaleLowerCase('de')===name.toLocaleLowerCase('de')))throw new Error('Eine geheime Liste mit diesem Namen gibt es auf diesem Gerät bereits.');
-      data.lists.push({id,name,symbol:'secret',enabled:true,updatedAt:now});data.enabled=true;
+      data.lists.push({id,name,symbol:'secret',enabled:true,updatedAt:now,...(displayMode?{displayMode}:{})});data.enabled=true;
       data.items.push(...rows.map(row=>({...row,id:makeId(),listId:id,createdAt:now})));return data;
     }))return null;
     return id;
   }
-  function renameList(id,name){return mutate(data=>{const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');current.name=name;current.updatedAt=new Date().toISOString();return data;});}
+  function renameList(id,name,displayMode=undefined){return mutate(data=>{const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');current.name=name;if(displayMode)current.displayMode=displayMode;current.updatedAt=new Date().toISOString();return data;});}
   function removeList(id){return mutate(data=>{data.lists=data.lists.filter(row=>row.id!==id);data.items=data.items.filter(row=>row.listId!==id);data.enabled=data.lists.some(row=>row.enabled);return data;});}
   function setEnabled(id,enabled){return mutate(data=>{const current=data.lists.find(row=>row.id===id);if(!current)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');current.enabled=enabled;current.updatedAt=new Date().toISOString();data.enabled=data.lists.some(row=>row.enabled);return data;});}
   function prepareShare(id){

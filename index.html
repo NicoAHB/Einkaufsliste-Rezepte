@@ -84,7 +84,7 @@
       <h2 id="shopping-title" class="visually-hidden">Einkaufsliste</h2>
       <div id="mode-row" class="mode-row">
         <div id="mode-switch" class="segmented two" role="tablist" aria-label="Ansicht"><button id="mode-plan" type="button" role="tab" aria-selected="true">Planen</button><button id="mode-shop" type="button" role="tab" aria-selected="false">Im Laden</button></div>
-        <button id="manage-stores" class="icon-button round" type="button" aria-label="Geschäfte verwalten" title="Geschäfte verwalten"><svg class="icon"><use href="#i-store"/></svg></button>
+        <button id="manage-stores" class="icon-button round" type="button" aria-label="Geschäfte &amp; Listen verwalten" title="Geschäfte &amp; Listen verwalten"><svg class="icon"><use href="#i-store"/></svg></button>
       </div>
       <div id="plan-view">
       <span id="store-tabs-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
@@ -197,7 +197,7 @@
     <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Optionen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span><small id="sync-detail"></small></p>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
-      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan <small class="app-version" data-app-version>Version 2.151</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
+      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan <small class="app-version" data-app-version>Version 2.152</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <div id="quarantine-card" class="card stack quarantine-card" role="region" aria-labelledby="quarantine-title" hidden><h3 id="quarantine-title">Nicht übernommene Änderungen</h3><p id="quarantine-text"></p><div class="quarantine-actions"><button id="quarantine-save" type="button" class="secondary">Als Datei sichern</button><button id="quarantine-discard" type="button" class="secondary">Verwerfen</button></div></div>
 
       <p class="settings-section-title">Aussehen und Bedienung</p><div id="display-card" data-auto-save class="card stack display-card"><details id="display-details" class="fold"><summary><h3>Darstellung</h3></summary><div class="stack">
@@ -236,7 +236,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint"><span data-app-version>Version 2.151</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint"><span data-app-version>Version 2.152</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -345,15 +345,35 @@
     <p id="pantry-buy-hint" class="hint">Setzt das Produkt auf die Einkaufsliste. Wenn es wieder zu Hause ist, markiere es im Vorrat als vorhanden.</p><p id="pantry-buy-error" class="dialog-error" role="alert" hidden></p><button id="pantry-buy-add" type="submit">Auf die Einkaufsliste</button>
   </form></dialog>
   <dialog id="store-quick-dialog" aria-labelledby="store-quick-title"><div class="sheet-head"><h2 id="store-quick-title">Liste auswählen</h2><button type="button" data-close="store-quick-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><div id="store-quick-options" class="store-quick-options"></div></dialog>
-  <dialog id="stores-dialog"><div class="sheet-head"><h2>Geschäfte & Angebote</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Mit „Einblenden“ und „Ausblenden“ zeigst oder verbirgst du jede Liste. Alle Einträge bleiben erhalten. Tippe auf den Namen zum Bearbeiten. Zum Verschieben lange halten, ziehen und loslassen. Die Reihenfolge gilt auch im Vorrat und unter „Im Laden“. Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p><span id="store-order-status" class="sr-only" role="status" aria-live="polite"></span><button id="store-order-open" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Reihenfolge der Geschäfte ändern</button><div id="store-editor"></div>
-    <details id="store-create" class="store-create"><summary><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>Liste oder Geschäft hinzufügen</span></summary>
-    <form id="store-form" class="stack store-new"><h3 id="store-new-title">Neues Geschäft</h3>
-      <label class="checkbox-label"><input name="separate" type="checkbox">Eigene Liste ohne Supermarktverknüpfung</label>
-      <button id="choose-store" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>Supermarkt oder Drogerie auswählen</button>
-      <div id="store-template" class="store-template" hidden></div><input name="chainKey" type="hidden" value=""><div id="store-new-symbols" hidden></div>
-      <p id="store-new-hint" class="hint">Oder einen eigenen Namen eintragen, z. B. Baumarkt, Technik oder Sonstiges.</p>
-      <label>Name<input name="name" required maxlength="80" placeholder="z. B. Mein Baumarkt"></label><label id="store-new-offers">Angebotslink (optional)<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><button id="store-add" type="submit" disabled><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span id="store-add-label">Geschäft hinzufügen</span></button>
-    </form></details>
+  <dialog id="stores-dialog" aria-labelledby="stores-title"><div class="sheet-head"><h2 id="stores-title">Geschäfte & Listen</h2><button type="button" data-close="stores-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <button id="store-create" type="button" class="store-create-open" aria-haspopup="dialog" aria-controls="store-add-dialog"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>Hinzufügen</span><small>Geschäft, eigene Liste oder Notizliste</small></button>
+    <p class="hint stores-hint">Tippe auf einen Eintrag zum Bearbeiten. „Ausblenden“ verbirgt eine Liste, alle Einträge bleiben erhalten. Zum Verschieben lange halten, ziehen und loslassen; die Reihenfolge gilt auch im Vorrat und unter „Im Laden“.</p><span id="store-order-status" class="sr-only" role="status" aria-live="polite"></span><button id="store-order-open" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Reihenfolge ändern</button><div id="store-editor"></div>
+    <section id="store-notes-group" class="store-notes-group" aria-labelledby="store-notes-title" hidden><div class="store-group-line" aria-hidden="true"></div><h3 id="store-notes-title" class="store-group-title"><svg class="icon" aria-hidden="true"><use href="#i-checklist"/></svg>Notizen</h3><div id="store-notes-editor"></div></section>
+    <p class="hint stores-offers-hint">Angebotslinks öffnen nur die Händlerseite, es wird nichts automatisch abgerufen.</p>
+  </dialog>
+  <dialog id="store-add-dialog" class="store-add-dialog" aria-labelledby="store-add-title">
+    <div class="sheet-head"><button id="store-add-back" type="button" class="icon-button round store-add-back" aria-label="Zurück zur Auswahl" hidden><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg></button><h2 id="store-add-title">Hinzufügen</h2><button type="button" data-close="store-add-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div id="store-add-choice" class="store-add-choice">
+      <p class="store-add-question">Was möchtest du anlegen?</p>
+      <button type="button" class="store-kind" data-kind="store"><span class="store-kind-icon" aria-hidden="true"><svg class="icon"><use href="#i-store"/></svg></span><span class="store-kind-text"><strong>Geschäft</strong><small>Händler oder eigenes Geschäft</small></span><svg class="icon store-kind-arrow" aria-hidden="true"><use href="#i-right"/></svg></button>
+      <button type="button" class="store-kind" data-kind="list"><span class="store-kind-icon" aria-hidden="true"><svg class="icon"><use href="#i-home"/></svg></span><span class="store-kind-text"><strong>Eigene Liste</strong><small>Zum Beispiel Geschenke, Reisen oder Haushalt</small></span><svg class="icon store-kind-arrow" aria-hidden="true"><use href="#i-right"/></svg></button>
+      <div class="store-group-line" role="separator"></div>
+      <p class="store-kind-group" id="store-kind-notes">Notizen</p>
+      <button type="button" class="store-kind" data-kind="notes" aria-describedby="store-kind-notes"><span class="store-kind-icon" aria-hidden="true"><svg class="icon"><use href="#i-checklist"/></svg></span><span class="store-kind-text"><strong>Notizliste anlegen</strong><small>Textnotizen ohne Mengen und Produkte</small></span><svg class="icon store-kind-arrow" aria-hidden="true"><use href="#i-right"/></svg></button>
+      <p class="hint store-kind-hint">Ein eigener Bereich, weil Notizen anders funktionieren: nur Text, kein Geschäft.</p>
+      <button type="button" class="secondary store-add-cancel" data-close="store-add-dialog">Abbrechen</button>
+    </div>
+    <form id="store-form" class="stack store-new" novalidate hidden><input name="kind" type="hidden" value="store"><input name="chainKey" type="hidden" value="">
+      <div id="store-new-chain" class="store-new-chain"><button id="choose-store" type="button" class="secondary"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>Händler auswählen</button>
+        <div id="store-template" class="store-template" hidden></div><p id="store-new-hint" class="hint">Oder einen eigenen Namen eintragen, z. B. Baumarkt, Technik oder Sonstiges.</p></div>
+      <label class="store-new-name"><span id="store-name-caption">Geschäftsname</span><input name="name" required maxlength="80" placeholder="z. B. Mein Baumarkt" autocomplete="off" aria-describedby="store-name-error"></label>
+      <p id="store-name-error" class="field-error" role="alert" hidden>Bitte einen Namen eingeben.</p>
+      <div id="store-new-symbols" hidden><div id="store-list-symbols"></div><div id="store-notes-symbol" class="store-notes-symbol"></div></div>
+      <div id="store-new-display" hidden><p id="store-new-share" class="hint"></p></div>
+      <details id="store-new-more" class="store-new-more"><summary>Weitere Angaben (optional)</summary><label id="store-new-offers">Angebotslink<input name="offersUrl" type="url" inputmode="url" placeholder="https://…" maxlength="2000" autocapitalize="off"></label><p class="hint">Öffnet die Angebotsseite des Händlers. Es wird nichts automatisch abgerufen.</p></details>
+      <button id="store-add" type="submit"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span id="store-add-label">Geschäft hinzufügen</span></button>
+      <button id="store-form-back" type="button" class="secondary">Zurück</button>
+    </form>
   </dialog>
   <dialog id="store-catalog-dialog" aria-labelledby="store-catalog-title">
     <div class="sheet-head"><h2 id="store-catalog-title">Geschäft auswählen</h2><button type="button" data-close="store-catalog-dialog" class="icon-button round" aria-label="Auswahl schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

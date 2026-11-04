@@ -8,7 +8,7 @@ import { NO_AMOUNT } from './recipe-import.js';
 import { isCategory, learnCategories, rememberedCategory, suggestCategory, validAisles } from './categories.js';
 import { hasWishDetails, productLink, WISH_NOTE_LIMIT, WISH_URL_LIMIT } from './wishes.js';
 import { validMemberId } from './family.js';
-import { LIST_SYMBOL_IDS } from './list-symbols.js';
+import { LIST_SYMBOL_IDS, DISPLAY_MODES, fixedSymbol } from './list-symbols.js';
 import { restoredState, revisionKey } from './restore-state.js';
 import { expenseCategoryId } from './expense-categories.js';
 import { parseQuantity } from './numbers.js';
@@ -72,6 +72,8 @@ export function validateRow(key, row) {
   if (key === 'stores' && row.separate !== undefined && row.separate !== null && typeof row.separate !== 'boolean') throw new Error('Ungültige Einstellung für eine eigene Liste.');
   // `symbol` (Version 2.31): Geschäft als Bild statt Name anzeigen ('gift') oder ausdrücklich nicht ('none'); fehlt oder null = Voreinstellung nach dem Namen (siehe brand.js).
   if (key === 'stores' && row.symbol !== undefined && row.symbol !== null && ![...LIST_SYMBOL_IDS, 'none'].includes(row.symbol)) throw new Error('Ungültiges Symbol für ein Geschäft.');
+  // `displayMode` (2.152): Anzeige im Reiter, getrennt vom festen Symbol; fehlt oder null = bisherige Ansicht (mit Symbol: nur das Symbol).
+  if (key === 'stores' && row.displayMode !== undefined && row.displayMode !== null && !DISPLAY_MODES.includes(row.displayMode)) throw new Error('Ungültige Anzeige im Reiter.');
   // `chainKey` (2.61): freiwilliger Katalog-Verweis; auch künftige Kennungen bleiben erhalten. Fehlt/null = Erkennung am Namen.
   if (key === 'stores' && row.chainKey !== undefined && row.chainKey !== null &&
       (typeof row.chainKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(row.chainKey))) throw new Error('Ungültige Händlerzuordnung.');
@@ -195,7 +197,8 @@ export function validateRow(key, row) {
 // Revision 15: gemeinsame Ausgabenkategorien und Weiterleitungen nach dem Löschen.
 // Revision 16: gemeinsame Smart-Stock-Einstellung, Ablaufzeiten und Aufbrauchen.
 // Revision 17: dauerhaft aus der eigenen Produktauswahl entfernte Namen.
-export const SCHEMA_REV = 17;
+// Revision 18 (2.152): Anzeige im Reiter getrennt vom festen Listensymbol. Ältere Apps würden das Symbol beim Speichern austauschen.
+export const SCHEMA_REV = 18;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -283,6 +286,7 @@ const REVISION_RULES = [
   [15, data => data.expenseCategories.length > 0 || data.purchases.some(row => row.categoryId !== undefined)],
   [17, data => data.productRemovals.length > 0],
   [16, data => data.stockSettings.length > 0 || data.pantry.some(row => row.autoStock) || data.items.some(row => row.stockConsumedAt !== undefined)],
+  [18, data => data.stores.some(row => row.displayMode != null)],
 ];
 export function merge(data, operations) {
   let next = clone(validate(data));
@@ -324,6 +328,9 @@ export function merge(data, operations) {
         row[field]=clone(value); row._clock[field]={at:op.at,id:op.id};
       }
     }
+    // Festes Symbol (2.152): Ein vorhandenes Motiv wird durch keine Änderung ausgetauscht oder gelöscht, auch nicht durch eine ältere
+    // Offline-Änderung, ein altes Gerät oder ein Umbenennen, das ein nur aus dem Namen abgeleitetes Geschenk verschwinden ließe.
+    const fixedBefore = op.collection === 'stores' ? fixedSymbol(row) : '';
     const protectedAmount=op.collection==='items'&&(hasAmountChoice(op.patch)||hasAmountChoice(row));
     if(protectedAmount&&hasAmountChoice(op.patch)&&compareAmountChoice(op.patch,row)>=0){
       for(const [field,value] of Object.entries(amountChoice(op.patch))){row[field]=clone(value);row._clock[field]={at:op.at,id:op.id};}
@@ -332,6 +339,7 @@ export function merge(data, operations) {
       if (['id', 'createdAt', 'updatedAt', '_clock', '_base', '_adds', '_planCuts', '_planEmpty', '__proto__', 'constructor', 'prototype'].includes(field)) continue;
       if (protectedChoice && ['purchaseUnit','purchaseMeasure','purchaseAt'].includes(field)) continue;
       if(protectedAmount&&['purchaseAmount','purchaseAmountAt'].includes(field))continue;
+      if (fixedBefore && field === 'symbol' && value !== fixedBefore) continue;
       if (field === 'cutPlan') {
         if (op.collection !== 'items' || !value || !Number.isFinite(value.quantity) || value.quantity < 0 || !Number.isFinite(value.originalQuantity) || value.quantity > value.originalQuantity || !planSourceLive(row, {...value, quantity:value.originalQuantity})) continue;
         row._base ||= {quantity:row.quantity,unit:row.unit}; row._planCuts ||= [];
@@ -360,6 +368,7 @@ export function merge(data, operations) {
         row._clock[field] = { at: op.at, id: op.id };
       }
     }
+    if (fixedBefore && fixedSymbol(row) !== fixedBefore) { row.symbol = fixedBefore; row._clock.symbol = { at: op.at, id: op.id }; }
     if ((op.collection === 'prices' && ['src', 'variant', 'receipt', 'receiptKey'].some(field => field in op.patch)) || (op.collection === 'aliases' && 'variant' in op.patch)) {
       next.sync.minRev = Math.max(Number(next.sync.minRev) || 1, 3);   // ab jetzt darf nur noch eine App schreiben, die Sorten kennt
     }

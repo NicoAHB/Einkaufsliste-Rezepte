@@ -128,12 +128,15 @@ const selectRecipeGroups = async (page,tags) => {
 // Der Dialog „Geschäfte“ zeigt jedes Geschäft zugeklappt; die meisten Prüfungen brauchen die Felder und klappen deshalb alle auf (das Zuklappen prüft ein eigener Test).
 const openStores = async page => {
   await page.click('#manage-stores'); await sheetOpen(page);
-  await page.evaluate(() => { document.querySelectorAll('#store-editor .store-row').forEach(node => { node.open = true; }); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
+  await page.evaluate(() => { document.querySelectorAll('#store-editor .store-row, #store-notes-editor .store-row').forEach(node => { node.open = true; }); return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 };
 const wishesVisibility=page=>page.getByRole('button',{name:/^Wünsche (einblenden|ausblenden)$/});
 const setWishesVisible=async(page,enabled)=>{const toggle=wishesVisibility(page);if((await toggle.getAttribute('aria-pressed')==='true')!==enabled)await toggle.click();};
-const chooseStoreSymbol=(row,value)=>row.locator(`.store-symbol-choice:has(input[value="${value}"])`).click();
-const openStoreCreate=async page=>{if(!await page.locator('#store-create').evaluate(node=>node.open))await page.click('#store-create>summary');};
+// 2.152: Bei einer Liste ohne Symbol öffnet „Symbol festlegen“ einmalig die Motive; ein festgelegtes Symbol hat keine Auswahl mehr.
+const chooseStoreSymbol=async(row,value)=>{const start=row.locator('.store-symbol-first');if(await start.count()&&await start.isVisible())await start.click();await row.locator(`.store-symbol-choice:has(input[value="${value}"])`).click();};
+// 2.152: „Hinzufügen“ öffnet ein eigenes Fenster; dort zuerst die Aufgabe wählen (Geschäft, eigene Liste oder Notizliste).
+const openStoreCreate=async(page,kind='store')=>{if(!await page.locator('#store-add-dialog').evaluate(node=>node.open)){await page.click('#store-create');await page.locator('#store-add-dialog[open]').waitFor();}if(await page.locator('#store-add-choice').isVisible())await page.click(`#store-add-choice .store-kind[data-kind=${kind}]`);};
+const showStoreMore=async page=>{if(!await page.locator('#store-new-more').evaluate(node=>node.open))await page.click('#store-new-more>summary');};
 // Das Eingabeformular ist zugeklappt, bis jemand ins Namensfeld tippt; erst dann erscheinen Geschäft, Menge und Einheit.
 const chooseUnit = async (page, selector, value) => {
   await page.locator(selector).click(); await page.waitForSelector('#purchase-unit-dialog[open]');
@@ -3059,7 +3062,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('.catalog-choice').count(), 2);
     const before = await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'));
     await page.click('#store-catalog-dialog [data-close].icon-button');
-    assert.equal(await page.locator('#stores-dialog').isVisible(), true);
+    assert.equal(await page.locator('#store-add-dialog').isVisible(), true, 'zurück im Formular');
     assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1')), before, 'Abbrechen speichert nichts');
     await openStoreCreate(page); await page.click('#choose-store'); await page.selectOption('#store-catalog-type', 'drugstore');
     assert.equal(await page.locator('.catalog-choice').count(), 4);
@@ -3067,7 +3070,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('.catalog-choice').count(), 1);
     await page.fill('#store-catalog-search', ''); await page.click('[data-chain=dm]');
     assert.equal(await page.inputValue('#store-form [name=name]'), 'dm');
-    assert.equal(await page.inputValue('#store-form [name=offersUrl]'), 'https://www.dm.de/neu');
+    assert.equal(await page.inputValue('#store-form [name=offersUrl]'), 'https://www.dm.de/neu', 'unter „Weitere Angaben“ vorbelegt');
     assert.equal(await page.locator('#store-template').isVisible(), true);
     await page.fill('#store-form [name=name]', 'dm Innenstadt');
     await page.click('#store-form [type=submit]');
@@ -3092,7 +3095,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.textContent('#store-catalog-count'), /Kein Treffer/);
     await page.getByRole('button', { name: 'Eigenen Namen eingeben', exact: true }).click();
     await page.fill('#store-form [name=name]', 'Mein Baumarkt');
-    await page.fill('#store-form [name=offersUrl]', 'https://example.org/baumarkt');
+    await showStoreMore(page); await page.fill('#store-form [name=offersUrl]', 'https://example.org/baumarkt');
     await page.click('#store-form [type=submit]');
     saved = JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'))).base;
     row = saved.stores.find(row => row.name === 'Mein Baumarkt');
@@ -3567,7 +3570,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     }
   });
 
-  test('Geschäfte & Angebote: vorhandene Geschäfte zugeklappt; Plus am Ende öffnet das Anlegen; ein neues Geschäft erscheint zugeklappt', async () => {
+  test('Geschäfte & Listen: vorhandene Geschäfte zugeklappt; „Hinzufügen“ oben öffnet das Anlegen; ein neues Geschäft erscheint zugeklappt', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 280, height: 640 } } });
     await open(page);
     await page.click('#manage-stores'); await sheetOpen(page);
@@ -3579,12 +3582,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await rows.first().locator('input[name=name]').isVisible(), false, 'die Felder sind verborgen');
     const arrow = await rows.first().locator('> summary').evaluate(node => getComputedStyle(node, '::after').content);
     assert.notEqual(arrow, 'none', 'der Pfeil steht rechts');
-    // Das neue Formular öffnet ausschließlich das Plus am Ende.
+    // „Hinzufügen“ steht seit 2.152 oben, vor allen Einträgen, und öffnet ein eigenes Fenster
     const form = page.locator('#store-form');
-    assert.equal(await form.isVisible(),false);await openStoreCreate(page);
-    assert.equal(await form.evaluate(node => node.closest('details').id), 'store-create');
+    assert.equal(await form.isVisible(),false);
+    assert.ok(await page.evaluate(() => document.querySelector('#store-create').compareDocumentPosition(document.querySelector('#store-editor')) & Node.DOCUMENT_POSITION_FOLLOWING), 'Hinzufügen steht über den Einträgen');
+    assert.equal(await page.locator('#store-create').textContent(), 'HinzufügenGeschäft, eigene Liste oder Notizliste');
+    await openStoreCreate(page);
     assert.equal(await form.locator('input[name=name]').isVisible(), true);
-    assert.equal(await form.locator('h3').textContent(), 'Neues Geschäft');
+    assert.equal(await page.textContent('#store-add-title'), 'Geschäft hinzufügen');
+    assert.equal(await page.locator('#store-new-symbols').isVisible(), false, 'keine Symbol- oder Notizfelder im Geschäftsformular');
+    assert.equal(await page.locator('#store-new-display').isVisible(), false);
+    await page.click('#store-add-dialog .sheet-head [data-close]');
     // Aufklappen mit einem Tipp auf die Zeile; die anderen bleiben zu
     await rows.nth(2).locator('> summary').click();
     assert.equal(await rows.nth(2).evaluate(node => node.open), true);
@@ -3596,7 +3604,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await rows.nth(2).evaluate(node => node.open), false, 'ein zweiter Tipp klappt zu');
     // Ein neues Geschäft: erscheint zugeklappt (und leuchtet kurz auf); was offen war, bleibt offen
     await rows.nth(0).locator('> summary').click();
-    await page.fill('#store-form input[name=name]', 'Aldi');
+    await openStoreCreate(page); await page.fill('#store-form input[name=name]', 'Aldi');
     await page.click('#store-form button[type=submit]');
     await page.waitForFunction(() => document.querySelectorAll('#store-editor .store-row[data-id]').length === 4);
     assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => node.open)), [true, false, false, false], 'Edeka bleibt offen, das neue Aldi ist zu');
@@ -4811,43 +4819,43 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await page.locator('#shop-list .shop-name').allTextContents()).sort(), ['Fahrrad', 'Zwiebeln'], 'ein Tipp auf das Bild wählt die Liste');
     assert.equal(await horizontalOverflow(page), 0);
     await page.click('#shop-back');
-    // Einstellbar: im Dialog „Geschäfte“ steht „Anzeige im Reiter“, für Wünsche vorbelegt mit dem Geschenk
+    // Einstellbar (2.152): Das Geschenk der Wünsche ist fest; wählbar ist die Anzeige im Reiter (Nur Symbol, Nur Name, Symbol und Name)
     await openStores(page);
     const row = index => page.locator('#store-editor .store-row').nth(index);
-    const pick = index => row(index).locator('input[name=symbol]:checked');
+    const mode = index => row(index).locator('input[name=displayMode]:checked');
+    const show = (index, value) => row(index).locator(`.store-display-choice:has(input[value=${value}])`).click();
     const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
     const record = name => remote.content.stores.find(entry => entry.name === name);
-    assert.equal(await pick(3).inputValue(), 'gift');
-    assert.equal(await pick(0).inputValue(), 'name');
+    const close = async () => { await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' }); };
+    assert.match(await row(3).locator('.store-symbol-fixed').textContent(), /Symbol: Geschenke · festgelegt/);
+    assert.equal(await row(3).locator('input[name=symbol]').count(), 0, 'keine Galerie zum Tauschen');
+    assert.equal(await mode(3).inputValue(), 'symbol', 'bisherige Ansicht bleibt: nur das Bild');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
-    // Edeka als Geschenk: ausdrücklich gespeichert; der Reiter zeigt dann das Bild
-    await row(0).locator('[name=separate]').check();await chooseStoreSymbol(row(0),'gift'); await saved(0);
-    assert.equal(record('Edeka').symbol, 'gift');
-    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    // Edeka wird eigene Liste und bekommt einmalig ein Symbol; „Symbol und Name“ ist vorgeschlagen
+    await row(0).locator('[name=separate]').check(); await chooseStoreSymbol(row(0),'gift');
+    assert.equal(await mode(0).inputValue(), 'both');
+    await show(0, 'symbol'); await saved(0);
+    assert.equal(record('Edeka').symbol, 'gift'); assert.equal(record('Edeka').displayMode, 'symbol');
+    assert.equal(await row(0).locator('input[name=symbol]').count(), 0, 'nach dem Speichern fest');
+    await close();
     assert.equal(await visible(bar), 2);
     assert.ok(!(await page.textContent(bar)).includes('Edeka'));
     assert.equal(await tab('Edeka').count(), 1);
-    // Wünsche wieder als Name: ausdrücklich „none“; der Text ist zurück
+    // Wünsche als Name: der Text ist zurück, das Geschenk bleibt hinterlegt
     await openStores(page);
-    await chooseStoreSymbol(row(3),'name'); await saved(3);
-    assert.equal(record('Wünsche').symbol, 'none');
-    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await show(3, 'name'); await saved(3);
+    assert.equal(record('Wünsche').displayMode, 'name'); assert.equal(record('Wünsche').symbol, 'gift', 'das bisher abgeleitete Geschenk ist jetzt fest gespeichert');
+    await close();
     assert.ok((await page.textContent(bar)).includes('Wünsche'), 'als Name steht der Text wieder da');
     assert.equal(await visible(bar), 1, 'nur noch Edeka als Bild');
-    // Zurück auf die Voreinstellung: nichts wird festgeschrieben (null); Edeka ebenso
+    // Symbol und Name; danach umbenannt: das Geschenk bleibt, es wird nicht neu aus dem Namen abgeleitet
     await openStores(page);
-    await chooseStoreSymbol(row(3),'gift'); await saved(3);
-    await chooseStoreSymbol(row(0),'name'); await saved(0);
-    assert.equal(record('Wünsche').symbol, null);
-    assert.equal(record('Edeka').symbol, null);
-    // Umbenannt: ohne ausdrückliche Wahl gilt die Voreinstellung nach dem Namen (kein Geschenk); mit Wahl bleibt es
-    await row(3).locator('input[name=name]').fill('Ideen'); await chooseStoreSymbol(row(3),'name'); await saved(3);
-    assert.equal(record('Ideen').symbol, null, 'Ideen: Voreinstellung ist der Name');
-    await chooseStoreSymbol(row(3),'gift'); await saved(3);
-    assert.equal(record('Ideen').symbol, 'gift', 'ausdrücklich als Geschenk');
-    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    await show(3, 'both'); await row(3).locator('input[name=name]').fill('Ideen'); await saved(3);
+    assert.deepEqual([record('Ideen').symbol, record('Ideen').displayMode], ['gift', 'both']);
+    await close();
     assert.equal(await tab('Ideen').count(), 1);
-    assert.equal(await visible(bar), 1);
+    assert.match(await tab('Ideen').textContent(), /Ideen/);
+    assert.equal(await visible(bar), 2);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -9613,11 +9621,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await first.locator('.aisle-up').nth(1).click();assert.equal(await first.locator('.store-save').isDisabled(),true);
     await first.locator('.aisle-fold>summary').click();
     assert.equal(await first.locator('.store-symbol-picker').isVisible(),false);await first.locator('[name=separate]').check();
-    assert.equal(await first.locator('input[name=symbol]').count(),8);
+    assert.equal(await first.locator('.store-symbol-picker').isVisible(),false,'erst „Symbol festlegen“ zeigt die Motive (2.152)');
+    await first.locator('.store-symbol-first').click();
+    assert.equal(await first.locator('input[name=symbol]').count(),7,'„Ohne Symbol“ und sechs Motive');
+    assert.equal(await first.locator('input[name=symbol][value=checklist]').count(),0,'das Klemmbrett gibt es nur über „Notizliste anlegen“');
     await chooseStoreSymbol(first,'pharmacy');assert.equal(await first.locator('.store-save').isEnabled(),true);
     for(const choice of await first.locator('.store-symbol-choice').all()) {const box=await choice.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.equal(await choice.locator('svg').count(),1);}
-    assert.equal(await first.locator('.store-symbol-choice:has(input[value=gift]) span:not(.store-symbol)').textContent(),'Symbol 1');
+    assert.equal(await first.locator('.store-symbol-choice:has(input[value=gift]) span:not(.store-symbol)').textContent(),'Geschenke','Namen statt Nummern');
     await first.locator('.store-save').click();assert.equal((await storedDemo(page)).stores[0].symbol,'pharmacy');
+    assert.match(await first.locator('.store-symbol-fixed').textContent(),/Symbol: Apotheke · festgelegt/);assert.equal(await first.locator('input[name=symbol]').count(),0);
     await first.locator('.store-save').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan290-geschaefte-${width}.png`});
     assert.equal(await page.locator('#stores-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
     assert.deepEqual(problems,[]);await ctx.close();
@@ -9641,23 +9653,26 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#shop-back');await page.locator('#store-chips').getByRole('tab',{name:/^Alle/}).click();assert.equal(await page.locator('#items [data-id^=extra-]').count(),0);
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.90: eigene Liste direkt anlegen, praktische Symbole speichern und ohne Händlerverknüpfung neu laden',async()=>{
+  test('2.90: eigene Liste direkt anlegen, Symbol beim Anlegen festlegen, Anzeige ändern und ohne Händlerverknüpfung neu laden',async()=>{
     const {ctx,page,problems}=await context({config:{palette:'gruen'}});await open(page);await openStores(page);
-    assert.equal(await page.locator('#store-add').isDisabled(),true);
-    await openStoreCreate(page);
-    await page.check('#store-form [name=separate]');assert.equal(await page.locator('#choose-store').isVisible(),false);assert.equal(await page.locator('#store-form [name=offersUrl]').isDisabled(),true);
-    await page.fill('#store-form [name=name]','Apotheke');await page.click('#store-add');
-    const id=(await storedDemo(page)).stores.find(row=>row.name==='Apotheke').id,row=page.locator(`.store-row[data-id="${id}"]`);
-    assert.equal(await row.evaluate(node=>node.open),true);
+    await openStoreCreate(page,'list');
+    assert.equal(await page.locator('#choose-store').isVisible(),false);assert.equal(await page.locator('#store-form [name=offersUrl]').isDisabled(),true);
+    await page.fill('#store-form [name=name]','Apotheke');await chooseStoreSymbol(page.locator('#store-form'),'pets');await page.click('#store-add');
+    const saved=(await storedDemo(page)).stores.find(row=>row.name==='Apotheke'),row=page.locator(`.store-row[data-id="${saved.id}"]`);
+    assert.deepEqual([saved.symbol,saved.displayMode,saved.separate,saved.chainKey,saved.offersUrl,saved.anywhere],['pets','both',true,null,'',false]);
+    assert.equal((await storedDemo(page)).sync.minRev,18);
+    assert.equal(await row.evaluate(node=>node.classList.contains('fresh')),true,'der neue Eintrag ist hervorgehoben');
+    await row.locator('>summary').click();
     assert.equal(await row.locator('[name=chainKey]').isVisible(),false);assert.equal(await row.locator('[name=offersUrl]').isVisible(),false);assert.equal(await row.locator('.aisle-fold').isVisible(),false);
-    for(const symbol of ['gift','pharmacy','travel','home','checklist','pets']) {
-      await chooseStoreSymbol(row,symbol);await row.locator('.store-save').click();const saved=(await storedDemo(page)).stores.find(store=>store.id===id);
-      assert.equal(saved.symbol,symbol);assert.equal(saved.separate,true);assert.equal(saved.chainKey,null);assert.equal(saved.offersUrl,'');assert.equal(saved.anywhere,false);
+    assert.equal(await row.locator('input[name=symbol]').count(),0,'das Symbol ist fest');
+    for(const mode of ['symbol','name','both']) {
+      await row.locator(`.store-display-choice:has(input[value=${mode}])`).click();await row.locator('.store-save').click();
+      const stored=(await storedDemo(page)).stores.find(store=>store.id===saved.id);assert.deepEqual([stored.displayMode,stored.symbol,stored.separate,stored.chainKey],[mode,'pets',true,null]);
     }
-    assert.equal((await storedDemo(page)).sync.minRev,12);
-    await page.reload();await openStores(page);assert.equal(await row.locator('input[name=symbol]:checked').inputValue(),'pets');
-    await chooseStoreSymbol(row,'pharmacy');await row.locator('.store-save').click();await page.click('#stores-dialog .sheet-head [data-close]');
-    assert.equal(await page.locator('#store-chips .store-symbol svg use[href="#i-pharmacy"]').count(),1);
+    await page.reload();await openStores(page);await row.locator('>summary').click();assert.equal(await row.locator('input[name=displayMode]:checked').inputValue(),'both');
+    await page.click('#stores-dialog .sheet-head [data-close]');
+    assert.equal(await page.locator('#store-chips .store-symbol svg use[href="#i-pets"]').count(),1);
+    assert.match(await page.locator(`#store-chips [data-store-id="${saved.id}"]`).textContent(),/Apotheke/,'Symbol und Name');
     assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.90: Speichern auf zwei Geräten erhält zwischenzeitlich geänderte Listensymbole',async()=>{
@@ -9666,8 +9681,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const rowA=a.page.locator('.store-row').first(),rowB=b.page.locator('.store-row').first();
     await rowA.locator('[name=name]').fill('Edeka gemeinsam');await rowB.locator('[name=separate]').check();await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
     await rowA.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
-    assert.equal(api.content.stores[0].name,'Edeka gemeinsam');assert.equal(api.content.stores[0].symbol,'pharmacy');assert.equal(api.content.sync.minRev,12);
-    assert.equal(await rowA.locator('input[name=symbol]:checked').inputValue(),'pharmacy');
+    assert.equal(api.content.stores[0].name,'Edeka gemeinsam');assert.equal(api.content.stores[0].symbol,'pharmacy');assert.equal(api.content.sync.minRev,18);
+    assert.match(await rowA.locator('.store-symbol-fixed').textContent(),/Apotheke · festgelegt/);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
   test('2.90: Speicherfehler zeigt keine falsche Gespeichert-Bestätigung und lässt erneutes Speichern zu',async()=>{
@@ -9683,14 +9698,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   async function createSecret291(page,name='Geheime Liste') {
     if(!await page.locator('#stores-dialog').evaluate(node=>node.open)){await goTab(page,'shopping');await page.click('#manage-stores');await sheetOpen(page);}
-    await openStoreCreate(page);await page.check('#store-form [name=separate]');await chooseStoreSymbol(page.locator('#store-form'),'secret');
+    await openStoreCreate(page,'list');await chooseStoreSymbol(page.locator('#store-form'),'secret');
     assert.equal(await page.isChecked('#store-form [name=private]'),true);
     await page.fill('#store-form [name=name]',name);await page.click('#store-add');
     return page.locator('.private-store-row').filter({has:page.locator('.store-name',{hasText:name})}).last();
   }
   const openSecret290=async(page,name)=>{
     await goTab(page,'shopping');
-    const button=name?page.locator('#store-chips [data-private]').filter({has:page.locator(`.store-symbol[aria-label="${name}"]`)}):page.locator('#store-chips [data-private]').first();
+    const button=name?page.locator(`#store-chips [data-private][aria-label="${name}"]`):page.locator('#store-chips [data-private]').first();
     await button.click();await page.waitForSelector('#private-list-panel:not([hidden])');
   };
   const addSecret290=async(page,name)=>{await page.fill('#private-add-form [name=name]',name);await page.click('#private-add');};
@@ -9700,18 +9715,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#store-chips .store-symbol').count(),0,'ältere Symbolwerte eines Supermarkts werden nicht dargestellt');
     await page.click('#manage-stores');await sheetOpen(page);
     assert.equal(await page.locator('#stores-dialog .wish-option').count(),0);assert.equal(await page.locator('#store-form').isVisible(),false);
-    assert.equal(await page.locator('#store-editor').evaluate(node=>node.nextElementSibling.id),'store-create');
+    assert.ok(await page.evaluate(()=>document.querySelector('#store-create').compareDocumentPosition(document.querySelector('#store-editor'))&Node.DOCUMENT_POSITION_FOLLOWING),'Hinzufügen steht oben (2.152)');
     await page.locator('.store-row').first().locator('>summary').click();assert.equal(await page.locator('.store-row').first().locator('.store-symbol-picker').isVisible(),false);
     await page.locator('.store-row').first().locator('>summary').click();await page.screenshot({path:`/tmp/sattplan291-verwaltung-${width}.png`});
     await openStoreCreate(page);assert.equal(await page.locator('#store-form').isVisible(),true);
-    assert.equal(await page.locator('#store-new-symbols').isVisible(),false);await page.check('#store-form [name=separate]');
+    assert.equal(await page.locator('#store-new-symbols').isVisible(),false,'ein Geschäft hat keine Symbole');await page.click('#store-form-back');await page.click('#store-add-choice .store-kind[data-kind=list]');
     assert.equal(await page.locator('#store-new-symbols').isVisible(),true);assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
     await chooseStoreSymbol(page.locator('#store-form'),'pharmacy');assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
     await chooseStoreSymbol(page.locator('#store-form'),'secret');assert.equal(await page.locator('#store-form [name=private]').isVisible(),true);assert.equal(await page.isChecked('#store-form [name=private]'),true);
-    await page.uncheck('#store-form [name=private]');assert.match(await page.textContent('#store-new-hint'),/mit der Familie geteilt/);
+    await page.uncheck('#store-form [name=private]');assert.match(await page.textContent('#store-new-share'),/mit der Familie geteilt/);
     await chooseStoreSymbol(page.locator('#store-form'),'gift');assert.equal(await page.locator('#store-form [name=private]').isVisible(),false);
-    assert.equal(await page.locator('#stores-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
-    await page.click('#stores-dialog .sheet-head [data-close]');await page.click('#manage-stores');assert.equal(await page.locator('#store-form').isVisible(),false,'erneutes Öffnen zeigt wieder nur das Plus');
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
+    await page.click('#store-add-dialog .sheet-head [data-close]');await page.click('#stores-dialog .sheet-head [data-close]');await page.click('#manage-stores');assert.equal(await page.locator('#store-form').isVisible(),false,'erneutes Öffnen zeigt wieder nur „Hinzufügen“');
+    await page.click('#store-create');assert.equal(await page.locator('#store-add-choice').isVisible(),true,'Abbrechen hat nichts angelegt und beginnt wieder bei der Auswahl');
     assert.deepEqual(problems,[]);await ctx.close();
   });
   for(const [width,theme] of [[320,'light'],[390,'dark']])test(`2.91: geheime Liste mit Schloss und Haken bleibt bei ${width}px ${theme} lokal; abgebrochene Freigabe erhält sie`,async()=>{
@@ -9756,11 +9772,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await pollNow(a.page);await synced(a.page);assert.ok(!/NurIch7291|NochGeheimeNotiz7291/.test(JSON.stringify(api.content)));
     await openStores(a.page);const local=a.page.locator('.private-store-row');await local.locator('[name=private]').uncheck();await local.locator('.store-save').click();await answerAsk(a.page,false);assert.ok(!JSON.stringify(api.content).includes('NurIch7291'));
     await local.locator('.store-save').click();await answerAsk(a.page,true,/für die Familie freigegeben/);await synced(a.page);await pollNow(b.page);await synced(b.page);
-    const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,13);
+    const target=api.content.stores.find(row=>!row.deletedAt&&row.name==='Nur mein Reiseplan');assert.ok(target);assert.equal(target.symbol,'secret');assert.equal(api.content.sync.minRev,18);
     const rows=api.content.items.filter(row=>!row.deletedAt&&row.storeId===target.id);assert.equal(rows.length,4);const copied=rows.find(row=>row.name==='Milch');assert.deepEqual([copied.quantity,copied.unit,copied.checked,copied.wishNote,copied.wishImageHidden],[2,'l',true,'Bisher geteilte Notiz',true]);assert.equal(rows.find(row=>row.name==='NurIch7291').wishNote,'NochGeheimeNotiz7291');
     // Gerät B: Ein Abgleich ohne eigene Änderungen setzt den Status nicht auf „gleicht ab“; `synced` kann deshalb schon vor dem Laden zurückkehren.
     // Also auf die Liste selbst warten (sie kommt mit diesem oder dem nächsten regulären Abgleich), statt sofort zu zählen.
-    const sharedChip=b.page.locator('#store-chips .store-symbol[aria-label="Nur mein Reiseplan"]');await sharedChip.waitFor({timeout:20000});
+    const sharedChip=b.page.locator('#store-chips [data-store-id][aria-label="Nur mein Reiseplan"]');await sharedChip.waitFor({timeout:20000});
+    assert.equal(await sharedChip.locator('.store-symbol use[href="#i-secret-open"]').count(),1,'geteilt mit offenem Schloss; die Anzeige der geheimen Liste wurde übernommen');
     assert.equal(await a.page.locator('#store-chips [data-private]').count(),0);assert.equal(await sharedChip.count(),1);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });
@@ -11120,9 +11137,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]');
     assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=store-notes]').count(), 0);
     await page.click('#item-dialog [data-close]');
-    // Symbol 5 heißt jetzt „Notizen“
+    // Notizlisten stehen in der Verwaltung in einem eigenen Bereich unter einer Linie (2.152), mit festem Klemmbrett
     await page.click('#manage-stores'); await sheetOpen(page);
-    assert.ok(await page.locator('#stores-dialog [aria-label="Symbol 5 – Notizen"]').count() > 0);
+    assert.equal(await page.locator('#store-notes-group').isVisible(), true);
+    assert.equal(await page.locator('#store-notes-editor .store-row[data-id=store-notes]').count(), 1);
+    assert.equal(await page.locator('#store-editor .store-row[data-id=store-notes]').count(), 0);
+    assert.match(await page.locator('#store-notes-editor .store-row[data-id=store-notes] .store-symbol-fixed').textContent(), /Symbol: Notizen · festgelegt/);
     if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2150-notizen-${width}-${theme}.png` });
     assert.deepEqual(problems, []); await ctx.close();
   });
@@ -11176,6 +11196,325 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await dragToTrash147(page, row('Zahnarzt'));
     assert.equal(await noticeText147(page), '„Zahnarzt Freitag 10 Uhr“ gelöscht');
     assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.152: Geschäfte & Listen übersichtlich ergänzen (Arbeitsanweisung: zwölf Abnahmeszenarien) ----
+  const notesData152 = () => {
+    const data = structuredClone(demo), at = '2026-11-01T09:00:00.000Z';
+    data.stores.push({ id: 'store-notes', name: 'Notizen', separate: true, symbol: 'checklist', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.stores.push({ id: 'trip-152', name: 'Urlaub', separate: true, symbol: 'travel', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.stores.push({ id: 'plain-152', name: 'Baumarkt-Ideen', separate: true, symbol: 'none', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.items.push({ id: 'note-152', name: 'Kinderarzt anrufen', quantity: 1, unit: 'Stück', storeId: 'store-notes', checked: false, createdBy: 'Anna', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.items.push({ id: 'trip-item-152', name: 'Sonnencreme', quantity: 1, unit: 'Stück', storeId: 'trip-152', checked: false, createdBy: 'Nico', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    return data;
+  };
+  const rowOf152 = (page, id) => page.locator(`.store-row[data-id="${id}"]`);
+  const showMode152 = (row, mode) => row.locator(`.store-display-choice:has(input[value=${mode}])`).click();
+  const chip152 = (page, id) => page.locator(`#store-chips [data-store-id="${id}"]`);
+  const closeAll152 = async page => { for (const id of ['store-add-dialog', 'store-quick-dialog', 'stores-dialog']) if (await page.locator(`#${id}[open]`).count()) await page.click(`#${id} .sheet-head [data-close]`); await page.waitForSelector('dialog[open]', { state: 'detached' }); };
+
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.152: Hinzufügen oben – Geschäft, eigene Liste und Notizliste in drei verständlichen Wegen; nichts doppelt, Abbrechen legt nichts an (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme, storeStyle: 'logo' }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await open(page); await page.waitForFunction(() => localStorage.getItem('einkauf-demo-v1'));
+    assert.equal(await page.getAttribute('#manage-stores', 'aria-label'), 'Geschäfte & Listen verwalten');
+    await page.click('#manage-stores'); await sheetOpen(page);
+    assert.equal(await page.textContent('#stores-title'), 'Geschäfte & Listen');
+    // (01) Hinzufügen oben, gut zu treffen, und auch bei vielen Einträgen sofort sichtbar
+    const add = await page.locator('#store-create').boundingBox(), first = await page.locator('#store-editor .store-row').first().boundingBox();
+    assert.ok(add.y < first.y && add.height >= 48, 'oben und groß genug');
+    await page.click('#store-create'); await sheetOpen(page);
+    assert.equal(await page.textContent('#store-add-title'), 'Hinzufügen');
+    assert.match(await page.textContent('#store-add-choice'), /Was möchtest du anlegen\?/);
+    const kinds = await page.locator('#store-add-choice .store-kind').evaluateAll(nodes => nodes.map(node => node.dataset.kind));
+    assert.deepEqual(kinds, ['store', 'list', 'notes']);
+    // Notizen liegen unter einer Linie in einem eigenen Bereich
+    const order = await page.locator('#store-add-choice').evaluate(node => [...node.children].map(child => child.classList.contains('store-group-line') ? 'line' : child.dataset.kind || child.className));
+    assert.ok(order.indexOf('line') > order.indexOf('list') && order.indexOf('line') < order.indexOf('notes'), order.join());
+    for (const box of await page.locator('#store-add-choice button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 44, `Tippziel ${box}`);
+    // Abbrechen legt nichts an
+    const before = await storedDemo(page);
+    await page.click('#store-add-choice .store-kind[data-kind=list]'); await page.fill('#store-form [name=name]', 'Wird nicht angelegt');
+    await page.click('#store-add-dialog .sheet-head [data-close]');
+    assert.deepEqual((await storedDemo(page)).stores, before.stores, 'Schließen legt nichts an');
+    // (01) Geschäft: Händler oder eigener Name; keine Symbol- oder Notizfelder; Angebotslink unter „Weitere Angaben“
+    await page.click('#store-create'); await page.click('#store-add-choice .store-kind[data-kind=store]');
+    assert.equal(await page.textContent('#store-add-title'), 'Geschäft hinzufügen');
+    assert.equal(await page.locator('#choose-store').isVisible(), true);
+    assert.equal(await page.locator('#store-new-symbols').isVisible(), false); assert.equal(await page.locator('#store-new-display').isVisible(), false);
+    assert.equal(await page.locator('#store-form [name=offersUrl]').isVisible(), false, 'zugeklappt unter „Weitere Angaben (optional)“');
+    // Leerer Name: verständliche Meldung, nichts gespeichert
+    await page.click('#store-add');
+    assert.equal(await page.locator('#store-name-error').isVisible(), true); assert.equal(await page.textContent('#store-name-error'), 'Bitte einen Namen eingeben.');
+    assert.equal(await page.getAttribute('#store-form [name=name]', 'aria-invalid'), 'true');
+    assert.equal(await page.evaluate(() => document.activeElement?.name), 'name', 'der Fokus steht im Namensfeld');
+    await page.fill('#store-form [name=name]', 'Baumarkt'); assert.equal(await page.locator('#store-name-error').isVisible(), false);
+    await page.click('#store-add');
+    let state = await storedDemo(page); const shop = state.stores.find(row => row.name === 'Baumarkt');
+    assert.ok(shop); assert.equal(shop.separate, undefined); assert.equal(shop.symbol, undefined); assert.equal(shop.displayMode, undefined);
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.open), false, 'das Formular schließt');
+    assert.equal(await page.textContent('#notice-text'), '„Baumarkt“ angelegt'); assert.equal(await page.textContent('#notice-undo'), 'Öffnen');
+    assert.equal(await rowOf152(page, shop.id).evaluate(node => node.classList.contains('fresh')), true, 'in der Verwaltung hervorgehoben');
+    // (02) Eigene Liste: Name zuerst, keine Händlerangaben, aktuelle Vorschau, genau eine Liste nach dem Speichern
+    await page.click('#store-create'); await page.click('#store-add-choice .store-kind[data-kind=list]');
+    assert.equal(await page.textContent('#store-add-title'), 'Eigene Liste anlegen');
+    assert.equal(await page.evaluate(() => document.activeElement?.name), 'name', 'Listenname zuerst');
+    const fields = await page.locator('#store-form').evaluate(form => [...form.querySelectorAll('label, fieldset, button[type=submit]')].filter(node => node.getClientRects().length).map(node => node.querySelector('legend')?.textContent || node.textContent.trim().slice(0, 20)));
+    assert.equal(fields[0], 'Listenname'); assert.ok(fields.indexOf('Symbol (optional)') > 0 && fields.indexOf('Anzeige im Reiter') > fields.indexOf('Symbol (optional)'), fields.join(' | '));
+    assert.equal(await page.locator('#choose-store').isVisible(), false); assert.equal(await page.locator('#store-new-more').isVisible(), false, 'keine Händlerangaben');
+    // Motive mit Namen, ohne Klemmbrett; ohne Symbol nur „Nur Name“
+    assert.deepEqual(await page.locator('#store-form .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Ohne Symbol', 'Geschenke', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf', 'Geheim']);
+    assert.equal(await page.locator('#store-form input[name=displayMode][value=symbol]').isDisabled(), true);
+    assert.equal(await page.locator('#store-form input[name=displayMode][value=both]').isDisabled(), true);
+    assert.equal(await page.locator('#store-form .store-display-need').isVisible(), true);
+    await page.keyboard.type('Urlaub 152');
+    assert.equal(await page.textContent('#store-form .store-preview-chip'), 'Urlaub 152', 'Vorschau ohne Symbol: der Name');
+    await chooseStoreSymbol(page.locator('#store-form'), 'travel');
+    assert.equal(await page.inputValue('#store-form input[name=displayMode]:checked'), 'both', 'mit Symbol: „Symbol und Name“ voreingestellt');
+    assert.equal(await page.locator('#store-form .store-preview-chip use[href="#i-travel"]').count(), 1);
+    assert.match(await page.textContent('#store-form .store-symbol-hint'), /Das Symbol bleibt nach dem Anlegen fest/);
+    await page.locator('#store-form .store-display-choice:has(input[value=symbol])').click();
+    assert.equal(await page.textContent('#store-form .store-preview-chip'), '', 'Vorschau „Nur Symbol“: kein Text');
+    await page.locator('#store-form .store-display-choice:has(input[value=both])').click();
+    // Zurück behält die Eingaben
+    await page.click('#store-add-back'); assert.equal(await page.locator('#store-add-choice').isVisible(), true);
+    await page.click('#store-add-choice .store-kind[data-kind=list]');
+    assert.equal(await page.inputValue('#store-form [name=name]'), 'Urlaub 152'); assert.equal(await page.inputValue('#store-form input[name=symbol]:checked'), 'travel');
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2152-liste-${width}-${theme}.png` });
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true); assert.equal(await horizontalOverflow(page), 0);
+    // Doppelt getippt: genau eine Liste
+    await page.locator('#store-add').dblclick();
+    state = await storedDemo(page);
+    const lists = state.stores.filter(row => row.name === 'Urlaub 152'); assert.equal(lists.length, 1, 'kein zweites Anlegen');
+    assert.deepEqual([lists[0].symbol, lists[0].displayMode, lists[0].separate, lists[0].chainKey], ['travel', 'both', true, null]);
+    // „Liste öffnen“ in der Bestätigung zeigt die neue Liste
+    assert.equal(await page.textContent('#notice-undo'), 'Liste öffnen');
+    // (07) Notizliste: eigener Weg, Klemmbrett fest, keine Motivkacheln
+    await page.click('#store-create'); await page.click('#store-add-choice .store-kind[data-kind=notes]');
+    assert.equal(await page.textContent('#store-add-title'), 'Notizliste anlegen');
+    assert.equal(await page.locator('#store-form .store-symbol-choice').filter({ visible: true }).count(), 0, 'keine normalen Motivkacheln');
+    assert.match(await page.textContent('#store-notes-symbol'), /Symbol: Notizen · festgelegt/);
+    assert.equal(await page.inputValue('#store-form input[name=displayMode]:checked'), 'both');
+    await page.fill('#store-form [name=name]', 'Familie'); await page.click('#store-add');
+    state = await storedDemo(page); const notes = state.stores.find(row => row.name === 'Familie');
+    assert.deepEqual([notes.symbol, notes.displayMode, notes.separate], ['checklist', 'both', true]);
+    // Verwaltung: Notizen unter einer Linie, getrennt von allen anderen
+    assert.equal(await page.locator('#store-notes-group').isVisible(), true);
+    assert.equal(await page.locator(`#store-notes-editor .store-row[data-id="${notes.id}"]`).count(), 1);
+    assert.equal(await page.locator(`#store-editor .store-row[data-id="${notes.id}"]`).count(), 0);
+    assert.equal(await page.locator('#store-notes-group .store-group-line').count(), 1);
+    // Reiter: eine senkrechte Linie vor den Notizen
+    await closeAll152(page);
+    const chips = await page.locator('#store-chips').evaluate(node => [...node.children].map(child => child.classList.contains('chip-divider') ? '|' : child.getAttribute('aria-label')));
+    assert.deepEqual(chips.slice(-2), ['|', 'Familie'], chips.join());
+    assert.ok(chips.indexOf('Urlaub 152') < chips.indexOf('|'));
+    assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
+    assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.152: Anzeige im Reiter – Nur Symbol, Nur Name, Symbol und Name; Wahl bleibt nach Neustart, das Reise-Symbol ist fest; symbolfreie Liste bekommt einmalig eines', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' } });
+    await seedLocal(ctx, notesData152()); await open(page);
+    const trip = chip152(page, 'trip-152');
+    // Alte Daten: bisherige Ansicht bleibt (nur das Symbol)
+    assert.equal(await trip.locator('.store-symbol').count(), 1); assert.equal((await trip.textContent()).trim(), '1', 'nur Bild und Zähler');
+    await openStores(page);
+    const row = rowOf152(page, 'trip-152');
+    assert.equal(await row.locator('input[name=displayMode]:checked').inputValue(), 'symbol');
+    // (04) Reise-Symbol: nur angezeigt, kein anderes Motiv auswählbar
+    assert.match(await row.locator('.store-symbol-fixed').textContent(), /Symbol: Reisen · festgelegt/);
+    assert.equal(await row.locator('input[name=symbol]').count(), 0); assert.equal(await row.locator('.store-symbol-first').count(), 0);
+    // (03) alle drei Modi: Reiter, Vorschau und Gespeichertes stimmen überein
+    const expect = { symbol: [1, ''], name: [0, 'Urlaub'], both: [1, 'Urlaub'] };
+    for (const mode of ['name', 'both', 'symbol', 'both']) {
+      await showMode152(row, mode);
+      assert.equal(await row.locator('.store-preview-chip .store-symbol').count(), expect[mode][0], `Vorschau ${mode}`);
+      assert.equal((await row.locator('.store-preview-chip').textContent()).trim(), expect[mode][1]);
+      await row.locator('.store-save').click();
+      const stored = (await storedDemo(page)).stores.find(store => store.id === 'trip-152');
+      assert.deepEqual([stored.displayMode, stored.symbol], [mode, 'travel']);
+      assert.equal(await trip.locator('.store-symbol').count(), expect[mode][0], `Reiter ${mode}`);
+      assert.equal((await trip.textContent()).replace(/\d+$/, '').trim(), expect[mode][1]);
+    }
+    // (04) Ein manipulierter Speicheraufruf mit anderem Symbol ersetzt die feste Kennung nicht
+    await row.locator('form').evaluate(form => { const forged = document.createElement('input'); forged.type = 'radio'; forged.name = 'symbol'; forged.value = 'gift'; forged.checked = true; form.append(forged); });
+    await row.locator('input[name=name]').fill('Sommerurlaub'); await row.locator('.store-save').click();
+    let stored = (await storedDemo(page)).stores.find(store => store.id === 'trip-152');
+    assert.deepEqual([stored.name, stored.symbol], ['Sommerurlaub', 'travel']);
+    // (05) Nur Name, umbenennen, zurück zu Symbol: dasselbe Reise-Symbol
+    await showMode152(row, 'name'); await row.locator('input[name=name]').fill('Urlaub 2027'); await row.locator('.store-save').click();
+    assert.equal(await trip.locator('.store-symbol').count(), 0); assert.match(await trip.textContent(), /Urlaub 2027/);
+    await showMode152(row, 'symbol'); await row.locator('.store-save').click();
+    assert.equal(await trip.locator('use[href="#i-travel"]').count(), 1, 'dasselbe Reise-Symbol');
+    // Ausblenden und Einblenden ändern das Symbol nicht
+    await row.locator('.store-visibility').click(); await row.locator('.store-visibility').click();
+    stored = (await storedDemo(page)).stores.find(store => store.id === 'trip-152');
+    assert.deepEqual([stored.symbol, stored.displayMode, stored.listEnabled], ['travel', 'symbol', true]);
+    // Neustart: die Wahl bleibt
+    await page.reload(); await openStores(page);
+    assert.equal(await rowOf152(page, 'trip-152').locator('input[name=displayMode]:checked').inputValue(), 'symbol');
+    // Ausgeschriebene Listenwahl: immer mit vollständigem Namen
+    await closeAll152(page);
+    await page.locator('#store-chips [data-all-stores]').focus(); await page.keyboard.press('Shift+F10'); await page.locator('#store-quick-dialog[open]').waitFor();
+    assert.match(await page.locator('#store-quick-options [data-view=trip-152]').textContent(), /Urlaub 2027/);
+    assert.equal(await page.locator('#store-quick-options .quick-divider').count(), 1, 'Linie vor den Notizen');
+    const quick = await page.locator('#store-quick-options').evaluate(node => [...node.children].map(child => child.classList.contains('quick-divider') ? '|' : child.dataset.view || child.textContent.trim()));
+    assert.deepEqual(quick.slice(-3), ['|', 'store-notes', 'Geschäfte & Listen verwalten']);
+    await page.click('#store-quick-options .store-quick-manage'); await sheetOpen(page);
+    assert.equal(await page.locator('#stores-dialog').evaluate(node => node.open), true, 'beschrifteter Weg zur Verwaltung');
+    // (06) Symbolfreie Liste: Nur Name funktioniert; erste Zuordnung einmalig, danach fest
+    const plain = rowOf152(page, 'plain-152'); await plain.locator('>summary').click();
+    assert.equal(await plain.locator('input[name=displayMode]:checked').inputValue(), 'name');
+    assert.equal(await plain.locator('input[name=displayMode][value=both]').isDisabled(), true);
+    assert.match(await plain.locator('.store-display-need').textContent(), /brauchst du ein Symbol/);
+    assert.equal(await plain.locator('.store-symbol-picker').isVisible(), false);
+    await plain.locator('.store-symbol-first').click();
+    assert.match(await plain.locator('.store-symbol-picker legend').textContent(), /einmalig/);
+    assert.equal(await plain.locator('input[name=symbol][value=checklist]').count(), 0, 'keine Umwandlung in eine Notizliste');
+    await chooseStoreSymbol(plain, 'home'); assert.equal(await plain.locator('input[name=displayMode]:checked').inputValue(), 'both');
+    await plain.locator('.store-save').click();
+    stored = (await storedDemo(page)).stores.find(store => store.id === 'plain-152');
+    assert.deepEqual([stored.symbol, stored.displayMode], ['home', 'both']);
+    assert.match(await plain.locator('.store-symbol-fixed').textContent(), /Haushalt · festgelegt/); assert.equal(await plain.locator('input[name=symbol]').count(), 0);
+    assert.equal((await storedDemo(page)).sync.minRev, 18);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.152: Notizliste mit „Nur Name“ bleibt Notizliste (Texteditor, „von …“, Löschen); Notizen nie „Im Laden“ oder als Ziel; Reihenfolge nur innerhalb des Bereichs', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' } });
+    await seedLocal(ctx, notesData152()); await open(page);
+    await openStores(page);
+    const row = rowOf152(page, 'store-notes');
+    assert.equal(await row.locator('input[name=separate]').isVisible(), false, 'eine Notizliste kann nicht zum Geschäft werden');
+    assert.equal(await row.locator('.store-pill').textContent(), 'Notizliste');
+    // (08) Nur Name
+    await showMode152(row, 'name'); await row.locator('.store-save').click();
+    let stored = (await storedDemo(page)).stores.find(store => store.id === 'store-notes');
+    assert.deepEqual([stored.symbol, stored.displayMode], ['checklist', 'name'], 'das Klemmbrett bleibt hinterlegt');
+    // Reihenfolge ändern: Notizen als eigene Gruppe, kein Verschieben über die Grenze
+    await page.click('#store-order-open'); await sheetOpen(page);
+    const groups = await page.locator('#order-list').evaluate(node => [...node.children].map(child => child.classList.contains('order-group') ? `#${child.textContent}` : child.querySelector('span').textContent));
+    assert.deepEqual(groups.slice(-2), ['#Notizen', 'Notizen']);
+    assert.equal(await page.getByRole('button', { name: 'Notizen nach oben', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Baumarkt-Ideen nach unten', exact: true }).isDisabled(), true);
+    await page.click('#order-dialog [data-close]');
+    await closeAll152(page);
+    const chip = chip152(page, 'store-notes');
+    assert.equal(await chip.locator('.store-symbol').count(), 0); assert.match(await chip.textContent(), /Notizen/);
+    await chip.click(); await page.waitForSelector('#notes-panel:not([hidden])');
+    // Texteditor, Autorenanzeige, Speichern
+    assert.equal(await page.locator('#item-form').isHidden(), true);
+    assert.equal(await page.locator('#notes-list .note-row', { hasText: 'Kinderarzt' }).locator('.note-by').textContent(), 'von Anna');
+    await page.click('#notes-add'); await page.keyboard.type('Elternabend'); await page.keyboard.press('Enter');
+    await page.locator('#notes-list .note-text', { hasText: 'Elternabend' }).waitFor();
+    assert.equal(await page.locator('#notes-list .note-row', { hasText: 'Elternabend' }).locator('.note-by').textContent(), 'von Nico');
+    // Löschen mit Rückgängig
+    await dragToTrash147(page, page.locator('#notes-list .note-row', { hasText: 'Elternabend' }));
+    assert.equal(await noticeText147(page), '„Elternabend“ gelöscht'); await page.click('#notice-undo');
+    await page.locator('#notes-list .note-text', { hasText: 'Elternabend' }).waitFor();
+    // (09) Im Laden und als Ziel ausgeschlossen, gewöhnliche Listen funktionieren weiter
+    await page.locator('#store-chips [data-all-stores]').click(); await page.click('#mode-shop');
+    assert.equal(await page.locator('#shop-chips [data-store-id=store-notes]').count(), 0);
+    assert.equal(await page.locator('#shop-chips [data-store-id=trip-152]').count(), 1);
+    await page.click('#shop-back');
+    await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]');
+    assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=store-notes]').count(), 0);
+    assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=trip-152]').count(), 1);
+    await page.click('#item-dialog [data-close]');
+    stored = (await storedDemo(page)).stores.find(store => store.id === 'store-notes');
+    assert.equal(stored.symbol, 'checklist');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.152: geheime Liste anders anzeigen bleibt lokal und privat; das Schloss bleibt fest', async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen' } });
+    await open(page); await page.waitForFunction(() => localStorage.getItem('einkauf-demo-v1'));
+    await page.click('#manage-stores'); await sheetOpen(page);
+    await openStoreCreate(page, 'list'); await page.fill('#store-form [name=name]', 'Überraschung'); await chooseStoreSymbol(page.locator('#store-form'), 'secret');
+    assert.equal(await page.isChecked('#store-form [name=private]'), true);
+    assert.equal(await page.textContent('#store-add-label'), 'Geheime Liste anlegen');
+    assert.equal(await page.locator('#store-form .store-preview-chip use[href="#i-secret"]').count(), 1, 'geschlossenes Schloss in der Vorschau');
+    await page.click('#store-add');
+    assert.equal(await page.textContent('#notice-text'), '„Überraschung“ angelegt · nur auf diesem Gerät');
+    const shared = await page.evaluate(() => localStorage.getItem('einkauf-demo-v1'));
+    assert.ok(!shared.includes('Überraschung'));
+    const row = page.locator('.private-store-row', { hasText: 'Überraschung' }); await row.locator('summary').click();
+    assert.match(await row.locator('.store-symbol-fixed').textContent(), /Symbol: Geheim · festgelegt/);
+    assert.equal(await row.locator('input[name=symbol]').count(), 0);
+    assert.equal(await row.locator('input[name=displayMode]:checked').inputValue(), 'both');
+    // (10) Anzeige ändern: bleibt geheim, keine Freigabe-Rückfrage, nichts geteilt
+    await row.locator('.store-display-choice:has(input[value=name])').click();
+    assert.match(await row.locator('.store-save').textContent(), /Änderungen speichern/);
+    await row.locator('.store-save').click();
+    assert.equal(await page.locator('#ask-dialog[open]').count(), 0, 'keine Freigabe-Rückfrage');
+    assert.equal(await page.evaluate(() => localStorage.getItem('einkauf-demo-v1')), shared, 'gemeinsame Daten unverändert');
+    const local = await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-private-list-v1:einkauf-demo-v1')).lists.find(list => list.name === 'Überraschung'));
+    assert.deepEqual([local.symbol, local.displayMode], ['secret', 'name']);
+    await closeAll152(page);
+    const chip = page.locator('#store-chips [data-private][aria-label="Überraschung"]');
+    assert.equal(await chip.locator('.store-symbol').count(), 0); assert.match(await chip.textContent(), /Überraschung/);
+    await page.reload();
+    assert.equal(await page.locator('#store-chips [data-private][aria-label="Überraschung"] .store-symbol').count(), 0, 'nach dem Neustart unverändert');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.152: zwei Geräte und alte Daten – Namen, Symbole, Inhalte und Sichtbarkeit bleiben; die Anzeige wird abgeglichen; gleichzeitiges Speichern tauscht kein Symbol', async () => {
+    const api = github(notesData152()), a = await context({ config: connectedConfig }), b = await context({ config: { ...connectedConfig, actor: 'Anna' } });
+    for (const device of [a, b]) { await device.ctx.route('https://api.github.com/**', api.handler); await open(device.page); await synced(device.page); }
+    // Alte Daten: alles bleibt, wie es war
+    for (const device of [a, b]) {
+      assert.equal(await device.page.locator('#store-chips [data-store-id=trip-152] use[href="#i-travel"]').count(), 1);
+      assert.equal(await device.page.locator('#store-chips [data-store-id=plain-152]').textContent(), 'Baumarkt-Ideen');
+    }
+    assert.ok((api.content.sync.minRev || 1) < 18, 'ohne Änderung bleibt die Datei für ältere Apps lesbar');
+    // Gerät A stellt „Symbol und Name“ ein, Gerät B benennt gleichzeitig um (mit noch offenem, älterem Formular)
+    await openStores(a.page); await openStores(b.page);
+    const rowA = rowOf152(a.page, 'trip-152'), rowB = rowOf152(b.page, 'trip-152');
+    await showMode152(rowA, 'both'); await rowA.locator('.store-save').click(); await synced(a.page);
+    await rowB.locator('input[name=name]').fill('Reise 2027');
+    // Ein altes Gerät würde beim Speichern ein anderes Symbol mitschicken: hier nachgestellt
+    await rowB.locator('form').evaluate(form => { const forged = document.createElement('input'); forged.type = 'radio'; forged.name = 'symbol'; forged.value = 'gift'; forged.checked = true; form.append(forged); });
+    await pollNow(b.page); await synced(b.page); await rowB.locator('.store-save').click(); await synced(b.page);
+    await pollNow(a.page); await synced(a.page);
+    const trip = api.content.stores.find(row => row.id === 'trip-152');
+    assert.deepEqual([trip.name, trip.symbol, trip.displayMode, trip.listEnabled ?? true], ['Reise 2027', 'travel', 'both', true]);
+    assert.equal(api.content.sync.minRev, 18);
+    assert.equal(api.content.items.filter(row => row.storeId === 'trip-152' && !row.deletedAt).length, 1, 'Inhalte bleiben');
+    // Beide Geräte zeigen dasselbe
+    await closeAll152(a.page); await closeAll152(b.page); await pollNow(b.page); await synced(b.page);
+    for (const device of [a, b]) {
+      const chip = device.page.locator('#store-chips [data-store-id=trip-152]');
+      await device.page.waitForFunction(() => /Reise 2027/.test(document.querySelector('#store-chips [data-store-id=trip-152]')?.textContent || ''));
+      assert.equal(await chip.locator('use[href="#i-travel"]').count(), 1);
+    }
+    assert.deepEqual([...a.problems, ...b.problems], []); await a.ctx.close(); await b.ctx.close();
+  });
+
+  test('2.152: schmale Geräte und große Schrift – keine abgeschnittenen Felder, Tippziele mindestens 44 px, sichtbarer Fokus, Speichern erreichbar', async () => {
+    for (const [width, theme] of [[320, 'light'], [390, 'dark']]) {
+      const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 640 }, colorScheme: theme } });
+      await seedLocal(ctx, notesData152()); await open(page);
+      await page.evaluate(() => { document.documentElement.style.fontSize = '125%'; });   // große Schrift (CSSOM ist mit der Inhaltsrichtlinie erlaubt)
+      await page.click('#manage-stores'); await sheetOpen(page);
+      await page.click('#store-create'); await page.click('#store-add-choice .store-kind[data-kind=list]'); await page.fill('#store-form [name=name]', 'Ein ziemlich langer Listenname für die Reise');
+      await chooseStoreSymbol(page.locator('#store-form'), 'travel');
+      const clipped = await page.locator('#store-add-dialog').evaluate(dialog => [...dialog.querySelectorAll('label, button, legend, .store-preview-chip, .hint')].filter(node => node.getClientRects().length)
+        .filter(node => node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflow !== 'hidden').map(node => node.textContent.trim().slice(0, 30)));
+      assert.deepEqual(clipped, [], `nichts abgeschnitten bei ${width}px`);
+      for (const [name, box] of await page.locator('#store-add-dialog').evaluate(dialog => [...dialog.querySelectorAll('.store-symbol-choice, .store-display-choice, #store-add, #store-form-back, .store-add-back')].filter(node => node.getClientRects().length).map(node => [node.textContent.trim() || node.getAttribute('aria-label'), node.getBoundingClientRect().height])))
+        assert.ok(box >= 44, `${name}: ${box} px`);
+      assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+      // Fokus sichtbar (Tastatur)
+      await page.locator('#store-form .store-display-choice input[value=name]').focus(); await page.keyboard.press('ArrowRight');
+      assert.notEqual(await page.locator('#store-form .store-display-choice:has(input:focus-visible)').evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+      // Speichern erreichbar
+      await page.locator('#store-add').scrollIntoViewIfNeeded(); assert.equal(await page.locator('#store-add').isVisible(), true);
+      await page.click('#store-add');
+      await page.click('#stores-dialog .sheet-head [data-close]');
+      assert.equal(await horizontalOverflow(page), 0);
+      assert.deepEqual(problems, []); await ctx.close();
+    }
   });
 
 });

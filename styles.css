@@ -2332,13 +2332,6 @@ body.in-store .tabs {
 .store-new h3 {
   margin:0
 }
-.store-create { margin-top:18px }
-.store-create>summary { display:flex; align-items:center; gap:12px; min-height:52px; padding:12px 16px; border:1px solid var(--line-strong); border-radius:16px; background:var(--accent-soft); color:var(--accent); font-weight:650; line-height:1.4; cursor:pointer; list-style:none }
-.store-create>summary::-webkit-details-marker { display:none }
-.store-create>summary>.icon { flex:none; transition:transform .18s ease }
-.store-create[open]>summary>.icon { transform:rotate(45deg) }
-.store-create>summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
-.store-create>.store-new { margin-top:14px; padding-top:0; border-top:0 }
 @keyframes sheet {
   from {
     transform:translateY(28px);
@@ -5448,3 +5441,94 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .notes-hint { margin:10px 4px 0 }
 .note-row.drag-origin { opacity:.3 }
 .drag-ghost.note-row { list-style:none }
+
+/* 2.152: Geschäfte & Listen – Hinzufügen oben, Notizen in einem eigenen Bereich, festes Symbol, Anzeige im Reiter mit Vorschau */
+#stores-dialog .store-create-open { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:2px 12px; width:100%; min-height:60px; margin:4px 0 14px; padding:10px 16px; border:1px solid var(--accent); border-radius:16px; background:var(--accent-soft); color:var(--accent); text-align:left; box-shadow:none }
+#stores-dialog .store-create-open>.icon { grid-row:1 / span 2; width:26px; height:26px }
+#stores-dialog .store-create-open>span { font-size:1.05rem; font-weight:750; line-height:1.25 }
+#stores-dialog .store-create-open>small { font-size:.8rem; font-weight:500; line-height:1.35; color:var(--muted); overflow-wrap:anywhere }
+#stores-dialog .store-create-open:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+.stores-hint { margin:0 0 10px }
+.stores-offers-hint { margin:16px 0 0 }
+.store-group-line { height:0; margin:18px 0 12px; border-top:1px solid var(--line-strong) }
+.store-group-title { display:flex; align-items:center; gap:8px; margin:0 0 4px; font-size:.95rem; font-weight:750; color:var(--muted) }
+.store-group-title .icon { width:20px; height:20px }
+/* Reiter: eine senkrechte Linie mit Abstand vor den Notizen */
+.chip-divider { flex:none; align-self:center; width:0; height:28px; margin:0 6px; border-left:1px solid var(--line-strong) }
+/* Ausgeschriebene Listenwahl: waagerechte Linie vor den Notizen, Verwaltung am Ende */
+.quick-divider { height:0; margin:6px 0; border-top:1px solid var(--line-strong) }
+#store-quick-dialog .store-quick-manage { width:100%; margin-top:6px }
+.quick-name { margin-left:10px; vertical-align:middle }
+/* „Symbol und Name“ im Reiter */
+.store-label-both { display:inline-flex; align-items:center; gap:8px; min-width:0 }
+.store-label-both>.store-symbol svg { width:26px; height:26px }
+.store-label-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:14em }
+.store-quick-choice .store-label-name { white-space:normal; max-width:none }
+
+/* Hinzufügen: erst die Aufgabe wählen */
+.store-add-dialog .sheet-head { gap:8px }
+.store-add-dialog .sheet-head h2 { flex:1; min-width:0 }
+.store-add-question { margin:2px 0 12px; font-size:1.05rem; font-weight:700 }
+.store-add-choice { display:grid; gap:10px }
+.store-add-choice .store-group-line { margin:8px 0 2px }
+.store-kind-group { margin:0; font-size:.95rem; font-weight:750; color:var(--muted) }
+.store-kind-hint { margin:0 2px }
+.store-add-dialog .store-kind { display:grid; grid-template-columns:44px minmax(0,1fr) 20px; align-items:center; gap:12px; width:100%; min-height:72px; padding:12px 14px; border:1px solid var(--line-strong); border-radius:16px; background:var(--card); color:var(--text); text-align:left; box-shadow:none }
+.store-add-dialog .store-kind:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
+.store-add-dialog .store-kind:active { filter:brightness(.97) }
+.store-kind-icon { display:grid; place-items:center; width:44px; height:44px; border-radius:12px; background:var(--accent-soft); color:var(--accent) }
+.store-kind-icon .icon { width:24px; height:24px }
+.store-kind-text { display:grid; gap:3px; min-width:0 }
+.store-kind-text strong { font-size:1rem; line-height:1.3 }
+.store-kind-text small { font-size:.82rem; font-weight:500; line-height:1.4; color:var(--muted); overflow-wrap:anywhere }
+.store-kind-arrow { width:18px; height:18px; color:var(--muted) }
+.store-add-cancel { width:100%; margin-top:6px }
+.store-add-dialog .store-new { margin-top:4px; padding-top:0; border-top:0 }
+.store-add-dialog #store-form-back { width:100% }
+.store-new-name { display:grid; gap:6px }
+.field-error { margin:-4px 0 0; color:var(--danger); font-size:.88rem; font-weight:650 }
+[aria-invalid=true] { border-color:var(--danger) }
+.store-new-more>summary { min-height:44px; display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--accent); font-weight:650 }
+.store-new-more>summary::-webkit-details-marker { display:none }
+.store-new-more>summary::before { content:""; width:8px; height:8px; margin:0 4px; border:solid currentColor; border-width:0 2px 2px 0; transform:rotate(-45deg); transition:transform .15s }
+.store-new-more[open]>summary::before { transform:rotate(45deg) }
+.store-new-more .hint { margin:6px 0 0 }
+
+/* Motive mit Namen statt Nummern; das gewählte ist grün umrandet */
+.store-symbol-choices { grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px }
+.store-symbol-choice { grid-template-columns:minmax(0,1fr); justify-items:center; align-content:center; gap:6px; min-height:84px; padding:10px 6px; text-align:center }
+.store-symbol-choice>span:not(.store-symbol) { font-size:.84rem; line-height:1.25; white-space:normal; overflow-wrap:anywhere; hyphens:auto }
+.store-symbol-hint { margin:8px 2px 0 }
+/* Festgelegtes Symbol: nur Information, keine Auswahl */
+.store-symbol-section { margin:14px 0 }
+.store-symbol-fixed { display:flex; align-items:center; gap:12px; min-height:56px; padding:10px 12px; border:1px solid var(--line); border-radius:14px; background:var(--bg) }
+.store-symbol-fixed .store-symbol svg { width:32px; height:32px }
+.store-symbol-fixed>.icon { width:24px; height:24px; color:var(--muted) }
+.store-symbol-fixed-text { min-width:0; color:var(--muted); overflow-wrap:anywhere }
+.store-symbol-fixed-text strong { color:var(--text) }
+.store-symbol-fixed.none { color:var(--muted) }
+.store-body .store-symbol-first { margin-top:8px }
+.store-notes-symbol .hint { margin:8px 2px 0 }
+/* Anzeige im Reiter: drei gleich breite Wahlfelder und eine Vorschau */
+.store-display-picker { min-width:0; margin:16px 0; padding:0; border:0 }
+.store-display-picker>legend { margin-bottom:8px; font-size:.88rem; font-weight:600; color:var(--muted) }
+.store-display-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px }
+.store-display-choice { position:relative; display:grid; place-items:center; min-height:52px; margin:0; padding:6px 4px; border:1px solid var(--line-strong); border-radius:14px; background:var(--card); text-align:center; font-size:.84rem; font-weight:650; line-height:1.25; cursor:pointer }
+.store-display-choice>input { position:absolute; width:1px; height:1px; margin:0; padding:0; clip-path:inset(50%); overflow:hidden; opacity:0 }
+.store-display-choice>span { white-space:normal; overflow-wrap:anywhere; hyphens:auto }
+.store-display-choice:has(input:checked) { background:var(--accent-soft); border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent) }
+.store-display-choice:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:3px }
+.store-display-choice.disabled { opacity:.45; cursor:not-allowed }
+.store-display-need { margin:8px 2px 0 }
+.store-preview { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-top:12px }
+.store-preview-label { font-size:.85rem; color:var(--muted) }
+.store-preview-chip { display:inline-flex; align-items:center; gap:8px; min-height:40px; max-width:100%; padding:0 16px; border:1px solid var(--accent); border-radius:999px; background:var(--accent-soft); color:var(--accent); font-weight:650; box-shadow:inset 0 0 0 1px var(--accent) }
+.store-preview-chip .store-symbol { margin:-3px 0 }
+.store-preview-chip .store-label-name { max-width:100% }
+@media (max-width:360px) {
+  .store-display-choice { font-size:.78rem; min-height:56px }
+  .store-symbol-choices { grid-template-columns:repeat(3,minmax(0,1fr)) }
+  .store-symbol-choice>span:not(.store-symbol) { font-size:.76rem }
+}
+/* Reihenfolge ändern: Notizen als eigene Gruppe */
+.order-list li.order-group { display:block; padding:12px 4px 2px; border:0; border-top:1px solid var(--line-strong); border-radius:0; background:transparent; font-size:.9rem; font-weight:750; color:var(--muted) }

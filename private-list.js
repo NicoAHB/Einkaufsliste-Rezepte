@@ -1,5 +1,6 @@
 /* Ausschließlich Gerätespeicher. Diese Liste ist kein Teil von daten.json,
    Synchronisationsoperationen, Einkaufsverlauf oder gemeinsamen Backups. */
+import { DISPLAY_MODES } from './list-symbols.js';
 export const PRIVATE_VIEW = '@private';
 export const LEGACY_PRIVATE_ID = 'legacy-private';
 export const privateView = id => `${PRIVATE_VIEW}:${id}`;
@@ -20,7 +21,7 @@ export function validatePrivateList(value) {
   const ids=new Set();
   if(value.lists!==undefined) {
     if(!Array.isArray(value.lists))throw new Error('Die geheimen Listen auf diesem Gerät sind beschädigt.');
-    const listIds=new Set();for(const list of value.lists){if(!list||typeof list.id!=='string'||!list.id||listIds.has(list.id)||typeof list.name!=='string'||!list.name.trim()||list.name.length>80||typeof list.enabled!=='boolean'||list.symbol!=='secret'||(list.sharedStoreId!==undefined&&typeof list.sharedStoreId!=='string'))throw new Error('Eine geheime Liste auf diesem Gerät ist beschädigt.');listIds.add(list.id);}
+    const listIds=new Set();for(const list of value.lists){if(!list||typeof list.id!=='string'||!list.id||listIds.has(list.id)||typeof list.name!=='string'||!list.name.trim()||list.name.length>80||typeof list.enabled!=='boolean'||list.symbol!=='secret'||(list.displayMode!==undefined&&!DISPLAY_MODES.includes(list.displayMode))||(list.sharedStoreId!==undefined&&typeof list.sharedStoreId!=='string'))throw new Error('Eine geheime Liste auf diesem Gerät ist beschädigt.');listIds.add(list.id);}
   }
   for(const row of value.items) {
     if(!row||typeof row.id!=='string'||!row.id||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>120||typeof row.note!=='string'||row.note.length>1000||typeof row.checked!=='boolean'||!Number.isFinite(Date.parse(row.createdAt)))throw new Error('Ein Eintrag der geheimen Liste auf diesem Gerät ist beschädigt.');
