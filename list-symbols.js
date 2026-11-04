@@ -4,7 +4,7 @@ export const LIST_SYMBOLS = Object.freeze([
   { id:'pharmacy', label:'Symbol 2', name:'Apotheke' },
   { id:'travel', label:'Symbol 3', name:'Reisen' },
   { id:'home', label:'Symbol 4', name:'Haushalt' },
-  { id:'checklist', label:'Symbol 5', name:'Aufgaben' },
+  { id:'checklist', label:'Symbol 5', name:'Notizen' },   // seit 2.150 ein Notizzettel: nur Textzeilen, ohne Menge und Geschäft
   { id:'pets', label:'Symbol 6', name:'Tierbedarf' },
   { id:'secret', label:'Symbol 7', name:'Geheim' }
 ].map(Object.freeze));
