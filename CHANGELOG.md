@@ -2,6 +2,23 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.155: Geschäft bearbeiten – verständlich für neue Nutzer
+
+**„Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist“ entfällt.**
+- Der Haken stammt aus der Zeit, als eigene Listen nur so entstehen konnten. Seit 2.152 wählt man beim **Hinzufügen** einmal, ob es ein Geschäft, eine eigene Liste oder eine Notizliste wird.
+- Beim Bearbeiten war der Haken nur noch missverständlich und riskant. Ein Tipp hat bei einem Geschäft den Händler, den Angebotslink und die Reihenfolge der Gänge verworfen, und seine Artikel verschwanden aus „Alle“. Bei einer Liste mischte er die Einträge unter „Alle“.
+- Bestehende Geschäfte und Listen bleiben, was sie sind; es wird nichts umgestellt.
+- Wer sich beim Anlegen vertan hat, legt die richtige Art an und verschiebt die Artikel mit **Auswählen → Geschäft zuordnen**.
+
+**Neuer Bereich „Im Laden“** in jedem Geschäft, weil beide Einstellungen nur dort wirken:
+- **Artikel ohne Geschäft auch hier zeigen** ist jetzt ein Schalter mit Erklärung: „Hat ein Artikel kein Geschäft (z. B. Brot), steht er „Im Laden“ bei Rewe zusätzlich unter „Überall möglich“.“ Der Name des Geschäfts passt sich beim Umbenennen sofort an. Die ganze Zeile ist antippbar.
+- Darunter steht die **Reihenfolge der Gänge**.
+- Der Hinweis „Im Laden“ verweist auf genau diese Stelle.
+
+**Händler / Logo:** Die Voreinstellung heißt kurz **Automatisch erkennen** und wird nicht mehr abgeschnitten.
+
+Offline-Paket `einkauf-shell-v167`.
+
 ## Neu in Version 2.154: Übersichtlichere Symbolwahl
 
 Unter **Eigene Liste anlegen** (und bei **Symbol festlegen** einer Liste ohne Symbol):
