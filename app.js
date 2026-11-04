@@ -4616,23 +4616,31 @@ const TRASH_ICON = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entr
 const TRASH_LABEL = Object.fromEntries(TRASH_KINDS.map(entry => [entry.kind, entry.label]));
 const timeOf = at => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 // Die Hinweise unter Einkaufsliste, Rezepten, Wochenplan und Ausgaben erscheinen nur, wenn dort etwas zurückzuholen ist.
-// Alles Wiederherstellbare: gemeinsame Daten (trash.js) und die geheime Liste dieses Geräts (private-list-view.js), neueste zuerst.
-function allTrash() {
-  if (!ready) return [];
-  const entries = [...trashEntries(state), ...(privateList?.trash() || [])];
-  return entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.title.localeCompare(b.title, 'de'));
-}
+/* Zwei getrennte Papierkörbe (2.157): der allgemeine „Kürzlich gelöscht“ mit allem Gemeinsamen (trash.js) und je geheimer Liste ein eigener
+   (private-list-view.js), erreichbar nur am Ende dieser Liste. Was in einer geheimen Liste gelöscht wurde, erscheint nirgends sonst. */
+let trashScope = 'shared';
+const newestFirst = entries => entries.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.title.localeCompare(b.title, 'de'));
+const sharedTrash = () => ready ? newestFirst(trashEntries(state)) : [];
+const openPrivateId = () => !$('#private-list-panel').hidden ? privateViewId(view) : '';
+const privateTrashEntries = (listId = openPrivateId()) => ready && listId ? newestFirst(privateList?.trash(Date.now(), listId) || []) : [];
+const allTrash = () => trashScope === 'private' ? privateTrashEntries() : sharedTrash();
 function renderTrashLinks() {
-  const entries = allTrash(), counts = trashCounts(entries), privateOpen = !$('#private-list-panel').hidden;
+  const shared = trashCounts(sharedTrash()), own = privateTrashEntries().length, privateOpen = !$('#private-list-panel').hidden;
   for (const node of document.querySelectorAll('[data-trash-kind]')) {
-    const count = node.dataset.trashKind.split(' ').reduce((sum, kind) => sum + (counts[kind] || 0), 0);
+    const count = node.dataset.trashKind === 'private' ? own : node.dataset.trashKind.split(' ').reduce((sum, kind) => sum + (shared[kind] || 0), 0);
     node.hidden = !count || (privateOpen && node.id === 'shopping-trash-link'); node.querySelector('.trash-link-count').textContent = count ? `(${count})` : '';
     node.setAttribute('aria-label', `${node.querySelector('span').textContent}: ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} wiederherstellbar`);
   }
-  $('#trash-summary').textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} aus den letzten ${TRASH_DAYS} Tagen wiederherstellbar` : `Leer · Gelöschtes bleibt hier ${TRASH_DAYS} Tage`;
+  const total = sharedTrash().length;   // Optionen: nur der allgemeine Papierkorb
+  $('#trash-summary').textContent = total ? `${total} ${total === 1 ? 'Eintrag' : 'Einträge'} aus den letzten ${TRASH_DAYS} Tagen wiederherstellbar` : `Leer · Gelöschtes bleibt hier ${TRASH_DAYS} Tage`;
 }
 function openTrash(kind = 'all') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  trashScope = kind === 'private' ? 'private' : 'shared';
+  const secret = trashScope === 'private' && privateList?.lists.find(list => list.id === openPrivateId());
+  $('#trash-title').textContent = secret ? `Kürzlich gelöscht · ${secret.name}` : 'Kürzlich gelöscht';
+  $('#trash-intro').textContent = secret ? `Was in „${secret.name}“ in den letzten ${TRASH_DAYS} Tagen gelöscht wurde. Es liegt nur auf diesem Gerät und erscheint in keinem anderen Papierkorb.` : `Was in den letzten ${TRASH_DAYS} Tagen gelöscht wurde, kannst du hier zurückholen – auf allen verbundenen Geräten.`;
+  document.querySelector('#trash-dialog .trash-foot').hidden = Boolean(secret);   // „Einkauf beenden“ betrifft nur gemeinsame Artikel
   // Ein Hinweis kann mehrere Arten zusammenfassen (Einkaufsliste: Artikel und Listen); markiert wird die erste vorhandene.
   const counts = trashCounts(allTrash());
   trashFilter = kind === 'all' ? 'all' : kind.split(' ').find(entry => counts[entry]) || 'all'; trashUndo = null; $('#trash-status').hidden = true;
@@ -4713,12 +4721,14 @@ $('#trash-undo').addEventListener('click', () => guard(() => {
 /* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
    „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
 $('#trash-purge').addEventListener('click', () => guard(async () => {
-  const before = purgeChanges(state).length + (privateList?.trash().length || 0);
+  // Geleert wird nur der gerade offene Papierkorb: der allgemeine oder der einer geheimen Liste (2.157).
+  const secret = trashScope === 'private', listId = secret ? openPrivateId() : '';
+  const before = secret ? privateTrashEntries(listId).length : purgeChanges(state).length;
   if (!before) return;
   const what = before === 1 ? 'Den Eintrag' : `Alle ${before} Einträge`;
-  if (!await ask({ title: 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
+  if (!await ask({ title: 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${secret ? ' (nur auf diesem Gerät)' : connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
   // Erst nach der Rückfrage bestimmen, was gelöscht wird: Ein Abgleich kann den Papierkorb inzwischen verändert haben.
-  const changes = purgeChanges(state), own = privateList?.purge() || 0, count = changes.length + own;
+  const changes = secret ? [] : purgeChanges(state), own = secret && listId ? privateList?.purge(listId) || 0 : 0, count = changes.length + own;
   if (!count) return;
   if (changes.length) {
     if (connected()) compactRequested = true;

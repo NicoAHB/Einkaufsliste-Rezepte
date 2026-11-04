@@ -11344,6 +11344,55 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.157: Gelöschtes aus geheimen Listen nur in deren eigenem Papierkorb ----
+  test('2.157: geheime Löschungen erscheinen nur im Papierkorb ihrer geheimen Liste – nicht unter Optionen, nicht in der Einkaufsliste, nicht in der anderen geheimen Liste', async () => {
+    const { ctx, page, problems } = await context(); await seedPrivate2117(ctx); await open(page);
+    const key = 'einkauf-private-list-v1:einkauf-demo-v1', stored = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)).items, key);
+    const openSecret = async id => { await goTab(page, 'shopping'); await page.locator(`#store-chips [data-private=${id}]`).click(); await page.waitForSelector('#private-list-panel:not([hidden])'); };
+    // Ein gemeinsamer Artikel und je ein Eintrag in beiden geheimen Listen werden gelöscht
+    await dragToTrash147(page, page.locator('#items .item', { hasText: 'Milch' }).first());
+    await openSecret('private-a'); await dragToTrash147(page, page.locator('#private-items .private-row', { hasText: 'PrivatesReiseziel2117' }));
+    await openSecret('private-b'); await page.locator('#private-done').evaluate(node => { node.open = true; });
+    await dragToTrash147(page, page.locator('#private-done-items .private-row', { hasText: 'PrivatesGeschenk2117' }));
+    // Allgemeiner Papierkorb (Optionen): nur der gemeinsame Artikel, kein Filter „Geheime Liste“
+    await openSettings(page); assert.match(await page.textContent('#trash-summary'), /^1 Eintrag/);
+    await page.click('#trash-open'); await sheetOpen(page);
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht');
+    assert.equal(await page.locator('#trash-list .trash-row').count(), 1); assert.equal(await page.locator('#trash-list .trash-row[data-kind=private]').count(), 0);
+    assert.ok(!/Privates|Geheime Liste|nur auf diesem Gerät/.test(await page.textContent('#trash-dialog')), 'nichts Geheimes');
+    // Leeren dort lässt die geheimen Papierkörbe unberührt
+    await page.click('#trash-purge'); await answerAsk(page, true, /Den Eintrag im Papierkorb endgültig löschen/);
+    assert.equal((await stored()).filter(row => row.deletedAt).length, 2, 'geheime Einträge bleiben im eigenen Papierkorb');
+    await page.click('#trash-dialog [data-close]');
+    // Einkaufsliste: kein Hinweis auf die geheimen Löschungen
+    await goTab(page, 'shopping'); await page.locator('#store-chips [data-all-stores]').click();
+    assert.equal(await page.locator('#shopping-trash-link').isVisible(), false);
+    // Geheime Liste „Reise privat“: nur ihr eigener Eintrag
+    await openSecret('private-a');
+    const link = page.locator('#private-list-panel .trash-link'); assert.match(await link.textContent(), /Kürzlich gelöscht\s*\(1\)/);
+    await link.click(); await page.locator('#trash-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht · Reise privat');
+    assert.match(await page.textContent('#trash-intro'), /nur auf diesem Gerät und erscheint in keinem anderen Papierkorb/);
+    assert.deepEqual(await page.locator('#trash-list .trash-row strong').allTextContents(), ['PrivatesReiseziel2117']);
+    assert.equal(await page.locator('#trash-dialog .trash-foot').isVisible(), false);
+    // Leeren leert nur diese geheime Liste
+    await page.click('#trash-purge'); await answerAsk(page, true, /nur auf diesem Gerät/);
+    assert.deepEqual((await stored()).filter(row => row.deletedAt).map(row => row.id), ['secret-b']);
+    await page.click('#trash-dialog [data-close]');
+    // „Geschenke privat“: ihr Eintrag ist noch da und lässt sich zurückholen
+    await openSecret('private-b'); await page.locator('#private-list-panel .trash-link').click(); await page.locator('#trash-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht · Geschenke privat');
+    assert.deepEqual(await page.locator('#trash-list .trash-row strong').allTextContents(), ['PrivatesGeschenk2117']);
+    await page.locator('.trash-row .trash-restore').click();
+    assert.equal(await page.textContent('#trash-status-text'), '„PrivatesGeschenk2117“ steht wieder in der geheimen Liste');
+    await page.click('#trash-dialog [data-close]');
+    // Danach wieder der allgemeine Papierkorb mit seinem Titel
+    await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht'); assert.equal(await page.locator('#trash-empty').isVisible(), true);
+    assert.equal(await page.locator('#trash-dialog .trash-foot').isVisible(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
   // ---- 2.156: Das gewählte Symbol trägt seinen Namen als Listennamen ein ----
   for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.156: Eigene Liste – Apotheke antippen setzt „Apotheke“ als Namen ohne Tastatur; eigener Name bleibt; „Geschenke/Wünsche“ (${width}px ${theme})`, async () => {
     const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 844 }, colorScheme: theme, isMobile: true, hasTouch: true } });

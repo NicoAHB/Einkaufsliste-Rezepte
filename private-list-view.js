@@ -89,13 +89,15 @@ export function mountPrivateList({getScope,onChange,onError,onDeleted=()=>{},onE
       delete current.deletedAt;return data;
     });
   }
-  // Einträge für „Kürzlich gelöscht“, im Format von trashEntries (trash.js).
-  function trash(now=Date.now()){
-    return privateTrash(state,now).map(row=>({kind:'private',collection:'private',id:row.id,title:row.name,detail:[list(privateItemListId(row,state))?.name||'Geheime Liste','nur auf diesem Gerät'].join(' · '),deletedAt:row.deletedAt}));
+  // Einträge für „Kürzlich gelöscht“, im Format von trashEntries (trash.js). Seit 2.157 je geheimer Liste: Sie erscheinen nur in deren
+  // eigenem Papierkorb, nie im allgemeinen. `listId` fehlt nur bei der Gesamtzahl (z. B. Leeren aller Listen beim Entfernen des Geräts).
+  function trash(now=Date.now(),listId=''){
+    return privateTrash(state,now).filter(row=>!listId||privateItemListId(row,state)===listId).map(row=>({kind:'private',collection:'private',id:row.id,listId:privateItemListId(row,state),title:row.name,detail:[list(privateItemListId(row,state))?.name||'Geheime Liste','nur auf diesem Gerät'].join(' · '),deletedAt:row.deletedAt}));
   }
-  function purge(){
-    const count=privateTrash(state).length;if(!count)return 0;
-    return mutate(data=>{data.items=data.items.filter(row=>!privateDeleted(row));return data;})?count:0;
+  function purge(listId=''){
+    const own=row=>privateDeleted(row)&&(!listId||privateItemListId(row,state)===listId);
+    const count=privateTrash(state).filter(own).length;if(!count)return 0;
+    return mutate(data=>{data.items=data.items.filter(row=>!(privateDeleted(row)&&(!listId||privateItemListId(row,data)===listId)));return data;})?count:0;
   }
   $('private-item-delete').addEventListener('click',()=>{
     const pending=editing;if(!pending||pending.scope!==scope)return;

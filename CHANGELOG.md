@@ -2,6 +2,17 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.157: Geheimes bleibt im Papierkorb der geheimen Liste
+
+**Bisher:** Was in einer geheimen Liste gelöscht wurde, stand auch im allgemeinen Papierkorb (Optionen → „Kürzlich gelöscht“). Bei mehreren geheimen Listen stand es zudem im Papierkorb jeder anderen geheimen Liste.
+
+**Jetzt:**
+- **Eigener Papierkorb:** Gelöschtes aus einer geheimen Liste erscheint nur noch in deren eigenem Papierkorb („Kürzlich gelöscht“ am Ende genau dieser geheimen Liste). Der Titel nennt die Liste, z. B. „Kürzlich gelöscht · Reise privat“, mit dem Hinweis „nur auf diesem Gerät“.
+- **Allgemeiner Papierkorb:** Optionen und Einkaufsliste zeigen nur noch Gemeinsames. Auch die Zahl unter Optionen zählt nichts Geheimes mehr mit.
+- **Leeren:** „Papierkorb leeren“ leert nur den gerade offenen Papierkorb. Im allgemeinen bleiben geheime Einträge unberührt, in einer geheimen Liste nur deren eigene.
+
+Offline-Paket `einkauf-shell-v169`.
+
 ## Neu in Version 2.156: Das Symbol schlägt den Listennamen vor
 
 Unter **Eigene Liste anlegen**:
