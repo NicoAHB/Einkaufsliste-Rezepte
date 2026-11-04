@@ -1,7 +1,7 @@
 // Lokale, gemeinsam gespeicherte Symbole für Reiter. Kennungen bleiben stabil.
 // `label` (Symbol 1–7) ist die alte Nummer; die Oberfläche zeigt seit 2.152 nur noch `name`.
 export const LIST_SYMBOLS = Object.freeze([
-  { id:'gift', label:'Symbol 1', name:'Geschenke' },
+  { id:'gift', label:'Symbol 1', name:'Geschenke/Wünsche' },   // seit 2.156 (vorher „Geschenke“)
   { id:'pharmacy', label:'Symbol 2', name:'Apotheke' },
   { id:'travel', label:'Symbol 3', name:'Reisen' },
   { id:'home', label:'Symbol 4', name:'Haushalt' },
@@ -14,6 +14,14 @@ export const LIST_SYMBOL_IDS = Object.freeze(LIST_SYMBOLS.map(symbol=>symbol.id)
 export const NOTES_SYMBOL = 'checklist';
 export const REGULAR_SYMBOLS = Object.freeze(LIST_SYMBOLS.filter(symbol=>symbol.id!==NOTES_SYMBOL));
 export const symbolName = id => LIST_SYMBOLS.find(symbol=>symbol.id===id)?.name || '';
+// Vorgeschlagener Listenname beim Anlegen (2.156): der Name des Symbols, beim Schloss „Geheime Liste“
+export const suggestedListName = id => id === 'secret' ? 'Geheime Liste' : symbolName(id);
+// Ein Name, den es noch nicht gibt: „Apotheke“, sonst „Apotheke 2“, „Apotheke 3“ …
+export function uniqueName(base, taken) {
+  const used = new Set([...taken].map(name => String(name).trim().toLocaleLowerCase('de')));
+  if (!base || !used.has(base.toLocaleLowerCase('de'))) return base;
+  for (let number = 2; ; number++) { const name = `${base} ${number}`; if (!used.has(name.toLocaleLowerCase('de'))) return name; }
+}
 
 const normalise = name => String(name || '').trim().toLowerCase().replace(/ß/g, 'ss').replace(/\s+/g, ' ');
 // Ohne ausdrückliche Wahl (`symbol` fehlt) ist „Wünsche“ (auch Wunschliste, Wunschzettel) ein Geschenk.

@@ -4829,7 +4829,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
     const record = name => remote.content.stores.find(entry => entry.name === name);
     const close = async () => { await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' }); };
-    assert.match(await row(3).locator('.store-symbol-fixed').textContent(), /Symbol: Geschenke · festgelegt/);
+    assert.match(await row(3).locator('.store-symbol-fixed').textContent(), /Symbol: Geschenke\/Wünsche · festgelegt/);
     assert.equal(await row(3).locator('input[name=symbol]').count(), 0, 'keine Galerie zum Tauschen');
     assert.equal(await mode(3).inputValue(), 'symbol', 'bisherige Ansicht bleibt: nur das Bild');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
@@ -11292,7 +11292,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(fields[0], 'Listenname'); assert.ok(fields.indexOf('Symbol (optional)') > 0 && fields.indexOf('Anzeige im Reiter') > fields.indexOf('Symbol (optional)'), fields.join(' | '));
     assert.equal(await page.locator('#choose-store').isVisible(), false); assert.equal(await page.locator('#store-new-more').isVisible(), false, 'keine Händlerangaben');
     // Motive mit Namen, ohne Klemmbrett; ohne Symbol nur „Nur Name“
-    assert.deepEqual(await page.locator('#store-form .store-symbol-choices .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Geschenke', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf'], 'seit 2.154 ohne „Ohne Symbol“');
+    assert.deepEqual(await page.locator('#store-form .store-symbol-choices .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Geschenke/Wünsche', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf'], 'seit 2.154 ohne „Ohne Symbol“, seit 2.156 „Geschenke/Wünsche“');
     assert.equal(await page.locator('#store-form .store-symbol-secret .secret-choice-text > span').textContent(), 'Geheim');
     assert.equal(await page.locator('#store-form input[name=displayMode][value=symbol]').isDisabled(), true);
     assert.equal(await page.locator('#store-form input[name=displayMode][value=both]').isDisabled(), true);
@@ -11341,6 +11341,50 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
     assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.156: Das gewählte Symbol trägt seinen Namen als Listennamen ein ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.156: Eigene Liste – Apotheke antippen setzt „Apotheke“ als Namen ohne Tastatur; eigener Name bleibt; „Geschenke/Wünsche“ (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 844 }, colorScheme: theme, isMobile: true, hasTouch: true } });
+    await seedLocal(ctx, notesData152()); await open(page);
+    const form = page.locator('#store-form'), name = () => page.inputValue('#store-form [name=name]'), tile = value => form.locator(`.store-symbol-choice:has(input[value=${value}])`);
+    const typing = () => page.evaluate(() => document.activeElement?.matches('input[name=name]') || false);
+    const openList = async () => { await page.locator('#store-create').tap(); await page.locator('#store-add-choice .store-kind[data-kind=list]').tap(); };
+    await page.locator('#manage-stores').tap(); await sheetOpen(page); await openList();
+    // „Geschenke/Wünsche“ statt „Geschenke“, umbrochen nach dem Schrägstrich, nichts abgeschnitten
+    const gift = tile('gift');
+    assert.equal(await gift.locator('span:not(.store-symbol)').textContent(), 'Geschenke/Wünsche');
+    assert.equal(await gift.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    // Antippen trägt den Namen ein, ohne Tastatur; die Vorschau zeigt ihn
+    await tile('pharmacy').tap();
+    assert.equal(await name(), 'Apotheke'); assert.equal(await typing(), false, 'keine Tastatur');
+    assert.match(await form.locator('.store-preview-chip').textContent(), /Apotheke/);
+    await tile('travel').tap(); assert.equal(await name(), 'Reisen', 'ein anderes Symbol ersetzt den eigenen Vorschlag');
+    await tile('gift').tap(); assert.equal(await name(), 'Geschenke/Wünsche');
+    await tile('secret').tap(); assert.equal(await name(), 'Geheime Liste'); assert.equal(await page.isChecked('#store-form [name=private]'), true);
+    await tile('secret').tap(); assert.equal(await name(), '', 'Abwählen leert den Vorschlag');
+    // Selbst benannt: Symbole überschreiben den Namen nicht mehr
+    await form.locator('[name=name]').tap(); assert.equal(await typing(), true, 'erst das eigene Antippen öffnet die Tastatur');
+    await page.keyboard.type('Medikamente Oma');
+    await tile('pharmacy').tap(); assert.equal(await name(), 'Medikamente Oma');
+    await tile('home').tap(); assert.equal(await name(), 'Medikamente Oma');
+    // Feld geleert: der nächste Tipp schlägt wieder vor
+    await form.locator('[name=name]').fill(''); await tile('pharmacy').tap(); await tile('pharmacy').tap(); assert.equal(await name(), '');
+    await tile('pharmacy').tap(); assert.equal(await name(), 'Apotheke');
+    await page.locator('#store-add').tap();
+    let stores = (await storedDemo(page)).stores;
+    assert.deepEqual(stores.filter(row => row.name === 'Apotheke').map(row => row.symbol), ['pharmacy']);
+    // Gibt es den Namen schon: „Apotheke 2“
+    await openList(); await tile('pharmacy').tap(); assert.equal(await name(), 'Apotheke 2');
+    // Ein Symbol zur bestehenden Liste „Urlaub“ ist kein Problem; „Reisen“ ist frei
+    await tile('travel').tap(); assert.equal(await name(), 'Reisen');
+    // Zurück und wieder hin: der Vorschlag bleibt, ein Wechsel zu Notizliste ändert ihn nicht
+    await page.locator('#store-form-back').tap(); await page.locator('#store-add-choice .store-kind[data-kind=list]').tap(); assert.equal(await name(), 'Reisen');
+    await page.locator('#store-add-dialog .sheet-head [data-close]').tap();
+    await openList(); assert.equal(await name(), '', 'nach dem Schließen beginnt es leer');
+    if (process.env.SATTPLAN_SHOTS) { await tile('pharmacy').tap(); await page.screenshot({ path: `/tmp/sattplan2156-name-${width}-${theme}.png` }); }
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true); assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
 

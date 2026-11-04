@@ -2,6 +2,16 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.156: Das Symbol schlägt den Listennamen vor
+
+Unter **Eigene Liste anlegen**:
+- **Symbol antippen trägt seinen Namen ein:** Apotheke → im Feld „Listenname“ steht **Apotheke**. Die Tastatur öffnet sich dabei nicht; erst wenn du ins Feld tippst, um die Liste anders zu benennen.
+- **Den eigenen Namen behältst du:** Ein anderes Symbol ersetzt nur den Vorschlag, nicht einen selbst eingetippten Namen. Ein zweiter Tipp auf das Symbol hebt die Wahl samt Vorschlag auf.
+- **Doppelte Namen werden vermieden:** Gibt es „Apotheke“ schon, lautet der Vorschlag **Apotheke 2**. Das Schloss schlägt **Geheime Liste** vor.
+- **„Geschenke“ heißt jetzt „Geschenke/Wünsche“**, auch bei „Symbol: … · festgelegt“. Die Kachel bricht nach dem Schrägstrich um, nicht mitten im Wort.
+
+Offline-Paket `einkauf-shell-v168`.
+
 ## Neu in Version 2.155: Geschäft bearbeiten – verständlich für neue Nutzer
 
 **„Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist“ entfällt.**

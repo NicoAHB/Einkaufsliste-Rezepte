@@ -13,7 +13,7 @@ import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey,
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
-import { REGULAR_SYMBOLS, NOTES_SYMBOL, DISPLAY_MODES, DISPLAY_LABELS, displayModeOf, fixedSymbol, symbolName } from './list-symbols.js';
+import { REGULAR_SYMBOLS, NOTES_SYMBOL, DISPLAY_MODES, DISPLAY_LABELS, displayModeOf, fixedSymbol, symbolName, suggestedListName, uniqueName } from './list-symbols.js';
 import { privateView, privateViewId } from './private-list.js';
 import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
@@ -1125,7 +1125,7 @@ function symbolPicker({ value = '', legend = 'Symbol (optional)', hint = 'Ein zw
     const image=symbolNode(choice.id,choice.name);
     for(const attribute of ['role','aria-label','title'])image.removeAttribute(attribute);image.setAttribute('aria-hidden','true');
     if(choice.id==='secret'){const text=element('span',undefined,'secret-choice-text');text.append(element('span',choice.name),element('small',SECRET_CHOICE_NOTE));label.append(input,image,text);secret.append(label);}
-    else{label.append(input,image,element('span',choice.name));choices.append(label);}
+    else{const text=element('span');choice.name.split('/').forEach((part,index)=>{if(index)text.append('/',element('wbr'));text.append(part);});label.append(input,image,text);choices.append(label);}
   }
   // Abwählen: Ein Radioknopf lässt sich sonst nicht wieder leeren.
   let armed=null;
@@ -1383,17 +1383,32 @@ function storeEditorRow(store) {
    „Zurück“ behält die Eingaben, „Abbrechen“ und Schließen legen nichts an. Erst der abschließende Tipp speichert, und nur einmal. */
 const ADD_KINDS = Object.freeze({
   store: { title: 'Geschäft hinzufügen', caption: 'Geschäftsname', placeholder: 'z. B. Mein Baumarkt', submit: 'Geschäft hinzufügen' },
-  list: { title: 'Eigene Liste anlegen', caption: 'Listenname', placeholder: 'z. B. Urlaub oder Geschenke', submit: 'Liste anlegen' },
+  list: { title: 'Eigene Liste anlegen', caption: 'Listenname', placeholder: 'z. B. Urlaub oder Geschenke', submit: 'Liste anlegen' },   // ein Symbol trägt seinen Namen ein (2.156)
   notes: { title: 'Notizliste anlegen', caption: 'Listenname', placeholder: 'z. B. Notizen oder Familie', submit: 'Notizliste anlegen' }
 });
 let storeAddFrom = 'manage', newStoreSymbols = null, newStoreDisplay = null;
+/* Namensvorschlag (2.156): Wer bei „Eigene Liste anlegen“ ein Symbol antippt, bekommt dessen Namen ins Feld „Listenname“ (Apotheke → „Apotheke“),
+   ohne dass sich die Tastatur öffnet. Ein selbst eingetippter Name bleibt; ein anderes Symbol ersetzt nur den eigenen Vorschlag, Abwählen leert ihn.
+   Gibt es den Namen schon, heißt der Vorschlag „Apotheke 2“. */
+let suggestedName = '';
+function suggestListName() {
+  const form = $('#store-form'), input = form.elements.name;
+  if (form.elements.kind.value !== 'list') return;
+  const current = input.value.trim();
+  if (current && current !== suggestedName) return;   // selbst benannt
+  const symbol = pickedSymbol(newStoreSymbols);
+  const taken = [...active(state.stores).map(store => store.name), ...(privateList?.lists || []).map(list => list.name)];
+  suggestedName = symbol ? uniqueName(suggestedListName(symbol), taken) : '';
+  input.value = suggestedName;
+  if (suggestedName) showStoreNameError(false);
+}
 function openStoreAdd(from = 'manage') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   storeAddFrom = from; resetStoreAdd(); $('#store-add-dialog').showModal();
   $('#store-add-choice .store-kind').focus({ preventScroll: true });
 }
 function resetStoreAdd() {
-  const form = $('#store-form'); form.reset(); form.elements.chainKey.value = ''; delete form.dataset.busy; $('#store-new-more').open = false;
+  const form = $('#store-form'); form.reset(); form.elements.chainKey.value = ''; delete form.dataset.busy; $('#store-new-more').open = false; suggestedName = '';
   newStoreDisplay.sync('', ''); showStoreNameError(false); showStoreAddStep('');
 }
 function showStoreNameError(show) {
@@ -4433,7 +4448,8 @@ $('#choose-store').addEventListener('click', () => {
 $('#store-catalog-search').addEventListener('input', renderStoreCatalog);
 $('#store-catalog-type').addEventListener('change', renderStoreCatalog);
 // Anlegen (2.152): Motivwahl samt Geheim-Haken für eigene Listen, festes Klemmbrett für Notizlisten, Anzeige im Reiter mit Vorschau
-newStoreSymbols=symbolPicker();newListPrivacy=listPrivacyField(()=>pickedSymbol(newStoreSymbols),[newStoreSymbols],()=>$('#store-form').elements.kind.value==='list');
+newStoreSymbols=symbolPicker();newStoreSymbols.addEventListener('change',suggestListName);   // vor der Vorschau, die den Namen zeigt
+newListPrivacy=listPrivacyField(()=>pickedSymbol(newStoreSymbols),[newStoreSymbols],()=>$('#store-form').elements.kind.value==='list');
 $('#store-list-symbols').append(newStoreSymbols,newListPrivacy.field);
 $('#store-notes-symbol').append(fixedSymbolInfo(NOTES_SYMBOL),element('p','Das Klemmbrett gehört fest zur Notizliste. Die Anzeige im Reiter kannst du später jederzeit ändern.','hint'));
 newStoreDisplay=displayPicker('name');$('#store-new-display').prepend(newStoreDisplay.field);

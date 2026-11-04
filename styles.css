@@ -5500,7 +5500,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 /* Motive mit Namen statt Nummern; das gewählte ist grün umrandet */
 .store-symbol-choices { grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px }
 .store-symbol-choice { grid-template-columns:minmax(0,1fr); justify-items:center; align-content:center; gap:6px; min-height:84px; padding:10px 6px; text-align:center }
-.store-symbol-choice>span:not(.store-symbol) { font-size:.84rem; line-height:1.25; white-space:normal; overflow-wrap:anywhere; hyphens:auto }
+.store-symbol-choice>span:not(.store-symbol) { font-size:.84rem; line-height:1.25; white-space:normal; overflow-wrap:break-word; hyphens:manual }   /* „Geschenke/Wünsche“ bricht nach dem Schrägstrich */
 .store-symbol-hint { margin:8px 2px 0 }
 /* 2.154: „Geheim“ unter einer Linie, als breite Kachel mit Erklärung */
 .store-symbol-line { height:0; margin:12px 2px; border-top:1px solid var(--line-strong) }
