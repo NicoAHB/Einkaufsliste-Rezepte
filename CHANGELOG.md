@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.148: Geheime Liste ohne Abhak-Kreis
+
+- Auch in der **geheimen Liste** gibt es unter **Planen** keinen Abhak-Kreis mehr, wie in allen anderen Listen seit 2.147. Was erledigt ist, wird lange gehalten und nach rechts in den **Mülleimer** gezogen; danach steht unten **Rückgängig**, und der Eintrag bleibt 14 Tage unter **Kürzlich gelöscht** (nur auf diesem Gerät).
+- Ein kurzer Hinweis oben in der geheimen Liste erklärt das: „Erledigt? Eintrag lange halten und nach rechts in den Mülleimer ziehen.“
+- Früher abgehakte private Einträge bleiben unter **Erledigt** mit einem kleinen Haken stehen (kein Knopf) und lassen sich ebenso in den Mülleimer ziehen.
+- Name und Notiz haben ohne den Kreis mehr Platz.
+
+Offline-Paket `einkauf-shell-v160`.
+
 ## Neu in Version 2.147: Abhaken nur im Laden, Wischen in den Mülleimer in allen Listen, „Rückgängig“ nach jedem Löschen, Speichern erst nach einer Änderung
 
 **Abhaken nur noch „Im Laden“.** Unter **Planen** gibt es keinen Abhak-Kreis mehr, auch nicht bei Wünschen, damit beim Planen nichts aus Versehen als erledigt markiert wird. Abgehakt und wieder geöffnet wird ausschließlich unter **Im Laden**.

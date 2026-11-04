@@ -745,6 +745,11 @@ main {
 .private-items { list-style:none; padding:0; margin:0 }
 .private-row { display:grid; grid-template-columns:48px minmax(0,1fr); gap:12px; align-items:center; min-height:74px; padding:12px; border-bottom:1px solid var(--line); background:var(--card) }
 .private-row:has(.item-thumb) { grid-template-columns:48px minmax(0,1fr) 48px }
+/* Ohne Abhak-Kreis (2.148): offene Einträge mit mehr Platz, früher Erledigtes mit kleinem Haken */
+.private-row.plain { grid-template-columns:minmax(0,1fr); padding-left:16px }
+.private-row.plain:has(.item-thumb) { grid-template-columns:minmax(0,1fr) 48px }
+.private-row.checked { grid-template-columns:30px minmax(0,1fr) }
+.private-row.checked:has(.item-thumb) { grid-template-columns:30px minmax(0,1fr) 48px }
 .private-row>.check { width:48px; height:48px; min-height:48px }
 .private-row>.private-copy { display:block; min-width:0; width:100%; min-height:48px; padding:4px 0; border:0; background:transparent; color:var(--text); text-align:left; box-shadow:none; overflow-wrap:anywhere }
 .private-copy strong { display:block; font-size:1rem; line-height:1.4 }

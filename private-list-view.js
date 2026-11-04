@@ -19,13 +19,15 @@ export function mountPrivateList({getScope,onChange,onError,onDeleted=()=>{},onE
     editing={id,scope,listId:selected,baseline:{name:item.name,note:item.note}};dialog.showModal();onEdit(form,item);
   }
   function row(item){
-    const li=node('li',undefined,`private-row${item.checked?' checked':''}`);li.dataset.privateId=item.id;li.dataset.id=item.id;   // data-id: lange halten und in den Mülleimer ziehen
-    const check=node('button',undefined,'check');check.type='button';check.setAttribute('aria-label',`${item.name}: ${item.checked?'wieder öffnen':'abhaken'}`);check.setAttribute('aria-pressed',String(item.checked));if(item.checked)check.append(makeIcon('check'));
-    check.addEventListener('click',()=>mutate(data=>{const current=data.items.find(row=>row.id===item.id&&row.listId===selected);if(current)current.checked=!current.checked;return data;}));
+    const li=node('li',undefined,`private-row ${item.checked?'checked':'plain'}`);li.dataset.privateId=item.id;li.dataset.id=item.id;   // data-id: lange halten und in den Mülleimer ziehen
+    /* Kein Abhak-Kreis (2.148): Wie in allen Listen wird unter „Planen“ nicht abgehakt. Wer etwas erledigt hat, zieht den Eintrag in den Mülleimer
+       (mit „Rückgängig“ und 14 Tagen Papierkorb). Früher Abgehaktes bleibt unter „Erledigt“ mit einem Haken stehen, der kein Knopf ist. */
+    const mark=item.checked?node('span',undefined,'bought-mark'):null;
+    if(mark){mark.append(makeIcon('check'));mark.setAttribute('role','img');mark.setAttribute('aria-label','erledigt');}
     const copy=node('button',undefined,'private-copy');copy.type='button';copy.append(node('strong',item.name));
     if(item.source?.quantity&&item.source?.unit)copy.append(node('small',`${item.source.quantity} ${item.source.unit}`));
-    if(item.note)copy.append(node('small',item.note));copy.setAttribute('aria-label',`${item.name} privat bearbeiten`);copy.addEventListener('click',()=>edit(item.id));
-    li.append(check,copy);if(imagesOn())li.append(makeThumb(item));return li;
+    if(item.note)copy.append(node('small',item.note));copy.setAttribute('aria-label',`${item.name}${item.checked?', erledigt,':''} privat bearbeiten`);copy.addEventListener('click',()=>edit(item.id));
+    li.append(...[mark,copy].filter(Boolean));if(imagesOn())li.append(makeThumb(item));return li;
   }
   function render(){
     const current=list(selected),rows=current?items(selected):[],open=rows.filter(item=>!item.checked),done=rows.filter(item=>item.checked);
