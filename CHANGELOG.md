@@ -13,6 +13,8 @@ Eine eigene Liste mit dem **Klemmbrett-Symbol** (jetzt **Symbol 5 · Notizen**, 
 - Unter **Im Laden** erscheint die Notizen-Liste nicht. Artikel lassen sich nicht in die Notizen verschieben, und im Artikel-Fenster steht sie nicht als Geschäft zur Wahl.
 - Lange Notizen brechen um; in der Meldung „… gelöscht“ werden sie gekürzt.
 
+**Geheime Liste in Normalschrift.** Die Einträge der geheimen Liste stehen nicht mehr fett, sondern in normaler Schrift (wie die Notizen).
+
 Offline-Paket `einkauf-shell-v162`.
 
 ## Neu in Version 2.149: Fehlerbehebungen aus einer zweiten Prüfung

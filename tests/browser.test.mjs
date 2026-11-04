@@ -10977,6 +10977,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-private-list-v1:einkauf-demo-v1')).items);
     await page.locator('#store-chips [data-private=private-a]').click(); await page.waitForSelector('#private-list-panel:not([hidden])');
     assert.equal(await page.locator('#private-list-panel .check').count(), 0, 'kein Abhak-Kreis');
+    assert.equal(await page.locator('#private-items .private-copy strong').first().evaluate(node => getComputedStyle(node).fontWeight), '400', 'Einträge in Normalschrift (2.150)');
     assert.equal(await page.getByRole('button', { name: /abhaken|wieder öffnen/ }).count(), 0);
     assert.match(await page.textContent('#private-list-panel .private-list-intro'), /Erledigt\? Eintrag lange halten und nach rechts in den Mülleimer ziehen\./);
     // Tipp auf den Eintrag öffnet weiter das Bearbeiten, ohne abzuhaken
