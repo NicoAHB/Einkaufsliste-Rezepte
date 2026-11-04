@@ -109,7 +109,7 @@ const sheetOpen = async page => {
   await page.evaluate(() => Promise.race([new Promise(resolve => setTimeout(resolve, 1500)),
     Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))]));
 };
-const nextDailyOrOverview=async page=>{await page.waitForSelector('#daily-card .daily-ingredients');if(await page.locator('#daily-review-next').isEnabled())await page.click('#daily-review-next');else{await page.click('#daily-dialog [data-close]');await page.click('#daily-open');await sheetOpen(page);}};
+const nextDailyOrOverview=async page=>{await page.waitForSelector('#daily-card .daily-ingredients');if(await page.locator('#daily-review-next').evaluate(node=>!node.disabled&&node.dataset.done!=='true'))await page.click('#daily-review-next');else{await page.click('#daily-dialog [data-close]');await page.click('#daily-open');await sheetOpen(page);}};
 const recipeGroupOption = (page,tag) => page.locator('#recipe-groups-options button').filter({hasText:new RegExp(`^${tag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`)});
 const pickRecipeGroup = async (page,tag) => {
   const option=recipeGroupOption(page,tag),section=option.locator('xpath=ancestor::details');
@@ -3230,7 +3230,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const bounds=await page.locator('#store-quick-options button').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),count=n.querySelector('.quick-count'),range=document.createRange();if(count)range.selectNodeContents(count);return {x:r.x,y:r.y,w:r.width,right:r.right,over:n.scrollWidth-n.clientWidth,countLines:count?range.getClientRects().length:0};}));
       assert.ok(bounds.every((b,i)=>b.over<=1&&b.countLines<=1&&(!i||b.y>bounds[i-1].y)),JSON.stringify(bounds));
       assert.ok(bounds.every(b=>Math.abs(b.w-bounds[0].w)<1));assert.equal(await page.locator('#store-quick-options [data-view=quick295-1] .quick-label').textContent(),'Sonstige (Netto, Aldi, usw.)');
-      const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.locator('.quick-label').textContent(),'');assert.equal(await wish.locator('.store-symbol').count(),1);
+      const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.locator('.quick-label').textContent(),'Wünsche','die ausgeschriebene Auswahl zeigt immer den Namen (2.152)');assert.equal(await wish.locator('.store-symbol').count(),1);
       assert.equal(await page.locator('#store-quick-options [data-view=all]').getAttribute('aria-pressed'),'true');
       assert.equal(await horizontalOverflow(page),0);await page.locator('#store-quick-options [data-view=quick295-0]').click();
       assert.equal(await page.locator('#store-chips [data-store-id=quick295-0]').getAttribute('aria-selected'),'true');assert.deepEqual(problems,[]);await ctx.close();
@@ -3430,8 +3430,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const cdp=await ctx.newCDPSession(page);const all=page.locator('#store-chips [data-all-stores]');await all.scrollIntoViewIfNeeded();const b=await all.boundingBox();
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2,id:1}]});await page.waitForTimeout(600);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sheetOpen(page);
     const choices=page.locator('#store-quick-options button');
-    assert.deepEqual(await choices.evaluateAll(nodes=>nodes.map(node=>node.dataset.view)),['all','store-edeka','store-lidl','store-rewe','store-wishes']);
-    const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.getAttribute('aria-pressed'),'true');assert.equal(await wish.textContent(),'(1)');
+    assert.deepEqual(await choices.evaluateAll(nodes=>nodes.map(node=>node.dataset.view||node.textContent)),['all','store-edeka','store-lidl','store-rewe','store-wishes','Geschäfte & Listen verwalten'],'am Ende der beschriftete Weg zur Verwaltung (2.152)');
+    const wish=page.locator('#store-quick-options [data-view=store-wishes]');assert.equal(await wish.getAttribute('aria-pressed'),'true');assert.equal(await wish.textContent(),'Wünsche(1)','mit vollständigem Namen (2.152)');
     assert.deepEqual(await storedDemo(page),before,'Öffnen ändert keine Daten');
     await page.locator('#store-quick-options [data-view=store-lidl]').click();assert.equal(await page.locator('#store-quick-dialog').isVisible(),false);
     assert.equal(await page.locator('#store-chips [data-store-id=store-lidl]').getAttribute('aria-selected'),'true');
@@ -8284,7 +8284,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await context({config:{theme,glass:true,palette:'gruen',glassLevel:65},context:{viewport:{width,height:844},colorScheme:theme}});await open(page);await goTab(page,'recipes');await page.click('#daily-open');await sheetOpen(page);await page.waitForSelector('#daily-card .daily-ingredients');
     const before=await dailySaved(page),recipes=(await storedDemo(page)).recipes.length,titles=[await page.textContent('#daily-card h3')];assert.equal(before.index,1);assert.equal(await page.locator('#daily-review-prev').isDisabled(),true);assert.equal(await page.locator('#daily-review-next').isEnabled(),true);assert.equal(await page.locator('#daily-day-next').isDisabled(),true,'Tages- und Rezeptpfeile sind getrennt');
     const next=await page.locator('#daily-review-next').boundingBox();assert.ok(next.y>0&&next.y+next.height<844);await page.click('#daily-review-next');await page.waitForFunction(()=>/Rezept 2 von 3/.test(document.querySelector('#daily-progress').textContent)&&document.querySelector('#daily-card .daily-ingredients'));titles.push(await page.textContent('#daily-card h3'));
-    await page.click('#daily-review-next');await page.waitForFunction(()=>/Rezept 3 von 3/.test(document.querySelector('#daily-progress').textContent)&&document.querySelector('#daily-card .daily-ingredients'));titles.push(await page.textContent('#daily-card h3'));assert.equal(new Set(titles).size,3);assert.equal(await page.locator('#daily-review-next').isDisabled(),true);
+    await page.click('#daily-review-next');await page.waitForFunction(()=>/Rezept 3 von 3/.test(document.querySelector('#daily-progress').textContent)&&document.querySelector('#daily-card .daily-ingredients'));titles.push(await page.textContent('#daily-card h3'));assert.equal(new Set(titles).size,3);assert.equal(await page.locator('#daily-review-next').isEnabled(),true,'beim letzten Rezept aktiv (2.152)');assert.equal(await page.textContent('#daily-review-next span'),'Fertig');
     await page.click('#daily-review-prev');await page.waitForFunction(()=>/Rezept 2 von 3/.test(document.querySelector('#daily-progress').textContent)&&document.querySelector('#daily-card .daily-ingredients'));assert.equal(await page.textContent('#daily-card h3'),titles[1]);await page.click('#daily-review-prev');await page.waitForSelector('#daily-card .daily-ingredients');assert.equal(await page.textContent('#daily-card h3'),titles[0]);
     const after=await dailySaved(page);assert.equal(after.index,3);assert.ok(Object.values(after.outcome).every(value=>value==='seen'));assert.deepEqual(after.queue,before.queue);assert.equal((await storedDemo(page)).recipes.length,recipes);assert.ok(await horizontalOverflow(page)<=1);assert.equal(await page.locator('#daily-review-nav').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);await saveShot(page,`sattplan-2129-heutige-rezepte-${width}.png`);assert.deepEqual(problems,[]);await ctx.close();
   });
@@ -8383,7 +8383,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.textContent('#daily-card h3'), titles[0]); assert.equal(await page.locator('#daily-add').isHidden(), true);
     await page.click('#daily-review-next'); await page.waitForFunction(title => document.querySelector('#daily-card h3').textContent === title && !document.querySelector('#daily-add').hidden, titles[1]);
     await page.click('#daily-add'); assert.equal((await storedDemo(page)).recipes.length, count + 1); assert.equal(await page.locator('#daily-add').isHidden(), true);
-    await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[2]); assert.equal(await page.locator('#daily-review-next').isDisabled(), true);
+    await page.click('#daily-review-next'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[2]); assert.equal(await page.textContent('#daily-review-next span'), 'Fertig');
     await page.click('#daily-review-prev'); await page.waitForSelector('#daily-card .daily-ingredients'); assert.equal(await page.textContent('#daily-card h3'), titles[1]);
     const after = await dailySaved(page); assert.equal(after.index, before.index); assert.deepEqual(after.decided, before.decided); assert.deepEqual(after.queue, before.queue);
     await reopenDaily(page); assert.match(await page.textContent('#daily-card'), /2 von 3 Rezepten hinzugefügt/);
@@ -11195,6 +11195,42 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Löschen nennt nur den Text
     await dragToTrash147(page, row('Zahnarzt'));
     assert.equal(await noticeText147(page), '„Zahnarzt Freitag 10 Uhr“ gelöscht');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.152: Rezepte des Tages – beim letzten Rezept „✓ Fertig“ statt eines grauen „Weiter“ ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.152: Rezepte des Tages – letztes Rezept zeigt aktives „Fertig“ und schließt; Doppeltipp und Wischen schließen nicht aus Versehen (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { theme, palette: 'gruen', glass: true, glassLevel: 65 }, context: { viewport: { width, height: 844 }, colorScheme: theme } });
+    await open(page); await goTab(page, 'recipes'); await page.click('#daily-open'); await sheetOpen(page); await page.waitForSelector('#daily-card .daily-ingredients');
+    const next = page.locator('#daily-review-next'), progress = text => page.waitForFunction(text => document.querySelector('#daily-progress').textContent.includes(text) && document.querySelector('#daily-card .daily-ingredients'), text);
+    assert.equal(await next.textContent(), 'Weiter'); assert.equal(await next.getAttribute('aria-label'), 'Nächstes Rezept');
+    await next.click(); await progress('Rezept 2 von 3');
+    // Schnelles Doppeltippen auf „Weiter“: landet auf Rezept 3, das Fenster bleibt offen
+    await next.dblclick(); await progress('Rezept 3 von 3');
+    assert.equal(await page.locator('#daily-dialog').evaluate(node => node.open), true, 'ein Doppeltipp schließt nicht mit');
+    // Letztes Rezept: aktiv, „Fertig“ mit Haken, gleiche Größe wie „Zurück“, verständlicher Name für Bildschirmleser
+    assert.equal(await next.isEnabled(), true); assert.equal(await next.textContent(), 'Fertig');
+    assert.equal(await next.getAttribute('aria-label'), 'Fertig – Rezepte des Tages schließen');
+    assert.equal(await next.locator('use[href="#i-check"]').count(), 1);
+    assert.equal(await page.locator('#daily-review-finish').count(), 0, 'kein zusätzlicher Knopf');
+    const prev = await page.locator('#daily-review-prev').boundingBox(), done = await next.boundingBox();
+    assert.equal(Math.round(prev.width), Math.round(done.width)); assert.equal(Math.round(prev.height), Math.round(done.height)); assert.ok(done.height >= 48);
+    const look = await next.evaluate(node => ({ opacity: getComputedStyle(node).opacity, border: getComputedStyle(node).borderColor, color: getComputedStyle(node).color, over: node.scrollWidth - node.clientWidth }));
+    assert.equal(look.opacity, '1', 'nicht ausgegraut'); assert.equal(look.border, look.color, 'grün umrandet'); assert.ok(look.over <= 1);
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2152-fertig-${width}-${theme}.png` });
+    // Wischen blättert nur, es schließt nicht
+    await page.locator('#daily-content').evaluate(area => {
+      const fire = (type, x) => area.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'touch', pointerId: 7, clientX: x, clientY: 400, isPrimary: true }));
+      fire('pointerdown', 300); fire('pointerup', 120);
+    });
+    await page.waitForTimeout(100); assert.equal(await page.locator('#daily-dialog').evaluate(node => node.open), true, 'Wischen schließt nicht');
+    // Zurück: wieder „Weiter“; erneut vor: „Fertig“
+    await page.click('#daily-review-prev'); await progress('Rezept 2 von 3'); assert.equal(await next.textContent(), 'Weiter');
+    await next.click(); await progress('Rezept 3 von 3'); await page.waitForTimeout(500);
+    // „Fertig“ schließt die Rezepte des Tages; der Fortschritt bleibt erhalten
+    await next.click(); await page.waitForSelector('#daily-dialog', { state: 'hidden' });
+    assert.equal((await dailySaved(page)).index, 3);
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
 

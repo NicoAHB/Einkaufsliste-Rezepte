@@ -38,6 +38,12 @@ Umgesetzt nach der Arbeitsanweisung „Geschäfte und Listen übersichtlich erg�
 - Die Sperre greift auch im Datenabgleich. Weder Umbenennen, „Nur Name“, Aus- und Einblenden, eine Umstellung Liste ↔ Geschäft, ein gleichzeitiges Speichern auf zwei Geräten noch eine alte Offline-Änderung tauschen ein Symbol aus.
 - Das bisher nur aus dem Namen abgeleitete Geschenk der „Wünsche“ bleibt auch nach dem Umbenennen erhalten.
 
+**Rezepte des Tages: „✓ Fertig“ beim letzten Rezept.**
+- Beim letzten Rezept steht an derselben Stelle wie „Weiter“ ein aktives, grün umrandetes **✓ Fertig**, das die Rezepte des Tages schließt. Bisher stand dort ein grauer „Weiter“-Knopf ohne Funktion.
+- Ein schneller Doppeltipp auf „Weiter“ schließt nicht aus Versehen mit, ebenso wenig ein Wischen. „Zurück“ macht daraus wieder „Weiter“.
+- Bildschirmleser lesen „Fertig – Rezepte des Tages schließen“.
+- Es kommt kein zusätzlicher Knopf hinzu (wie seit 2.131).
+
 **Daten und ältere Geräte.**
 - Neuer Wert `displayMode` (`symbol` | `name` | `both`), getrennt vom Symbol.
 - Datenrevision 18: Sobald eine Anzeige gespeichert ist, werden ältere App-Versionen zum Aktualisieren aufgefordert, statt Symbole auszutauschen. Bitte alle Geräte aktualisieren.

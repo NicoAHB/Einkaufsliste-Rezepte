@@ -2569,10 +2569,18 @@ function renderDailyDays(day=localDay()){
   $('#daily-day-prev').disabled=!records.some(row=>row.day<day&&row.queue.length);
   $('#daily-day-next').disabled=day>=localDay();
 }
+/* Beim letzten Rezept (2.152) wird „Weiter“ an derselben Stelle zu einem aktiven „✓ Fertig“, das die Rezepte des Tages schließt:
+   kein grauer Knopf ohne Funktion, der Daumen bleibt, wo er ist. Wer schnell durchtippt, schließt nicht aus Versehen (kurze Sperre). */
+const DAILY_DONE_GUARD = 450;
 function dailyRecipeNavigation(record,index,review=false){
   $('#daily-review-nav').hidden=!review&&!record.queue.length;
   $('#daily-review-prev').disabled=index<=0;
-  $('#daily-review-next').disabled=index>=record.queue.length-1;
+  const next=$('#daily-review-next'),last=index>=record.queue.length-1,was=next.dataset.done==='true';
+  next.disabled=false;next.dataset.done=String(last);next.classList.toggle('daily-done',last);
+  if(last!==was||!next.querySelector('span'))next.replaceChildren(...(last?[icon('check'),element('span','Fertig')]:[element('span','Weiter'),icon('right')]));
+  next.setAttribute('aria-label',last?'Fertig – Rezepte des Tages schließen':'Nächstes Rezept');
+  if(last)next.title='Rezepte des Tages schließen';else next.removeAttribute('title');
+  if(last&&!was)next.dataset.doneSince=String(Date.now());
 }
 function rememberDailyView(review){
   const record=review.record,current=loadDaily(),item=record.queue[review.index];
@@ -2749,7 +2757,12 @@ function moveDailyRecipe(delta){
   return openDailyReview(localDay(),index);
 }
 $('#daily-review-prev').addEventListener('click',()=>guard(()=>moveDailyRecipe(-1)));
-$('#daily-review-next').addEventListener('click',()=>guard(()=>moveDailyRecipe(1)));
+$('#daily-review-next').addEventListener('click',()=>guard(()=>{
+  const next=$('#daily-review-next');
+  if(next.dataset.done!=='true')return moveDailyRecipe(1);
+  if(Date.now()-Number(next.dataset.doneSince||0)<DAILY_DONE_GUARD)return;   // ein Doppeltipp auf „Weiter“ schließt nicht gleich mit
+  $('#daily-dialog').close();
+}));
 // Zusätzlich zu den Pfeilen: nach links wischen zeigt das nächste, nach rechts das vorherige Rezept des Tages.
 (()=>{
   const area=$('#daily-content');let start=null;
@@ -2760,6 +2773,7 @@ $('#daily-review-next').addEventListener('click',()=>guard(()=>moveDailyRecipe(1
     const dx=event.clientX-start.x,dy=event.clientY-start.y,quick=Date.now()-start.at<800;start=null;
     if(!quick||Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.5)return;
     const target=$(dx<0?'#daily-review-next':'#daily-review-prev');
+    if(target.dataset.done==='true')return;   // Wischen blättert nur; geschlossen wird bewusst mit „Fertig“ oder ×
     if(!target.disabled&&!target.hidden&&!target.closest('[hidden]'))target.click();
   });
 })();
