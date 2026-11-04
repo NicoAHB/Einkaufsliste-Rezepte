@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.154: Übersichtlichere Symbolwahl
+
+Unter **Eigene Liste anlegen** (und bei **Symbol festlegen** einer Liste ohne Symbol):
+- Die Kachel **„Ohne Symbol“ entfällt**. Ist nichts gewählt, bekommt die Liste kein Symbol. Ein **zweiter Tipp** auf das gewählte Symbol (oder die Leertaste) hebt die Wahl wieder auf. Wer ein Symbol hat, es aber nicht sehen möchte, wählt unter „Anzeige im Reiter“ **Nur Name**.
+- Oben stehen die fünf Motive **Geschenke, Apotheke, Reisen, Haushalt, Tierbedarf**. Darunter folgt nach einer **Trennlinie** das Symbol **Geheim**, als breite Kachel mit der Erklärung „Für eine geheime Liste, die nur auf diesem Gerät bleibt“. Es steht weiter unter **Symbol (optional)**.
+- Der Hinweis unter den Symbolen sagt: „Ein zweiter Tipp hebt die Wahl auf. Nach dem Anlegen bleibt das Symbol fest.“
+
+Offline-Paket `einkauf-shell-v166`.
+
 ## Neu in Version 2.153: Keine Tastatur von selbst beim Hinzufügen
 
 Unter **Geschäfte & Listen → Hinzufügen** öffnet sich die Tastatur erst, wenn du selbst ins Namensfeld tippst.

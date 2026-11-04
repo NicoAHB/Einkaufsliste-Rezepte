@@ -1111,20 +1111,31 @@ function renderStores() {
 const storePill = (store, enabled = visibleStore(store)) => !enabled ? 'Ausgeblendet' : isNotesStore(store) ? 'Notizliste' : 'Eigene Liste';
 /* Motivwahl (2.152): vor dem Anlegen frei, danach fest. Angeboten werden die gewöhnlichen Motive mit ihrem Namen; das Klemmbrett gibt es
    nur über „Notizliste anlegen“, damit eine Liste nie versehentlich ihr Verhalten wechselt. */
-function symbolPicker({ value = '', legend = 'Symbol (optional)', hint = 'Das Symbol bleibt nach dem Anlegen fest.' } = {}) {
+/* 2.154: Ohne eigene Kachel „Ohne Symbol“: Ist nichts gewählt, bekommt die Liste kein Symbol; ein zweiter Tipp auf das gewählte Symbol
+   (oder die Leertaste) hebt die Wahl wieder auf. Fünf Motive oben, darunter nach einer Linie „Geheim“ mit kurzer Erklärung. */
+const SECRET_CHOICE_NOTE = 'Für eine geheime Liste, die nur auf diesem Gerät bleibt';
+function symbolPicker({ value = '', legend = 'Symbol (optional)', hint = 'Ein zweiter Tipp hebt die Wahl auf. Nach dem Anlegen bleibt das Symbol fest.' } = {}) {
   const field=element('fieldset',undefined,'store-symbol-picker');field.append(element('legend',legend));
-  const choices=element('div',undefined,'store-symbol-choices');
-  for(const choice of [{id:'name',name:'Ohne Symbol'},...REGULAR_SYMBOLS]) {
-    const label=element('label',undefined,'store-symbol-choice'),input=element('input');
-    input.type='radio';input.name='symbol';input.value=choice.id;input.checked=choice.id===(value||'name');input.defaultChecked=input.checked;
-    input.setAttribute('aria-label',choice.name);
-    const image=choice.id==='name'?icon('text'):symbolNode(choice.id,choice.name);
+  const choices=element('div',undefined,'store-symbol-choices'),secret=element('div',undefined,'store-symbol-secret'),line=element('div',undefined,'store-symbol-line');
+  line.setAttribute('aria-hidden','true');
+  for(const choice of REGULAR_SYMBOLS) {
+    const label=element('label',undefined,`store-symbol-choice${choice.id==='secret'?' secret-choice':''}`),input=element('input');
+    input.type='radio';input.name='symbol';input.value=choice.id;input.checked=choice.id===value;input.defaultChecked=input.checked;
+    input.setAttribute('aria-label',choice.id==='secret'?`${choice.name} – ${SECRET_CHOICE_NOTE}`:choice.name);
+    const image=symbolNode(choice.id,choice.name);
     for(const attribute of ['role','aria-label','title'])image.removeAttribute(attribute);image.setAttribute('aria-hidden','true');
-    label.append(input,image,element('span',choice.name));choices.append(label);
+    if(choice.id==='secret'){const text=element('span',undefined,'secret-choice-text');text.append(element('span',choice.name),element('small',SECRET_CHOICE_NOTE));label.append(input,image,text);secret.append(label);}
+    else{label.append(input,image,element('span',choice.name));choices.append(label);}
   }
-  field.append(choices,element('p',hint,'hint store-symbol-hint'));return field;
+  // Abwählen: Ein Radioknopf lässt sich sonst nicht wieder leeren.
+  let armed=null;
+  const clear=input=>{input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));};
+  field.addEventListener('pointerdown',event=>{const input=event.target.closest('label')?.querySelector('input[name=symbol]');armed=input?.checked?input:null;});
+  field.addEventListener('click',event=>{const input=event.target;if(!input.matches?.('input[name=symbol]'))return;if(armed===input)clear(input);armed=null;});
+  field.addEventListener('keydown',event=>{if(event.key===' '&&event.target.matches('input[name=symbol]:checked')){event.preventDefault();clear(event.target);}});
+  field.append(choices,line,secret,element('p',hint,'hint store-symbol-hint'));return field;
 }
-const pickedSymbol = picker => { const value = picker?.querySelector('input[name=symbol]:checked')?.value || ''; return value === 'name' ? '' : value; };
+const pickedSymbol = picker => picker?.querySelector('input[name=symbol]:checked')?.value || '';
 // Ein festgelegtes Symbol wird nur angezeigt, es gibt keine Galerie zum Tauschen.
 function fixedSymbolInfo(symbol, shown = symbol) {
   const box=element('div',undefined,'store-symbol-fixed'),picture=symbolNode(shown,symbolName(symbol)),text=element('span',undefined,'store-symbol-fixed-text');
@@ -1271,8 +1282,8 @@ function storeEditorRow(store) {
     if(fixed)symbolBox.append(fixedSymbolInfo(fixed,shownSymbol(fixed)));
     else {
       const none=element('div',undefined,'store-symbol-fixed none');none.append(icon('text'),element('span','Noch kein Symbol'));
-      firstPick=symbolPicker({legend:'Symbol festlegen (einmalig)',hint:'Einmalig: Nach dem Speichern bleibt das Symbol fest.'});firstPick.hidden=true;
-      const start=button('Symbol festlegen',()=>{start.hidden=true;firstPick.hidden=false;firstPick.querySelector('input:checked')?.focus({preventScroll:true});},'secondary store-symbol-first');
+      firstPick=symbolPicker({legend:'Symbol festlegen (einmalig)',hint:'Ein zweiter Tipp hebt die Wahl auf. Einmalig: Nach dem Speichern bleibt das Symbol fest.'});firstPick.hidden=true;
+      const start=button('Symbol festlegen',()=>{start.hidden=true;firstPick.hidden=false;firstPick.querySelector('input[name=symbol]')?.focus({preventScroll:true});},'secondary store-symbol-first');
       symbolBox.append(none,start,firstPick);
     }
     const chosenSymbol=()=>fixed||pickedSymbol(firstPick);
