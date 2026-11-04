@@ -2,6 +2,20 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.162: Familienmitglieder löschen, klarere Knöpfe und Linien
+
+**Versehentlich angelegte Person löschen.** Unter **Ausgaben → Personen verwalten** steht neben **Ändern** und **Ausblenden** jetzt ein roter Mülleimer, aber nur bei Personen ohne einen einzigen Einkauf und nie bei dir selbst. Vor dem Löschen fragt die App nach. Die Person verschwindet dann auf allen verbundenen Geräten und lässt sich jederzeit neu hinzufügen. Wer schon Einkäufe hat, lässt sich wie bisher nur ausblenden, damit die Ausgaben der Vergangenheit stimmen.
+
+Zur Einordnung: Die Personen gehören nur zu den Ausgaben (wer hat bezahlt). Wer etwas auf die Liste gesetzt hat, steht weiter am Artikel. Nutzt jemand die App auf dem eigenen Handy mit demselben Namen, wird beim ersten Einkauf dieselbe Person verwendet, es entsteht nichts doppelt.
+
+**Knöpfe unter „Datenumfang“ mit Rahmen.** **Älteren Tagesverlauf auf diesem Gerät löschen**, **Jetzt aufräumen** und **Nicht mehr genutzte Fotos löschen** haben jetzt einen Rahmen in der gewählten Farbe, wie **Datensicherung erstellen**.
+
+**Linie über den geheimen Listen.** In **Geschäfte & Listen** trennt eine waagerechte Linie die geheimen Listen von den übrigen Geschäften und Listen, wie bei den Notizen. Umsortieren per Ziehen bleibt oberhalb der Linie.
+
+**Rezepte des Tages: kein doppelter Ring am ×.** Beim Öffnen lag der Fokus auf dem Schließen-Knopf, und Safari zeichnete darum einen zweiten Ring. Der Fokus liegt jetzt unsichtbar auf der Überschrift; mit der Tastatur geht es wie gewohnt weiter.
+
+Offline-Paket `einkauf-shell-v174`.
+
 ## Neu in Version 2.161: Verschieben nur in Geschäfte, Grün zuerst, geheime Liste getrennt
 
 **Nie in eine Liste verschieben.** Artikel der Einkaufsliste lassen sich nur noch in ein Geschäft oder nach **Ohne Geschäft** verschieben, nie in eine Liste (Wünsche, eigene Listen wie „Nadiias Reise“, Notizen). Das gilt überall:
