@@ -5616,7 +5616,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-settings-v1')).productImages), false, 'dauerhaft gespeichert, bei den übrigen Einstellungen');
     await page.click('[data-tab=shopping]');
     assert.equal(await page.locator('.item-thumb').count(), 0);
-    assert.deepEqual(await page.evaluate(() => [...document.querySelector('#items .item').children].map(node => node.className)), ['check', 'item-copy']);
+    assert.deepEqual(await page.evaluate(() => [...document.querySelector('#items .item').children].map(node => node.className)), ['item-copy'], 'seit 2.147 unter Planen ohne Abhak-Kreis');
     await page.fill('#item-form input[name=name]', 'Butter'); await page.click('#item-form .add-button');
     await page.waitForSelector('#items .item:has-text("Butter")');
     assert.equal(await page.locator('.item-thumb').count(), 0, 'auch neue Artikel ohne Kachel');
@@ -10615,8 +10615,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.139: Papierkorb mit Rezept, Gericht und Ausgabe bei ${width}px ${theme}: Filter, Gruppen nach Tag und Wiederherstellen samt Rezept`, async () => {
     const data = structuredClone(demo), now = Date.now(), at = ms => new Date(now - ms).toISOString();
-    data.recipes.find(row => row.id === 'recipe-curry').deletedAt = at(26 * 3600000);
-    data.meals = [{ id: 'meal-curry', recipeId: 'recipe-curry', date: isoDate(), servings: 2, done: false, createdBy: 'Nico', createdAt: at(30 * 86400000), updatedAt: at(30 * 86400000), deletedAt: at(25 * 3600000), _clock: {} }];
+    // „Gestern“ als Kalendertag (gestern 12 Uhr Ortszeit), nicht „vor 25 Stunden“: Sonst scheitert der Test kurz nach Mitternacht.
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(12, 0, 0, 0);
+    const yesterdayAt = minutes => new Date(yesterday.getTime() - minutes * 60000).toISOString();
+    data.recipes.find(row => row.id === 'recipe-curry').deletedAt = yesterdayAt(60);
+    data.meals = [{ id: 'meal-curry', recipeId: 'recipe-curry', date: isoDate(), servings: 2, done: false, createdBy: 'Nico', createdAt: at(30 * 86400000), updatedAt: at(30 * 86400000), deletedAt: yesterdayAt(0), _clock: {} }];
     data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 4730, storeId: data.stores[0].id, buyerName: 'Anna', note: 'Wocheneinkauf', source: 'hand', createdAt: at(4 * 86400000), updatedAt: at(4 * 86400000), deletedAt: at(3 * 86400000), _clock: {} }];
     const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
     await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
