@@ -2,6 +2,21 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.150: Notizen
+
+Eine eigene Liste mit dem **Klemmbrett-Symbol** (jetzt **Symbol 5 · Notizen**, bisher „Aufgaben“) ist ein Notizzettel für die Familie:
+- **Nur Textzeilen.** Statt „Was brauchst du?“ mit Geschäft, Menge, Einheit, Produkten, Vorrat und Vorlagen steht dort eine Zeile zum Eintippen. Notizen haben keinen Bezug zu Geschäften oder Produkten: kein Zusammenzählen gleicher Texte, keine Schreibweisen-Korrektur, keine Mengen.
+- **„Fertig“ speichert.** Nach dem Eintippen mit Fertig (Enter) bestätigen: Die Notiz ist gespeichert, die Tastatur schließt sich, und darunter erscheint das grüne **+ Neue Notiz**. Ein Tipp darauf öffnet die nächste Zeile mitsamt Tastatur.
+- **Ändern** durch Antippen der Notiz, direkt in der Zeile. Wer den Text ganz löscht, löscht die Notiz (mit „Rückgängig“).
+- **Löschen** wie überall: lange halten und nach rechts in den Mülleimer ziehen. Gelöschte Notizen stehen 14 Tage unter „Kürzlich gelöscht“ (ohne Mengenangabe) und kommen „zu den Notizen“ zurück.
+- Notizen werden mit der Familie abgeglichen. Während jemand tippt, zeichnet ein Abgleich die Zeilen nicht neu.
+- Unter **Im Laden** erscheint die Notizen-Liste nicht. Artikel lassen sich nicht in die Notizen verschieben, und im Artikel-Fenster steht sie nicht als Geschäft zur Wahl.
+- Lange Notizen brechen um; in der Meldung „… gelöscht“ werden sie gekürzt.
+
+**Geheime Liste in Normalschrift.** Die Einträge der geheimen Liste stehen nicht mehr fett, sondern in normaler Schrift (wie die Notizen).
+
+Offline-Paket `einkauf-shell-v162`.
+
 ## Neu in Version 2.149: Fehlerbehebungen aus einer zweiten Prüfung
 
 ChatGPT hat Version 2.146 geprüft und sieben Fehler gemeldet. Alle sieben sind nachgestellt, bestätigt und behoben, jeweils mit einem Test, der vorher fehlschlug.

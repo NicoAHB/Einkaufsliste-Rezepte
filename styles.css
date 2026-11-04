@@ -751,8 +751,8 @@ main {
 .private-row.checked { grid-template-columns:30px minmax(0,1fr) }
 .private-row.checked:has(.item-thumb) { grid-template-columns:30px minmax(0,1fr) 48px }
 .private-row>.check { width:48px; height:48px; min-height:48px }
-.private-row>.private-copy { display:block; min-width:0; width:100%; min-height:48px; padding:4px 0; border:0; background:transparent; color:var(--text); text-align:left; box-shadow:none; overflow-wrap:anywhere }
-.private-copy strong { display:block; font-size:1rem; line-height:1.4 }
+.private-row>.private-copy { display:block; min-width:0; width:100%; min-height:48px; padding:4px 0; border:0; background:transparent; color:var(--text); font-weight:400; text-align:left; box-shadow:none; overflow-wrap:anywhere }
+.private-copy strong { display:block; font-size:1rem; font-weight:400; line-height:1.4 }   /* Normalschrift wie bei Notizen (2.150) */
 .private-copy small { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; white-space:pre-wrap; color:var(--muted); font-weight:400; line-height:1.45; margin-top:4px }
 .private-row.checked strong { text-decoration:line-through; color:var(--muted) }
 #private-list-panel .private-row.checked>.check { background:var(--accent-soft); border-color:var(--accent); color:var(--accent) }
@@ -5431,3 +5431,18 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 
 /* 2.145: „Kürzlich gelöschte eigene Produkte“ nur im Reiter „Eigene“ der Einkaufsauswahl */
 #product-picker-trash.picker-trash-off { display:none }
+
+/* Notizen (2.150): Liste mit Klemmbrett-Symbol als Notizzettel – Textzeilen, darunter ein grünes Plus für die nächste Zeile */
+.notes-panel { margin:4px 0 0 }
+.notes-list { list-style:none; margin:0; padding:0; background:var(--card); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow); overflow:hidden }
+.note-row { display:flex; align-items:center; min-height:58px; padding:6px 12px 6px 16px; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none }
+.note-row+.note-row { border-top:1px solid var(--line) }
+.note-row.editing { padding:8px 10px }
+.note-text { display:block; flex:1; min-width:0; min-height:46px; padding:8px 2px; border:0; border-radius:10px; background:transparent; color:var(--text); font:inherit; font-size:1rem; line-height:1.4; text-align:left; overflow-wrap:anywhere; white-space:pre-wrap; box-shadow:none }
+.note-input { width:100%; min-height:46px; font-size:16px }
+.notes-add { display:inline-flex; align-items:center; gap:10px; margin:12px 0 0; min-height:52px; padding:0 18px 0 6px; border:0; border-radius:999px; background:transparent; color:var(--accent); font-weight:750; box-shadow:none }
+.notes-plus { display:grid; place-items:center; width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--on-accent, #fff); box-shadow:0 4px 12px rgba(0,0,0,.16) }
+.notes-plus .icon { width:22px; height:22px }
+.notes-hint { margin:10px 4px 0 }
+.note-row.drag-origin { opacity:.3 }
+.drag-ghost.note-row { list-style:none }

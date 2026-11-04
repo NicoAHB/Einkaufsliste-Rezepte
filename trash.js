@@ -14,6 +14,7 @@
    deshalb mit deletedAt auf; „Papierkorb leeren“ setzt purgedAt, die Marke selbst bleibt (sonst böte ein altes Gerät das Produkt wieder an). */
 import { POLICY } from './compact.js';
 import { productKey } from './prices.js';
+import { symbolOf } from './brand.js';
 
 export const TRASH_DAYS = POLICY.tombstoneDays;
 const DAY = 86400000;
@@ -59,7 +60,9 @@ export function trashEntries(data, now = Date.now()) {
   const storeLabel = id => { const store = stores.get(id); return !id ? '' : !store ? '' : store.deletedAt ? `${store.name} (gelöscht)` : store.name; };
   for (const row of data.items || []) {
     if (!recent(row, since) || (row.checked && !deletedOnPurpose(row)) || row._planEmpty || foldedAway(row)) continue;
-    const amount = Number.isFinite(row.quantity) && row.unit ? `${number(row.quantity)} ${row.unit}` : '';
+    // Notizen (Liste mit Klemmbrett-Symbol, 2.150) haben keine Menge: dort steht nur die Liste.
+    const store = stores.get(row.storeId), note = store?.separate === true && symbolOf(store) === 'checklist';
+    const amount = !note && Number.isFinite(row.quantity) && row.unit ? `${number(row.quantity)} ${row.unit}` : '';
     entries.push({ kind: 'items', collection: 'items', id: row.id, title: row.name, detail: [amount, storeLabel(row.storeId)].filter(Boolean).join(' · '), deletedAt: row.deletedAt });
   }
   const ingredientCount = new Map();

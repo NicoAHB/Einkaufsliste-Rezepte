@@ -10977,6 +10977,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-private-list-v1:einkauf-demo-v1')).items);
     await page.locator('#store-chips [data-private=private-a]').click(); await page.waitForSelector('#private-list-panel:not([hidden])');
     assert.equal(await page.locator('#private-list-panel .check').count(), 0, 'kein Abhak-Kreis');
+    assert.equal(await page.locator('#private-items .private-copy strong').first().evaluate(node => getComputedStyle(node).fontWeight), '400', 'Einträge in Normalschrift (2.150)');
     assert.equal(await page.getByRole('button', { name: /abhaken|wieder öffnen/ }).count(), 0);
     assert.match(await page.textContent('#private-list-panel .private-list-intro'), /Erledigt\? Eintrag lange halten und nach rechts in den Mülleimer ziehen\./);
     // Tipp auf den Eintrag öffnet weiter das Bearbeiten, ohne abzuhaken
@@ -11056,6 +11057,73 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#ask-ok');
     assert.equal(await page.evaluate(() => window.__second), true, 'das Bestätigen der zweiten wirkt');
     assert.equal(await page.locator('#ask-dialog[open]').count(), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.150: Notizen (Liste mit Klemmbrett-Symbol) ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.150: Notizen: Textzeilen ohne Menge und Geschäft, „Fertig“ speichert und schließt die Tastatur, grünes Plus öffnet die nächste Zeile (${width}px ${theme})`, async () => {
+    const data = structuredClone(demo), at = '2026-11-01T09:00:00.000Z';
+    data.stores.push({ id: 'store-notes', name: 'Notizen', separate: true, symbol: 'checklist', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await seedLocal(ctx, data); await open(page);
+    const notes = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => row.storeId === 'store-notes' && !row.deletedAt).map(row => row.name));
+    const focused = () => page.evaluate(() => document.activeElement?.classList.contains('note-input') || false);
+    await page.locator('#store-chips [data-store-id=store-notes]').click();
+    await page.waitForSelector('#notes-panel:not([hidden])');
+    for (const hidden of ['#item-form', '#items', '#shared-list-actions']) assert.equal(await page.locator(hidden).isHidden(), true, `${hidden} verborgen: keine Menge, Einheit, Geschäft oder Produkte`);
+    assert.equal(await page.locator('#mode-shop').isDisabled(), true, 'Notizen gibt es nicht „Im Laden“');
+    assert.equal(await page.locator('#notes-list .note-input').count(), 1, 'eine leere Textzeile');
+    assert.equal(await page.locator('#notes-add').isVisible(), false);
+    // Eintippen und „Fertig“: gespeichert, Tastatur zu, darunter das grüne Plus
+    await page.locator('#notes-list .note-input').click(); await page.keyboard.type('Zahnarzt Freitag 10 Uhr'); await page.keyboard.press('Enter');
+    await page.locator('#notes-list .note-text', { hasText: 'Zahnarzt Freitag 10 Uhr' }).waitFor();
+    assert.equal(await focused(), false, 'Tastatur geschlossen');
+    assert.deepEqual(await notes(), ['Zahnarzt Freitag 10 Uhr']);
+    assert.equal(await page.locator('#notes-add').isVisible(), true);
+    assert.match(await page.textContent('#shopping-save-note'), /^Notizen gespeichert/);
+    const plus = await page.locator('#notes-add .notes-plus').evaluate(node => getComputedStyle(node).backgroundColor);
+    assert.notEqual(plus, 'rgba(0, 0, 0, 0)', 'grün gefülltes Plus');
+    // Plus: neue Zeile mit Tastatur; gleiche Texte bleiben getrennte Notizen, nichts wird zusammengezählt oder umbenannt
+    await page.click('#notes-add'); assert.equal(await focused(), true, 'die neue Zeile hat den Fokus');
+    assert.equal(await page.locator('#notes-add').isVisible(), false);
+    await page.keyboard.type('apfel'); await page.keyboard.press('Enter');
+    await page.click('#notes-add'); await page.keyboard.type('apfel'); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('#notes-list .note-text').length === 3);
+    assert.deepEqual(await notes(), ['Zahnarzt Freitag 10 Uhr', 'apfel', 'apfel'], 'freier Text, keine Produktschreibweise, keine Mengen');
+    assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.filter(row => row.storeId === 'store-notes'))).every(row => row.quantity === 1 && !row.category));
+    // Leere Zeile per Plus und gleich wieder weg: keine leere Notiz
+    await page.click('#notes-add'); await page.locator('#notes-list .note-input').evaluate(node => node.blur());
+    assert.equal(await page.locator('#notes-list .note-input').count(), 0); assert.equal((await notes()).length, 3);
+    // Antippen ändert die Notiz an Ort und Stelle
+    await page.locator('#notes-list .note-text', { hasText: 'Zahnarzt' }).click(); assert.equal(await focused(), true);
+    await page.locator('#notes-list .note-input').fill('Zahnarzt Freitag 11 Uhr'); await page.keyboard.press('Enter');
+    await page.locator('#notes-list .note-text', { hasText: '11 Uhr' }).waitFor();
+    // Text ganz löschen: Notiz gelöscht, mit Rückgängig
+    await page.locator('#notes-list .note-text').nth(1).click(); await page.locator('#notes-list .note-input').fill(''); await page.keyboard.press('Enter');
+    assert.equal(await page.textContent('#notice-text'), '„apfel“ gelöscht'); await page.click('#notice-undo');
+    await page.waitForFunction(() => document.querySelectorAll('#notes-list .note-text').length === 3);
+    // Lange halten und in den Mülleimer ziehen
+    await dragToTrash147(page, page.locator('#notes-list .note-row', { hasText: '11 Uhr' }));
+    assert.equal(await noticeText147(page), '„Zahnarzt Freitag 11 Uhr“ gelöscht');
+    assert.deepEqual(await notes(), ['apfel', 'apfel']);
+    await page.click('#shopping-trash-link'); await page.locator('#trash-dialog[open]').waitFor();
+    const trashRow = page.locator('.trash-row', { hasText: 'Zahnarzt Freitag 11 Uhr' });
+    assert.match(await trashRow.textContent(), /Artikel · Notizen · gelöscht/, 'ohne Menge');
+    await trashRow.locator('.trash-restore').click();
+    assert.equal(await page.textContent('#trash-status-text'), '„Zahnarzt Freitag 11 Uhr“ steht wieder bei den Notizen');
+    await page.click('#trash-dialog [data-close]');
+    assert.equal(await horizontalOverflow(page), 0);
+    // Notizen sind kein Ziel im Laden oder beim Verschieben
+    await page.locator('#store-chips [data-all-stores]').click(); await page.click('#mode-shop');
+    assert.equal(await page.locator('#shop-chips [data-store-id=store-notes]').count(), 0);
+    await page.click('#shop-back');
+    await page.locator('#items .item-copy').first().click(); await page.waitForSelector('#item-dialog[open]');
+    assert.equal(await page.locator('#edit-item-form [name=storeId] option[value=store-notes]').count(), 0);
+    await page.click('#item-dialog [data-close]');
+    // Symbol 5 heißt jetzt „Notizen“
+    await page.click('#manage-stores'); await sheetOpen(page);
+    assert.ok(await page.locator('#stores-dialog [aria-label="Symbol 5 – Notizen"]').count() > 0);
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2150-notizen-${width}-${theme}.png` });
     assert.deepEqual(problems, []); await ctx.close();
   });
 

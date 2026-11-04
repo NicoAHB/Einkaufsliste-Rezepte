@@ -304,7 +304,7 @@ function tab(name) {
 function storeOptions(select, preferred = select.value, allowNone = false, keepHidden = false) {
   select.replaceChildren();
   if (allowNone) select.add(new Option('Kein Geschäft', ''));
-  for (const store of orderedStores(state.stores).filter(store=>visibleStore(store)||(keepHidden&&store.id===preferred))) select.add(new Option(store.name, store.id));
+  for (const store of orderedStores(state.stores).filter(store=>(visibleStore(store)||(keepHidden&&store.id===preferred))&&(!isNotesStore(store)||store.id===preferred))) select.add(new Option(store.name, store.id));   // Notizen sind kein Ziel für Artikel
   select.value = [...select.options].some(option => option.value === preferred) ? preferred : allowNone ? '' : select.options[0]?.value ?? '';
 }
 function currentStore(id) {
@@ -339,11 +339,92 @@ function showView(next) {
   renderStorePick(); storeChanged(); renderStoreChips(); renderItems();syncPrivateView();
 }
 function syncPrivateView() {
-  const own=privateViewId(view)&&privateList?.has(privateViewId(view));
-  $('#private-list-panel').hidden=!own;$('#item-form').hidden=Boolean(own);$('#items').hidden=Boolean(own);
-  $('#shared-list-actions').hidden=Boolean(own);$('#mode-shop').disabled=Boolean(own);
+  const own=privateViewId(view)&&privateList?.has(privateViewId(view)),notes=!own&&Boolean(notesView()),plain=Boolean(own)||notes;
+  $('#private-list-panel').hidden=!own;$('#item-form').hidden=plain;$('#items').hidden=plain;
+  $('#shared-list-actions').hidden=plain;$('#mode-shop').disabled=plain;
+  renderNotes();
   renderTrashLinks();   // in der geheimen Liste nur deren eigener Papierkorb-Hinweis
 }
+/* ---------- Notizen (2.150) ----------
+   Eine eigene Liste mit dem Klemmbrett-Symbol („Symbol 5 · Notizen“) ist ein Notizzettel: nur Textzeilen, ohne Geschäft, Menge, Einheit,
+   Produkte oder Namensvorschläge. Eine Zeile eintippen und mit „Fertig“/Enter bestätigen speichert sie und schließt die Tastatur; darunter
+   öffnet das grüne Plus die nächste Zeile. Antippen ändert eine Notiz, lange halten und nach rechts ziehen löscht sie (mit „Rückgängig“).
+   Gespeichert werden Notizen als Einträge dieser Liste (gemeinsam, mit Abgleich und Papierkorb); „Im Laden“ erscheint die Liste nicht. */
+const isNotesStore = store => Boolean(store) && !store.deletedAt && isSeparate(store) && symbolOf(store) === 'checklist';
+const notesView = () => { const store = viewStore(); return isNotesStore(store) ? store : null; };
+const NOTE_LIMIT = 500;
+let noteDraft = false, noteEditing = '';
+const notesOf = store => active(state.items).filter(item => item.storeId === store.id)
+  .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
+function noteInput(item = null) {
+  const input = element('input', undefined, 'note-input');
+  Object.assign(input, { type: 'text', maxLength: NOTE_LIMIT, autocomplete: 'off', enterKeyHint: 'done', placeholder: 'Notiz eintippen …', value: item?.name || '' });
+  input.setAttribute('autocapitalize', 'sentences'); input.setAttribute('aria-label', item ? `Notiz „${item.name}“ ändern` : 'Neue Notiz');
+  let finished = false;
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); input.blur(); }   // „Fertig“: speichern, Tastatur schließt
+    else if (event.key === 'Escape') { event.preventDefault(); finished = true; noteDraft = false; noteEditing = ''; input.blur(); renderNotes(); }
+  });
+  input.addEventListener('blur', () => { if (finished) return; finished = true; guard(() => saveNote(input.value, item)); });
+  return input;
+}
+function noteRow(item) {
+  const row = element('li', undefined, 'note-row'); row.dataset.id = item.id;
+  if (noteEditing === item.id) { row.classList.add('editing'); row.append(noteInput(item)); return row; }
+  const text = element('button', item.name, 'note-text'); text.type = 'button'; text.setAttribute('aria-label', `Notiz „${item.name}“ ändern`);
+  text.addEventListener('click', () => guard(() => editNote(item.id)));
+  row.append(text); return row;
+}
+function renderNotes() {
+  const store = notesView(), panel = $('#notes-panel'), list = $('#notes-list');
+  panel.hidden = !store;
+  if (!store) { noteDraft = false; noteEditing = ''; list.replaceChildren(); return; }
+  panel.setAttribute('aria-label', store.name);
+  // Wer gerade tippt, behält Zeile und Tastatur: Ein Abgleich zeichnet die Notizen erst danach neu.
+  if (list.contains(document.activeElement) && document.activeElement.matches('input')) return;
+  const notes = notesOf(store);
+  if (noteEditing && !notes.some(note => note.id === noteEditing)) noteEditing = '';
+  const drafting = noteDraft || !notes.length;
+  list.replaceChildren(...notes.map(noteRow));
+  if (drafting) { const row = element('li', undefined, 'note-row editing draft'); row.append(noteInput()); list.append(row); }
+  $('#notes-add').hidden = drafting || Boolean(noteEditing);
+  $('#notes-hint').hidden = !notes.length;
+}
+// Die Bestätigung unter der Liste nennt Notizen, nicht die Einkaufsliste.
+function relabelNotesSave() {
+  const note = $('#shopping-save-note');
+  if (notesView() && !note.hidden) note.textContent = note.textContent.replace(/^Einkaufsliste gespeichert/, 'Notizen gespeichert');
+}
+function focusNote(input) {
+  if (!input) return;
+  input.focus({ preventScroll: true }); input.setSelectionRange?.(input.value.length, input.value.length);
+  input.closest('li')?.scrollIntoView({ block: 'nearest' });
+}
+function editNote(id) {
+  if (!notesView() || !active(state.items).some(item => item.id === id)) return;
+  noteEditing = id; noteDraft = false; renderNotes();
+  focusNote($('#notes-list .note-row.editing .note-input'));
+}
+function saveNote(text, item) {
+  const store = notesView(), name = String(text || '').trim().slice(0, NOTE_LIMIT);
+  noteDraft = false; noteEditing = '';
+  if (!store) return;
+  if (item) {
+    const current = active(state.items).find(row => row.id === item.id);
+    if (!current) { renderNotes(); return; }
+    if (!name) { deleteItems([item.id]); return; }   // geleert: wie Löschen, mit „Rückgängig“
+    if (name !== current.name) { commit([nextOp('items', item.id, { name })]); relabelNotesSave(); } else renderNotes();
+    return;
+  }
+  if (!name) { renderNotes(); return; }
+  commit([nextOp('items', uid(), { name, quantity: 1, unit: 'Stück', storeId: store.id, checked: false, createdBy: config.actor || 'Unbekannt' })]);
+  relabelNotesSave();
+}
+$('#notes-add').addEventListener('click', () => guard(() => {
+  if (!notesView()) return;
+  noteDraft = true; noteEditing = ''; renderNotes();
+  focusNote($('#notes-list .note-row.draft .note-input'));   // im selben Tipp: Die Tastatur öffnet sich auch auf dem iPhone
+}));
 // Schnellwahl des Geschäfts im Formular: ein Tipp wählt, ein zweiter Tipp auf dasselbe Geschäft nimmt die Auswahl zurück.
 // Ohne Auswahl („Kein Geschäft“) bekommt der Artikel kein Geschäft.
 // Gemeinsame Listen werden gemeinsam ein-/ausgeblendet. Ihre Einträge bleiben erhalten.
@@ -918,8 +999,10 @@ function deleteItems(ids, { notice = '', single = true } = {}) {
   if (!rows.length) return [];
   const at = new Date().toISOString();
   commit(rows.map(row => { const op = nextOp('items', row.id, { deletedAt: at }); return single && row.checked ? { ...op, id: `${SINGLE_DELETE}${op.id}` } : op; }));
+  relabelNotesSave();
   const removed = rows.map(row => row.id), scope = namespace();
-  showNotice(notice || (rows.length === 1 ? `„${rows[0].name}“ gelöscht` : `${rows.length} Artikel gelöscht`), () => undoDelete(removed, scope), { trash: true });
+  const title = rows[0].name.length > 40 ? `${rows[0].name.slice(0, 38).trimEnd()} …` : rows[0].name;   // lange Notizen gekürzt
+  showNotice(notice || (rows.length === 1 ? `„${title}“ gelöscht` : `${rows.length} Artikel gelöscht`), () => undoDelete(removed, scope), { trash: true });
   return removed;
 }
 function undoDelete(ids, scope, collection = 'items') {
@@ -3055,7 +3138,7 @@ function shopNewsRow(entry) {
 }
 function renderShop() {
   storeReorders.forEach(order => order.cancel());
-  const stores = orderedStores(state.stores).filter(visibleStore), everything = visibleItems(true);
+  const stores = orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store)), everything = visibleItems(true);   // Notizen gehören nicht in den Laden
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = ALL_STORES;
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
   const chips = $('#shop-chips'); chips.replaceChildren();
@@ -3926,7 +4009,7 @@ const moveBar = {
       const target = element('div', undefined, `move-target${(item.storeId || '') === storeId ? ' current' : ''}`); target.dataset.store = storeId; target.append(label); bar.append(target);
     };
     add('', document.createTextNode('Ohne Geschäft'));
-    for (const store of orderedStores(state.stores).filter(visibleStore)) add(store.id, storeLabel(store.name));
+    for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) add(store.id, storeLabel(store.name));
     bar.hidden = false;
     return bar.getBoundingClientRect().bottom;
   },
@@ -3961,6 +4044,8 @@ dragDelete($('#items'), $('#trash-zone'), id => guard(() => deleteItems([id])), 
 // Wünsche (2.147): ebenfalls lange halten und nach rechts in den Mülleimer ziehen. Halten und Loslassen ohne Ziehen öffnet die Wunschdetails;
 // verschieben lassen sich Wünsche nicht (sie gehören zu ihrer Wunschliste).
 dragDelete($('#items'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.item[data-wish][data-id]', { onHold: id => guard(() => openWish(id)), disabled: () => selecting });
+// Notizen (2.150): lange halten und nach rechts in den Mülleimer ziehen; Halten und Loslassen ändert die Notiz. Eine Zeile, in der gerade getippt wird, hebt nicht ab.
+dragDelete($('#notes-list'), $('#trash-zone'), id => guard(() => deleteItems([id])), '.note-row[data-id]:not(.editing)', { onHold: id => guard(() => editNote(id)) });
 // Geheime Liste (2.147): genauso lange halten und nach rechts in den Mülleimer ziehen; Halten und Loslassen öffnet den Eintrag.
 for (const list of [$('#private-items'), $('#private-done-items')]) dragDelete(list, $('#trash-zone'), id => guard(() => privateList?.remove(id)), '.private-row[data-id]', { onHold: id => guard(() => privateList?.edit(id)) });
 $('#items').addEventListener('keydown', event => {
@@ -4033,7 +4118,7 @@ function moveSelected(storeId) {
 }
 function fillMoveChoices(choice) {
   choice('', document.createTextNode('Ohne Geschäft'), 'Ohne Geschäft');
-  for (const store of orderedStores(state.stores).filter(visibleStore)) choice(store.id, storeLabel(store.name), store.name);
+  for (const store of orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store))) choice(store.id, storeLabel(store.name), store.name);
   message(); $('#move-dialog').showModal();
 }
 function moveItem(id, storeId) {
@@ -4384,6 +4469,8 @@ function renderTrash() {
 }
 function restoredWhere(entry, changes) {
   const name = `„${entry.title}“`;
+  const notes = entry.kind === 'items' && isNotesStore(active(state.stores).find(store => store.id === state.items.find(row => row.id === entry.id)?.storeId));
+  if (notes) return `${name} steht wieder bei den Notizen`;
   if (entry.kind === 'items') return `${name} steht wieder auf der Einkaufsliste${changes[0].patch.storeId === '' ? ' (ohne Geschäft, weil das Geschäft gelöscht ist)' : ''}`;
   if (entry.kind === 'recipes') return `${name} ist wieder im Rezeptbuch`;
   if (entry.kind === 'meals') return `${name} steht wieder im Wochenplan${changes.length > 1 ? ', das Rezept ebenfalls wieder im Rezeptbuch' : ''}`;
