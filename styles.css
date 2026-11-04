@@ -5578,4 +5578,5 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .spend-product-name { min-width:0; overflow-wrap:anywhere }
 .spend-product-amount { flex:none; color:var(--muted); font-variant-numeric:tabular-nums; text-align:right }
 .spend-products-empty { margin:0; line-height:1.45 }
+@media (max-width:360px) { .spend-line>.spend-row { gap:8px; padding-left:12px } .spend-line>.spend-edit { margin-right:6px } }
 @media (prefers-reduced-motion:reduce) { .spend-arrow { transition:none } }

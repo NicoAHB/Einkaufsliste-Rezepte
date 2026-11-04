@@ -1618,7 +1618,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('[data-tab=spending]');
     await addPurchase(page, { amount: '5' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
     const shop = page.locator(`#purchase-list .spend-item[data-id="${saved.id}"]`), hand = page.locator('#purchase-list .spend-item', { hasText: '5,00' });
-    assert.match(await shop.locator('.spend-row small').textContent(), /2 Produkte/);
+    assert.match(await shop.locator('.spend-row small').textContent(), /Heute · Nico · 2\u00a0Produkte/, 'die Zahl bleibt beim Umbruch bei „Produkte“');
     assert.ok(!/Produkt/.test(await hand.locator('.spend-row small').textContent()));
     assert.equal(await page.locator('#purchase-list .spend-products:visible').count(), 0, 'zu Beginn ist alles zugeklappt');
     assert.equal(await shop.locator('.spend-row').getAttribute('aria-expanded'), 'false');

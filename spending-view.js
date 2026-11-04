@@ -187,7 +187,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       li.dataset.id = entry.id;
       const products = Array.isArray(entry.items) ? entry.items : [];
       const store = storeNameOf(entry, shops), buyer = buyerNameOf(entry, members()), date = entry.date === today() ? 'Heute' : entry.date.slice(0, 4) === today().slice(0, 4) ? dayLabel(entry.date) : shortDate(entry.date);
-      copy.append(node('strong', store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')), node('small', [date, buyer, entry.kind === 'refund' ? 'Rückerstattung' : '', entry.note && entry.note !== DEFAULT_NOTE ? entry.note : '', products.length ? plural(products.length, 'Produkt', 'Produkte') : '', twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
+      copy.append(node('strong', store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')), node('small', [date, buyer, entry.kind === 'refund' ? 'Rückerstattung' : '', entry.note && entry.note !== DEFAULT_NOTE ? entry.note : '', products.length ? plural(products.length, 'Produkt', 'Produkte').replace(' ', '\u00a0') : '', twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
       const value = purchaseValue(entry), amount = node('span', euros(value), `spend-amount${entry.kind === 'refund' ? ' refund-amount' : ''}`), arrow = svgIcon('down');
       arrow.classList.add('spend-arrow');
       const panel = node('div', undefined, 'spend-products'); panel.id = `spend-products-${entry.id}`;
