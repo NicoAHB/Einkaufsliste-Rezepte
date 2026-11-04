@@ -343,6 +343,10 @@ describe('2.160: Produkte eines Einkaufs', () => {
     const long = purchaseItems([{ name: 'x'.repeat(500) }], () => 'y'.repeat(200))[0];
     assert.equal(long.name.length, 120); assert.equal(long.amount.length, 80);
     assert.equal(purchaseItems(Array.from({ length: PURCHASE_ITEMS_MAX + 20 }, (_, index) => ({ name: `P${index}` }))).length, PURCHASE_ITEMS_MAX);
+    // Bildkennung und Kategorie (wie die Liste das Produkt zeigte); nur lokale Kennungen, keine Adressen
+    const images = { Tomaten: { imageKey: 'tomaten', category: 'obst' }, Nudeln: { imageKey: 'https://example.com/x.png', category: 'vorrat' }, Milch: null };
+    assert.deepEqual(purchaseItems([{ name: 'Tomaten' }, { name: 'Nudeln' }, { name: 'Milch' }], () => '', item => images[item.name]),
+      [{ name: 'Tomaten', imageKey: 'tomaten', category: 'obst' }, { name: 'Nudeln', category: 'vorrat' }, { name: 'Milch' }]);
   });
 
   test('Ein Einkauf mit Produkten wird gespeichert, geprüft und bleibt beim Ändern des Betrags erhalten', () => {
@@ -353,7 +357,10 @@ describe('2.160: Produkte eines Einkaufs', () => {
     data = merge(data, [make('e1', { cents: 1900 }, '2026-03-02T10:00:00.000Z')]);
     assert.equal(data.purchases[0].cents, 1900); assert.deepEqual(data.purchases[0].items, items, 'eine Betragsänderung lässt die Produkte stehen');
     assert.deepEqual(compact(data, new Date('2026-03-03T10:00:00.000Z')).data.purchases[0].items, items, 'das Aufräumen behält sie');
-    for (const broken of ['Tomaten', [{ name: '' }], [{ name: 3 }], [{ name: 'A', amount: 5 }], [{ name: 'x'.repeat(121) }], Array.from({ length: 301 }, () => ({ name: 'A' }))]) {
+    const pictured = structuredClone(data); pictured.purchases[0].items = [{ name: 'Tomaten', amount: '500 g', imageKey: 'tomaten', category: 'obst' }, { name: 'Nudeln', imageKey: 'group-pantry' }];
+    assert.doesNotThrow(() => validate(pictured));
+    for (const broken of ['Tomaten', [{ name: '' }], [{ name: 3 }], [{ name: 'A', amount: 5 }], [{ name: 'x'.repeat(121) }], Array.from({ length: 301 }, () => ({ name: 'A' })),
+      [{ name: 'A', imageKey: 'https://example.com/a.png' }], [{ name: 'A', imageKey: 7 }], [{ name: 'A', category: 'Obst & Gemüse' }], [{ name: 'A', imageKey: '' }]]) {
       const copy = structuredClone(data); copy.purchases[0].items = broken;
       assert.throws(() => validate(copy), /Ungültige Produkte eines Einkaufs/, JSON.stringify(broken).slice(0, 40));
     }

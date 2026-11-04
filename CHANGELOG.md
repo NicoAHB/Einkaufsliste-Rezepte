@@ -8,11 +8,11 @@ Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md
 
 **Jede Zeile unter „Ausgaben“** zeigt oben wie bisher Geschäft, Kaufdatum, Person und Betrag. Neu sind:
 - ein **Stift** rechts: öffnet die gewohnte Maske „Ausgabe bearbeiten“;
-- ein **Pfeil nach unten** (auch ein Tipp auf die Zeile): Darunter klappt eine Übersicht mit **allen Produkten dieses Einkaufs** auf, jeweils mit Menge. Betrag und Datum bleiben oben stehen.
+- ein **Pfeil nach unten** (auch ein Tipp auf die Zeile): Darunter klappt eine Übersicht mit **allen Produkten dieses Einkaufs** auf. Wie in der Einkaufsliste steht der Name groß, darunter klein die Menge, und rechts das **Produktbild**, dasselbe wie „Im Laden“. Betrag und Datum bleiben oben stehen. Wer unter **Optionen** die Produktbilder ausschaltet, sieht auch hier keine.
 - Der Pfeil zeigt dann nach oben und **klappt wieder zu**. Wird ein anderer Einkauf aufgeklappt, schließt sich der vorige; es ist immer nur einer offen.
 - Klein unter dem Geschäft steht, wie viele Produkte zugeordnet sind (z. B. „2 Produkte“).
 
-**Welche Produkte gehören zu einem Einkauf?** Die Artikel, die du **Im Laden** abhakst und dann mit **Einkauf beenden** (Geschäft wählen, bezahlten Betrag eintragen, **Einkauf beenden & Betrag speichern**) abschließt. Die App speichert Name und Menge mit dem Einkauf, auch wenn die Artikel danach von der Liste verschwinden. Beim Bearbeiten (z. B. Betrag ändern) bleiben die Produkte erhalten, und **Rückgängig** bringt sie mit. Einkäufe von früher und Ausgaben, die du von Hand nachträgst, haben keine Produkte; aufgeklappt erklärt ein kurzer Satz, wie sie zugeordnet werden.
+**Welche Produkte gehören zu einem Einkauf?** Die Artikel, die du **Im Laden** abhakst und dann mit **Einkauf beenden** (Geschäft wählen, bezahlten Betrag eintragen, **Einkauf beenden & Betrag speichern**) abschließt. Die App speichert Name, Menge und das Bild mit dem Einkauf, auch wenn die Artikel danach von der Liste verschwinden (nur die Kennung des eingebauten Bildes, kein Foto und keine Adresse). Beim Bearbeiten (z. B. Betrag ändern) bleiben die Produkte erhalten, und **Rückgängig** bringt sie mit. Einkäufe von früher und Ausgaben, die du von Hand nachträgst, haben keine Produkte; aufgeklappt erklärt ein kurzer Satz, wie sie zugeordnet werden.
 
 Ältere App-Versionen lesen die Daten weiter; sie zeigen die Produkte nur nicht an.
 

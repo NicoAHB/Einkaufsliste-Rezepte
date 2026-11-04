@@ -3,6 +3,7 @@
 import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './family.js';
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
   periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE } from './spending.js';
+import { groupImageFor, imageByKey, imageForProduct, paintProductImage } from './product-images.js';
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; };
 const button = (label, click, cls = 'text-button') => { const el = node('button', label, cls); el.type = 'button'; el.addEventListener('click', click); return el; };
@@ -10,9 +11,17 @@ const euros = value => new Intl.NumberFormat('de-DE', { style: 'currency', curre
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const compactEuros = value => Math.abs(value) >= 1000000 ? `${Math.round(value / 100000)}k` : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(value / 100));
 const shortDate = day => new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${day}T12:00:00`));
+// Produktbild eines Einkaufs (2.160): dieselbe Kachel wie in der Einkaufsliste (.item-thumb). Gespeichert ist die Bildkennung von damals;
+// fehlt sie (Wünsche, sehr frühe Einträge), entscheidet wie in der Liste der Name. Lädt das Bild nicht, springt die Gruppe ein.
+const productThumb = product => {
+  const box = node('span', undefined, 'item-thumb spend-product-thumb'), picture = node('span'); box.setAttribute('aria-hidden', 'true'); picture.setAttribute('aria-hidden', 'true');
+  const image = imageByKey(product.imageKey) || imageForProduct({ name: product.name, category: product.category });
+  if (image) box.append(paintProductImage(picture, image, groupImageFor(product.name, product.category))); else { box.classList.add('wish-no-image'); box.append(svgIcon('box')); }
+  return box;
+};
 const svgIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 
-export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onExport, onMessage }) {
+export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onExport, onMessage, productImages }) {
   // Aufgeklappter Einkauf (2.160): höchstens einer; ein zweiter Tipp oder das Aufklappen eines anderen schließt ihn
   let expanded = '';
   const setOpen = (li, open) => { li.classList.toggle('open', open); li.querySelector('.spend-row').setAttribute('aria-expanded', String(open)); li.querySelector('.spend-products').hidden = !open; };
@@ -194,7 +203,13 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       if (products.length) {
         panel.append(node('p', `${plural(products.length, 'Produkt', 'Produkte')} aus diesem Einkauf`, 'spend-products-head'));
         const items = node('ul', undefined, 'spend-product-list');
-        for (const product of products) { const row = node('li'); row.append(node('span', product.name, 'spend-product-name')); if (product.amount) row.append(node('span', product.amount, 'spend-product-amount')); items.append(row); }
+        const pictures = productImages?.() !== false;
+        for (const product of products) {
+          // Wie in der Einkaufsliste: Name, darunter klein die Menge, das Bild rechts
+          const row = node('li'), text = node('span', undefined, 'spend-product-text');
+          text.append(node('span', product.name, 'spend-product-name')); if (product.amount) text.append(node('span', product.amount, 'spend-product-amount'));
+          row.append(text); if (pictures) row.append(productThumb(product)); items.append(row);
+        }
         panel.append(items);
       } else panel.append(node('p', 'Zu diesem Einkauf sind keine Produkte gespeichert. Sie werden zugeordnet, wenn du sie „Im Laden“ abhakst und bei „Einkauf beenden“ den Betrag speicherst.', 'hint spend-products-empty'));
       open.setAttribute('aria-label', `${date}, ${store || 'ohne Geschäft'}, ${buyer}, ${euros(value)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: Produkte ${products.length ? `(${products.length}) ` : ''}anzeigen`);

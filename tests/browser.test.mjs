@@ -1603,17 +1603,22 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
 
   for (const width of [320, 390]) test(`2.160: abgehakte Produkte gehören zum Einkauf; Pfeil klappt sie auf (immer nur einer), Stift bearbeitet, Löschen fragt nach (${width} px)`, async () => {
-    const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } } });
+    // 390 px mit Produktbildern (wie in der App vorgegeben), 320 px mit ausgeschalteten Bildern
+    const pictures = width === 390;
+    const { ctx, page, problems } = await context({ context: { viewport: { width, height: 760 } }, config: { productImages: pictures } });
     await open(page);
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.purchases.filter(row => !row.deletedAt));
     // Im Laden bei Edeka Tomaten und Nudeln abhaken, mit Betrag beenden
     await page.click('#mode-shop'); await page.locator('#shop-chips .chip', { hasText: 'Edeka' }).click();
+    const listKeys = pictures ? await Promise.all(['Tomaten', 'Nudeln'].map(name => page.locator('#shop-list .shop-item', { hasText: name }).locator('.product-picture').getAttribute('data-photo-key'))) : [];
     for (const name of ['Tomaten', 'Nudeln']) await shopTap(page, name).click();
     await finishShop(page); await sheetOpen(page);
     await page.fill('#finish-form input[name=amount]', '18,02'); await page.click('#finish-save'); await page.waitForSelector('#finish-dialog', { state: 'hidden' });
     const saved = (await stored()).find(row => row.cents === 1802);
     assert.deepEqual(saved.items.map(entry => entry.name), ['Tomaten', 'Nudeln'], 'die abgehakten Artikel sind dem Einkauf zugeordnet');
     assert.ok(saved.items.every(entry => entry.amount && typeof entry.amount === 'string'), 'mit Menge');
+    assert.ok(saved.items.every(entry => /^[a-z0-9-]+$/.test(entry.imageKey) && /^[a-z]+$/.test(entry.category)), 'mit Bildkennung und Kategorie, auch wenn die Bilder gerade aus sind');
+    if (pictures) assert.deepEqual(saved.items.map(entry => entry.imageKey), listKeys, 'dasselbe Bild wie „Im Laden“');
     // Ein Eintrag von Hand hat keine Produkte
     await page.click('[data-tab=spending]');
     await addPurchase(page, { amount: '5' }); await page.waitForSelector('#purchase-dialog', { state: 'hidden' });
@@ -1628,6 +1633,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await shop.locator('.spend-products-head').textContent(), /2 Produkte aus diesem Einkauf/);
     assert.deepEqual(await shop.locator('.spend-product-name').allTextContents(), ['Tomaten', 'Nudeln']);
     assert.equal(await shop.locator('.spend-product-amount').count(), 2);
+    // Produktbilder wie in der Einkaufsliste (rechts), nur wenn sie unter Optionen eingeschaltet sind
+    if (pictures) {
+      assert.deepEqual(await shop.locator('.spend-product-thumb .product-picture').evaluateAll(nodes => nodes.map(picture => picture.dataset.photoKey)), listKeys);
+      const [text, thumb] = await Promise.all([shop.locator('.spend-product-text').first().boundingBox(), shop.locator('.spend-product-thumb').first().boundingBox()]);
+      assert.ok(thumb.x > text.x, 'das Bild steht rechts neben Name und Menge');
+    } else assert.equal(await shop.locator('.spend-product-thumb').count(), 0, 'Produktbilder aus: keine Bilder');
     assert.match(await shop.locator('.spend-row').textContent(), /Edeka[\s\S]*Heute[\s\S]*18,02\s€/);
     assert.equal(await page.locator('dialog[open]').count(), 0, 'Aufklappen öffnet keine Bearbeitung');
     const box = await shop.locator('.spend-products').boundingBox(), row = await shop.locator('.spend-row').boundingBox();

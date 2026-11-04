@@ -1449,7 +1449,8 @@ function syncNewStoreForm() {
 }
 function finishStoreAdd({ name, id = '', privateId = '', kind }) {
   const view = privateId ? privateView(privateId) : id;
-  $('#store-add-dialog').close();
+  // Gleich leeren, nicht erst im „close“-Ereignis (das kommt eine Browser-Aufgabe später): danach steht nichts Altes mehr im Formular
+  $('#store-add-dialog').close(); resetStoreAdd();
   if (storeAddFrom === 'manage' && $('#stores-dialog').open) {
     // In der Verwaltung: neuer Eintrag hervorgehoben, „Öffnen“ in der Meldung
     storeFresh = privateId ? `private:${privateId}` : id; renderStores();
@@ -3431,7 +3432,8 @@ function finishShopping(amount = '') {
   const category = defaultExpenseCategory(state);
   const fields = typed ? purchaseFields({ amount: typed, date: isoDate(), storeId, storeName: active(state.stores).find(store => store.id === storeId)?.name || '', note: category?.name || '', categoryId: category?.id || null,
     kind: 'purchase', buyerId: buyer.id, buyerName: buyer.name }, isoDate()) : null;
-  if (fields && checked.length) fields.items = purchaseItems(checked, shoppingAmount);   // die abgehakten Produkte gehören zu diesem Einkauf (2.160)
+  // Die abgehakten Produkte gehören zu diesem Einkauf (2.160), mit dem Bild, das die Einkaufsliste gerade zeigt (Wünsche haben eigene Fotos und bleiben ohne)
+  if (fields && checked.length) fields.items = purchaseItems(checked, shoppingAmount, item => { if (isWish(item)) return null; const category = itemCategory(item, thumbLearned); return { imageKey: imageForProduct({ ...item, category })?.key, category }; });
   if (fields) duplicateWarning(fields, '', 'tippe auf „Einkauf beenden & Betrag speichern“');
   const ops = [...(buyer?.change ? [nextOp('members', buyer.id, buyer.change.patch)] : []), ...deleteOps('items', ids), ...(fields ? [nextOp('purchases', uid(), fields)] : [])];
   const notice = [fields ? `${euros(fields.cents)} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(fields.date), fields.cents))}` : '',stockTransferNotice(state,checked)].filter(Boolean).join(' · ');
@@ -4427,7 +4429,7 @@ pantryBuyer = mountPantryBuy({
 spendingView = mountSpending({
   getData: () => ({ purchases: categorizedPurchases(state), members: state.members || [], stores: state.stores }), getScope: namespace,
   getMonth: () => spendMonth, setMonth: month => { spendMonth = month; }, today: isoDate, getOwn: ownExpenseMember,
-  onEdit: id => guard(() => openPurchase(id)), onBudget: renderBudget, onMessage: showNotice,
+  onEdit: id => guard(() => openPurchase(id)), onBudget: renderBudget, onMessage: showNotice, productImages: () => imagesOn(),
   onExport: (csv, name) => deliverFile(new File([csv], name, { type: 'text/csv;charset=utf-8' })),
   onMemberSave: (id, name) => {
     if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
@@ -4810,7 +4812,7 @@ $('#display-reset').addEventListener('click', () => guard(() => {
   message();showNotice('Anzeige-Einstellungen auf Standard zurückgesetzt.');
 }));
 // Gilt sofort, ohne Neuladen: Aus = keine Kacheln, die Zeile sieht aus wie früher.
-$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry();privateList?.refresh(); }));
+$('#product-images').addEventListener('change', () => guard(() => { saveConfig({ ...config, productImages: $('#product-images').checked }); renderItems(); renderShop(); renderPantry();privateList?.refresh(); renderSpending(); }));
 $('#store-style').addEventListener('change', () => guard(() => { saveConfig({ ...config, storeStyle: $('#store-style').value }); render(); renderShop(); renderStores(); }));
 $('#theme').addEventListener('change', () => guard(() => { saveConfig({ ...config, theme: $('#theme').value }); applyTheme(); }));
 $('#glass-on').addEventListener('change', () => guard(() => { saveConfig({ ...config, glass: $('#glass-on').checked }); applyTheme(); }));
