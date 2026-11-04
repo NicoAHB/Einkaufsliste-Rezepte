@@ -100,6 +100,10 @@ export function mountQuantityControls(form,{getHistory=()=>[],getName=()=>form.e
     quantity.dispatchEvent(new Event('change',{bubbles:true}));unit.dispatchEvent(new Event('change',{bubbles:true}));sync();
   }
   unit.addEventListener('pointerdown',event=>{event.preventDefault();if(form.dataset)form.dataset.choosingUnit='yes';document.activeElement?.blur?.();});
+  /* Wird aus dem Berühren kein Antippen (z. B. Scrollen, das auf dem Feld beginnt), öffnet sich keine Einheitenauswahl. Dann darf die Marke
+     „Einheit wird gewählt“ nicht hängen bleiben, sonst bliebe das Artikel-Formular aufgeklappt, auch nach dem Hinzufügen (2.159). */
+  const release=()=>setTimeout(()=>{if(form.dataset?.choosingUnit&&!picker?.dialog.open){delete form.dataset.choosingUnit;form.dispatchEvent(new Event('unitchoiceend'));}},450);
+  for(const type of ['pointerup','pointercancel'])unit.addEventListener(type,release);
   unit.addEventListener('selectstart',event=>event.preventDefault());
   unit.addEventListener('click',()=>{
     if(form.dataset)form.dataset.choosingUnit='yes';const p=unitPicker();const apply=(next,label)=>{try{if(!unit.isConnected||!unit.getClientRects().length){p.dialog.close();return false;}select(next,label);return true;}catch(error){p.error.textContent=error.message;p.error.hidden=false;return false;}};owner=unit;choose=apply;p.choices.replaceChildren();p.custom.open=false;p.error.hidden=true;const more=node('details',undefined,'unit-more');more.append(node('summary','Weitere Einheiten'));const moreChoices=node('div',undefined,'unit-choices');more.append(moreChoices);

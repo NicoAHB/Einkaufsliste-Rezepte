@@ -4748,16 +4748,19 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await shop.isVisible(), true);
     assert.equal(await shop.locator('.store-settings-title').textContent(), 'Im Laden');
     assert.equal(await shop.locator('input[name=anywhere]').getAttribute('role'), 'switch');
-    assert.match(await shop.locator('.store-setting').textContent(), /Artikel ohne Geschäft auch hier zeigen.*Brot.*bei Rewe zusätzlich unter „Überall möglich“/);
+    const hint = () => shop.locator('.store-setting small').textContent();
+    assert.match(await shop.locator('.store-setting').textContent(), /^Artikel ohne Geschäft auch hier zeigen/);
+    assert.equal(await hint(), 'An: „Brot“ steht ohne Geschäft auf der Liste? Dann siehst du es beim Einkaufen bei Rewe unter „Überall möglich“ und kannst es dort abhaken.', 'Erklärung beschreibt den aktuellen Zustand mit Beispiel (2.158)');
     assert.equal(await shop.locator('.aisle-fold').count(), 1, 'die Reihenfolge der Gänge steht im selben Bereich');
     // Der Hinweis nennt den Namen, auch während man ihn ändert
-    await row(2).locator('input[name=name]').fill('Rewe City'); assert.match(await shop.locator('.store-setting small').textContent(), /bei Rewe City/);
+    await row(2).locator('input[name=name]').fill('Rewe City'); assert.match(await hint(), /bei Rewe City/);
     await row(2).locator('input[name=name]').fill('Rewe');
     // Schalter: gut zu treffen, ändert den Speichern-Knopf, wird gespeichert
     const toggle = await shop.locator('input[name=anywhere]').boundingBox(), setting = await shop.locator('.store-setting').boundingBox();
     assert.ok(toggle.width >= 44 && setting.height >= 48, `${toggle.width}×${setting.height}`);
     assert.equal(await shop.locator('input[name=anywhere]').isChecked(), true);
     await shop.locator('.store-setting').click(); assert.equal(await shop.locator('input[name=anywhere]').isChecked(), false, 'die ganze Zeile schaltet');
+    assert.equal(await hint(), 'Aus: „Brot“ ohne Geschäft siehst du beim Einkaufen bei Rewe nicht. Es erscheint nur in Geschäften, bei denen dieser Schalter an ist, und unter „Alle“.', 'die Erklärung wechselt mit dem Schalter');
     await row(2).getByRole('button', { name: /speichern/ }).click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
     assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').anywhere, false);
@@ -4829,7 +4832,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const saved = async index => { await row(index).getByRole('button', { name: /speichern/ }).click(); await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok'); };
     const record = name => remote.content.stores.find(entry => entry.name === name);
     const close = async () => { await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' }); };
-    assert.match(await row(3).locator('.store-symbol-fixed').textContent(), /Symbol: Geschenke · festgelegt/);
+    assert.match(await row(3).locator('.store-symbol-fixed').textContent(), /Symbol: Geschenke\/Wünsche · festgelegt/);
     assert.equal(await row(3).locator('input[name=symbol]').count(), 0, 'keine Galerie zum Tauschen');
     assert.equal(await mode(3).inputValue(), 'symbol', 'bisherige Ansicht bleibt: nur das Bild');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
@@ -11292,7 +11295,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(fields[0], 'Listenname'); assert.ok(fields.indexOf('Symbol (optional)') > 0 && fields.indexOf('Anzeige im Reiter') > fields.indexOf('Symbol (optional)'), fields.join(' | '));
     assert.equal(await page.locator('#choose-store').isVisible(), false); assert.equal(await page.locator('#store-new-more').isVisible(), false, 'keine Händlerangaben');
     // Motive mit Namen, ohne Klemmbrett; ohne Symbol nur „Nur Name“
-    assert.deepEqual(await page.locator('#store-form .store-symbol-choices .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Geschenke', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf'], 'seit 2.154 ohne „Ohne Symbol“');
+    assert.deepEqual(await page.locator('#store-form .store-symbol-choices .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Geschenke/Wünsche', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf'], 'seit 2.154 ohne „Ohne Symbol“, seit 2.156 „Geschenke/Wünsche“');
     assert.equal(await page.locator('#store-form .store-symbol-secret .secret-choice-text > span').textContent(), 'Geheim');
     assert.equal(await page.locator('#store-form input[name=displayMode][value=symbol]').isDisabled(), true);
     assert.equal(await page.locator('#store-form input[name=displayMode][value=both]').isDisabled(), true);
@@ -11341,6 +11344,136 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
     assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.159: Nach dem Hinzufügen klappt das Artikel-Formular immer zu ----
+  test('2.159: Artikel-Formular klappt nach dem Hinzufügen zu – auch wenn vorher auf dem Feld „Einheit“ gescrollt wurde; die Einheitenwahl selbst hält es offen', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } });
+    await open(page);
+    const form = page.locator('#item-form'), compact = () => form.evaluate(node => node.classList.contains('compact'));
+    const swipeOnUnit = end => page.locator('#item-form [name=unit]').evaluate((unit, type) => {
+      const r = unit.getBoundingClientRect(), o = { bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, pointerId: 9, clientX: r.x + 10, clientY: r.y + 10 };
+      unit.dispatchEvent(new PointerEvent('pointerdown', o)); unit.dispatchEvent(new PointerEvent(type, o));
+    }, end);
+    assert.equal(await compact(), true, 'zu Beginn zugeklappt');
+    for (const end of ['pointercancel', 'pointerup']) {
+      await page.locator('#item-form [name=name]').tap(); await page.keyboard.type(`G&G Hähnchenbrust ${end}`); await page.keyboard.press('Enter');
+      assert.equal(await compact(), false, 'beim Eintippen offen');
+      // Scrollen, das auf „Einheit“ beginnt: keine Einheitenauswahl, aber auch keine hängende Marke
+      await swipeOnUnit(end); await page.waitForTimeout(600);
+      assert.equal(await page.locator('dialog[open]').count(), 0);
+      assert.equal(await form.evaluate(node => node.dataset.choosingUnit || ''), '');
+      await page.locator('#add-item-confirm').tap();
+      await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+      assert.equal(await page.inputValue('#item-form [name=name]'), '');
+      assert.ok((await storedDemo(page)).items.some(row => row.name === `G&G Hähnchenbrust ${end}`));
+    }
+    // Die richtige Einheitenwahl: Formular bleibt offen, solange die Auswahl offen ist; danach Hinzufügen klappt zu
+    await page.locator('#item-form [name=name]').tap(); await page.keyboard.type('Putenbrust'); await page.keyboard.press('Enter');
+    await page.locator('#item-form [name=unit]').tap(); await page.waitForSelector('dialog[open]');
+    await page.waitForTimeout(600); assert.equal(await compact(), false, 'während der Auswahl offen');
+    await page.locator('dialog[open] button', { hasText: /^g$/ }).first().tap(); await page.waitForSelector('dialog[open]', { state: 'detached' });
+    assert.equal(await page.inputValue('#item-form [name=unit]'), 'g'); assert.equal(await compact(), false, 'mit Namen weiter offen');
+    await page.locator('#add-item-confirm').tap(); await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+    assert.ok((await storedDemo(page)).items.some(row => row.name === 'Putenbrust' && row.unit === 'g'));
+    // Notfalls hilft das Hinzufügen selbst: eine hängengebliebene Marke wird dabei gelöscht
+    await page.locator('#item-form [name=name]').tap(); await page.keyboard.type('Lachs'); await page.keyboard.press('Enter');
+    await form.evaluate(node => { node.dataset.choosingUnit = 'yes'; });
+    await page.locator('#add-item-confirm').tap(); await page.waitForFunction(() => document.querySelector('#item-form').classList.contains('compact'));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.157: Gelöschtes aus geheimen Listen nur in deren eigenem Papierkorb ----
+  test('2.157: geheime Löschungen erscheinen nur im Papierkorb ihrer geheimen Liste – nicht unter Optionen, nicht in der Einkaufsliste, nicht in der anderen geheimen Liste', async () => {
+    const { ctx, page, problems } = await context(); await seedPrivate2117(ctx); await open(page);
+    const key = 'einkauf-private-list-v1:einkauf-demo-v1', stored = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)).items, key);
+    const openSecret = async id => { await goTab(page, 'shopping'); await page.locator(`#store-chips [data-private=${id}]`).click(); await page.waitForSelector('#private-list-panel:not([hidden])'); };
+    // Ein gemeinsamer Artikel und je ein Eintrag in beiden geheimen Listen werden gelöscht
+    await dragToTrash147(page, page.locator('#items .item', { hasText: 'Milch' }).first());
+    await openSecret('private-a'); await dragToTrash147(page, page.locator('#private-items .private-row', { hasText: 'PrivatesReiseziel2117' }));
+    await openSecret('private-b'); await page.locator('#private-done').evaluate(node => { node.open = true; });
+    await dragToTrash147(page, page.locator('#private-done-items .private-row', { hasText: 'PrivatesGeschenk2117' }));
+    // Allgemeiner Papierkorb (Optionen): nur der gemeinsame Artikel, kein Filter „Geheime Liste“
+    await openSettings(page); assert.match(await page.textContent('#trash-summary'), /^1 Eintrag/);
+    await page.click('#trash-open'); await sheetOpen(page);
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht');
+    assert.equal(await page.locator('#trash-list .trash-row').count(), 1); assert.equal(await page.locator('#trash-list .trash-row[data-kind=private]').count(), 0);
+    assert.ok(!/Privates|Geheime Liste|nur auf diesem Gerät/.test(await page.textContent('#trash-dialog')), 'nichts Geheimes');
+    // Leeren dort lässt die geheimen Papierkörbe unberührt
+    await page.click('#trash-purge'); await answerAsk(page, true, /Den Eintrag im Papierkorb endgültig löschen/);
+    assert.equal((await stored()).filter(row => row.deletedAt).length, 2, 'geheime Einträge bleiben im eigenen Papierkorb');
+    await page.click('#trash-dialog [data-close]');
+    // Einkaufsliste: kein Hinweis auf die geheimen Löschungen
+    await goTab(page, 'shopping'); await page.locator('#store-chips [data-all-stores]').click();
+    assert.equal(await page.locator('#shopping-trash-link').isVisible(), false);
+    // Geheime Liste „Reise privat“: nur ihr eigener Eintrag
+    await openSecret('private-a');
+    const link = page.locator('#private-list-panel .trash-link'); assert.match(await link.textContent(), /Kürzlich gelöscht\s*\(1\)/);
+    await link.click(); await page.locator('#trash-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht · Reise privat');
+    assert.match(await page.textContent('#trash-intro'), /nur auf diesem Gerät und erscheint in keinem anderen Papierkorb/);
+    assert.deepEqual(await page.locator('#trash-list .trash-row strong').allTextContents(), ['PrivatesReiseziel2117']);
+    assert.equal(await page.locator('#trash-dialog .trash-foot').isVisible(), false);
+    // Leeren leert nur diese geheime Liste
+    await page.click('#trash-purge'); await answerAsk(page, true, /nur auf diesem Gerät/);
+    assert.deepEqual((await stored()).filter(row => row.deletedAt).map(row => row.id), ['secret-b']);
+    await page.click('#trash-dialog [data-close]');
+    // „Geschenke privat“: ihr Eintrag ist noch da und lässt sich zurückholen
+    await openSecret('private-b'); await page.locator('#private-list-panel .trash-link').click(); await page.locator('#trash-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht · Geschenke privat');
+    assert.deepEqual(await page.locator('#trash-list .trash-row strong').allTextContents(), ['PrivatesGeschenk2117']);
+    await page.locator('.trash-row .trash-restore').click();
+    assert.equal(await page.textContent('#trash-status-text'), '„PrivatesGeschenk2117“ steht wieder in der geheimen Liste');
+    await page.click('#trash-dialog [data-close]');
+    // Danach wieder der allgemeine Papierkorb mit seinem Titel
+    await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    assert.equal(await page.textContent('#trash-title'), 'Kürzlich gelöscht'); assert.equal(await page.locator('#trash-empty').isVisible(), true);
+    assert.equal(await page.locator('#trash-dialog .trash-foot').isVisible(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.156: Das gewählte Symbol trägt seinen Namen als Listennamen ein ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.156: Eigene Liste – Apotheke antippen setzt „Apotheke“ als Namen ohne Tastatur; eigener Name bleibt; „Geschenke/Wünsche“ (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 844 }, colorScheme: theme, isMobile: true, hasTouch: true } });
+    await seedLocal(ctx, notesData152()); await open(page);
+    const form = page.locator('#store-form'), name = () => page.inputValue('#store-form [name=name]'), tile = value => form.locator(`.store-symbol-choice:has(input[value=${value}])`);
+    const typing = () => page.evaluate(() => document.activeElement?.matches('input[name=name]') || false);
+    const openList = async () => { await page.locator('#store-create').tap(); await page.locator('#store-add-choice .store-kind[data-kind=list]').tap(); };
+    await page.locator('#manage-stores').tap(); await sheetOpen(page); await openList();
+    // „Geschenke/Wünsche“ statt „Geschenke“, umbrochen nach dem Schrägstrich, nichts abgeschnitten
+    const gift = tile('gift');
+    assert.equal(await gift.locator('span:not(.store-symbol)').textContent(), 'Geschenke/Wünsche');
+    assert.equal(await gift.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    // Antippen trägt den Namen ein, ohne Tastatur; die Vorschau zeigt ihn
+    await tile('pharmacy').tap();
+    assert.equal(await name(), 'Apotheke'); assert.equal(await typing(), false, 'keine Tastatur');
+    assert.match(await form.locator('.store-preview-chip').textContent(), /Apotheke/);
+    await tile('travel').tap(); assert.equal(await name(), 'Reisen', 'ein anderes Symbol ersetzt den eigenen Vorschlag');
+    await tile('gift').tap(); assert.equal(await name(), 'Geschenke/Wünsche');
+    await tile('secret').tap(); assert.equal(await name(), 'Geheime Liste'); assert.equal(await page.isChecked('#store-form [name=private]'), true);
+    await tile('secret').tap(); assert.equal(await name(), '', 'Abwählen leert den Vorschlag');
+    // Selbst benannt: Symbole überschreiben den Namen nicht mehr
+    await form.locator('[name=name]').tap(); assert.equal(await typing(), true, 'erst das eigene Antippen öffnet die Tastatur');
+    await page.keyboard.type('Medikamente Oma');
+    await tile('pharmacy').tap(); assert.equal(await name(), 'Medikamente Oma');
+    await tile('home').tap(); assert.equal(await name(), 'Medikamente Oma');
+    // Feld geleert: der nächste Tipp schlägt wieder vor
+    await form.locator('[name=name]').fill(''); await tile('pharmacy').tap(); await tile('pharmacy').tap(); assert.equal(await name(), '');
+    await tile('pharmacy').tap(); assert.equal(await name(), 'Apotheke');
+    await page.locator('#store-add').tap();
+    let stores = (await storedDemo(page)).stores;
+    assert.deepEqual(stores.filter(row => row.name === 'Apotheke').map(row => row.symbol), ['pharmacy']);
+    // Gibt es den Namen schon: „Apotheke 2“
+    await openList(); await tile('pharmacy').tap(); assert.equal(await name(), 'Apotheke 2');
+    // Ein Symbol zur bestehenden Liste „Urlaub“ ist kein Problem; „Reisen“ ist frei
+    await tile('travel').tap(); assert.equal(await name(), 'Reisen');
+    // Zurück und wieder hin: der Vorschlag bleibt, ein Wechsel zu Notizliste ändert ihn nicht
+    await page.locator('#store-form-back').tap(); await page.locator('#store-add-choice .store-kind[data-kind=list]').tap(); assert.equal(await name(), 'Reisen');
+    await page.locator('#store-add-dialog .sheet-head [data-close]').tap();
+    await openList(); assert.equal(await name(), '', 'nach dem Schließen beginnt es leer');
+    if (process.env.SATTPLAN_SHOTS) { await tile('pharmacy').tap(); await page.screenshot({ path: `/tmp/sattplan2156-name-${width}-${theme}.png` }); }
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true); assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
 

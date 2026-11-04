@@ -103,3 +103,13 @@ test('Geheime Listen merken ihre Anzeige auf dem Gerät', () => {
   for (const mode of [undefined, ...DISPLAY_MODES]) assert.doesNotThrow(() => validatePrivateList(list(mode)));
   assert.throws(() => validatePrivateList(list('gross')), /beschädigt/);
 });
+
+test('2.156: Namensvorschlag aus dem Symbol, eindeutig gemacht', async () => {
+  const { suggestedListName, uniqueName, symbolName } = await import('../list-symbols.js');
+  assert.equal(symbolName('gift'), 'Geschenke/Wünsche');
+  assert.equal(suggestedListName('pharmacy'), 'Apotheke');
+  assert.equal(suggestedListName('secret'), 'Geheime Liste');
+  assert.equal(uniqueName('Apotheke', ['Edeka']), 'Apotheke');
+  assert.equal(uniqueName('Apotheke', ['apotheke ', 'Apotheke 2']), 'Apotheke 3');
+  assert.equal(uniqueName('', ['x']), '');
+});

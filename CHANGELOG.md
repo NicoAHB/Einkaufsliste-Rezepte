@@ -2,6 +2,50 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.159: Das Artikel-Formular klappt nach dem Hinzufügen wieder zu
+
+**Fehler:** Nach dem Hinzufügen eines Artikels (z. B. „G&G Hähnchenbrust“) blieben **Menge, Einheit und „Hinzufügen“** manchmal aufgeklappt, obwohl das Namensfeld schon leer war.
+
+**Ursache:** Beginnt man auf dem iPhone auf dem Feld **Einheit** zu scrollen, merkt sich die App „Einheit wird gerade gewählt“, damit das Feld beim Antippen nicht wegspringt. Wird aus der Berührung aber kein Antippen (Scrollen, Finger verrutscht), öffnet sich keine Auswahl. Die Merkmarke blieb dann hängen und hielt das Formular offen.
+
+**Behoben:**
+- Ohne Antippen wird die Marke nach kurzer Zeit wieder gelöscht.
+- Jedes Hinzufügen setzt sie zusätzlich zurück. Nach dem Hinzufügen ist das Formular damit immer zugeklappt.
+- Die echte Einheitenwahl hält das Formular weiterhin offen, solange die Auswahl offen ist.
+
+Offline-Paket `einkauf-shell-v171`.
+
+## Neu in Version 2.158: Verständliche Erklärung beim Schalter „Artikel ohne Geschäft“
+
+Unter **Geschäfte & Listen → Geschäft → Im Laden** beschreibt die Erklärung jetzt den **aktuellen Zustand** des Schalters, jeweils mit demselben Beispiel. Beim Umschalten wechselt sie sofort:
+- **An:** „„Brot“ steht ohne Geschäft auf der Liste? Dann siehst du es beim Einkaufen bei Rewe unter „Überall möglich“ und kannst es dort abhaken.“
+- **Aus:** „„Brot“ ohne Geschäft siehst du beim Einkaufen bei Rewe nicht. Es erscheint nur in Geschäften, bei denen dieser Schalter an ist, und unter „Alle“.“
+
+Der Name des Geschäfts passt sich weiter beim Umbenennen an. Bildschirmleser lesen die jeweils gültige Erklärung vor.
+
+Offline-Paket `einkauf-shell-v170`.
+
+## Neu in Version 2.157: Geheimes bleibt im Papierkorb der geheimen Liste
+
+**Bisher:** Was in einer geheimen Liste gelöscht wurde, stand auch im allgemeinen Papierkorb (Optionen → „Kürzlich gelöscht“). Bei mehreren geheimen Listen stand es zudem im Papierkorb jeder anderen geheimen Liste.
+
+**Jetzt:**
+- **Eigener Papierkorb:** Gelöschtes aus einer geheimen Liste erscheint nur noch in deren eigenem Papierkorb („Kürzlich gelöscht“ am Ende genau dieser geheimen Liste). Der Titel nennt die Liste, z. B. „Kürzlich gelöscht · Reise privat“, mit dem Hinweis „nur auf diesem Gerät“.
+- **Allgemeiner Papierkorb:** Optionen und Einkaufsliste zeigen nur noch Gemeinsames. Auch die Zahl unter Optionen zählt nichts Geheimes mehr mit.
+- **Leeren:** „Papierkorb leeren“ leert nur den gerade offenen Papierkorb. Im allgemeinen bleiben geheime Einträge unberührt, in einer geheimen Liste nur deren eigene.
+
+Offline-Paket `einkauf-shell-v169`.
+
+## Neu in Version 2.156: Das Symbol schlägt den Listennamen vor
+
+Unter **Eigene Liste anlegen**:
+- **Symbol antippen trägt seinen Namen ein:** Apotheke → im Feld „Listenname“ steht **Apotheke**. Die Tastatur öffnet sich dabei nicht; erst wenn du ins Feld tippst, um die Liste anders zu benennen.
+- **Den eigenen Namen behältst du:** Ein anderes Symbol ersetzt nur den Vorschlag, nicht einen selbst eingetippten Namen. Ein zweiter Tipp auf das Symbol hebt die Wahl samt Vorschlag auf.
+- **Doppelte Namen werden vermieden:** Gibt es „Apotheke“ schon, lautet der Vorschlag **Apotheke 2**. Das Schloss schlägt **Geheime Liste** vor.
+- **„Geschenke“ heißt jetzt „Geschenke/Wünsche“**, auch bei „Symbol: … · festgelegt“. Die Kachel bricht nach dem Schrägstrich um, nicht mitten im Wort.
+
+Offline-Paket `einkauf-shell-v168`.
+
 ## Neu in Version 2.155: Geschäft bearbeiten – verständlich für neue Nutzer
 
 **„Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist“ entfällt.**
