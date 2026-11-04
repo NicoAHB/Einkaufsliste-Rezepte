@@ -11127,4 +11127,55 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.151: Wer die Notiz angelegt hat ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.151: Notizen zeigen klein und schwach grau oben rechts „von Nico“, auch nach dem Ändern durch jemand anderen (${width}px ${theme})`, async () => {
+    const data = structuredClone(demo), at = '2026-11-01T09:00:00.000Z';
+    data.stores.push({ id: 'store-notes', name: 'Notizen', separate: true, symbol: 'checklist', createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    const note = (id, name, createdBy) => ({ id, name, quantity: 1, unit: 'Stück', storeId: 'store-notes', checked: false, createdBy, createdAt: at, updatedAt: at, deletedAt: null, _clock: {} });
+    data.items.push(note('note-anna', 'Kinderarzt anrufen wegen Impftermin und dabei gleich nach dem nächsten freien Termin fragen', 'Anna'),
+      note('note-old', 'Alte Notiz ohne Namen', 'Unbekannt'), note('note-long', 'Kurz', 'Maximiliane-Sophie von Hohenberg-Langenfeld'));
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await seedLocal(ctx, data); await open(page);
+    await page.locator('#store-chips [data-store-id=store-notes]').click();
+    await page.waitForSelector('#notes-panel:not([hidden])');
+    // Eigene neue Notiz: „von Nico“
+    await page.click('#notes-add'); await page.keyboard.type('Zahnarzt Freitag 10 Uhr'); await page.keyboard.press('Enter');
+    const row = text => page.locator('#notes-list .note-row', { hasText: text });
+    await row('Zahnarzt').locator('.note-by').waitFor();
+    assert.equal(await row('Zahnarzt').locator('.note-by').textContent(), 'von Nico');
+    assert.equal(await row('Kinderarzt').locator('.note-by').textContent(), 'von Anna');
+    assert.equal(await row('Alte Notiz').locator('.note-by').count(), 0, 'ohne bekannten Namen kein „von Unbekannt“');
+    assert.equal(await row('Kinderarzt').locator('.note-text').getAttribute('aria-label'), 'Notiz „Kinderarzt anrufen wegen Impftermin und dabei gleich nach dem nächsten freien Termin fragen“ von Anna ändern');
+    // Klein, schwach grau, oben rechts – und der Text läuft daneben und darunter, ohne überdeckt zu werden
+    const look = await row('Kinderarzt').evaluate(node => {
+      const text = node.querySelector('.note-text'), by = node.querySelector('.note-by'), words = [...text.childNodes].find(child => child.nodeType === 3);
+      const range = document.createRange(); range.selectNodeContents(words);
+      const t = text.getBoundingClientRect(), b = by.getBoundingClientRect(), lines = [...range.getClientRects()], ts = getComputedStyle(text), bs = getComputedStyle(by);
+      const overlap = lines.some(line => line.right > b.left + 0.5 && line.left < b.right - 0.5 && line.bottom > b.top + 0.5 && line.top < b.bottom - 0.5);
+      return { right: t.right - b.right, top: b.top - t.top, small: parseFloat(bs.fontSize) < parseFloat(ts.fontSize) * 0.8, weight: bs.fontWeight, grey: bs.color !== ts.color, opacity: Number(bs.opacity), overlap, lines: new Set(lines.map(line => Math.round(line.top))).size, firstLine: Math.round(lines[0].top - b.top) };
+    });
+    assert.ok(look.right >= 0 && look.right < 8, `rechts bündig (${look.right})`);
+    assert.ok(look.top >= 0 && look.top < 14, `ganz oben (${look.top})`);
+    assert.ok(look.small, 'kleiner als der Notiztext'); assert.equal(look.weight, '400');
+    assert.ok(look.grey && look.opacity < 1, 'schwach grau');
+    assert.equal(look.overlap, false, 'überdeckt keinen Text'); assert.ok(look.lines >= 2, 'langer Text bricht um');
+    assert.ok(Math.abs(look.firstLine) < 8, 'steht in der ersten Zeile');
+    const long = await row('Kurz').locator('.note-by').evaluate(node => ({ cut: node.scrollWidth > node.clientWidth, share: node.getBoundingClientRect().width / node.parentElement.getBoundingClientRect().width }));
+    assert.ok(long.cut && long.share <= 0.46, 'ein sehr langer Name wird gekürzt und nimmt höchstens knapp die halbe Breite');
+    assert.equal(await horizontalOverflow(page), 0);
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2151-von-${width}-${theme}.png` });
+    // Beim Ändern nur der Text in der Zeile; wer die Notiz angelegt hat, bleibt erhalten
+    await row('Kinderarzt').locator('.note-text').click();
+    assert.equal(await page.locator('#notes-list .note-row.editing .note-by').count(), 0);
+    assert.equal(await page.locator('#notes-list .note-input').inputValue(), 'Kinderarzt anrufen wegen Impftermin und dabei gleich nach dem nächsten freien Termin fragen');
+    await page.locator('#notes-list .note-input').fill('Kinderarzt anrufen'); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => [...document.querySelectorAll('#notes-list .note-text')].some(node => node.textContent === 'von AnnaKinderarzt anrufen'));
+    const stored = (await storedDemo(page)).items.find(item => item.id === 'note-anna');
+    assert.equal(stored.name, 'Kinderarzt anrufen'); assert.equal(stored.createdBy, 'Anna', 'Nico ändert, „von Anna“ bleibt');
+    // Löschen nennt nur den Text
+    await dragToTrash147(page, row('Zahnarzt'));
+    assert.equal(await noticeText147(page), '„Zahnarzt Freitag 10 Uhr“ gelöscht');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });
