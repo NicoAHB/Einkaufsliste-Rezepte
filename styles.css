@@ -5502,6 +5502,13 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .store-symbol-choice { grid-template-columns:minmax(0,1fr); justify-items:center; align-content:center; gap:6px; min-height:84px; padding:10px 6px; text-align:center }
 .store-symbol-choice>span:not(.store-symbol) { font-size:.84rem; line-height:1.25; white-space:normal; overflow-wrap:anywhere; hyphens:auto }
 .store-symbol-hint { margin:8px 2px 0 }
+/* 2.154: „Geheim“ unter einer Linie, als breite Kachel mit Erklärung */
+.store-symbol-line { height:0; margin:12px 2px; border-top:1px solid var(--line-strong) }
+.store-symbol-choice.secret-choice { grid-template-columns:32px minmax(0,1fr); justify-items:start; align-items:center; gap:4px 12px; min-height:64px; padding:10px 14px; text-align:left }
+.secret-choice-text { display:grid; gap:2px; min-width:0; hyphens:manual }
+.secret-choice-text>span { font-size:.9rem; font-weight:650; line-height:1.25 }
+.secret-choice-text>small { font-size:.78rem; font-weight:500; line-height:1.35; color:var(--muted); white-space:normal; overflow-wrap:anywhere }
+.store-symbol-choice.secret-choice:has(input:checked) .secret-choice-text>small { color:inherit; opacity:.85 }
 /* Festgelegtes Symbol: nur Information, keine Auswahl */
 .store-symbol-section { margin:14px 0 }
 .store-symbol-fixed { display:flex; align-items:center; gap:12px; min-height:56px; padding:10px 12px; border:1px solid var(--line); border-radius:14px; background:var(--bg) }

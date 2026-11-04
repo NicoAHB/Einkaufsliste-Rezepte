@@ -9623,7 +9623,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await first.locator('.store-symbol-picker').isVisible(),false);await first.locator('[name=separate]').check();
     assert.equal(await first.locator('.store-symbol-picker').isVisible(),false,'erst „Symbol festlegen“ zeigt die Motive (2.152)');
     await first.locator('.store-symbol-first').click();
-    assert.equal(await first.locator('input[name=symbol]').count(),7,'„Ohne Symbol“ und sechs Motive');
+    assert.equal(await first.locator('input[name=symbol]').count(),6,'sechs Motive, ohne „Ohne Symbol“ (2.154)');assert.equal(await first.locator('input[name=symbol]:checked').count(),0,'nichts vorgewählt');
     assert.equal(await first.locator('input[name=symbol][value=checklist]').count(),0,'das Klemmbrett gibt es nur über „Notizliste anlegen“');
     await chooseStoreSymbol(first,'pharmacy');assert.equal(await first.locator('.store-save').isEnabled(),true);
     for(const choice of await first.locator('.store-symbol-choice').all()) {const box=await choice.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.equal(await choice.locator('svg').count(),1);}
@@ -11299,7 +11299,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(fields[0], 'Listenname'); assert.ok(fields.indexOf('Symbol (optional)') > 0 && fields.indexOf('Anzeige im Reiter') > fields.indexOf('Symbol (optional)'), fields.join(' | '));
     assert.equal(await page.locator('#choose-store').isVisible(), false); assert.equal(await page.locator('#store-new-more').isVisible(), false, 'keine Händlerangaben');
     // Motive mit Namen, ohne Klemmbrett; ohne Symbol nur „Nur Name“
-    assert.deepEqual(await page.locator('#store-form .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Ohne Symbol', 'Geschenke', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf', 'Geheim']);
+    assert.deepEqual(await page.locator('#store-form .store-symbol-choices .store-symbol-choice span:not(.store-symbol)').allTextContents(), ['Geschenke', 'Apotheke', 'Reisen', 'Haushalt', 'Tierbedarf'], 'seit 2.154 ohne „Ohne Symbol“');
+    assert.equal(await page.locator('#store-form .store-symbol-secret .secret-choice-text > span').textContent(), 'Geheim');
     assert.equal(await page.locator('#store-form input[name=displayMode][value=symbol]').isDisabled(), true);
     assert.equal(await page.locator('#store-form input[name=displayMode][value=both]').isDisabled(), true);
     assert.equal(await page.locator('#store-form .store-display-need').isVisible(), true);
@@ -11308,7 +11309,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await chooseStoreSymbol(page.locator('#store-form'), 'travel');
     assert.equal(await page.inputValue('#store-form input[name=displayMode]:checked'), 'both', 'mit Symbol: „Symbol und Name“ voreingestellt');
     assert.equal(await page.locator('#store-form .store-preview-chip use[href="#i-travel"]').count(), 1);
-    assert.match(await page.textContent('#store-form .store-symbol-hint'), /Das Symbol bleibt nach dem Anlegen fest/);
+    assert.match(await page.textContent('#store-form .store-symbol-hint'), /Nach dem Anlegen bleibt das Symbol fest/);
     await page.locator('#store-form .store-display-choice:has(input[value=symbol])').click();
     assert.equal(await page.textContent('#store-form .store-preview-chip'), '', 'Vorschau „Nur Symbol“: kein Text');
     await page.locator('#store-form .store-display-choice:has(input[value=both])').click();
@@ -11347,6 +11348,51 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
     assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  // ---- 2.154: Symbolwahl ohne „Ohne Symbol“; „Geheim“ unter einer Linie ----
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.154: Eigene Liste – fünf Motive, darunter nach einer Linie „Geheim“; ein zweiter Tipp hebt die Wahl auf (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { palette: 'gruen', theme }, context: { viewport: { width, height: 844 }, colorScheme: theme, isMobile: true, hasTouch: true } });
+    await seedLocal(ctx, notesData152()); await open(page);
+    await page.locator('#manage-stores').tap(); await sheetOpen(page);
+    await page.locator('#store-create').tap(); await page.locator('#store-add-choice .store-kind[data-kind=list]').tap();
+    const form = page.locator('#store-form'), picked = () => form.locator('input[name=symbol]:checked').count(), mode = () => form.locator('input[name=displayMode]:checked').inputValue();
+    // Aufbau: kein „Ohne Symbol“, fünf Motive, Linie, „Geheim“ mit Erklärung – alles unter „Symbol (optional)“
+    assert.equal(await form.getByText('Ohne Symbol').count(), 0);
+    assert.equal(await form.locator('.store-symbol-picker > legend').textContent(), 'Symbol (optional)');
+    const layout = await form.locator('.store-symbol-picker').evaluate(field => [...field.children].map(node => node.className));
+    assert.deepEqual(layout.slice(1, 4), ['store-symbol-choices', 'store-symbol-line', 'store-symbol-secret'], layout.join());
+    assert.deepEqual(await form.locator('.store-symbol-choices input').evaluateAll(nodes => nodes.map(node => node.value)), ['gift', 'pharmacy', 'travel', 'home', 'pets']);
+    assert.match(await form.locator('.store-symbol-secret').textContent(), /Geheim.*nur auf diesem Gerät/);
+    const line = await form.locator('.store-symbol-line').boundingBox(), tiles = await form.locator('.store-symbol-choices').boundingBox(), secret = await form.locator('.store-symbol-secret .store-symbol-choice').boundingBox();
+    assert.ok(line.y >= tiles.y + tiles.height && line.y <= secret.y && line.width > secret.width * 0.9, 'die Linie trennt „Geheim“ von den Motiven');
+    assert.ok(secret.height >= 44 && Math.abs(secret.width - tiles.width) < 2, '„Geheim“ ist so breit wie die Motive darüber');
+    assert.equal(await picked(), 0, 'nichts vorgewählt: ohne Symbol'); assert.equal(await mode(), 'name');
+    // Wählen und mit einem zweiten Tipp wieder abwählen
+    const tile = value => form.locator(`.store-symbol-choice:has(input[value=${value}])`);
+    await tile('travel').tap(); assert.equal(await picked(), 1); assert.equal(await mode(), 'both');
+    await tile('travel').tap(); assert.equal(await picked(), 0, 'zweiter Tipp hebt die Wahl auf'); assert.equal(await mode(), 'name');
+    assert.equal(await form.locator('input[name=displayMode][value=both]').isDisabled(), true);
+    // Geheim: der Haken erscheint; abgewählt verschwindet er wieder
+    await tile('secret').tap(); assert.equal(await page.isChecked('#store-form [name=private]'), true); assert.equal(await page.textContent('#store-add-label'), 'Geheime Liste anlegen');
+    await tile('secret').tap(); assert.equal(await form.locator('[name=private]').isVisible(), false); assert.equal(await page.textContent('#store-add-label'), 'Liste anlegen');
+    // Tastatur: Leertaste wählt und hebt wieder auf
+    await form.locator('input[name=symbol][value=home]').focus(); await page.keyboard.press(' '); assert.equal(await picked(), 1);
+    await page.keyboard.press(' '); assert.equal(await picked(), 0, 'Leertaste hebt die Wahl auf');
+    if (process.env.SATTPLAN_SHOTS) await page.screenshot({ path: `/tmp/sattplan2154-symbole-${width}-${theme}.png` });
+    assert.equal(await page.locator('#store-add-dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true); assert.equal(await horizontalOverflow(page), 0);
+    // Ohne Symbol anlegen: kein Motiv gespeichert, „Nur Name“
+    await form.locator('[name=name]').tap(); await page.keyboard.type('Ohne Bild'); await page.locator('#store-add').tap();
+    const saved = (await storedDemo(page)).stores.find(row => row.name === 'Ohne Bild');
+    assert.deepEqual([saved.symbol, saved.displayMode, saved.separate], ['none', undefined, true]);
+    // Bearbeiten: „Symbol festlegen“ hat dieselbe Auswahl ohne „Ohne Symbol“
+    const row = page.locator(`.store-row[data-id="${saved.id}"]`); await row.locator('>summary').tap();
+    await row.locator('.store-symbol-first').tap();
+    assert.equal(await row.getByText('Ohne Symbol').count(), 0); assert.equal(await row.locator('input[name=symbol]:checked').count(), 0);
+    assert.equal(await row.locator('.store-symbol-secret input[value=secret]').count(), 1);
+    await row.locator('.store-symbol-choice:has(input[value=pets])').tap(); assert.equal(await row.locator('.store-save').isEnabled(), true);
+    await row.locator('.store-symbol-choice:has(input[value=pets])').tap(); assert.equal(await row.locator('.store-save').isDisabled(), true, 'abgewählt: nichts zu speichern');
     assert.deepEqual(problems, []); await ctx.close();
   });
 
