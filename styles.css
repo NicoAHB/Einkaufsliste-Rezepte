@@ -3026,6 +3026,7 @@ details,summary,.card {
 .members-list>li>span { min-width:0; overflow-wrap:anywhere; font-weight:650 }
 .member-actions { display:flex; flex-wrap:wrap; gap:4px }
 .member-actions button { min-height:44px; font-size:.82rem }
+:root #members-dialog .member-actions .member-delete { width:44px; padding:0; color:var(--danger) }   /* 2.162: nur bei Personen ohne Einkäufe */
 #member-form { align-items:end; gap:8px; flex-wrap:wrap }
 #member-form label { flex:1; min-width:100px }
 #member-form input { width:100%; min-width:0 }
@@ -4814,7 +4815,7 @@ button.recipe-delete { color:var(--danger) }
 #expense-category-delete-apply { white-space:normal }
 
 /* Markierte Nebenaktionen behalten auch im Glas-Design einen klaren Rahmen. */
-:root :is(#export,#export-full,#restore-open,#disconnect,#test-proxy,#sheet-share),
+:root :is(#export,#export-full,#restore-open,#disconnect,#test-proxy,#sheet-share,#clear-daily-history,#compact-now,#clean-photos),
 :root #plan-recipe-dialog > .stack > .sheet-actions > button {
   border:2px solid var(--accent);
 }
@@ -5471,7 +5472,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 /* Hinzufügen: erst die Aufgabe wählen */
 .store-add-dialog .sheet-head { gap:8px }
 .store-add-dialog .sheet-head h2 { flex:1; min-width:0 }
-#store-add-title:focus { outline:none }   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
+#store-add-title:focus,#daily-title:focus { outline:none }   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
 .store-add-question { margin:2px 0 12px; font-size:1.05rem; font-weight:700 }
 .store-add-choice { display:grid; gap:10px }
 .store-add-choice .store-group-line { margin:8px 0 2px }

@@ -11878,6 +11878,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     assert.deepEqual((await page.locator('#palette button').evaluateAll(nodes => nodes.map(node => node.dataset.palette))).slice(0, 2), ['gruen', 'blau']);
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'gruen');
+    // Datenumfang: die drei Knöpfe haben wie „Datensicherung erstellen“ einen Rahmen in der Akzentfarbe
+    for (const id of ['clear-daily-history', 'compact-now', 'clean-photos'])
+      assert.deepEqual(await page.locator(`#${id}`).evaluate(node => { const style = getComputedStyle(node), reference = getComputedStyle(document.querySelector('#export')); return [style.borderTopWidth, style.borderTopStyle, style.borderTopColor === reference.borderTopColor]; }), ['2px', 'solid', true], id);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
@@ -11894,7 +11897,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#store-quick-dialog .sheet-head [data-close]');
     // Reihenfolge ändern: Geheim als eigene, feste Gruppe zwischen den Listen und den Notizen
     const orderRows = () => page.locator('#order-list').evaluate(node => [...node.children].map(child => child.classList.contains('order-group') ? `#${child.textContent}` : child.querySelector('span').textContent));
-    await page.click('#manage-stores'); await sheetOpen(page); await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    await page.click('#manage-stores'); await sheetOpen(page);
+    // Verwaltung: eine Linie über den geheimen Listen
+    assert.deepEqual(await page.locator('#store-editor').evaluate(node => [...node.children].map(child => child.classList.contains('store-secret-line') ? '|' : child.dataset.privateListId ? 'geheim' : 'liste').slice(-4)), ['liste', '|', 'geheim', 'geheim']);
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
     assert.deepEqual(await orderRows(), ['Edeka', 'Lidl', 'Rewe', 'Urlaub', 'Baumarkt-Ideen', '#Geheim', 'Reise privat', 'Geschenke privat', '#Notizen', 'Notizen']);
     for (const name of ['Reise privat nach oben', 'Reise privat nach unten', 'Geschenke privat nach oben', 'Geschenke privat nach unten', 'Baumarkt-Ideen nach unten', 'Notizen nach oben'])
       assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true, name);
@@ -11915,6 +11921,45 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await orderRows()).slice(-3), ['Urlaub', '#Notizen', 'Notizen'], 'ohne sichtbare geheime Liste keine Gruppe „Geheim“');
     await page.click('#order-dialog [data-close]'); await page.click('#stores-dialog .sheet-head [data-close]');
     assert.equal((await chips()).filter(entry => entry === '|').length, 1, 'nur noch die Linie vor den Notizen');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.162: Rezepte des Tages öffnet ohne Fokusring am Schließen-× (Fokus auf der Überschrift)', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await goTab(page, 'recipes'); await page.click('#daily-open'); await sheetOpen(page);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'daily-title');
+    assert.equal(await page.locator('#daily-dialog [data-close]').evaluate(node => node.matches(':focus')), false, 'das × hat keinen Fokus');
+    assert.equal(await page.locator('#daily-title').evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+    await page.keyboard.press('Tab'); assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'daily-title', 'Tastatur kommt weiter');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.162: Familienmitglieder – eine versehentlich angelegte Person ohne Einkäufe lässt sich nach Rückfrage löschen; wer Einkäufe hat oder man selbst ist, nur ausblenden', async () => {
+    const { ctx, page, problems } = await localExpenses();
+    // Eigener Einkauf legt „Nico“ an; dazu eine Person mit Einkauf (Lena) und eine ohne (Nadiia)
+    await page.click('#add-purchase'); await sheetOpen(page); await page.fill('#purchase-form input[name=amount]', '18,90');
+    await page.click('#purchase-person-add'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Lena'); await page.click('#member-form button[type=submit]'); await page.click('#purchase-save');
+    await page.click('#spending-members'); await sheetOpen(page);
+    await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Lena löschen', exact: true }).count(), 0, 'Lena hat einen Einkauf');
+    assert.equal(await page.getByRole('button', { name: 'Nico löschen', exact: true }).count(), 0, 'die eigene Person bleibt');
+    // Abbrechen behält sie
+    await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).click(); await answerAsk(page, false, /„Nadiia“ löschen\?/, /keine Einkäufe/);
+    assert.equal((await expenseStored(page)).members.some(row => row.name === 'Nadiia' && !row.deletedAt), true);
+    await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).click(); await answerAsk(page, true);
+    assert.equal(await page.locator('#members-list li', { hasText: 'Nadiia' }).count(), 0);
+    assert.match(await page.textContent('#notice-text'), /„Nadiia“ gelöscht/);
+    const after = await expenseStored(page);
+    assert.ok(after.members.find(row => row.name === 'Nadiia').deletedAt, 'als gelöscht gespeichert');
+    assert.equal(after.members.find(row => row.id === 'member-lena').deletedAt ?? null, null);
+    // Neu hinzufügen geht wieder
+    await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
+    assert.equal(await page.locator('#members-list li', { hasText: 'Nadiia' }).count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });

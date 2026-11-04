@@ -21,7 +21,7 @@ const productThumb = product => {
 };
 const svgIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 
-export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onExport, onMessage, productImages }) {
+export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onMemberDelete, onExport, onMessage, productImages }) {
   // Aufgeklappter Einkauf (2.160): höchstens einer; ein zweiter Tipp oder das Aufklappen eines anderen schließt ihn
   let expanded = '';
   const setOpen = (li, open) => { li.classList.toggle('open', open); li.querySelector('.spend-row').setAttribute('aria-expanded', String(open)); li.querySelector('.spend-products').hidden = !open; };
@@ -61,6 +61,8 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   function renderMembers() {
     const active = $('members-list'), archived = $('members-archived-list'); active.replaceChildren(); archived.replaceChildren();
     const list = members().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    // Löschen (2.162): nur Personen ohne einen einzigen Einkauf (auch keinen gelöschten) und nicht die eigene Person; wer Einträge hat, wird ausgeblendet
+    const used = new Set((data().purchases || []).map(row => row.buyerId).filter(Boolean)), ownId = getOwn()?.id;
     if (!list.some(row => !row.archived)) active.append(node('li', 'Noch keine Personen gespeichert. Beim ersten Einkauf wird dein Name übernommen.', 'empty'));
     for (const member of list) {
       const row = node('li'), label = node('span', member.name), actions = node('div', undefined, 'member-actions');
@@ -72,7 +74,15 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       const archive = button(member.archived ? 'Einblenden' : 'Ausblenden', () => {
         try { $('members-error').hidden = true; onMemberArchive(member.id, !member.archived); } catch (error) { fail('members-error', error); }
       }, 'text-button'); archive.setAttribute('aria-label', `${member.name}: ${member.archived ? 'einblenden' : 'ausblenden'}`);
-      actions.append(edit, archive); row.append(label, actions); (member.archived ? archived : active).append(row);
+      actions.append(edit, archive);
+      if (!used.has(member.id) && member.id !== ownId) {
+        const remove = button(undefined, () => {
+          $('members-error').hidden = true;
+          Promise.resolve().then(() => onMemberDelete(member.id)).catch(error => fail('members-error', error));
+        }, 'icon-button member-delete'); remove.append(svgIcon('trash')); remove.setAttribute('aria-label', `${member.name} löschen`);
+        actions.append(remove);
+      }
+      row.append(label, actions); (member.archived ? archived : active).append(row);
     }
     $('members-archived').hidden = !list.some(row => row.archived);
   }
