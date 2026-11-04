@@ -4736,32 +4736,34 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(gone('item-fahrrad'), true);
     assert.equal(remote.content.items.find(row => row.name === 'Tomaten').deletedAt, null, 'die Tomaten bleiben abgehakt stehen');
     assert.equal(remote.content.items.find(row => row.name === 'Zwiebeln').deletedAt, null);
-    // Einstellbar: im Dialog „Geschäfte“ gibt es „Eigene Liste“; dann entfällt „Artikel ohne Geschäft“
+    // 2.155: Geschäft oder eigene Liste wird beim Anlegen gewählt; beim Bearbeiten gibt es keinen Umschalter mehr.
+    // Geschäfte haben einen eigenen Bereich „Im Laden“ mit verständlichem Schalter; Listen haben ihn nicht.
     await openStores(page);
     const row = index => page.locator('#store-editor .store-row').nth(index);
-    assert.equal(await row(3).locator('input[name=separate]').isChecked(), true, 'Wünsche: eigene Liste');
-    assert.equal(await row(3).locator('input[name=anywhere]').isVisible(), false, 'dann entfällt „Artikel ohne Geschäft“');
-    assert.equal(await row(2).locator('input[name=separate]').isChecked(), false);
-    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), true);
-    assert.match(await row(2).textContent(), /Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist/);
-    await row(2).locator('input[name=separate]').check();
-    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), false);
+    assert.equal(await page.locator('#stores-dialog input[name=separate]').count(), 0, 'kein Umschalter „Eigene Liste“');
+    assert.ok(!/Eigene Liste: Artikel nur zeigen/.test(await page.textContent('#stores-dialog')));
+    assert.equal(await row(3).locator('.store-pill').textContent(), 'Eigene Liste');
+    assert.equal(await row(3).locator('.store-shop-settings').isVisible(), false, 'Listen haben keinen Bereich „Im Laden“');
+    const shop = row(2).locator('.store-shop-settings');
+    assert.equal(await shop.isVisible(), true);
+    assert.equal(await shop.locator('.store-settings-title').textContent(), 'Im Laden');
+    assert.equal(await shop.locator('input[name=anywhere]').getAttribute('role'), 'switch');
+    assert.match(await shop.locator('.store-setting').textContent(), /Artikel ohne Geschäft auch hier zeigen.*Brot.*bei Rewe zusätzlich unter „Überall möglich“/);
+    assert.equal(await shop.locator('.aisle-fold').count(), 1, 'die Reihenfolge der Gänge steht im selben Bereich');
+    // Der Hinweis nennt den Namen, auch während man ihn ändert
+    await row(2).locator('input[name=name]').fill('Rewe City'); assert.match(await shop.locator('.store-setting small').textContent(), /bei Rewe City/);
+    await row(2).locator('input[name=name]').fill('Rewe');
+    // Schalter: gut zu treffen, ändert den Speichern-Knopf, wird gespeichert
+    const toggle = await shop.locator('input[name=anywhere]').boundingBox(), setting = await shop.locator('.store-setting').boundingBox();
+    assert.ok(toggle.width >= 44 && setting.height >= 48, `${toggle.width}×${setting.height}`);
+    assert.equal(await shop.locator('input[name=anywhere]').isChecked(), true);
+    await shop.locator('.store-setting').click(); assert.equal(await shop.locator('input[name=anywhere]').isChecked(), false, 'die ganze Zeile schaltet');
     await row(2).getByRole('button', { name: /speichern/ }).click();
     await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
-    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').separate, true, 'die Einstellung liegt in der gemeinsamen Datei');
+    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').anywhere, false);
+    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').separate ?? null, null, 'Rewe bleibt ein Geschäft');
     await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-    assert.ok(!(await itemsText()).includes('Äpfel'), 'Rewe ist jetzt eine eigene Liste: die Äpfel stehen nicht mehr unter „Alle“');
-    await tab('Rewe').click();
-    assert.ok((await itemsText()).includes('Äpfel'), 'aber unter „Rewe“');
-    await tab('Alle').click();
-    await openStores(page);
-    await row(2).locator('input[name=separate]').uncheck();
-    assert.equal(await row(2).locator('input[name=anywhere]').isVisible(), true);
-    await row(2).getByRole('button', { name: /speichern/ }).click();
-    await page.waitForFunction(() => document.querySelector('#status').dataset.state === 'ok');
-    assert.equal(remote.content.stores.find(entry => entry.id === 'store-rewe').separate, null);
-    await page.keyboard.press('Escape'); await page.waitForSelector('dialog[open]', { state: 'detached' });
-    assert.ok((await itemsText()).includes('Äpfel'));
+    assert.ok((await itemsText()).includes('Äpfel'), 'die Äpfel stehen weiter unter „Alle“');
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -4831,23 +4833,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await row(3).locator('input[name=symbol]').count(), 0, 'keine Galerie zum Tauschen');
     assert.equal(await mode(3).inputValue(), 'symbol', 'bisherige Ansicht bleibt: nur das Bild');
     assert.match(await row(3).textContent(), /Anzeige im Reiter/);
-    // Edeka wird eigene Liste und bekommt einmalig ein Symbol; „Symbol und Name“ ist vorgeschlagen
-    await row(0).locator('[name=separate]').check(); await chooseStoreSymbol(row(0),'gift');
-    assert.equal(await mode(0).inputValue(), 'both');
-    await show(0, 'symbol'); await saved(0);
-    assert.equal(record('Edeka').symbol, 'gift'); assert.equal(record('Edeka').displayMode, 'symbol');
-    assert.equal(await row(0).locator('input[name=symbol]').count(), 0, 'nach dem Speichern fest');
-    await close();
-    assert.equal(await visible(bar), 2);
-    assert.ok(!(await page.textContent(bar)).includes('Edeka'));
-    assert.equal(await tab('Edeka').count(), 1);
+    // Ein Geschäft hat weder Symbol noch Anzeige; Geschäft oder Liste wird beim Anlegen gewählt (2.155)
+    assert.equal(await row(0).locator('.store-symbol-section').isVisible(), false);
+    assert.equal(await row(0).locator('[name=separate]').count(), 0, 'kein Umschalter Geschäft ↔ eigene Liste');
     // Wünsche als Name: der Text ist zurück, das Geschenk bleibt hinterlegt
-    await openStores(page);
     await show(3, 'name'); await saved(3);
     assert.equal(record('Wünsche').displayMode, 'name'); assert.equal(record('Wünsche').symbol, 'gift', 'das bisher abgeleitete Geschenk ist jetzt fest gespeichert');
     await close();
     assert.ok((await page.textContent(bar)).includes('Wünsche'), 'als Name steht der Text wieder da');
-    assert.equal(await visible(bar), 1, 'nur noch Edeka als Bild');
+    assert.equal(await visible(bar), 0, 'kein Bild mehr im Reiter');
     // Symbol und Name; danach umbenannt: das Geschenk bleibt, es wird nicht neu aus dem Namen abgeleitet
     await openStores(page);
     await show(3, 'both'); await row(3).locator('input[name=name]').fill('Ideen'); await saved(3);
@@ -4855,7 +4849,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await close();
     assert.equal(await tab('Ideen').count(), 1);
     assert.match(await tab('Ideen').textContent(), /Ideen/);
-    assert.equal(await visible(bar), 2);
+    assert.equal(await visible(bar), 1);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -9620,16 +9614,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await first.locator('.aisle-fold>summary').click();await first.locator('.aisle-down').first().click();assert.equal(await first.locator('.store-save').isEnabled(),true);
     await first.locator('.aisle-up').nth(1).click();assert.equal(await first.locator('.store-save').isDisabled(),true);
     await first.locator('.aisle-fold>summary').click();
-    assert.equal(await first.locator('.store-symbol-picker').isVisible(),false);await first.locator('[name=separate]').check();
-    assert.equal(await first.locator('.store-symbol-picker').isVisible(),false,'erst „Symbol festlegen“ zeigt die Motive (2.152)');
-    await first.locator('.store-symbol-first').click();
-    assert.equal(await first.locator('input[name=symbol]').count(),6,'sechs Motive, ohne „Ohne Symbol“ (2.154)');assert.equal(await first.locator('input[name=symbol]:checked').count(),0,'nichts vorgewählt');
-    assert.equal(await first.locator('input[name=symbol][value=checklist]').count(),0,'das Klemmbrett gibt es nur über „Notizliste anlegen“');
-    await chooseStoreSymbol(first,'pharmacy');assert.equal(await first.locator('.store-save').isEnabled(),true);
-    for(const choice of await first.locator('.store-symbol-choice').all()) {const box=await choice.boundingBox();assert.ok(box.width>=44&&box.height>=44);assert.equal(await choice.locator('svg').count(),1);}
-    assert.equal(await first.locator('.store-symbol-choice:has(input[value=gift]) span:not(.store-symbol)').textContent(),'Geschenke','Namen statt Nummern');
-    await first.locator('.store-save').click();assert.equal((await storedDemo(page)).stores[0].symbol,'pharmacy');
-    assert.match(await first.locator('.store-symbol-fixed').textContent(),/Symbol: Apotheke · festgelegt/);assert.equal(await first.locator('input[name=symbol]').count(),0);
+    assert.equal(await first.locator('.store-symbol-picker').isVisible(),false);assert.equal(await first.locator('[name=separate]').count(),0,'kein Umschalter Geschäft ↔ Liste (2.155)');
+    // „Im Laden“: der Schalter ändert den Speichern-Knopf; zurückgestellt ist nichts zu speichern
+    const anywhere=first.locator('.store-shop-settings .store-setting');assert.equal(await anywhere.isVisible(),true);
+    const box=await anywhere.boundingBox();assert.ok(box.height>=48&&box.width<=width);
+    await anywhere.click();assert.equal(await first.locator('.store-save').isEnabled(),true);
+    await anywhere.click();assert.equal(await first.locator('.store-save').isDisabled(),true);
+    assert.equal(await first.locator('.store-setting').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);
     await first.locator('.store-save').scrollIntoViewIfNeeded();await page.screenshot({path:`/tmp/sattplan290-geschaefte-${width}.png`});
     assert.equal(await page.locator('#stores-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.equal(await horizontalOverflow(page),0);
     assert.deepEqual(problems,[]);await ctx.close();
@@ -9676,12 +9667,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.90: Speichern auf zwei Geräten erhält zwischenzeitlich geänderte Listensymbole',async()=>{
-    const api=github(demo),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
+    const api=github(extras290()),a=await context({config:connectedConfig}),b=await context({config:{...connectedConfig,actor:'Anna'}});
     for(const device of [a,b]) {await device.ctx.route('https://api.github.com/**',api.handler);await open(device.page);await synced(device.page);await openStores(device.page);}
-    const rowA=a.page.locator('.store-row').first(),rowB=b.page.locator('.store-row').first();
-    await rowA.locator('[name=name]').fill('Edeka gemeinsam');await rowB.locator('[name=separate]').check();await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
+    const rowA=a.page.locator('.store-row[data-id=extra-290]'),rowB=b.page.locator('.store-row[data-id=extra-290]');
+    // Anna legt einmalig ein Symbol fest, Nico benennt gleichzeitig mit noch offenem Formular um
+    await rowA.locator('[name=name]').fill('Reise gemeinsam');await chooseStoreSymbol(rowB,'pharmacy');await rowB.locator('.store-save').click();await synced(b.page);await pollNow(a.page);await synced(a.page);
     await rowA.locator('.store-save').click();await synced(a.page);await pollNow(b.page);await synced(b.page);
-    assert.equal(api.content.stores[0].name,'Edeka gemeinsam');assert.equal(api.content.stores[0].symbol,'pharmacy');assert.equal(api.content.sync.minRev,18);
+    const saved=api.content.stores.find(row=>row.id==='extra-290');
+    assert.equal(saved.name,'Reise gemeinsam');assert.equal(saved.symbol,'pharmacy');assert.equal(api.content.sync.minRev,18);
     assert.match(await rowA.locator('.store-symbol-fixed').textContent(),/Apotheke · festgelegt/);
     assert.deepEqual([...a.problems,...b.problems],[]);await a.ctx.close();await b.ctx.close();
   });

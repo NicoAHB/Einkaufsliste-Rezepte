@@ -1257,7 +1257,7 @@ function storeEditorRow(store) {
     const save = element('button', 'Speichern', 'store-save');save.type='submit';
     const nameLabel = element('label', 'Geschäftsname'); nameLabel.append(input);
     const chainLabel = element('label', 'Händler / Logo'), chainPick = element('select'); chainPick.name = 'chainKey';
-    chainPick.append(new Option('Automatisch am Namen erkennen', ''));
+    chainPick.append(new Option('Automatisch erkennen', ''));   // kurz, damit nichts abgeschnitten wird (2.155)
     for (const chain of searchCatalog()) chainPick.append(new Option(chain.name, chain.key));
     if (store.chainKey && !catalogByKey(store.chainKey)) chainPick.append(new Option('Gespeicherter Händler', store.chainKey));
     chainPick.value = store.chainKey || ''; chainLabel.append(chainPick);
@@ -1269,14 +1269,16 @@ function storeEditorRow(store) {
       if (anywhere.checked === previousAnywhere) anywhere.checked = nextAnywhere;
       previousDefault = nextDefault; previousAnywhere = nextAnywhere;
     });
-    const anywhereLabel = element('label', undefined, 'checkbox-label'), anywhere = element('input');
-    anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.checked = takesAnywhere(store);
-    anywhereLabel.append(anywhere, ' „Im Laden“ auch Artikel ohne Geschäft anzeigen');
-    // Eigene Liste (z. B. „Wünsche“): Die Artikel erscheinen nirgends, nur wenn dieses Geschäft gewählt ist. Dann gibt es keine Artikel ohne Geschäft dazu.
-    const separateLabel = element('label', undefined, 'checkbox-label'), separate = element('input');
-    separate.type = 'checkbox'; separate.name = 'separate'; separate.checked = isSeparate(store); anywhereLabel.hidden = separate.checked;
-    separate.addEventListener('change', () => syncStoreKind(true));
-    separateLabel.append(separate, ' Eigene Liste: Artikel nur zeigen, wenn dieses Geschäft gewählt ist');
+    /* Geschäft oder eigene Liste wird beim Anlegen gewählt und hier nicht mehr umgestellt (2.155). Ein Umschalter war missverständlich und
+       riskant: Ein Tipp verwarf Händler, Angebotslink und Gänge oder mischte Listeneinträge unter „Alle“. Wer sich vertan hat, legt die
+       richtige Art an und verschiebt die Artikel (Auswählen → Geschäft zuordnen). */
+    const apart = isSeparate(store) || wishList || notes;
+    // „Im Laden“: Artikel ohne Geschäft auch hier zeigen – als Schalter mit verständlicher Erklärung (Name des Geschäfts, Abschnitt „Überall möglich“)
+    const anywhereRow = element('label', undefined, 'store-setting'), anywhere = element('input'), anywhereText = element('span', undefined, 'store-setting-text'), anywhereHint = element('small');
+    anywhere.type = 'checkbox'; anywhere.name = 'anywhere'; anywhere.className = 'store-switch'; anywhere.setAttribute('role', 'switch'); anywhere.checked = takesAnywhere(store);
+    anywhere.setAttribute('aria-label', 'Artikel ohne Geschäft auch hier zeigen'); anywhereHint.id = `store-anywhere-${store.id}`; anywhere.setAttribute('aria-describedby', anywhereHint.id);
+    anywhereText.append(element('strong', 'Artikel ohne Geschäft auch hier zeigen'), anywhereHint); anywhereRow.append(anywhereText, anywhere);
+    const describeAnywhere = () => { anywhereHint.textContent = `Hat ein Artikel kein Geschäft (z. B. Brot), steht er „Im Laden“ bei ${input.value.trim() || store.name} zusätzlich unter „Überall möglich“.`; };
     // Symbol (2.152): festgelegt und nur angezeigt. Eine Liste ohne Symbol darf einmalig eines bekommen; danach gilt dieselbe Sperre.
     const symbolBox=element('div',undefined,'store-symbol-section');let firstPick=null;
     if(fixed)symbolBox.append(fixedSymbolInfo(fixed,shownSymbol(fixed)));
@@ -1288,7 +1290,7 @@ function storeEditorRow(store) {
     }
     const chosenSymbol=()=>fixed||pickedSymbol(firstPick);
     const display=displayPicker(listDisplayOf(store));
-    const privacy=listPrivacyField(chosenSymbol,firstPick?[firstPick]:[],()=>separate.checked);
+    const privacy=listPrivacyField(chosenSymbol,firstPick?[firstPick]:[],()=>apart);
     const syncDisplay=()=>{const symbol=chosenSymbol();display.sync(input.value.trim()||store.name,symbol,shownSymbol(symbol));};
     // Reihenfolge der Gänge: Standard ist der typische Weg durch den Laden; hier lässt sie sich für dieses Geschäft ändern (gilt unter „Planen“ und „Im Laden“, gespeichert mit „Speichern“).
     const aisleFold = element('details', undefined, 'aisle-fold'), aisleList = element('ol', undefined, 'aisle-list');
@@ -1308,20 +1310,20 @@ function storeEditorRow(store) {
     };
     const aisleSummary=element('summary');aisleSummary.append(icon('grid'),element('span','Reihenfolge der Gänge'),icon('down'));
     aisleFold.append(aisleSummary, aisleList, aisleReset); drawAisles();
-    function syncStoreKind(automatic=false) {
-      if(wishList||notes)separate.checked=true;   // Wünsche und Notizen bleiben eigene Listen; ihre Funktion hängt daran
-      nameLabel.firstChild.textContent=separate.checked?'Listenname':'Geschäftsname';
-      input.setAttribute('aria-label',separate.checked?'Listenname':'Geschäftsname');
-      for(const field of [chainLabel,linkLabel,anywhereLabel,aisleFold])field.hidden=separate.checked;
-      chainPick.disabled=link.disabled=anywhere.disabled=separate.checked;
-      symbolBox.hidden=display.field.hidden=!separate.checked;
-      privacy.sync(automatic);
-      separateLabel.hidden=wishList||notes;
+    // Beides wirkt nur „Im Laden“ und steht deshalb in einem eigenen, beschrifteten Bereich
+    const shopGroup=element('section',undefined,'store-shop-settings');shopGroup.append(element('h4','Im Laden','store-settings-title'),anywhereRow,aisleFold);
+    function syncStoreKind() {
+      nameLabel.firstChild.textContent=apart?'Listenname':'Geschäftsname';
+      input.setAttribute('aria-label',apart?'Listenname':'Geschäftsname');
+      for(const field of [chainLabel,linkLabel,shopGroup])field.hidden=apart;
+      chainPick.disabled=link.disabled=anywhere.disabled=apart;
+      symbolBox.hidden=display.field.hidden=!apart;
+      privacy.sync();
     }
-    syncStoreKind();syncDisplay();
-    form.append(nameLabel, chainLabel, linkLabel, separateLabel, symbolBox, display.field, privacy.field, anywhereLabel, aisleFold, save);
+    syncStoreKind();syncDisplay();describeAnywhere();
+    form.append(nameLabel, chainLabel, linkLabel, symbolBox, display.field, privacy.field, shopGroup, save);
     const storePatch=()=>{
-      const name=input.value.trim(),apart=separate.checked,chainKey=apart?null:chainPick.value||null,identity={name,chainKey};
+      const name=input.value.trim(),chainKey=apart?null:chainPick.value||null,identity={name,chainKey};
       const typed=apart?'':offerUrl(link.value),symbol=chosenSymbol();
       return {name,chainKey,offersUrl:typed===defaultOfferUrl(identity)?'':typed,
         anywhere:apart?false:anywhere.checked===takesAnywhere(identity)?null:anywhere.checked,separate:apart||null,
@@ -1344,7 +1346,7 @@ function storeEditorRow(store) {
       }
       save.setAttribute('aria-label',modified?`${input.value.trim()||store.name} speichern`:`${store.name}: ${label}`);
     };
-    const refresh=()=>{syncDisplay();updateSave();};
+    const refresh=()=>{syncDisplay();describeAnywhere();updateSave();};
     form.addEventListener('input',refresh);form.addEventListener('change',refresh);updateSave();
     form.addEventListener('submit', event => { event.preventDefault(); guard(async () => {
       const name = input.value.trim(); if (!name) throw new Error('Bitte einen Namen eingeben.');
@@ -3347,7 +3349,7 @@ function renderShop() {
   }
   const apart = isSeparate(stores.find(store => store.id === shopStore));   // eine eigene Liste steht für sich: keine Hinweise auf Artikel anderswo
   if (shop.elsewhere && !apart) list.append(element('li', `${shop.elsewhere} Artikel für andere Geschäfte`, 'shop-note'));
-  if (shop.hidden && !apart) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte“)`, 'shop-note'));
+  if (shop.hidden && !apart) list.append(element('li', `${shop.hidden} Artikel ohne Geschäft stehen hier nicht (einstellbar unter „Geschäfte & Listen“ → Geschäft → „Im Laden“)`, 'shop-note'));
   appendShopDone(list, shop.done);
 }
 function appendShopDone(list, rows) {
