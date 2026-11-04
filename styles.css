@@ -4814,7 +4814,7 @@ button.recipe-delete { color:var(--danger) }
 #expense-category-delete-apply { white-space:normal }
 
 /* Markierte Nebenaktionen behalten auch im Glas-Design einen klaren Rahmen. */
-:root :is(#export,#export-full,#restore-open,#disconnect,#test-proxy,#sheet-share),
+:root :is(#export,#export-full,#restore-open,#disconnect,#test-proxy,#sheet-share,#clear-daily-history,#compact-now,#clean-photos),
 :root #plan-recipe-dialog > .stack > .sheet-actions > button {
   border:2px solid var(--accent);
 }

@@ -1114,6 +1114,8 @@ function renderStores() {
     heading.append(title,element('span','Ausgeblendet','store-pill'));summary.append(heading,listVisibilityButton('Wünsche',false,enableMissingWishes));
     row.append(summary,element('p','Einblenden richtet die Wünsche-Liste ein oder holt die bisherige Liste mit ihren Einträgen zurück.','hint store-body'));editor.append(row);
   }
+  // Geheime Listen (2.161): unter einer eigenen Linie, wie die Notizen
+  if(privateList?.lists?.length){const line=element('div',undefined,'store-group-line store-secret-line');line.setAttribute('aria-hidden','true');editor.append(line);}
   for(const list of privateList?.lists||[]){const row=privateStoreEditorRow(list);editor.append(row);if(storeFresh===`private:${list.id}`)fresh=row;}
   $('#store-notes-group').hidden=!notesEditor.children.length;
   // Neu angelegt: kurz hervorgehoben und in Sicht gerollt (nur einmal, nicht bei jedem späteren Neuzeichnen)
@@ -4391,7 +4393,7 @@ function saveStoreOrder(visibleIds) {
   commit(order.map((id, sortOrder) => nextOp('stores', id, { sortOrder })), 'Geschäftsreihenfolge gespeichert');
   // Offene Bearbeitungsfelder samt noch nicht gespeicherten Eingaben erhalten.
   const editor = $('#store-editor'), rows = [...editor.children];
-  const trailing = editor.querySelector('.store-wishes-placeholder,.private-store-row');
+  const trailing = editor.querySelector('.store-wishes-placeholder,.store-secret-line,.private-store-row');
   for (const row of order.map(id => rows.find(row => row.dataset.storeId === id)).filter(Boolean)) editor.insertBefore(row, trailing);
 }
 for (const [selector, horizontal, itemSelector, handleSelector] of [

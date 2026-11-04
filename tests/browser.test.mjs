@@ -11878,6 +11878,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await openSettings(page);
     assert.deepEqual((await page.locator('#palette button').evaluateAll(nodes => nodes.map(node => node.dataset.palette))).slice(0, 2), ['gruen', 'blau']);
     assert.equal(await page.locator('#palette button[aria-checked=true]').getAttribute('data-palette'), 'gruen');
+    // Datenumfang: die drei Knöpfe haben wie „Datensicherung erstellen“ einen Rahmen in der Akzentfarbe
+    for (const id of ['clear-daily-history', 'compact-now', 'clean-photos'])
+      assert.deepEqual(await page.locator(`#${id}`).evaluate(node => { const style = getComputedStyle(node), reference = getComputedStyle(document.querySelector('#export')); return [style.borderTopWidth, style.borderTopStyle, style.borderTopColor === reference.borderTopColor]; }), ['2px', 'solid', true], id);
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
@@ -11894,7 +11897,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#store-quick-dialog .sheet-head [data-close]');
     // Reihenfolge ändern: Geheim als eigene, feste Gruppe zwischen den Listen und den Notizen
     const orderRows = () => page.locator('#order-list').evaluate(node => [...node.children].map(child => child.classList.contains('order-group') ? `#${child.textContent}` : child.querySelector('span').textContent));
-    await page.click('#manage-stores'); await sheetOpen(page); await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    await page.click('#manage-stores'); await sheetOpen(page);
+    // Verwaltung: eine Linie über den geheimen Listen
+    assert.deepEqual(await page.locator('#store-editor').evaluate(node => [...node.children].map(child => child.classList.contains('store-secret-line') ? '|' : child.dataset.privateListId ? 'geheim' : 'liste').slice(-4)), ['liste', '|', 'geheim', 'geheim']);
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
     assert.deepEqual(await orderRows(), ['Edeka', 'Lidl', 'Rewe', 'Urlaub', 'Baumarkt-Ideen', '#Geheim', 'Reise privat', 'Geschenke privat', '#Notizen', 'Notizen']);
     for (const name of ['Reise privat nach oben', 'Reise privat nach unten', 'Geschenke privat nach oben', 'Geschenke privat nach unten', 'Baumarkt-Ideen nach unten', 'Notizen nach oben'])
       assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true, name);
