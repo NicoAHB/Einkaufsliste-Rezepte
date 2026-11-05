@@ -41,7 +41,7 @@ import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetai
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
 import { shoppingDeficits, addDays, aggregateIngredients, dayMonthLabel, dayName, isoDate, recipeChanges, relativeDay, shortHash, snapshotRows, weekBasket, weekDays, weekLabel, weekRowKeys, weekStart, weekTakeId } from './plan.js';
-import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, filterOptions, pickRecipes } from './recipe-filter.js';
+import { LONG_AGO, WITH_PANTRY, WITH_SHOPPING, byOften, cookCount, filterOptions, pickRecipes } from './recipe-filter.js';
 import { isJpeg, localPhotoUrl, photoPath, photosDir, prunePhotos, removePhoto, retainedPhotoIds, queued, queuePhoto, readPhoto, resizePhoto, storePhoto, toBase64, unqueuePhoto } from './photos.js';
 import { makeZip } from './zip.js';
 import { parseQuantity } from './numbers.js';
@@ -94,7 +94,8 @@ const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
 const RECIPE_ORDER = {
   name: byTitle,   // rein alphabetisch (2.165): Ein Stern verschiebt das Rezept nicht mehr; Favoriten zeigt der Filter „★ Favoriten“
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
-  cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b)
+  cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b),
+  often: (a, b) => byOften(a, b)   // 2.166: am häufigsten gekochte zuerst
 };
 let recipeSort = (() => { try { const value = localStorage.getItem(RECIPE_SORT_KEY); return Object.hasOwn(RECIPE_ORDER, value) ? value : 'name'; } catch { return 'name'; } })();
 let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
@@ -585,8 +586,10 @@ function renderStoreChips() {
   // „Ohne Geschäft“ erscheint nur, wenn es solche Artikel gibt (oder gerade angezeigt wird).
   if (items.some(item => !item.storeId) || view === 'none') add('none', 'Ohne Geschäft', open('none'));
   const shown = displayStores(state.stores).filter(visibleStore), notes = shown.filter(isNotesStore);
-  for (const store of shown.filter(store => !isNotesStore(store))) add(store.id, store.name, open(store.id), store);
   const divider = () => { const line = element('span', undefined, 'chip-divider'); line.setAttribute('aria-hidden', 'true'); box.append(line); };
+  // Eigene Listen (2.166): vor jeder Liste, die auf ein Geschäft folgt, eine senkrechte Linie (in der Listenauswahl waagerecht), wie unter „Geschäfte & Listen“
+  let previousStore = false;
+  for (const store of shown.filter(store => !isNotesStore(store))) { if (isSeparate(store) && previousStore) divider(); previousStore = !isSeparate(store); add(store.id, store.name, open(store.id), store); }
   // Geheime Listen (2.161): ebenfalls hinter einer senkrechten Linie, immer nach allen Geschäften und Listen, vor den Notizen
   const secrets = (privateList?.lists || []).filter(list => list.enabled);
   if (secrets.length) divider();
@@ -2026,7 +2029,7 @@ function toggleMeal(id) {
   if (!meal) return;
   const ops = [nextOp('meals', id, { done: !meal.done })], today = isoDate();
   const recipe = meal.recipeId && active(state.recipes).find(row => row.id === meal.recipeId), day = meal.date < today ? meal.date : today;
-  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day }));
+  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day, cookCount: cookCount(recipe) + 1 }));
   commit(ops);
 }
 let plannedRecipe = null;
@@ -3735,7 +3738,7 @@ function openCook(id, servings) {
   if (!steps.children.length) steps.append(element('li', 'Keine Zubereitung eingetragen.', 'hint'));
   const supported = 'wakeLock' in navigator;
   $('#cook-awake-label').hidden = !supported; $('#cook-awake').checked = supported && config.cookAwake === true; $('#cook-awake-hint').textContent = '';
-  $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate() })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
+  $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate(), ...(String(recipe.lastCookedAt || '').slice(0, 10) === isoDate() ? {} : { cookCount: cookCount(recipe) + 1 }) })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
   $('#cook-dialog').showModal();
   if (supported && config.cookAwake === true) void keepAwake('cook', true);
 }

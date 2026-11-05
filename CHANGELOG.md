@@ -2,6 +2,17 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.166: „Häufig gekocht“ und Linien vor den Listen
+
+**Linie vor den Listen.** In der Reiterleiste unter „Planen“ steht vor den eigenen Listen (Wünsche, eigene Listen) eine senkrechte Linie, in der Listenauswahl (Reiter lange drücken) eine waagerechte, wie schon vor den geheimen Listen und den Notizen und unter „Geschäfte & Listen“. Die gewählte Reihenfolge bleibt; steht eine Liste zwischen Geschäften, steht die Linie vor ihr.
+
+**Sortieren nach „Häufig gekocht“.**
+- **Rezepte → Sortierung:** neue Wahl **Häufig gekocht**: am häufigsten gekochte Rezepte zuerst, bei Gleichstand das zuletzt gekochte, dann nach Namen.
+- **Gericht planen → Auswahl:** unter „Deine Auswahl“ neu **Häufig gekocht** (mit Anzahl), in derselben Reihenfolge.
+- Gezählt wird ab jetzt jedes **Heute gekocht** (höchstens einmal am Tag) und jedes im Wochenplan abgehakte Gericht (neues Feld `cookCount` am Rezept). Rezepte, die schon ein Kochdatum haben, zählen zunächst einmal.
+
+Offline-Paket `einkauf-shell-v178`.
+
 ## Neu in Version 2.165: Papierkorb je Reiter leeren, Favoriten bleiben am Platz, klarere Vorschläge und Trennlinien
 
 **Ein Stern verschiebt das Rezept nicht mehr.** Bisher rutschte ein Rezept, sobald man es mit dem Stern als Favorit markierte, sofort ganz nach oben. Jetzt sortiert **A–Z** rein alphabetisch: Das Rezept bleibt an seinem Platz, nur der Stern wird gefüllt. Alle Favoriten zeigt wie bisher der Filter **★ Favoriten**.

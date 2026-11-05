@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALL, WITH_PANTRY, WITH_SHOPPING, FAVORITES, LONG_AGO, LONG_AGO_DAYS, cookedLongAgo, filterOptions, pickRecipes } from '../recipe-filter.js';
+import { OFTEN, byOften, cookCount, ALL, WITH_PANTRY, WITH_SHOPPING, FAVORITES, LONG_AGO, LONG_AGO_DAYS, cookedLongAgo, filterOptions, pickRecipes } from '../recipe-filter.js';
 import {recipeTagKey,uniqueRecipeTags} from '../recipe-import.js';
 
 const TODAY = '2026-10-28';
@@ -31,6 +31,7 @@ test('Einträge: „Alle Rezepte“ zuerst, Favoriten und „Lange nicht gekocht
   assert.deepEqual(filterOptions(recipes, TODAY), [
     { value: ALL, label: 'Alle Rezepte', count: 3 },
     { value: FAVORITES, label: '★ Favoriten', count: 1 },
+    { value: OFTEN, label: 'Häufig gekocht', count: 3 },
     { value: 'tag:einfach', label: 'Einfach', count: 1 },
     { value: 'tag:suppe', label: 'Suppe', count: 2 },
     { value: 'tag:süß', label: 'Süß', count: 1 },
@@ -39,13 +40,13 @@ test('Einträge: „Alle Rezepte“ zuerst, Favoriten und „Lange nicht gekocht
   const old = filterOptions([...recipes, recipe('4', 'Alt', { lastCookedAt: '2026-01-01' })], TODAY);
   assert.deepEqual(old.map(option => option.value).slice(0, 3), [ALL, FAVORITES, LONG_AGO]);
   assert.equal(old[2].count, 1);
-  assert.deepEqual(filterOptions([recipe('1', 'A', { lastCookedAt: '2026-10-27' })], TODAY), [{ value: ALL, label: 'Alle Rezepte', count: 1 }], 'ohne Favoriten und Stichworte nur „Alle Rezepte“');
+  assert.deepEqual(filterOptions([recipe('1', 'A', { lastCookedAt: '2026-10-27' })], TODAY), [{ value: ALL, label: 'Alle Rezepte', count: 1 }, { value: OFTEN, label: 'Häufig gekocht', count: 1 }], 'ohne Favoriten und Stichworte nur „Alle Rezepte“ (und „Häufig gekocht“, weil es gekocht wurde)');
   assert.deepEqual(filterOptions([], TODAY), [{ value: ALL, label: 'Alle Rezepte', count: 0 }]);
 });
 
 test('Stichworte: leere und fehlende werden übersehen; Umlaute und Großschreibung stimmen; die Schreibweise des ersten Rezepts mit großem Anfang', () => {
   const recipes = [recipe('1', 'A', { tags: ['', '  ', 'ÖKO'], lastCookedAt: '2026-10-27' }), { id: '2', name: 'B', lastCookedAt: '2026-10-27' }, recipe('3', 'C', { tags: ['öko', 'schnell'], lastCookedAt: '2026-10-27' })];
-  assert.deepEqual(filterOptions(recipes, TODAY).slice(1).map(option => [option.label, option.count]), [['ÖKO', 2], ['Schnell', 1]]);
+  assert.deepEqual(filterOptions(recipes, TODAY).slice(2).map(option => [option.label, option.count]), [['ÖKO', 2], ['Schnell', 1]]);
   assert.deepEqual(ids(pickRecipes(recipes, 'tag:öko', { today: TODAY })), ['1', '3'], 'ÖKO und öko sind dasselbe');
   assert.deepEqual(pickRecipes(recipes, 'tag:schnell', { today: TODAY }).map(row => row.id), ['3']);
 });
@@ -95,4 +96,14 @@ test('Verfügbarkeitsfilter: Vorrat und Vorrat plus offene Einkaufsliste werden 
  const recipes=[recipe('stock','Vorrat'),recipe('cart','Einkauf'),recipe('missing','Fehlt')],available=(recipe,mode)=>recipe.id==='stock'||mode===WITH_SHOPPING&&recipe.id==='cart';
  assert.deepEqual(filterOptions(recipes,TODAY,available).slice(1,3).map(row=>[row.value,row.count]),[[WITH_PANTRY,1],[WITH_SHOPPING,2]]);
  assert.deepEqual(ids(pickRecipes(recipes,WITH_PANTRY,{today:TODAY,available})),['stock']);assert.deepEqual(new Set(ids(pickRecipes(recipes,WITH_SHOPPING,{today:TODAY,available}))),new Set(['stock','cart']));
+});
+
+test('2.166: „Häufig gekocht“ – am häufigsten zuerst, dann zuletzt gekocht, dann Name; nie gekochte fehlen', () => {
+  const recipes = [recipe('a', 'Auflauf', { cookCount: 2, lastCookedAt: '2026-10-01' }), recipe('b', 'Brot', { lastCookedAt: '2026-10-20' }), recipe('c', 'Curry', { cookCount: 5, lastCookedAt: '2026-09-01' }),
+    recipe('d', 'Dal', { cookCount: 2, lastCookedAt: '2026-10-10' }), recipe('e', 'Eintopf')];
+  assert.deepEqual([cookCount(recipes[1]), cookCount(recipes[4])], [1, 0], 'Kochdatum ohne Zähler zählt 1');
+  assert.deepEqual(ids(pickRecipes(recipes, OFTEN, { today: TODAY })), ['c', 'd', 'a', 'b']);
+  assert.deepEqual(ids(pickRecipes(recipes, OFTEN, { today: TODAY, keep: 'e' })), ['c', 'd', 'a', 'b', 'e'], 'das gewählte bleibt sichtbar');
+  assert.deepEqual(ids([...recipes].sort(byOften)), ['c', 'd', 'a', 'b', 'e']);
+  assert.equal(filterOptions(recipes, TODAY).find(option => option.value === OFTEN).count, 4);
 });
