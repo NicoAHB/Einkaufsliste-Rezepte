@@ -1694,7 +1694,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.spend-share').count(), 0);
     // Ungültige Eingaben
     await card.getByRole('button', { name: 'Monatsbudget festlegen' }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'öffnet ohne Fokus auf einem Eingabefeld');
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false, 'öffnet ohne Fokus auf einem Eingabefeld (seit 2.167 auf der Überschrift statt dem ×)');
     assert.equal(await page.getAttribute('#budget-form input[name=amount]', 'inputmode'), 'numeric', 'Zifferntastatur ohne Komma');
     await page.click('#budget-form input[name=amount]');
     assert.equal(await page.locator('#budget-form input[name=amount]').evaluate(node => node === document.activeElement), true, 'Betrag erst nach Antippen im Fokus');
@@ -1730,7 +1730,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('small.budget-over').count(), 1);
     // Ändern: 500 → wieder normal; das Fenster zeigt den bisherigen Wert
     await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'Bearbeiten öffnet ohne Tastatur');
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false, 'Bearbeiten öffnet ohne Tastatur');
     assert.equal(await page.inputValue('#budget-form input[name=amount]'), '100');
     assert.equal(await page.locator('#budget-remove').isVisible(), true);
     await page.fill('#budget-form input[name=amount]', '500,50'); await page.click('#budget-form button[type=submit]');
@@ -1762,7 +1762,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets[0].cents);
     for (let attempt = 0; attempt < 2; attempt++) {
       await page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
-      assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false);
       assert.equal(await page.inputValue('#budget-form input[name=amount]'), '');
       assert.match(await page.textContent('#budget-existing-hint'), /Bisheriges Budget: 500,50\s€[\s\S]*vollen Eurobetrag/);
       await page.fill('#budget-form input[name=amount]', '501');

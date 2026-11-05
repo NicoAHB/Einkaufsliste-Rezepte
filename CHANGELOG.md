@@ -5,7 +5,7 @@ Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md
 ## Neu in Version 2.167: Geplante Gerichte zählen für „Häufig gekocht“
 
 Bisher zählte „Häufig gekocht“ nur **Heute gekocht** im Kochmodus und abgehakte Gerichte. Jetzt zählt jedes Rezept, das einem **Tag im Wochenplan zugeordnet** wird (auch über die Wochenplanung).
-- Wird das Gericht wieder entfernt oder bekommt es ein anderes Rezept, zählt das bisherige eins weniger; **Rückgängig** und Wiederherstellen zählen wieder.
+- Bekommt ein Gericht ein anderes Rezept, zählt das neue. Entfernen, Verschieben und Wiederherstellen ändern den Zähler nicht; vergangene Gerichte bleiben gekocht.
 - **Abhaken** im Wochenplan zählt nicht noch einmal. **Heute gekocht** zählt nur, wenn das Rezept heute nicht ohnehin im Plan steht.
 - Gilt für die Sortierung **Häufig gekocht** unter Rezepte und die Auswahl **Häufig gekocht** in „Gericht planen“.
 

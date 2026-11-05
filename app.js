@@ -110,7 +110,7 @@ if (typeof HTMLDialogElement === 'function' && !HTMLDialogElement.prototype.show
   const calmShowModal = function () {
     nativeShowModal.call(this);
     const focused = document.activeElement, title = this.querySelector('.sheet-head h2, .sheet-head h3');
-    if (!title || !focused?.matches?.('[data-close]') || !this.contains(focused)) return;
+    if (!title || !focused?.matches?.('.sheet-head [data-close]') || !this.contains(focused)) return;   // Rückfragen behalten den Fokus auf „Abbrechen“
     if (!title.hasAttribute('tabindex')) title.tabIndex = -1;
     title.focus({ preventScroll: true });
   };
@@ -291,8 +291,8 @@ function showNotice(text, undo = null, { trash = false, action = '', ms = 0 } = 
 // Nach dem Speichern eines Bearbeiten-Fensters (2.147): kurze Bestätigung mit Uhrzeit; beim nächsten Öffnen steht sie grau auf dem Knopf.
 const savedNotice = (name = '') => showNotice(`${name ? `„${name}“ gespeichert` : 'Änderungen gespeichert'} um ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`);
 $('#notice-undo').addEventListener('click', () => { const undo = noticeUndo; noticeUndo = null; $('#notice').hidden = true; clearTimeout(noticeTimer); if (undo) guard(undo); });
-/* „Häufig gekocht“ (2.167): Jedes Rezept, das einem Tag im Wochenplan zugeordnet wird, zählt einmal (cookCount). Wird das Gericht entfernt oder
-   bekommt es ein anderes Rezept, zählt das bisherige eins weniger; „Rückgängig“ und Wiederherstellen zählen wieder. Abhaken zählt nicht zusätzlich. */
+/* „Häufig gekocht“ (2.167): Jedes Rezept, das einem Tag im Wochenplan zugeordnet wird, zählt einmal (cookCount): ein neues Gericht mit Rezept oder ein
+   Gericht, das ein anderes Rezept bekommt. Entfernen, Verschieben, Wiederherstellen und Abhaken ändern den Zähler nicht (vergangene Gerichte bleiben gekocht). */
 function withPlanCounts(ops) {
   const meals = new Map(), deltas = new Map(), add = (id, step) => { if (id) deltas.set(id, (deltas.get(id) || 0) + step); };
   for (const op of ops) {
@@ -300,7 +300,7 @@ function withPlanCounts(ops) {
     const before = meals.has(op.entityId) ? meals.get(op.entityId) : (state.meals || []).find(row => row.id === op.entityId) || null, after = { ...(before || {}), ...op.patch };
     const was = before && !before.deletedAt ? before.recipeId || '' : '', now = !after.deletedAt ? after.recipeId || '' : '';
     meals.set(op.entityId, after);
-    if (was !== now) { add(was, -1); add(now, 1); }
+    if (now && was !== now && (!before || !before.deletedAt)) add(now, 1);   // neu eingeplant oder anderes Rezept; nicht beim Wiederherstellen
   }
   const extra = [...deltas].filter(([, step]) => step).flatMap(([id, step]) => {
     const recipe = active(state.recipes).find(row => row.id === id);
