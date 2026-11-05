@@ -1694,7 +1694,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.spend-share').count(), 0);
     // Ungültige Eingaben
     await card.getByRole('button', { name: 'Monatsbudget festlegen' }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'öffnet ohne Fokus auf einem Eingabefeld');
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false, 'öffnet ohne Fokus auf einem Eingabefeld (seit 2.167 auf der Überschrift statt dem ×)');
     assert.equal(await page.getAttribute('#budget-form input[name=amount]', 'inputmode'), 'numeric', 'Zifferntastatur ohne Komma');
     await page.click('#budget-form input[name=amount]');
     assert.equal(await page.locator('#budget-form input[name=amount]').evaluate(node => node === document.activeElement), true, 'Betrag erst nach Antippen im Fokus');
@@ -1730,7 +1730,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('small.budget-over').count(), 1);
     // Ändern: 500 → wieder normal; das Fenster zeigt den bisherigen Wert
     await card.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true, 'Bearbeiten öffnet ohne Tastatur');
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false, 'Bearbeiten öffnet ohne Tastatur');
     assert.equal(await page.inputValue('#budget-form input[name=amount]'), '100');
     assert.equal(await page.locator('#budget-remove').isVisible(), true);
     await page.fill('#budget-form input[name=amount]', '500,50'); await page.click('#budget-form button[type=submit]');
@@ -1762,7 +1762,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.budgets[0].cents);
     for (let attempt = 0; attempt < 2; attempt++) {
       await page.getByRole('button', { name: 'Monatsbudget ändern' }).click(); await sheetOpen(page);
-      assert.equal(await page.locator('#budget-dialog [data-close]').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.evaluate(() => document.activeElement?.matches('input, textarea, select')), false);
       assert.equal(await page.inputValue('#budget-form input[name=amount]'), '');
       assert.match(await page.textContent('#budget-existing-hint'), /Bisheriges Budget: 500,50\s€[\s\S]*vollen Eurobetrag/);
       await page.fill('#budget-form input[name=amount]', '501');
@@ -12247,6 +12247,36 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(await titles(), before, 'auch nach dem Neuladen');
     await page.locator('#tag-chips .chip', { hasText: '★ Favoriten' }).click();
     assert.ok((await titles()).includes(last));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.167: Ein Rezept im Wochenplan zählt für „Häufig gekocht“; Abhaken zählt nicht doppelt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const pasta = () => storedDemo(page).then(data => data.recipes.find(row => row.name === 'Tomaten-Pasta'));
+    const effective = recipe => Number.isSafeInteger(recipe.cookCount) && recipe.cookCount > 0 ? recipe.cookCount : recipe.lastCookedAt ? 1 : 0;
+    const start = effective(await pasta());
+    await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
+    assert.equal((await pasta()).cookCount, start + 1, 'beim Einplanen gezählt');
+    // Abhaken (gekocht) zählt nicht noch einmal
+    const check = page.locator('.meal', { hasText: 'Tomaten-Pasta' }).locator('button.check').first();
+    if (await check.count() && await check.isEnabled()) { await check.click(); assert.equal((await pasta()).cookCount, start + 1, 'Abhaken zählt nicht zusätzlich'); }
+    await goTab(page, 'recipes'); await page.selectOption('#recipe-sort', 'often');
+    assert.equal((await page.locator('#recipe-list .recipe-card h3').allTextContents())[0], 'Tomaten-Pasta', '„Häufig gekocht“ zeigt es vorn');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.167: Fenster öffnen ohne Fokus auf dem × (kein Fokusring auf dem iPhone); Tab führt zu den Knöpfen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('#manage-stores'); await sheetOpen(page);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'stores-title');
+    assert.equal(await page.locator('#stores-dialog [data-close]').evaluate(node => node.matches(':focus')), false);
+    assert.equal(await page.locator('#stores-title').evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+    await page.keyboard.press('Tab'); assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'stores-title');
     assert.deepEqual(problems, []); await ctx.close();
   });
 
