@@ -10839,7 +10839,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
-    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht']);
+    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht', 'Häufig gekocht']);
     assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
     // Zuletzt hinzugefügt: strikt nach dem Anlegen, auch vor Favoriten; die Karte sagt, wann
     await page.selectOption('#recipe-sort', 'new');
@@ -11457,7 +11457,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await closeAll152(page);
     const chips = await page.locator('#store-chips').evaluate(node => [...node.children].map(child => child.classList.contains('chip-divider') ? '|' : child.getAttribute('aria-label')));
     assert.deepEqual(chips.slice(-2), ['|', 'Familie'], chips.join());
-    assert.ok(chips.indexOf('Urlaub 152') < chips.indexOf('|'));
+    assert.ok(chips.indexOf('Urlaub 152') < chips.lastIndexOf('|')); assert.equal(chips[chips.indexOf('Urlaub 152') - 1], '|', '2.166: Linie vor den Listen');
     assert.match(await chip152(page, lists[0].id).textContent(), /Urlaub 152/, '„Symbol und Name“ im Reiter');
     assert.equal(await chip152(page, lists[0].id).locator('use[href="#i-travel"]').count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
@@ -11715,7 +11715,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await closeAll152(page);
     await page.locator('#store-chips [data-all-stores]').focus(); await page.keyboard.press('Shift+F10'); await page.locator('#store-quick-dialog[open]').waitFor();
     assert.match(await page.locator('#store-quick-options [data-view=trip-152]').textContent(), /Urlaub 2027/);
-    assert.equal(await page.locator('#store-quick-options .quick-divider').count(), 1, 'Linie vor den Notizen');
+    assert.equal(await page.locator('#store-quick-options .quick-divider').count(), 2, 'Linie vor den Listen (2.166) und vor den Notizen');
     const quick = await page.locator('#store-quick-options').evaluate(node => [...node.children].map(child => child.classList.contains('quick-divider') ? '|' : child.dataset.view || child.textContent.trim()));
     assert.deepEqual(quick.slice(-3), ['|', 'store-notes', 'Geschäfte & Listen verwalten']);
     await page.click('#store-quick-options .store-quick-manage'); await sheetOpen(page);
@@ -11953,7 +11953,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
     assert.deepEqual((await orderRows()).slice(-3), ['Urlaub', '#Notizen', 'Notizen'], 'ohne sichtbare geheime Liste keine Gruppe „Geheim“');
     await page.click('#order-dialog [data-close]'); await page.click('#stores-dialog .sheet-head [data-close]');
-    assert.equal((await chips()).filter(entry => entry === '|').length, 1, 'nur noch die Linie vor den Notizen');
+    assert.equal((await chips()).filter(entry => entry === '|').length, 2, 'nur noch die Linien vor den Listen (2.166) und vor den Notizen');
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });

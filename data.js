@@ -142,6 +142,7 @@ export function validateRow(key, row) {
   if (key === 'recipes' && row.sourceUrl !== undefined && typeof row.sourceUrl !== 'string') throw new Error('Ungültige Rezeptquelle.');
   if (key === 'recipes' && row.favorite !== undefined && typeof row.favorite !== 'boolean') throw new Error('Ungültige Favoritenmarkierung.');
   if (key === 'recipes' && row.lastCookedAt !== undefined && row.lastCookedAt !== null && !Number.isFinite(Date.parse(row.lastCookedAt))) throw new Error('Ungültiges Kochdatum.');
+  if (key === 'recipes' && row.cookCount !== undefined && (!Number.isSafeInteger(row.cookCount) || row.cookCount < 0)) throw new Error('Ungültige Zahl der Kochvorgänge.');   // 2.166: „Häufig gekocht“
   if (key === 'recipes' && row.photoId !== undefined && row.photoId !== null && !validPhotoId(row.photoId)) throw new Error('Ungültige Foto-Kennung.');
   if (key === 'meals' && (!validDay(row.date) || !Number.isFinite(row.servings) || row.servings <= 0 ||
       (row.recipeId !== undefined && typeof row.recipeId !== 'string') || (row.title !== undefined && typeof row.title !== 'string') ||

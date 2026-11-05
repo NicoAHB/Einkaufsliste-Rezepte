@@ -5,7 +5,7 @@ import { daysBetween } from './plan.js';
 import { recipeTagKey as tagKey, uniqueRecipeTags } from './recipe-import.js';
 
 export const LONG_AGO_DAYS = 28;   // so lange darf ein Rezept höchstens nicht gekocht worden sein; wer noch nie gekocht wurde, zählt mit
-export const ALL = '', FAVORITES = 'favorites', LONG_AGO = 'long-ago', WITH_PANTRY='available-pantry', WITH_SHOPPING='available-shopping';
+export const ALL = '', FAVORITES = 'favorites', LONG_AGO = 'long-ago', OFTEN = 'often', WITH_PANTRY='available-pantry', WITH_SHOPPING='available-shopping';
 const TAG = 'tag:';
 
 const tagsOf = recipe => (Array.isArray(recipe.tags) ? recipe.tags : []).map(tagKey).filter(Boolean);
@@ -18,6 +18,10 @@ export function cookedLongAgo(recipe, today) {
   return daysBetween(String(recipe.lastCookedAt).slice(0, 10), today) >= LONG_AGO_DAYS;
 }
 
+// Wie oft gekocht (2.166): Zähler `cookCount` am Rezept (steigt mit „Heute gekocht“ und abgehakten Gerichten im Wochenplan); ältere Rezepte mit Kochdatum zählen 1.
+export const cookCount = recipe => Number.isSafeInteger(recipe?.cookCount) && recipe.cookCount > 0 ? recipe.cookCount : recipe?.lastCookedAt ? 1 : 0;
+// „Häufig gekocht“: am häufigsten zuerst, bei Gleichstand das zuletzt gekochte, dann nach Namen.
+export const byOften = (a, b) => cookCount(b) - cookCount(a) || String(b.lastCookedAt || '').slice(0, 10).localeCompare(String(a.lastCookedAt || '').slice(0, 10)) || byName(a, b);
 // Die Einträge des Auswahlfelds: [{ value, label, count }]. „Alle Rezepte“ steht immer da, Favoriten und „Lange nicht gekocht“ nur mit mindestens einem Rezept.
 export function filterOptions(recipes, today, available) {
   const options = [{ value: ALL, label: 'Alle Rezepte', count: recipes.length }];
@@ -25,6 +29,8 @@ export function filterOptions(recipes, today, available) {
   const favorites = recipes.filter(recipe => recipe.favorite).length, longAgo = recipes.filter(recipe => cookedLongAgo(recipe, today)).length;
   if (favorites) options.push({ value: FAVORITES, label: '★ Favoriten', count: favorites });
   if (longAgo) options.push({ value: LONG_AGO, label: 'Lange nicht gekocht', count: longAgo });
+  const often = recipes.filter(recipe => cookCount(recipe) > 0).length;
+  if (often) options.push({ value: OFTEN, label: 'Häufig gekocht', count: often });
   const tags = new Map();   // Schlüssel (klein) → { label, count }
   for (const recipe of recipes) {
     const seen = new Set();
@@ -48,6 +54,7 @@ export function pickRecipes(recipes, value, { today, keep = '', available } = {}
     return recipes.filter(recipe => recipe.id === keep || cookedLongAgo(recipe, today))
       .sort((a, b) => String(a.lastCookedAt || '').slice(0, 10).localeCompare(String(b.lastCookedAt || '').slice(0, 10)) || byName(a, b));
   }
+  if (value === OFTEN) return recipes.filter(recipe => recipe.id === keep || cookCount(recipe) > 0).sort(byOften);
   const wanted = String(value).startsWith(TAG) ? tagKey(String(value).slice(TAG.length)) : '';
   const matches = [WITH_PANTRY,WITH_SHOPPING].includes(value) ? recipe=>Boolean(available?.(recipe,value)) : value === FAVORITES ? recipe => Boolean(recipe.favorite) : wanted ? recipe => tagsOf(recipe).includes(wanted) : () => true;
   return recipes.filter(recipe => recipe.id === keep || matches(recipe))
