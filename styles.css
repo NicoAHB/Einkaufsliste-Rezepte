@@ -4597,6 +4597,14 @@ body.selecting .toast { bottom:calc(var(--tabs-h) + 12px + env(safe-area-inset-b
 .recipe-stock-group ul { padding-left:20px; margin:0; display:grid; gap:6px; font-weight:550; overflow-wrap:anywhere }
 .recipe-stock-group.missing { color:var(--danger) }
 .recipe-stock-group.have { color:#146c43 }
+/* „✓ Hab ich“ (2.164): jede fehlende Zutat mit eigenem Knopf rechts; grün umrandet, deutlich anders als „Einkaufen“, mindestens 44 px hoch */
+.recipe-stock-group.missing ul { padding-left:0; list-style:none; gap:4px }
+.recipe-stock-group.missing li { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:44px }
+.recipe-stock-group.missing li+li { border-top:1px solid color-mix(in srgb,currentColor 18%,transparent) }
+.recipe-stock-label { min-width:0; overflow-wrap:anywhere }
+.recipe-stock .recipe-stock-have { flex:none; display:inline-flex; align-items:center; justify-content:center; min-height:44px; margin:0; padding:0 14px; border:2px solid var(--accent); border-radius:999px; background:var(--card); color:var(--accent); box-shadow:none; font:inherit; font-size:.86rem; font-weight:750; white-space:nowrap }
+.recipe-stock .recipe-stock-have:active { background:var(--accent-soft) }
+.recipe-stock .recipe-stock-have:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
 .recipe-stock-inner>.hint,.recipe-stock-group>.hint { margin:0; font-weight:400 }
 .recipe-stock .recipe-stock-collapse { display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:8px; background:transparent; color:inherit; border:1px solid currentColor; font:inherit }
 .recipe-stock-collapse>.icon { width:18px; height:18px; transform:rotate(180deg) }
