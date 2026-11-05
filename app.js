@@ -440,6 +440,19 @@ $('#notes-add').addEventListener('click', () => guard(() => {
 // Gemeinsame Listen werden gemeinsam ein-/ausgeblendet. Ihre Einträge bleiben erhalten.
 const isWishStore = store => store.wishlist === true || (isSeparate(store) && defaultSymbol(store.name) === 'gift');
 const wishStores = () => orderedStores(state.stores).filter(isWishStore);
+/* Trennlinie zwischen Supermärkten und eigenen Listen (2.165): Vor einer Liste (Wünsche, eigene Listen), die direkt auf ein Geschäft folgt, steht
+   eine waagerechte Linie wie vor den geheimen Listen und den Notizen. Die gemeinsame Reihenfolge bleibt unverändert; nach dem Umsortieren und bei
+   jedem Neuzeichnen werden die Linien neu gesetzt. */
+function markListBoundaries(editor = $('#store-editor')) {
+  editor.querySelectorAll(':scope > .store-list-line').forEach(line => line.remove());
+  let previous = '';
+  for (const row of [...editor.children]) {
+    if (!row.matches('.store-row[data-store-id], .store-wishes-placeholder')) { previous = ''; continue; }
+    const list = row.classList.contains('store-wishes-placeholder') || isSeparate(active(state.stores).find(store => store.id === row.dataset.storeId));
+    if (list && previous === 'store') { const line = element('div', undefined, 'store-group-line store-list-line'); line.setAttribute('aria-hidden', 'true'); editor.insertBefore(line, row); }
+    previous = list ? 'list' : 'store';
+  }
+}
 function renderListVisibility() {
   // Geöffnete Bearbeitungsfelder behalten ihre noch nicht gespeicherten Werte.
   for (const row of [...$('#store-editor').children, ...$('#store-notes-editor').children]) {
@@ -1061,6 +1074,7 @@ function renderStores() {
     heading.append(title,element('span','Ausgeblendet','store-pill'));summary.append(heading,listVisibilityButton('Wünsche',false,enableMissingWishes));
     row.append(summary,element('p','Einblenden richtet die Wünsche-Liste ein oder holt die bisherige Liste mit ihren Einträgen zurück.','hint store-body'));editor.append(row);
   }
+  markListBoundaries(editor);
   // Geheime Listen (2.161): unter einer eigenen Linie, wie die Notizen
   if(privateList?.lists?.length){const line=element('div',undefined,'store-group-line store-secret-line');line.setAttribute('aria-hidden','true');editor.append(line);}
   for(const list of privateList?.lists||[]){const row=privateStoreEditorRow(list);editor.append(row);if(storeFresh===`private:${list.id}`)fresh=row;}
@@ -4423,6 +4437,7 @@ function saveStoreOrder(visibleIds) {
   const editor = $('#store-editor'), rows = [...editor.children];
   const trailing = editor.querySelector('.store-wishes-placeholder,.store-secret-line,.private-store-row');
   for (const row of order.map(id => rows.find(row => row.dataset.storeId === id)).filter(Boolean)) editor.insertBefore(row, trailing);
+  markListBoundaries(editor);
 }
 for (const [selector, horizontal, itemSelector, handleSelector] of [
   ['#store-editor', false, '.store-row[data-store-id]', '.store-summary'],

@@ -12214,4 +12214,21 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  test('2.165: Geschäfte & Listen – eine Linie trennt die Supermärkte von den eigenen Listen, auch nach dem Umsortieren', async () => {
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, notesData152()); await open(page); await page.click('#manage-stores'); await sheetOpen(page);
+    const layout = () => page.locator('#store-editor').evaluate(node => [...node.children].map(child => child.classList.contains('store-list-line') ? '--' : child.dataset.storeId || child.className.split(' ').at(-1)));
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', 'store-rewe', '--', 'trip-152', 'plain-152', 'store-wishes-placeholder']);
+    assert.equal(await page.locator('#store-editor .store-list-line').evaluate(node => getComputedStyle(node).borderTopStyle), 'solid');
+    // Eine Liste zwischen die Geschäfte geschoben: vor jeder Liste, die auf ein Geschäft folgt, eine Linie; die gemeinsame Reihenfolge bleibt
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    await page.getByRole('button', { name: 'Urlaub nach oben', exact: true }).click(); await page.click('#order-dialog [data-close]');
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', '--', 'trip-152', 'store-rewe', '--', 'plain-152', 'store-wishes-placeholder']);
+    await page.click('#stores-dialog .sheet-head [data-close]'); await page.click('#manage-stores'); await sheetOpen(page);
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', '--', 'trip-152', 'store-rewe', '--', 'plain-152', 'store-wishes-placeholder'], 'auch nach dem erneuten Öffnen');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });
