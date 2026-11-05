@@ -2,6 +2,32 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.163: Preise je Produkt – unter „Ausgaben“ nachtragen, „Im Laden“ vergleichen
+
+**Keine Preisfelder mehr unter „Einkauf“.** Das Fenster heißt jetzt **Artikel bearbeiten** und enthält Name, Menge, Einheit, Geschäft und Kategorie, aber keinen Preis und kein „Im Angebot“ mehr. Auch beim Hinzufügen steht nur noch **Kategorie (optional)**. Früher am Artikel notierte Preise bleiben unverändert in der Datei, werden aber nicht mehr angezeigt.
+
+**Preis nachtragen unter „Ausgaben“.** Einen Einkauf aufklappen: Rechts neben jedem Produkt steht ein **Pfeil**. Ein Tipp öffnet darunter **Preis nachtragen**:
+- Feld für den bezahlten Preis in **€** (Zahlentastatur, Komma erlaubt). Darüber steht, wofür er gilt, z. B. „Bezahlt für 1 Stück“.
+- Häkchen **Angebot**.
+- **Speichern**. Geschäft, Datum und Produktname kommen vom Einkauf und müssen nicht gewählt werden.
+
+Ein gespeicherter Preis steht danach unter der Menge (z. B. **3,49 €** mit dem gelben Kennzeichen **Angebot**). Über denselben Pfeil lässt er sich ändern oder mit **Preis löschen** entfernen (unten steht kurz **Rückgängig**). Nochmals auf den Pfeil tippen schließt den Bereich; es ist immer nur einer offen. Was du gerade eintippst, bleibt stehen, auch wenn im Hintergrund abgeglichen wird.
+
+**Der Gesamtbetrag bleibt, wie er ist.** 18,02 € bleiben 18,02 €: keine Summe aus den Produktpreisen, keine Neuberechnung, keine Warnung bei Abweichungen, weil du nicht jedes Produkt eintragen musst.
+
+**Preise „Im Laden“.** Bei jedem Produkt, zu dem ein Preis gespeichert ist, steht ein kleiner **Pfeil** links neben dem Produktbild; ohne gespeicherten Preis gibt es keinen Pfeil, die Bilder bleiben rechts bündig. Aufgeklappt zeigt er eine kompakte Übersicht:
+- je **Geschäft** der zuletzt gezahlte Preis, mit Händlerlogo (falls bekannt), **Preis** und **Kaufdatum**; die jüngsten oben;
+- Angebotspreise mit dem Kennzeichen **Angebot**;
+- der **günstigste normale Preis** grün hervorgehoben (**Günstigster**). Ein Angebot zählt nicht als Normalpreis. Gelten die Preise für unterschiedliche Mengen (z. B. 1 Stück und 2 Stück), stehen die Mengen dabei und nichts wird hervorgehoben, damit nie ein falscher Preis als günstigster erscheint.
+
+Große Tippflächen (mindestens 44 px), wenig Text. Die Übersicht bleibt beim Abgleich und beim Abhaken anderer Artikel offen. Gesperrt öffnet man sie, wie alles andere, durch Gedrückthalten. Zugeordnet wird über den Produktnamen; gelöschte Einkäufe und Rückerstattungen zählen nicht.
+
+**Gemeinsam gespeichert.** Die Preise stehen in der gemeinsamen Datei auf GitHub und erscheinen nach dem Abgleich auch auf dem Gerät deiner Partnerin. Datenmodell: In `purchases.items` hat jedes Produkt optional `cents` (bezahlter Preis in ganzen Cent) und `offer: true` (Angebot); Geschäft und Datum sind die des Einkaufs. Ältere App-Versionen lesen die Datei weiter und lassen die Preise unverändert; sie zeigen sie nur nicht an.
+
+**Familienmitglieder:** Statt „Ändern“ steht ein **Stift**; Stift, **Ausblenden** und der rote Mülleimer haben denselben Rahmen und passen neben den Namen. Nur sehr lange Namen stehen auf schmalen Bildschirmen allein in der Zeile darüber, ohne Trennung mitten im Wort.
+
+Offline-Paket `einkauf-shell-v175`.
+
 ## Neu in Version 2.162: Familienmitglieder löschen, klarere Knöpfe und Linien
 
 **Versehentlich angelegte Person löschen.** Unter **Ausgaben → Personen verwalten** steht neben **Ändern** und **Ausblenden** jetzt ein roter Mülleimer, aber nur bei Personen ohne einen einzigen Einkauf und nie bei dir selbst. Vor dem Löschen fragt die App nach. Die Person verschwindet dann auf allen verbundenen Geräten und lässt sich jederzeit neu hinzufügen. Wer schon Einkäufe hat, lässt sich wie bisher nur ausblenden, damit die Ausgaben der Vergangenheit stimmen.

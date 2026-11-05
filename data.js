@@ -2,6 +2,7 @@
 import { preferredPurchase, purchaseCompatible, purchaseIdentity, validPurchaseUnit, unitChoice, newerUnitChoice, hasUnitChoice, compareUnitChoice, withKnownPack, hasAmountChoice, amountChoice, compareAmountChoice, newerAmountChoice } from './buying.js';
 import { applyPlanCuts, planSourceLive } from './plan-list.js';
 import { offerUrl, productKey, unitSpec, validQuote } from './prices.js';
+import { validProductPrice } from './product-prices.js';
 import { ingredientMatchName, ingredientProductName, spellingStem, varietyName } from './product-groups.js';
 export { spellingStem };
 import { NO_AMOUNT } from './recipe-import.js';
@@ -171,7 +172,8 @@ export function validateRow(key, row) {
   if (key === 'purchases' && row.items !== undefined && (!Array.isArray(row.items) || row.items.length > 300 ||
       row.items.some(entry => !entry || typeof entry.name !== 'string' || !entry.name.trim() || entry.name.length > 120 || (entry.amount !== undefined && (typeof entry.amount !== 'string' || entry.amount.length > 80)) ||
         (entry.imageKey !== undefined && (typeof entry.imageKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(entry.imageKey))) ||
-        (entry.category !== undefined && (typeof entry.category !== 'string' || !/^[a-z0-9-]{1,40}$/.test(entry.category)))))) throw new Error('Ungültige Produkte eines Einkaufs.');
+        (entry.category !== undefined && (typeof entry.category !== 'string' || !/^[a-z0-9-]{1,40}$/.test(entry.category))) ||
+        !validProductPrice(entry)))) throw new Error('Ungültige Produkte eines Einkaufs.');   // Preis je Produkt (2.163): `cents`, optional `offer: true`, siehe product-prices.js
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');

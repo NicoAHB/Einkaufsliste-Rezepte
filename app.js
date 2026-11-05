@@ -9,7 +9,8 @@ import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
 import { active, addToList, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
-import { defaultOfferUrl, itemQuote, localDay, offerUrl, parseCents, productKey, storeOfferUrl, unitRate, unitSpec } from './prices.js';
+import { defaultOfferUrl, localDay, offerUrl, productKey, storeOfferUrl, unitSpec } from './prices.js';
+import { hasProductPrice, priceOverview, productPriceIndex, withProductPrice } from './product-prices.js';
 import { splitSteps } from './cook.js';
 import { ALL_STORES, HOLD_FINISH_MS, HOLD_ITEM_MS, HOLD_UNLOCK_MS, finishable, isSeparate, lockSeconds, shopAllView, shopCount, shopView, takesAnywhere, withoutSeparate } from './shop.js';
 import { brandOf, chainForStore, defaultSymbol, symbolOf } from './brand.js';
@@ -505,7 +506,7 @@ function renderStorePick() {
 }
 function storeChanged() {
   const form = $('#item-form');
-  form.elements.onSale.checked = false; delete form.dataset.manualPrice; rememberPriceInForm(); renderItemSuggestions();
+  refreshCategoryHint(); renderItemSuggestions();
 }
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
 // Geöffnete Eingabeformulare bleiben bei Hintergrund-Aktualisierungen bestehen.
@@ -834,11 +835,11 @@ function renderItems() {
   renderQuickPick();
 }
 // Das Eingabeformular ist zugeklappt (nur Namensfeld und „+“), solange niemand hineintippt. Offen bleibt es, wenn der Fokus im Formular liegt,
-// schon etwas im Namensfeld steht oder „Kategorie, Preis & Angebot“ aufgeklappt ist.
+// schon etwas im Namensfeld steht oder „Kategorie“ aufgeklappt ist.
 function syncForm() {
   const form = $('#item-form');
   const editingFocus=form.matches(':focus-within')&&!$('#offers-details').contains(document.activeElement);
-  const open = form.dataset.choosingUnit === 'yes' || editingFocus || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open || form.dataset.manualPrice === 'yes';
+  const open = form.dataset.choosingUnit === 'yes' || editingFocus || form.elements.name.value.trim() !== '' || form.querySelector('.price-fields').open;
   form.classList.toggle('compact', !open);
   $('#clear-item-name').hidden = !form.elements.name.value;
   $('#add-item-confirm').disabled = !form.elements.name.value.trim();
@@ -864,7 +865,7 @@ function renderItemSuggestions(event) {
     for (const name of variants) same.append(button(name, () => {
       commit([nextOp('aliases', uid(), { from: aliasKey(typed), name })], `„${typed}“ heißt jetzt immer „${name}“`);
       form.elements.name.value = name; box.hidden = true;
-      itemQuantity?.suggest(name); rememberPriceInForm(); document.activeElement?.blur?.();
+      itemQuantity?.suggest(name); refreshCategoryHint(); document.activeElement?.blur?.();
     }));
     box.append(same);
   }
@@ -872,7 +873,7 @@ function renderItemSuggestions(event) {
     const choices = element('div', undefined, 'suggestion-choices');
     for (const name of names) choices.append(button(name, () => {
       form.elements.name.value = name; box.hidden = true;
-      itemQuantity?.suggest(name); rememberPriceInForm(); document.activeElement?.blur?.();
+      itemQuantity?.suggest(name); refreshCategoryHint(); document.activeElement?.blur?.();
     }));
     box.append(choices);
   }
@@ -904,29 +905,8 @@ function renderShoppingInfo() {
   } else $('#offers-link').removeAttribute('href');
   $('#open-templates').hidden=isSeparate(store);
 }
-function quoteLabel(quote) { return `${euros(quote.cents)} für ${format(quote.quantity)} ${quote.unit}`; }
-function setQuoteFields(form, quote, fallbackUnit, prefix = 'price') {
-  form.elements[`${prefix}Euros`].value = quote ? (quote.cents / 100).toFixed(2).replace('.', ',') : '';
-  form.elements[`${prefix}Quantity`].value = quote ? String(quote.quantity).replace('.', ',') : '1';
-  form.elements[`${prefix}Unit`].value = quote?.unit || fallbackUnit;
-}
 // Ein Tag (JJJJ-MM-TT) als kurzes Datum, unabhängig von der Zeitzone.
 const dayLabel = day => shortDate(`${day}T12:00:00`);
-function setSaleFields(form, quote = null, until = '') {
-  form._savedSaleQuote = quote ? clone(quote) : null;
-  form.elements.saleUntil.value = until || '';
-  setQuoteFields(form, quote, form.elements.priceUnit.value, 'sale');
-  if (!quote) form.elements.saleQuantity.value = form.elements.priceQuantity.value;
-  toggleSaleFields(form);
-}
-function toggleSaleFields(form) {
-  const section = form.querySelector('[data-sale-fields]');
-  section.hidden = !form.elements.onSale.checked;
-  if (!section.hidden && !form.elements.saleEuros.value.trim()) {
-    form.elements.saleQuantity.value = form.elements.priceQuantity.value;
-    form.elements.saleUnit.value = form.elements.priceUnit.value;
-  }
-}
 function fillCategorySelects() {
   document.querySelectorAll('select[data-categories]').forEach(select => {
     select.replaceChildren(new Option('Automatisch', ''));
@@ -938,33 +918,8 @@ function categoryHint(select, name) {
   const guess = String(name).trim() ? suggestCategory(name, itemHistory()) : null;
   select.options[0].textContent = guess ? `Automatisch (${categoryLabel(guess)})` : 'Automatisch';
 }
-function rememberPriceInForm() {
-  const form = $('#item-form');
-  categoryHint(form.elements.category, form.elements.name.value);
-  if (form.dataset.manualPrice === 'yes') return;
-  // Ein früher bezahlter Preis wird nie von selbst eingetragen: Das Preisfeld ist eine freiwillige eigene Notiz.
-  setQuoteFields(form, null, form.elements.unit.value.trim());
-  setSaleFields(form);
-  form.querySelector('[data-price-hint]').textContent = 'Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.';
-}
-function readQuote(form, prefix = 'price') {
-  const value = form.elements[`${prefix}Euros`].value.trim();
-  if (!value) return null;
-  const quote = { cents: parseCents(value), quantity: positive(form.elements[`${prefix}Quantity`].value), unit: form.elements[`${prefix}Unit`].value.trim() };
-  if (!quote.unit) throw new Error('Bitte die Einheit des Preises eingeben.');
-  if (unitRate(quote, form.elements.unit.value.trim()) === null) throw new Error('Artikeleinheit und Preiseinheit passen nicht zusammen. Verwende zum Beispiel kg und g oder l und ml. Bei Packungen muss der Preis ebenfalls je Packung angegeben sein.');
-  return quote;
-}
-function readPricing(form) {
-  const price = readQuote(form), onSale = form.elements.onSale.checked;
-  // Beim Ausschalten bleibt ein bereits gespeicherter Angebotspreis erhalten,
-  // beeinflusst die Summe aber nicht mehr. Neue inaktive Angebote werden nicht notiert.
-  const salePrice = onSale ? readQuote(form, 'sale') : form._savedSaleQuote || null;
-  if (onSale && price && salePrice && unitRate(salePrice, price.unit) * price.quantity >= price.cents - 0.0000001) {
-    throw new Error('Der Angebotspreis muss für die gleiche Menge günstiger als der normale Preis sein. Bitte Preise und Bezugsmengen prüfen.');
-  }
-  return { price, salePrice, onSale, saleUntil: form.elements.saleUntil.value || null };
-}
+// Preise werden seit 2.163 nicht mehr am Artikel eingetragen, sondern unter „Ausgaben“ am Produkt eines Einkaufs (siehe product-prices.js).
+function refreshCategoryHint() { const form = $('#item-form'); categoryHint(form.elements.category, form.elements.name.value); }
 function renderRememberedAmount() {
   const form = $('#edit-item-form'), memory = rememberedAmount(form.elements.name.value.trim(),itemHistory());
   $('#remembered-amount-text').textContent = memory?.purchaseAmount ? `Deine gemerkte Menge: ${amountText(memory.purchaseAmount)}` : 'Keine eigene Menge gemerkt – die App nutzt den üblichen Vorschlag.';
@@ -983,20 +938,12 @@ function editItem(id) {
   const item = active(state.items).find(row => row.id === id);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   if (isWish(item)) { openWish(id); return; }   // Wünsche (nur sie): direkt Name, Produktlink & Notiz, ohne Menge, Einheit, Kategorie und Preis
-  itemBaseline = clone({ ...item, price: itemQuote(item), salePrice: item.salePrice || null, onSale: Boolean(item.onSale), saleUntil: item.saleUntil || null,
-    category: isCategory(item.category) ? item.category : null });
+  itemBaseline = clone({ ...item, category: isCategory(item.category) ? item.category : null });
   const form = $('#edit-item-form'); form.reset();
   form.elements.rowId.value = item.id; form.elements.name.value = item.name;
   editQuantity.load(item);
   categoryHint(form.elements.category, item.name); form.elements.category.value = itemBaseline.category || '';
   storeOptions(form.elements.storeId, item.storeId || '', true, true, true);
-  setQuoteFields(form, itemQuote(item), item.unit);
-  form.elements.onSale.checked = Boolean(item.onSale);
-  setSaleFields(form, item.salePrice, item.saleUntil);
-  form.querySelector('[data-price-hint]').textContent = 'Freiwillige Preisnotiz für diesen Artikel.';
-  // Preis & Angebot sind zugeklappt (Name, Menge, Einheit, Geschäft stehen oben); die Zeile verrät den Stand.
-  const quote = itemQuote(item), summary = [quote ? quoteLabel(quote) : '', item.onSale ? 'Im Angebot' : ''].filter(Boolean).join(' · ');
-  $('#item-price-fold').open = false; $('#item-price-summary').textContent = summary || 'optional';
   $('#remembered-amount-editor').hidden = true; renderRememberedAmount();
   message(); $('#item-dialog').showModal();
   // Packungsgröße und gewählte Einheit liegen nicht in Formularfeldern: Sie zählen über `extra` mit.
@@ -1004,7 +951,7 @@ function editItem(id) {
 }
 
 // Ein Wunsch (Artikel in einer eigenen Liste) hat ein eigenes kleines Fenster: Name, Produktlink, Notiz und ein lokales Gruppenbild – ohne Menge, Einheit, Kategorie und
-// Preis & Angebot. Ein kurzer Tipp und langes Drücken öffnen dasselbe Fenster; normale Artikel behalten ihr Bearbeiten-Fenster.
+// Preis. Ein kurzer Tipp und langes Drücken öffnen dasselbe Fenster; normale Artikel behalten ihr Bearbeiten-Fenster.
 function showWishProductLink() {
   const link = $('#wish-product-link');
   let url = ''; try { url = productLink($('#wish-form').elements.wishUrl.value); } catch { /* unfertige Eingabe */ }
@@ -3157,6 +3104,9 @@ async function restoreBackup(bundle, preview) {
 /* ---------- Im Laden ---------- */
 // Umschalter „Planen | Im Laden“ (gilt für dieses Gerät). Im Laden: Geschäft oben wählen, nur das Wichtige sehen, abhaken.
 let shopStore = ALL_STORES, shopDoneOpen = false;
+// Preise „Im Laden“ (2.163): unter „Ausgaben“ nachgetragene Produktpreise, je Produktname gesammelt; welche Übersichten offen sind, bleibt beim Abgleich erhalten
+let shopPrices = new Map();
+const shopPricesOpen = new Set();
 const shopChecked = new Map();   // Artikel ohne Geschäft, die in dieser Sitzung in einem Geschäft abgehakt wurden: Kennung → Geschäft
 const shopOn = () => config.shopMode === true;
 // Beim Öffnen von „Im Laden“ (ein Tipp der Person) wird der Bildschirm neu angefordert, auch wenn es vorher nicht klappte; ebenso beim Zurückkehren in die App.
@@ -3243,7 +3193,7 @@ for (const type of ['pointerdown', 'keydown', 'scroll']) document.addEventListen
 // Gesperrt: Alles außer dem Entsperren wird verschluckt, auch Reiter und „Planen“. Drei Dinge gehen auch gesperrt, aber nur durch Gedrückthalten:
 // den Kreis eines Artikels (abhaken), ein Geschäft (wechseln) und „Erledigt“ (öffnen oder schließen).
 let lockBypass = false, lockHold = null;
-const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary';
+const LOCK_HOLD = '#shop-list .shop-tap, #shop-chips .chip, #shop-list .shop-done summary, #shop-list .shop-price-toggle';
 // Eine verschluckte Berührung zeigt keinen Text: Der Knopf zum Entsperren leuchtet kurz in der Farbe auf (zwei Pulse, CSS „nudge“). Bildschirmleser bekommen den Hinweis als unsichtbare Ansage.
 function nudgeUnlock() {
   const bar = $('#shop-lockbar');
@@ -3315,6 +3265,21 @@ function shopRow(item) {
   }
   text.append(element('span', item.name, 'shop-name'), element('span', `${shoppingAmount(item)}`, 'shop-qty'));
   if (imagesOn() || isWish(item)) text.append(thumbFor(item));
+  const prices = isWish(item) ? [] : shopPrices.get(productKey(item.name)) || [];
+  let panel = null;
+  if (prices.length) {
+    // Kleiner Pfeil links neben dem Bild: klappt darunter die Preise dieses Produkts auf (gesperrt: gedrückt halten). Ohne gespeicherten Preis kein Pfeil.
+    const key = productKey(item.name), open = shopPricesOpen.has(key), toggle = element('button', undefined, 'shop-price-toggle');
+    toggle.type = 'button'; toggle.append(icon('down')); toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', `${item.name}: gespeicherte Preise ${open ? 'zuklappen' : 'anzeigen'}`);
+    panel = shopPricePanel(item, prices); panel.hidden = !open; toggle.setAttribute('aria-controls', panel.id);
+    toggle.addEventListener('click', () => {
+      const show = !shopPricesOpen.has(key); if (show) shopPricesOpen.add(key); else shopPricesOpen.delete(key);
+      panel.hidden = !show; row.classList.toggle('prices-open', show); toggle.setAttribute('aria-expanded', String(show));
+      toggle.setAttribute('aria-label', `${item.name}: gespeicherte Preise ${show ? 'zuklappen' : 'anzeigen'}`);
+    });
+    text.append(toggle); row.classList.add('has-prices'); row.classList.toggle('prices-open', open);
+  }
   tap.setAttribute('aria-pressed', String(Boolean(item.checked)));
   tap.setAttribute('aria-label', `${item.name}, ${shoppingAmount(item)}: ${item.checked ? 'wieder öffnen' : 'abhaken'}`);
   tap.addEventListener('click', () => guard(() => {
@@ -3332,8 +3297,41 @@ function shopRow(item) {
       shopChecked.delete(item.id); commit([nextOp('items', item.id, { checked: false, shopBoughtAt: latest.shopBoughtAt || null,shopPurchase:latest.shopPurchase||null,...(latest.stockConsumedAt!==undefined?{stockConsumedAt:latest.stockConsumedAt}:{}) }),...stockOps(undoAutomaticStockChanges(state,now))]);
     });
   }));
-  row.append(tap, text);
+  row.append(tap, text); if (panel) row.append(panel);
   return row;
+}
+/* Kompakte Preisübersicht eines Produkts (2.163): je Geschäft der zuletzt gezahlte Preis, die jüngsten oben. Geschäft (mit Logo, falls bekannt), Datum,
+   Preis und „Angebot“; der günstigste normale Preis ist hervorgehoben (siehe priceOverview). Die Preise trägt man unter „Ausgaben“ am Einkauf nach. */
+let shopPriceSerial = 0;
+function shopPriceStore(row) {
+  const store = active(state.stores).find(entry => entry.id === row.storeId), name = row.storeName || 'Ohne Geschäft', box = element('span', undefined, 'shop-price-store');
+  const chain = row.storeName ? chainForStore(store || { name: row.storeName }) : null;
+  if (typeof chain?.logo === 'string') {
+    const logo = element('img', undefined, 'shop-price-logo'); logo.src = chain.logo; logo.alt = ''; logo.width = 36; logo.height = 24;
+    logo.addEventListener('error', () => { logo.hidden = true; }, { once: true });
+    box.append(logo);
+  }
+  box.append(element('span', name, 'shop-price-name'));
+  return box;
+}
+function shopPricePanel(item, prices) {
+  const { rows, showAmounts } = priceOverview(prices), today = isoDate();
+  const panel = element('div', undefined, 'shop-prices'); panel.id = `shop-prices-${++shopPriceSerial}`;
+  const list = element('ul', undefined, 'shop-price-list'); list.setAttribute('aria-label', `Preise für ${item.name}`);
+  for (const row of rows) {
+    const li = element('li', undefined, `shop-price${row.cheapest ? ' cheapest' : ''}${row.offer ? ' offer' : ''}`), where = element('span', undefined, 'shop-price-where');
+    const date = row.date === today ? 'Heute' : row.date.slice(0, 4) === today.slice(0, 4) ? spendDay(row.date) : dayLabel(row.date);
+    where.append(shopPriceStore(row), element('span', [date, showAmounts && row.amount ? row.amount : ''].filter(Boolean).join(' · '), 'shop-price-date'));
+    const value = element('span', undefined, 'shop-price-value');
+    value.append(element('strong', euros(row.cents)));
+    const tags = element('span', undefined, 'shop-price-tags');
+    if (row.offer) tags.append(element('span', 'Angebot', 'offer-tag'));
+    if (row.cheapest) tags.append(element('span', 'Günstigster', 'cheapest-tag'));
+    if (tags.childNodes.length) value.append(tags);
+    li.append(where, value); list.append(li);
+  }
+  panel.append(list);
+  return panel;
 }
 function shopNewsRow(entry) {
   const item = entry.item, row = element('li', undefined, 'shop-item news');
@@ -3344,6 +3342,7 @@ function shopNewsRow(entry) {
 }
 function renderShop() {
   storeReorders.forEach(order => order.cancel());
+  shopPrices = productPriceIndex(state.purchases || [], purchase => storeNameOf(purchase, active(state.stores)));
   const stores = orderedStores(state.stores).filter(store => visibleStore(store) && !isNotesStore(store)), everything = visibleItems(true);   // Notizen gehören nicht in den Laden
   if (shopStore && shopStore !== ALL_STORES && !stores.some(store => store.id === shopStore)) shopStore = ALL_STORES;
   const items = visibleItems(shopStore === ALL_STORES ? '' : shopStore);   // ohne die eigenen Listen anderer Geschäfte und ohne die „Alle“-Ansicht
@@ -4094,7 +4093,7 @@ $('#reload').addEventListener('click', () => {
   if (waitingWorker?.state === 'installed') { reloadRequested = true; waitingWorker.postMessage('skipWaiting'); setTimeout(() => location.reload(), 3000); }
   else location.reload();
 });
-for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', rememberPriceInForm);
+for (const key of ['name', 'unit']) $('#item-form').elements[key].addEventListener('blur', refreshCategoryHint);
 for (const event of ['input', 'focus']) $('#item-form').elements.name.addEventListener(event, renderItemSuggestions);
 $('#item-form').elements.name.addEventListener('input', () => { delete $('#item-form').dataset.keepOpen; renderQuickPick(); });
 $('#clear-item-name').addEventListener('click',clearItemDraft);
@@ -4152,8 +4151,6 @@ document.addEventListener('pointerup', event => {
   const field = document.activeElement;
   if (typing(field) && !start.target.closest?.(INTERACTIVE)) field.blur();
 }, true);
-for (const key of ['priceEuros', 'priceQuantity', 'priceUnit', 'saleEuros', 'saleQuantity', 'saleUnit']) $('#item-form').elements[key].addEventListener('input', () => { $('#item-form').dataset.manualPrice = 'yes'; });
-for (const form of [$('#item-form'), $('#edit-item-form')]) form.elements.onSale.addEventListener('change', () => toggleSaleFields(form));
 // Zutaten auf die Liste setzen: Gleiche Artikel werden zusammengezählt (siehe data.js).
 // `unchecked`: Namen der abgewählten Zutaten; mit `remember` kommen sie in den Vorrat.
 // `take`: Kennung einer Wochenübernahme (siehe weekTakeId in plan.js); Zeilen mit `key` bekommen dann feste Kennungen, damit dieselbe Übernahme von zwei Geräten nur einmal zählt.
@@ -4175,8 +4172,8 @@ function clearItemDraft() {
   const form=$('#item-form'),kept=form.elements.storeId.value;
   document.activeElement?.blur?.(); form.reset();form.elements.storeId.value=kept;
   form.querySelector('.price-fields').open=false;
-  delete form.dataset.manualPrice;delete form.dataset.keepName;delete form.dataset.keepOpen;delete form.dataset.choosingUnit;   // nach dem Hinzufügen immer zugeklappt (2.159)
-  renderStorePick();itemQuantity.reset();rememberPriceInForm();$('#item-suggestions').hidden=true;renderQuickPick();syncForm();
+  delete form.dataset.keepName;delete form.dataset.keepOpen;delete form.dataset.choosingUnit;   // nach dem Hinzufügen immer zugeklappt (2.159)
+  renderStorePick();itemQuantity.reset();refreshCategoryHint();$('#item-suggestions').hidden=true;renderQuickPick();syncForm();
 }
 // Fertig/Enter prüft den Namen und schließt die Tastatur. Das „+“ bestätigt die Einkaufsmenge.
 $('#item-form').addEventListener('submit', event => { event.preventDefault(); guard(() => {
@@ -4185,10 +4182,9 @@ $('#item-form').addEventListener('submit', event => { event.preventDefault(); gu
   const known = appliedAliases().find(alias => alias.from === aliasKey(typed)), correction = form.dataset.keepName === typed || isSeparate(state.stores.find(store => store.id === form.elements.storeId.value)) ? null : recognizeName(typed).correction, name = known?.name || correction || typed;
   if(name!==typed) itemQuantity.suggest(name);
   const category = form.elements.category.value || suggestCategory(name, itemHistory());
-  const item = { storeId: currentStore(form.elements.storeId.value), name, ...itemQuantity.read(), checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}), ...readPricing(form) };
-  if (!item.saleUntil) delete item.saleUntil;
-  // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht. Wer einen Preis eingibt, will einen eigenen Eintrag.
-  const same = form.dataset.manualPrice === 'yes' ? null : foldIntoList([{ name, quantity: item.quantity, unit:item.unit, purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt,...amountChoice(item) }], item.storeId, state.items).counted[0];
+  const item = { storeId: currentStore(form.elements.storeId.value), name, ...itemQuantity.read(), checked: false, createdBy: config.actor || 'Unbekannt', ...(category ? { category } : {}) };
+  // Steht derselbe Artikel schon offen auf der Liste (gleiches Geschäft, passende Einheit), wird die Menge erhöht.
+  const same = foldIntoList([{ name, quantity: item.quantity, unit:item.unit, purchaseUnit:item.purchaseUnit,purchaseMeasure:item.purchaseMeasure,purchaseAt:item.purchaseAt,...amountChoice(item) }], item.storeId, state.items).counted[0];
   const renamed = name !== typed ? `„${typed}“ → „${name}“` : '';
   if (same) {
     const current=state.items.find(row=>row.id===same.id),preference={...newerUnitChoice(item,current),...newerAmountChoice(item,current)};
@@ -4351,7 +4347,7 @@ $('#edit-item-form').addEventListener('submit', event => { event.preventDefault(
   const form = event.currentTarget, item = state.items.find(row => row.id === form.elements.rowId.value && !row.deletedAt);
   if (!item) throw new Error('Dieser Artikel wurde inzwischen gelöscht.');
   const patch = { name: form.elements.name.value.trim(), ...editQuantity.read(),
-    category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value), ...readPricing(form) };
+    category: form.elements.category.value || null, storeId: currentStore(form.elements.storeId.value) };
   if (!patch.name || !patch.unit) throw new Error('Bitte Artikelname und Einheit eingeben.');
   const delta = changed(patch, itemBaseline);
   if(editQuantity.preferenceChanged())Object.assign(delta,unitChoice(patch));
@@ -4463,6 +4459,22 @@ spendingView = mountSpending({
   onMemberArchive: (id, archived) => {
     if (!liveMembers(state.members).some(row => row.id === id)) throw new Error('Diese Person ist nicht mehr vorhanden.');
     commit([nextOp('members', id, { archived })]);
+  },
+  // Preis eines Produkts nachtragen, ändern oder löschen (2.163). Nur das eine Produkt im aktuellen Stand ändert sich; Betrag, Geschäft und Datum des Einkaufs bleiben.
+  onProductPrice: (purchaseId, index, name, price) => {
+    if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+    const purchase = active(state.purchases || []).find(row => row.id === purchaseId);
+    if (!purchase) throw new Error('Dieser Einkauf wurde inzwischen gelöscht.');
+    const before = purchase.items?.[index], items = withProductPrice(purchase.items, index, name, price), after = items[index];
+    if ((before.cents ?? null) === (after.cents ?? null) && Boolean(before.offer) === Boolean(after.offer)) return;
+    commit([nextOp('purchases', purchaseId, { items })]);
+    if (price) { showNotice(`Preis für „${name}“ gespeichert: ${euros(price.cents)}${price.offer ? ' (Angebot)' : ''}`); return; }
+    const was = { cents: before.cents, offer: before.offer === true }, scope = namespace();
+    showNotice(`Preis für „${name}“ gelöscht`, () => guard(() => {
+      const now = active(state.purchases || []).find(row => row.id === purchaseId);
+      if (scope !== namespace() || !now || hasProductPrice(now.items?.[index])) return;
+      commit([nextOp('purchases', purchaseId, { items: withProductPrice(now.items, index, name, was) })], `Preis für „${name}“ wiederhergestellt`);
+    }));
   },
   // Versehentlich angelegte Person löschen (2.162): nur ohne Einkäufe; mit Einkäufen bleibt nur Ausblenden, damit die Historie stimmt
   onMemberDelete: async id => {
