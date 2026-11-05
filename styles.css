@@ -3049,11 +3049,16 @@ details,summary,.card {
 .purchase-more>summary { min-height:44px; padding:10px 0; font-weight:600; cursor:pointer }
 .purchase-more label { margin:4px 0 8px }
 .members-list { list-style:none; margin:0; padding:0 }
-.members-list>li { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px 12px; padding:10px 0; border-bottom:1px solid var(--line) }
-.members-list>li>span { min-width:0; overflow-wrap:anywhere; font-weight:650 }
-.member-actions { display:flex; flex-wrap:wrap; gap:4px }
+/* Eine Zeile je Person (2.163): links der Name (bricht bei Bedarf um), rechts Stift, Aus-/Einblenden und ggf. Mülleimer in einheitlichen Rahmen.
+   Die Knöpfe bleiben neben dem Namen, auch bei drei Knöpfen; nur bei sehr langen Namen auf schmalen Bildschirmen rutschen sie darunter. */
+.members-list>li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; padding:10px 0; border-bottom:1px solid var(--line) }
+.members-list>li>span { flex:1 1 auto; overflow-wrap:break-word; hyphens:manual; font-weight:650 }   /* nie mitten im Wort trennen; passt ein langer Name nicht, rücken die Knöpfe darunter */
+.member-actions { display:flex; flex:none; flex-wrap:nowrap; justify-content:flex-end; gap:6px; margin-left:auto }
 .member-actions button { min-height:44px; font-size:.82rem }
-:root #members-dialog .member-actions .member-delete { width:44px; padding:0; color:var(--danger) }   /* 2.162: nur bei Personen ohne Einkäufe */
+:root #members-dialog .member-actions button { height:44px; margin:0; padding:0 14px; border:2px solid var(--line-strong); border-radius:14px; background:var(--card); color:var(--accent); box-shadow:none; white-space:nowrap }
+:root #members-dialog .member-actions :is(.member-edit,.member-delete) { display:grid; place-items:center; width:44px; padding:0 }
+:root #members-dialog .member-actions :is(.member-edit,.member-delete) .icon { width:20px; height:20px }
+:root #members-dialog .member-actions .member-delete { color:var(--danger) }   /* 2.162: nur bei Personen ohne Einkäufe */
 #member-form { align-items:end; gap:8px; flex-wrap:wrap }
 #member-form label { flex:1; min-width:100px }
 #member-form input { width:100%; min-width:0 }

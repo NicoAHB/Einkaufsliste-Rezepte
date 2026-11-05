@@ -78,11 +78,11 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     if (!list.some(row => !row.archived)) active.append(node('li', 'Noch keine Personen gespeichert. Beim ersten Einkauf wird dein Name übernommen.', 'empty'));
     for (const member of list) {
       const row = node('li'), label = node('span', member.name), actions = node('div', undefined, 'member-actions');
-      const edit = button('Ändern', () => {
+      const edit = button(undefined, () => {
         editingMember = member.id; editingName = member.name; memberForm.elements.name.value = member.name;
         $('member-form-label').textContent = 'Name ändern'; memberForm.querySelector('button').textContent = 'Speichern';
         $('member-cancel-edit').hidden = false; $('members-error').hidden = true; memberForm.elements.name.focus();
-      }, 'secondary small'); edit.setAttribute('aria-label', `${member.name}: Name ändern`);
+      }, 'icon-button member-edit'); edit.append(svgIcon('edit')); edit.setAttribute('aria-label', `${member.name}: Name ändern`); edit.title = 'Name ändern';   // Stift wie bei den Einkäufen (2.163): alle Knöpfe passen neben den Namen
       const archive = button(member.archived ? 'Einblenden' : 'Ausblenden', () => {
         try { $('members-error').hidden = true; onMemberArchive(member.id, !member.archived); } catch (error) { fail('members-error', error); }
       }, 'text-button'); archive.setAttribute('aria-label', `${member.name}: ${member.archived ? 'einblenden' : 'ausblenden'}`);

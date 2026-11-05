@@ -11937,6 +11937,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#spending-members'); await sheetOpen(page);
     await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
     assert.equal(await page.getByRole('button', { name: 'Nadiia löschen', exact: true }).count(), 1);
+    // 2.163: Stift, Ausblenden und Mülleimer stehen neben dem Namen (nicht darunter), alle mit Rahmen und 44 px hoch
+    const layout = await page.locator('#members-list li', { hasText: 'Nadiia' }).evaluate(row => {
+      const name = row.querySelector(':scope > span').getBoundingClientRect(), buttons = [...row.querySelectorAll('.member-actions button')];
+      return { buttons: buttons.length, sameLine: buttons.every(button => Math.abs((button.getBoundingClientRect().top + button.getBoundingClientRect().bottom) / 2 - (name.top + name.bottom) / 2) < 14),
+        framed: buttons.every(button => getComputedStyle(button).borderTopStyle === 'solid' && parseFloat(getComputedStyle(button).borderTopWidth) >= 1), tall: buttons.every(button => button.getBoundingClientRect().height >= 44) };
+    });
+    assert.deepEqual(layout, { buttons: 3, sameLine: true, framed: true, tall: true });
     assert.equal(await page.getByRole('button', { name: 'Lena löschen', exact: true }).count(), 0, 'Lena hat einen Einkauf');
     assert.equal(await page.getByRole('button', { name: 'Nico löschen', exact: true }).count(), 0, 'die eigene Person bleibt');
     // Abbrechen behält sie
