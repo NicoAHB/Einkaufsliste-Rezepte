@@ -2,6 +2,21 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.164: „✓ Hab ich“ – fehlende Rezeptzutaten mit einem Tipp in den Vorrat
+
+In der Rezeptkarte **„x von y Zutaten da · z fehlen“** hat im Abschnitt **Fehlt im Vorrat** jede Zutat rechts einen Knopf **✓ Hab ich**: grün umrandet, mindestens 44 px hoch und deutlich anders als „Einkaufen“.
+
+**Ein Tipp genügt, ohne Rückfrage:**
+- Die Zutat kommt sofort in den aktuellen Vorrat. Die Zeile wandert von **Fehlt im Vorrat** (rot) nach **Im Vorrat vorhanden** (grün); Fortschrittsbalken und Überschrift (z. B. „7 von 7 Zutaten da“) passen sich sofort an. Die Karte bleibt aufgeklappt.
+- Sind keine Zutaten mehr offen, entfällt der Abschnitt **Fehlt im Vorrat**.
+- Unten steht 4 Sekunden lang **„Walnüsse zum Vorrat hinzugefügt“** mit **Rückgängig**; das nimmt alles zurück.
+
+**Einkaufszettel:** Steht die Zutat dort noch offen, fragt die App **„Milch vom Einkaufszettel entfernen?“** (**Entfernen** / **Behalten**). Nach dem Entfernen holt **Rückgängig** sie auch dorthin zurück.
+
+**Was im Vorrat gespeichert wird:** nur das Produkt, ohne Menge und Einheit: aus „50 g Walnüsse, gehackt“ wird „Walnüsse“, aus „2 Knoblauchzehen“ „Knoblauch“, aus „1 Dose Tomaten“ „Tomaten (Konserve)“. Es wird behandelt wie eine Auswahl in der Vorratsauswahl (gleiche Produktgruppe, gleiches Bild). Gibt es das Produkt schon, wird nichts doppelt angelegt; ein als aufgebraucht markiertes wird wieder vorhanden. Der Vorrat wird wie gewohnt über GitHub abgeglichen.
+
+Offline-Paket `einkauf-shell-v176`.
+
 ## Neu in Version 2.163: Preise je Produkt – unter „Ausgaben“ nachtragen, „Im Laden“ vergleichen
 
 **Keine Preisfelder mehr unter „Einkauf“.** Das Fenster heißt jetzt **Artikel bearbeiten** und enthält Name, Menge, Einheit, Geschäft und Kategorie, aber keinen Preis und kein „Im Angebot“ mehr. Auch beim Hinzufügen steht nur noch **Kategorie (optional)**. Früher am Artikel notierte Preise bleiben unverändert in der Datei, werden aber nicht mehr angezeigt.
