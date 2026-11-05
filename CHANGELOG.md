@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.167: Geplante Gerichte zählen für „Häufig gekocht“
+
+Bisher zählte „Häufig gekocht“ nur **Heute gekocht** im Kochmodus und abgehakte Gerichte. Jetzt zählt jedes Rezept, das einem **Tag im Wochenplan zugeordnet** wird (auch über die Wochenplanung).
+- Wird das Gericht wieder entfernt oder bekommt es ein anderes Rezept, zählt das bisherige eins weniger; **Rückgängig** und Wiederherstellen zählen wieder.
+- **Abhaken** im Wochenplan zählt nicht noch einmal. **Heute gekocht** zählt nur, wenn das Rezept heute nicht ohnehin im Plan steht.
+- Gilt für die Sortierung **Häufig gekocht** unter Rezepte und die Auswahl **Häufig gekocht** in „Gericht planen“.
+
+Offline-Paket `einkauf-shell-v179`.
+
 ## Neu in Version 2.166: „Häufig gekocht“ und Linien vor den Listen
 
 **Linie vor den Listen.** In der Reiterleiste unter „Planen“ steht vor den eigenen Listen (Wünsche, eigene Listen) eine senkrechte Linie, in der Listenauswahl (Reiter lange drücken) eine waagerechte, wie schon vor den geheimen Listen und den Notizen und unter „Geschäfte & Listen“. Die gewählte Reihenfolge bleibt; steht eine Liste zwischen Geschäften, steht die Linie vor ihr.

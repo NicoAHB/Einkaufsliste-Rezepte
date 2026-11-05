@@ -12250,4 +12250,22 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  test('2.167: Ein Rezept im Wochenplan zählt für „Häufig gekocht“; Abhaken zählt nicht doppelt', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const pasta = () => storedDemo(page).then(data => data.recipes.find(row => row.name === 'Tomaten-Pasta'));
+    const effective = recipe => Number.isSafeInteger(recipe.cookCount) && recipe.cookCount > 0 ? recipe.cookCount : recipe.lastCookedAt ? 1 : 0;
+    const start = effective(await pasta());
+    await page.click('[data-tab=plan]'); await page.click('.day-head .icon-button');
+    await page.locator('#recipe-pick .pick-row', { hasText: 'Tomaten-Pasta' }).first().click(); await page.click('#meal-form button[type=submit]');
+    assert.equal((await pasta()).cookCount, start + 1, 'beim Einplanen gezählt');
+    // Abhaken (gekocht) zählt nicht noch einmal
+    const check = page.locator('.meal', { hasText: 'Tomaten-Pasta' }).locator('button.check').first();
+    if (await check.count() && await check.isEnabled()) { await check.click(); assert.equal((await pasta()).cookCount, start + 1, 'Abhaken zählt nicht zusätzlich'); }
+    await goTab(page, 'recipes'); await page.selectOption('#recipe-sort', 'often');
+    assert.equal((await page.locator('#recipe-list .recipe-card h3').allTextContents())[0], 'Tomaten-Pasta', '„Häufig gekocht“ zeigt es vorn');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

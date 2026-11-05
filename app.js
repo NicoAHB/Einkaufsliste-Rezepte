@@ -277,9 +277,27 @@ function showNotice(text, undo = null, { trash = false, action = '', ms = 0 } = 
 // Nach dem Speichern eines Bearbeiten-Fensters (2.147): kurze Bestätigung mit Uhrzeit; beim nächsten Öffnen steht sie grau auf dem Knopf.
 const savedNotice = (name = '') => showNotice(`${name ? `„${name}“ gespeichert` : 'Änderungen gespeichert'} um ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`);
 $('#notice-undo').addEventListener('click', () => { const undo = noticeUndo; noticeUndo = null; $('#notice').hidden = true; clearTimeout(noticeTimer); if (undo) guard(undo); });
+/* „Häufig gekocht“ (2.167): Jedes Rezept, das einem Tag im Wochenplan zugeordnet wird, zählt einmal (cookCount). Wird das Gericht entfernt oder
+   bekommt es ein anderes Rezept, zählt das bisherige eins weniger; „Rückgängig“ und Wiederherstellen zählen wieder. Abhaken zählt nicht zusätzlich. */
+function withPlanCounts(ops) {
+  const meals = new Map(), deltas = new Map(), add = (id, step) => { if (id) deltas.set(id, (deltas.get(id) || 0) + step); };
+  for (const op of ops) {
+    if (op.collection !== 'meals') continue;
+    const before = meals.has(op.entityId) ? meals.get(op.entityId) : (state.meals || []).find(row => row.id === op.entityId) || null, after = { ...(before || {}), ...op.patch };
+    const was = before && !before.deletedAt ? before.recipeId || '' : '', now = !after.deletedAt ? after.recipeId || '' : '';
+    meals.set(op.entityId, after);
+    if (was !== now) { add(was, -1); add(now, 1); }
+  }
+  const extra = [...deltas].filter(([, step]) => step).flatMap(([id, step]) => {
+    const recipe = active(state.recipes).find(row => row.id === id);
+    return recipe ? [nextOp('recipes', id, { cookCount: Math.max(0, cookCount(recipe) + step) })] : [];
+  });
+  return extra.length ? [...ops, ...extra] : ops;
+}
 function commit(ops, notice = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   if (!ops.length) return;
+  ops = withPlanCounts(ops);
   const nextPending = [...pending, ...ops];
   const nextState = merge(base, nextPending);
   // Eine einzige atomare localStorage-Schreiboperation sichert Daten und Warteschlange.
@@ -2029,7 +2047,7 @@ function toggleMeal(id) {
   if (!meal) return;
   const ops = [nextOp('meals', id, { done: !meal.done })], today = isoDate();
   const recipe = meal.recipeId && active(state.recipes).find(row => row.id === meal.recipeId), day = meal.date < today ? meal.date : today;
-  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day, cookCount: cookCount(recipe) + 1 }));
+  if (!meal.done && recipe && (!recipe.lastCookedAt || recipe.lastCookedAt.slice(0, 10) < day)) ops.push(nextOp('recipes', recipe.id, { lastCookedAt: day }));   // gezählt wurde schon beim Einplanen (2.167)
   commit(ops);
 }
 let plannedRecipe = null;
@@ -3738,7 +3756,7 @@ function openCook(id, servings) {
   if (!steps.children.length) steps.append(element('li', 'Keine Zubereitung eingetragen.', 'hint'));
   const supported = 'wakeLock' in navigator;
   $('#cook-awake-label').hidden = !supported; $('#cook-awake').checked = supported && config.cookAwake === true; $('#cook-awake-hint').textContent = '';
-  $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate(), ...(String(recipe.lastCookedAt || '').slice(0, 10) === isoDate() ? {} : { cookCount: cookCount(recipe) + 1 }) })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
+  $('#cook-done').onclick = () => guard(() => { commit([nextOp('recipes', id, { lastCookedAt: isoDate(), ...(String(recipe.lastCookedAt || '').slice(0, 10) === isoDate() || active(state.meals || []).some(meal => meal.recipeId === id && meal.date === isoDate()) ? {} : { cookCount: cookCount(recipe) + 1 }) })], `„${recipe.name}“ als heute gekocht notiert`); cooked.delete(id); $('#cook-dialog').close(); });
   $('#cook-dialog').showModal();
   if (supported && config.cookAwake === true) void keepAwake('cook', true);
 }
