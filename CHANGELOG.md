@@ -9,6 +9,8 @@ Bisher zählte „Häufig gekocht“ nur **Heute gekocht** im Kochmodus und abge
 - **Abhaken** im Wochenplan zählt nicht noch einmal. **Heute gekocht** zählt nur, wenn das Rezept heute nicht ohnehin im Plan steht.
 - Gilt für die Sortierung **Häufig gekocht** unter Rezepte und die Auswahl **Häufig gekocht** in „Gericht planen“.
 
+**Kein doppelter Ring am × mehr, in allen Fenstern.** Beim Öffnen eines Fensters (z. B. „Geschäfte & Listen“) lag der Fokus auf dem × oben rechts, und Safari auf dem iPhone zeichnete darum einen zweiten Ring. Jetzt liegt der Fokus beim Öffnen unsichtbar auf der Überschrift; mit der Tastatur geht es per Tab wie gewohnt weiter.
+
 Offline-Paket `einkauf-shell-v179`.
 
 ## Neu in Version 2.166: „Häufig gekocht“ und Linien vor den Listen

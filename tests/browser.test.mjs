@@ -12268,4 +12268,16 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  test('2.167: Fenster öffnen ohne Fokus auf dem × (kein Fokusring auf dem iPhone); Tab führt zu den Knöpfen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    await page.click('#manage-stores'); await sheetOpen(page);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'stores-title');
+    assert.equal(await page.locator('#stores-dialog [data-close]').evaluate(node => node.matches(':focus')), false);
+    assert.equal(await page.locator('#stores-title').evaluate(node => getComputedStyle(node).outlineStyle), 'none');
+    await page.keyboard.press('Tab'); assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'stores-title');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

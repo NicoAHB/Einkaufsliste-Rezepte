@@ -103,6 +103,20 @@ const photoMiss = new Map(), photoJobs = new Map();
 let importSource = 'link', importAbort = null, previewUrls = [];
 const portions = new Map(), openRecipes = new Set();
 mountAsk();
+/* Kein Fokusring am × (2.167): Beim Öffnen setzt der Browser den Fokus auf das erste Bedienelement, meist das × oben rechts; Safari auf dem iPhone
+   zeichnet darum einen zweiten Ring. Liegt der Fokus danach auf dem ×, wandert er unsichtbar auf die Überschrift des Fensters (Tab führt weiter). */
+if (typeof HTMLDialogElement === 'function' && !HTMLDialogElement.prototype.showModal.calmFocus) {
+  const nativeShowModal = HTMLDialogElement.prototype.showModal;
+  const calmShowModal = function () {
+    nativeShowModal.call(this);
+    const focused = document.activeElement, title = this.querySelector('.sheet-head h2, .sheet-head h3');
+    if (!title || !focused?.matches?.('[data-close]') || !this.contains(focused)) return;
+    if (!title.hasAttribute('tabindex')) title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+  };
+  calmShowModal.calmFocus = true;
+  HTMLDialogElement.prototype.showModal = calmShowModal;
+}
 singleOpenAccordion($('#help-body'), '.help-section');
 singleOpenAccordion($('#recipe-list'), '.recipe-details', () => {
   openRecipes.clear();
