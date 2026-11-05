@@ -943,6 +943,8 @@ details[open]>summary::after {
   text-align:left;
   white-space:nowrap
 }
+/* Jeder Vorschlag mit einem ganz leichten eigenen Rahmen (2.165), auch im Glas-Design */
+:root #item-form .suggestion-choices button { border:1px solid var(--line-strong); box-shadow:none }
 
 /* Einkaufsliste */
 .item-list {
@@ -4504,8 +4506,12 @@ html, body, body * {
 #item-form .name-field { display:block }
 #item-form .name-field input { min-width:0; width:100%; padding-right:100px }
 
-#item-form .clear-item-name { right:48px; top:50%; transform:translateY(-50%); min-width:44px; min-height:44px; padding:0; margin:0 3px; color:#b5263c; border:0; border-radius:50%; background:transparent; font-size:27px; font-weight:600; position:absolute }
-#item-form .clear-item-name::before { content:''; position:absolute; width:23px; height:23px; border:1.5px solid currentColor; border-radius:50%; inset:0; margin:auto }
+/* Eingabe löschen (2.165): ein ruhiger, gefüllter Kreis mit mittigem ×, wie das Löschen-Symbol in Suchfeldern; die Tippfläche bleibt 44 px */
+:root #item-form .clear-item-name { position:absolute; right:48px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:44px; min-width:44px; height:44px; min-height:44px; padding:0; margin:0 3px; border:0; border-radius:50%; background:transparent; box-shadow:none; color:var(--danger) }
+#item-form .clear-item-name::before { content:''; position:absolute; inset:0; width:26px; height:26px; margin:auto; border-radius:50%; background:var(--danger-soft); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--danger) 22%,transparent); transition:transform .12s ease,background-color .12s ease }
+#item-form .clear-item-name .icon { position:relative; width:14px; height:14px; stroke-width:3 }
+#item-form .clear-item-name:active::before { transform:scale(.9); background:color-mix(in srgb,var(--danger) 18%,var(--danger-soft)) }
+#item-form .clear-item-name:focus-visible { outline:3px solid var(--accent); outline-offset:-3px }
 #item-form.compact > :is(#add-item-confirm,.once-only) { display:none }
 #add-item-confirm { min-height:46px }
 .once-only { font-size:.85rem; color:var(--muted); line-height:1.4 }
@@ -5512,7 +5518,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 /* Hinzufügen: erst die Aufgabe wählen */
 .store-add-dialog .sheet-head { gap:8px }
 .store-add-dialog .sheet-head h2 { flex:1; min-width:0 }
-#store-add-title:focus,#daily-title:focus { outline:none }   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
+#store-add-title:focus,#daily-title:focus,#trash-title:focus { outline:none }   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
 .store-add-question { margin:2px 0 12px; font-size:1.05rem; font-weight:700 }
 .store-add-choice { display:grid; gap:10px }
 .store-add-choice .store-group-line { margin:8px 0 2px }

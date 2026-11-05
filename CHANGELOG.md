@@ -2,6 +2,24 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.165: Papierkorb je Reiter leeren, Favoriten bleiben am Platz, klarere Vorschläge und Trennlinien
+
+**Ein Stern verschiebt das Rezept nicht mehr.** Bisher rutschte ein Rezept, sobald man es mit dem Stern als Favorit markierte, sofort ganz nach oben. Jetzt sortiert **A–Z** rein alphabetisch: Das Rezept bleibt an seinem Platz, nur der Stern wird gefüllt. Alle Favoriten zeigt wie bisher der Filter **★ Favoriten**.
+
+**Papierkorb leert nur den gewählten Reiter.** Bisher löschte **Papierkorb leeren** immer alles, auch wenn oben z. B. **Ausgaben** gewählt war. Jetzt gilt:
+- unter **Alle**: alles, wie bisher (**Papierkorb leeren**);
+- unter **Artikel**, **Ausgaben**, **Rezepte** usw.: nur diese Art. Der Knopf heißt dann z. B. **Ausgaben endgültig löschen**, und die Rückfrage nennt den Reiter („Den Eintrag unter „Ausgaben“ im Papierkorb endgültig löschen?“). Alles andere bleibt im Papierkorb.
+
+Beim Öffnen von **Kürzlich gelöscht** liegt der Fokus auf der Überschrift statt auf dem ×, damit das × auf dem iPhone keinen doppelten Ring mehr bekommt (wie 2.162 bei „Rezepte des Tages“).
+
+**Namensvorschläge leicht umrahmt.** Die Vorschläge beim Eintippen (z. B. „Kochschinken“, „Kochsahne“) haben jeweils einen ganz leichten eigenen Rahmen, auch im Glas-Design und dunkel.
+
+**Ruhigerer Knopf zum Löschen der Eingabe.** Statt eines roten Rings mit großem ×-Zeichen: ein zart gefüllter Kreis mit feinem, mittigem ×. Die Tippfläche bleibt 44 px.
+
+**Geschäfte & Listen: Supermärkte und Listen getrennt.** Zwischen den Geschäften und den eigenen Listen (Wünsche, eigene Listen) steht eine waagerechte Linie, wie vor den geheimen Listen und den Notizen. Die Reihenfolge bleibt, wie du sie gewählt hast; steht eine Liste zwischen zwei Geschäften, steht die Linie vor ihr. Nach dem Umsortieren werden die Linien neu gesetzt.
+
+Offline-Paket `einkauf-shell-v177`.
+
 ## Neu in Version 2.164: „✓ Hab ich“ – fehlende Rezeptzutaten mit einem Tipp in den Vorrat
 
 In der Rezeptkarte **„x von y Zutaten da · z fehlen“** hat im Abschnitt **Fehlt im Vorrat** jede Zutat rechts einen Knopf **✓ Hab ich**: grün umrandet, mindestens 44 px hoch und deutlich anders als „Einkaufen“.

@@ -168,8 +168,10 @@ export function undoRestoreChanges(changes, at = new Date().toISOString()) {
 /* „Papierkorb leeren“: alle Einträge, die gerade im Papierkorb stehen, als endgültig gelöscht markieren. Die Marke verteilt sich
    wie jede Änderung auf alle Geräte; das anschließende Aufräumen (compact.js) entfernt die Daten aus der Datei. Nur bei Ausgaben
    bleibt die kleine Löschmarke dauerhaft, damit ein lange offline gewesenes Gerät sie nicht als neue Ausgabe wieder einträgt. */
-export function purgeChanges(data, at = new Date().toISOString(), now = Date.parse(at)) {
-  return trashEntries(data, now).flatMap(entry => (entry.ids || [entry.id]).map(id => ({ collection: entry.collection, id, patch: { purgedAt: at } })));
+// `kinds` (2.165): nur diese Arten leeren (der gerade gewählte Reiter, z. B. ['purchases']); ohne Angabe alles („Alle“).
+export function purgeChanges(data, at = new Date().toISOString(), now = Date.parse(at), kinds = null) {
+  return trashEntries(data, now).filter(entry => !kinds || kinds.includes(entry.kind))
+    .flatMap(entry => (entry.ids || [entry.id]).map(id => ({ collection: entry.collection, id, patch: { purgedAt: at } })));
 }
 
 // Überschriften für die Gruppierung nach Tag: „Heute“, „Gestern“, sonst Wochentag und Datum.

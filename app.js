@@ -92,7 +92,7 @@ let favoritesOnly = false, planWeek = weekStart(isoDate()), mealBaseline = null;
 const RECIPE_SORT_KEY = 'einkauf-recipe-sort-v1';
 const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
 const RECIPE_ORDER = {
-  name: (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b),
+  name: byTitle,   // rein alphabetisch (2.165): Ein Stern verschiebt das Rezept nicht mehr; Favoriten zeigt der Filter „★ Favoriten“
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
   cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b)
 };
@@ -440,6 +440,19 @@ $('#notes-add').addEventListener('click', () => guard(() => {
 // Gemeinsame Listen werden gemeinsam ein-/ausgeblendet. Ihre Einträge bleiben erhalten.
 const isWishStore = store => store.wishlist === true || (isSeparate(store) && defaultSymbol(store.name) === 'gift');
 const wishStores = () => orderedStores(state.stores).filter(isWishStore);
+/* Trennlinie zwischen Supermärkten und eigenen Listen (2.165): Vor einer Liste (Wünsche, eigene Listen), die direkt auf ein Geschäft folgt, steht
+   eine waagerechte Linie wie vor den geheimen Listen und den Notizen. Die gemeinsame Reihenfolge bleibt unverändert; nach dem Umsortieren und bei
+   jedem Neuzeichnen werden die Linien neu gesetzt. */
+function markListBoundaries(editor = $('#store-editor')) {
+  editor.querySelectorAll(':scope > .store-list-line').forEach(line => line.remove());
+  let previous = '';
+  for (const row of [...editor.children]) {
+    if (!row.matches('.store-row[data-store-id], .store-wishes-placeholder')) { previous = ''; continue; }
+    const list = row.classList.contains('store-wishes-placeholder') || isSeparate(active(state.stores).find(store => store.id === row.dataset.storeId));
+    if (list && previous === 'store') { const line = element('div', undefined, 'store-group-line store-list-line'); line.setAttribute('aria-hidden', 'true'); editor.insertBefore(line, row); }
+    previous = list ? 'list' : 'store';
+  }
+}
 function renderListVisibility() {
   // Geöffnete Bearbeitungsfelder behalten ihre noch nicht gespeicherten Werte.
   for (const row of [...$('#store-editor').children, ...$('#store-notes-editor').children]) {
@@ -1061,6 +1074,7 @@ function renderStores() {
     heading.append(title,element('span','Ausgeblendet','store-pill'));summary.append(heading,listVisibilityButton('Wünsche',false,enableMissingWishes));
     row.append(summary,element('p','Einblenden richtet die Wünsche-Liste ein oder holt die bisherige Liste mit ihren Einträgen zurück.','hint store-body'));editor.append(row);
   }
+  markListBoundaries(editor);
   // Geheime Listen (2.161): unter einer eigenen Linie, wie die Notizen
   if(privateList?.lists?.length){const line=element('div',undefined,'store-group-line store-secret-line');line.setAttribute('aria-hidden','true');editor.append(line);}
   for(const list of privateList?.lists||[]){const row=privateStoreEditorRow(list);editor.append(row);if(storeFresh===`private:${list.id}`)fresh=row;}
@@ -4423,6 +4437,7 @@ function saveStoreOrder(visibleIds) {
   const editor = $('#store-editor'), rows = [...editor.children];
   const trailing = editor.querySelector('.store-wishes-placeholder,.store-secret-line,.private-store-row');
   for (const row of order.map(id => rows.find(row => row.dataset.storeId === id)).filter(Boolean)) editor.insertBefore(row, trailing);
+  markListBoundaries(editor);
 }
 for (const [selector, horizontal, itemSelector, handleSelector] of [
   ['#store-editor', false, '.store-row[data-store-id]', '.store-summary'],
@@ -4724,7 +4739,7 @@ function openTrash(kind = 'all') {
   // Ein Hinweis kann mehrere Arten zusammenfassen (Einkaufsliste: Artikel und Listen); markiert wird die erste vorhandene.
   const counts = trashCounts(allTrash());
   trashFilter = kind === 'all' ? 'all' : kind.split(' ').find(entry => counts[entry]) || 'all'; trashUndo = null; $('#trash-status').hidden = true;
-  renderTrash(); if (!$('#trash-dialog').open) $('#trash-dialog').showModal();
+  renderTrash(); if (!$('#trash-dialog').open) { $('#trash-dialog').showModal(); $('#trash-title').focus({ preventScroll: true }); }   // nicht das ×: Safari zeichnet sonst einen Fokusring (wie 2.162)
 }
 function renderTrash() {
   const entries = allTrash(), counts = trashCounts(entries);
@@ -4757,8 +4772,11 @@ function renderTrash() {
   $('#trash-empty').hidden = entries.length > 0;
   list.hidden = !shown.length;
   // „Papierkorb leeren“ steht klein am Ende und nur, wenn es etwas zu leeren gibt.
-  $('#trash-purge').hidden = !entries.length;
-  $('#trash-purge').setAttribute('aria-label', `Papierkorb leeren: ${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} endgültig löschen`);
+  // Geleert wird nur, was im gewählten Reiter steht (2.165); unter „Alle“ heißt der Knopf wie bisher „Papierkorb leeren“.
+  const part = trashScope === 'private' ? '' : trashPurgeLabel();
+  $('#trash-purge').hidden = !shown.length;
+  $('#trash-purge').querySelector('span').textContent = part ? `${part} endgültig löschen` : 'Papierkorb leeren';
+  $('#trash-purge').setAttribute('aria-label', `${part ? `${part} leeren` : 'Papierkorb leeren'}: ${shown.length} ${shown.length === 1 ? 'Eintrag' : 'Einträge'} endgültig löschen`);
 }
 function restoredWhere(entry, changes) {
   const name = `„${entry.title}“`;
@@ -4798,17 +4816,22 @@ $('#trash-undo').addEventListener('click', () => guard(() => {
   commit(undoRestoreChanges(undo.filter(restored)).map(change => nextOp(change.collection, change.id, change.patch)));
   $('#trash-status-text').textContent = 'Wieder in den Papierkorb gelegt'; $('#trash-undo').hidden = true; renderTrash();
 }));
-/* „Papierkorb leeren“: alles, was gerade im Papierkorb steht, endgültig löschen (auf allen Geräten). Bewusst mit Rückfrage und ohne
-   „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
+/* „Papierkorb leeren“: endgültig löschen (auf allen Geräten), was im gewählten Reiter steht: unter „Alle“ alles, unter „Artikel“ nur Artikel,
+   unter „Ausgaben“ nur Ausgaben usw. (2.165). Bewusst mit Rückfrage und ohne „Rückgängig“; der Git-Verlauf des privaten Daten-Repositorys bleibt
+   die letzte Rettung. Der nächste Abgleich räumt die Daten aus der Datei. */
+function trashPurgeKinds() { return trashFilter === 'all' ? null : trashFilter.split(' '); }
+function trashPurgeLabel() { return trashFilter === 'all' ? '' : TRASH_KINDS.filter(({ kind }) => trashFilter.split(' ').includes(kind)).map(({ label }) => label).join(' und '); }
 $('#trash-purge').addEventListener('click', () => guard(async () => {
   // Geleert wird nur der gerade offene Papierkorb: der allgemeine oder der einer geheimen Liste (2.157).
   const secret = trashScope === 'private', listId = secret ? openPrivateId() : '';
-  const before = secret ? privateTrashEntries(listId).length : purgeChanges(state).length;
+  const kinds = secret ? null : trashPurgeKinds(), part = secret ? '' : trashPurgeLabel();
+  const before = secret ? privateTrashEntries(listId).length : trashEntries(state).filter(entry => !kinds || kinds.includes(entry.kind)).length;
   if (!before) return;
-  const what = before === 1 ? 'Den Eintrag' : `Alle ${before} Einträge`;
-  if (!await ask({ title: 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${secret ? ' (nur auf diesem Gerät)' : connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
+  const what = part ? (before === 1 ? `Den Eintrag unter „${part}“` : `Alle ${before} Einträge unter „${part}“`) : before === 1 ? 'Den Eintrag' : `Alle ${before} Einträge`;
+  if (!await ask({ title: part ? `${part} endgültig löschen?` : 'Papierkorb leeren?', message: `${what} im Papierkorb endgültig löschen?\n\nDas lässt sich nicht rückgängig machen${secret ? ' (nur auf diesem Gerät)' : connected() ? ' und gilt auf allen Geräten' : ''}.`, confirmLabel: 'Endgültig löschen', danger: true })) return;
   // Erst nach der Rückfrage bestimmen, was gelöscht wird: Ein Abgleich kann den Papierkorb inzwischen verändert haben.
-  const changes = secret ? [] : purgeChanges(state), own = secret && listId ? privateList?.purge(listId) || 0 : 0, count = changes.length + own;
+  const changes = secret ? [] : purgeChanges(state, undefined, undefined, kinds), own = secret && listId ? privateList?.purge(listId) || 0 : 0;
+  const count = secret ? own : trashEntries(state).filter(entry => !kinds || kinds.includes(entry.kind)).length;
   if (!count) return;
   if (changes.length) {
     if (connected()) compactRequested = true;
@@ -4816,7 +4839,7 @@ $('#trash-purge').addEventListener('click', () => guard(async () => {
     if (!connected()) { const result = compact(state); if (result.changed) saveLocal(result.data, []); render(); }
   }
   trashUndo = null; trashFilter = 'all';
-  $('#trash-status-text').textContent = `Papierkorb geleert · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} endgültig gelöscht`;
+  $('#trash-status-text').textContent = `${part ? `${part} geleert` : 'Papierkorb geleert'} · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'} endgültig gelöscht`;
   $('#trash-status').hidden = false; $('#trash-undo').hidden = true;
   renderTrash();
 }));

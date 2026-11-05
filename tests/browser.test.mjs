@@ -5829,7 +5829,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const titles = () => page.locator('.recipe-card h3').allTextContents();
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').click();
-    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry'], 'Favoriten stehen zuerst');
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta'], 'seit 2.165 bleibt ein Favorit an seinem Platz (A–Z rein alphabetisch)');
     assert.equal(await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').getAttribute('aria-pressed'), 'true');
     await page.getByRole('button', { name: '★ Favoriten' }).click();
     assert.deepEqual(await titles(), ['Tomaten-Pasta']);
@@ -10783,6 +10783,48 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  test('2.165: „Papierkorb leeren“ leert nur den gewählten Reiter – unter „Ausgaben“ nur Ausgaben, unter „Artikel“ nur Artikel, unter „Alle“ alles', async () => {
+    const data = structuredClone(demo), now = Date.now(), at = ms => new Date(now - ms).toISOString();
+    for (const name of ['Tomaten', 'Nudeln']) data.items.find(row => row.name === name).deletedAt = at(3600000);
+    data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 200, storeId: data.stores[0].id, buyerName: 'Nico', note: 'Großeinkauf', source: 'hand', kind: 'refund', createdAt: at(86400000), updatedAt: at(3600000), deletedAt: at(3600000), _clock: {} }];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    const purge = page.locator('#trash-purge'), chip = label => page.locator('#trash-filter .chip', { hasText: label });
+    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'trash-title', 'kein Fokusring am ×');
+    // Reiter „Ausgaben“: der Knopf sagt, was er leert; nur die Ausgabe wird endgültig gelöscht
+    await chip('Ausgaben').click();
+    assert.equal((await purge.textContent()).trim(), 'Ausgaben endgültig löschen');
+    assert.equal(await purge.getAttribute('aria-label'), 'Ausgaben leeren: 1 Eintrag endgültig löschen');
+    await purge.click(); const question = await answerAsk(page, true);
+    assert.match(question, /^Ausgaben endgültig löschen\?\nDen Eintrag unter „Ausgaben“ im Papierkorb endgültig löschen\?/);
+    let base = await saved();
+    assert.ok(base.purchases[0].purgedAt, 'die Ausgabe ist endgültig gelöscht');
+    assert.equal(base.items.filter(row => row.deletedAt && !row.purgedAt).length, 2, 'die Artikel bleiben im Papierkorb');
+    assert.match(await page.textContent('#trash-status-text'), /^Ausgaben geleert · 1 Eintrag endgültig gelöscht/);
+    assert.equal(await page.locator('.trash-row').count(), 2);
+    assert.equal(await page.locator('#trash-filter').isHidden(), true, 'nur noch eine Art: keine Reiter mehr');
+    assert.equal((await purge.textContent()).trim(), 'Papierkorb leeren');
+    // Neuer Stand mit Artikel und Ausgabe: unter „Artikel“ bleiben Ausgaben stehen; unter „Alle“ wird alles geleert
+    await page.click('#trash-dialog [data-close]'); await goTab(page, 'spending');
+    await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('einkauf-demo-v1')), stamp = new Date(Date.now() - 60000).toISOString();
+      stored.base.purchases.push({ id: 'gone-2', date: stamp.slice(0, 10), cents: 999, buyerName: 'Nico', note: '', source: 'hand', createdAt: stamp, updatedAt: stamp, deletedAt: stamp, _clock: {} });
+      localStorage.setItem('einkauf-demo-v1', JSON.stringify(stored));
+    });
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    await openSettings(page); await page.click('#trash-open'); await sheetOpen(page);
+    await chip('Artikel').click(); assert.equal((await purge.textContent()).trim(), 'Artikel endgültig löschen');
+    await purge.click(); assert.match(await answerAsk(page, true), /Alle 2 Einträge unter „Artikel“/);
+    base = await saved();
+    assert.equal(base.items.filter(row => row.deletedAt && !row.purgedAt).length, 0);
+    assert.equal(base.purchases.find(row => row.id === 'gone-2').purgedAt, undefined, 'die Ausgabe bleibt im Papierkorb');
+    assert.equal(await page.locator('.trash-row').count(), 1);
+    assert.deepEqual(problems, []);
+    await ctx.close();
+  });
+
   // ---- 2.140: Rezepte sortieren ----
   for (const [width, theme] of [[320, 'light'], [390, 'dark']]) test(`2.140: Rezepte sortieren bei ${width}px ${theme}: A–Z, Zuletzt hinzugefügt (gemerkt, neue oben) und Lange nicht gekocht`, async () => {
     const data = structuredClone(demo), now = Date.now(), daysAgo = days => new Date(now - days * 86400000).toISOString();
@@ -10793,9 +10835,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await goTab(page, 'recipes');
     const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents();
     const label = () => page.textContent('#recipe-sort-label');
-    // Standard wie bisher: Favoriten zuerst, dann A–Z; „Lange nicht gekocht“ ist kein Filterknopf mehr, sondern eine Sortierung
+    // Standard: A–Z rein alphabetisch, der Favorit (Tomaten-Pasta) steht an seinem Platz (2.165); „Lange nicht gekocht“ ist eine Sortierung, kein Filterknopf
     assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
-    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry']);
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
     assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht']);
     assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
@@ -11123,7 +11165,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const undo = page.locator('#product-picker-feedback .product-undo'); await undo.waitFor();
     // Papierkorb über den Hinweis öffnen und leeren, dann schließen
     await page.click('#product-picker-trash'); await page.locator('#trash-dialog[open]').waitFor();
-    await page.click('#trash-purge'); await answerAsk(page, true, /Papierkorb leeren/); await page.click('#trash-dialog [data-close]');
+    await page.click('#trash-purge'); await answerAsk(page, true, /Eigene Produkte endgültig löschen\?/); await page.click('#trash-dialog [data-close]');   // geöffnet im Reiter „Eigene Produkte“ (2.165: nur dieser wird geleert)
     await undo.click();
     assert.match(await page.textContent('#product-picker-dialog'), /endgültig gelöscht und lässt sich nicht mehr zurückholen/);
     const removal = (await storedDemo(page)).productRemovals.find(row => row.name === 'Keckd');
@@ -12169,6 +12211,42 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.recipe-stock-group.missing').count(), 0);
     assert.equal(await card.locator('.recipe-stock-group.have li').count(), 4);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.165: Geschäfte & Listen – eine Linie trennt die Supermärkte von den eigenen Listen, auch nach dem Umsortieren', async () => {
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, notesData152()); await open(page); await page.click('#manage-stores'); await sheetOpen(page);
+    const layout = () => page.locator('#store-editor').evaluate(node => [...node.children].map(child => child.classList.contains('store-list-line') ? '--' : child.dataset.storeId || child.className.split(' ').at(-1)));
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', 'store-rewe', '--', 'trip-152', 'plain-152', 'store-wishes-placeholder']);
+    assert.equal(await page.locator('#store-editor .store-list-line').evaluate(node => getComputedStyle(node).borderTopStyle), 'solid');
+    // Eine Liste zwischen die Geschäfte geschoben: vor jeder Liste, die auf ein Geschäft folgt, eine Linie; die gemeinsame Reihenfolge bleibt
+    await page.click('#store-order-open'); await page.locator('#order-dialog[open]').waitFor();
+    await page.getByRole('button', { name: 'Urlaub nach oben', exact: true }).click(); await page.click('#order-dialog [data-close]');
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', '--', 'trip-152', 'store-rewe', '--', 'plain-152', 'store-wishes-placeholder']);
+    await page.click('#stores-dialog .sheet-head [data-close]'); await page.click('#manage-stores'); await sheetOpen(page);
+    assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', '--', 'trip-152', 'store-rewe', '--', 'plain-152', 'store-wishes-placeholder'], 'auch nach dem erneuten Öffnen');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.165: Stern setzen lässt das Rezept an seinem Platz (A–Z rein alphabetisch); „★ Favoriten“ zeigt die Favoriten', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await goTab(page, 'recipes');
+    const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents(), before = await titles();
+    assert.deepEqual(before, [...before].sort((a, b) => a.localeCompare(b, 'de')), 'alphabetisch');
+    const last = before.at(-1), card = page.locator('#recipe-list .recipe-card', { hasText: last });
+    await card.locator('.fav').scrollIntoViewIfNeeded(); const top = await card.evaluate(node => node.getBoundingClientRect().top);
+    await card.locator('.fav').click();
+    assert.equal(await card.locator('.fav').getAttribute('aria-pressed'), 'true', 'Stern ist gesetzt');
+    assert.deepEqual(await titles(), before, 'die Reihenfolge bleibt');
+    assert.ok(Math.abs(await card.evaluate(node => node.getBoundingClientRect().top) - top) < 2, 'die Karte bleibt an ihrer Stelle');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await goTab(page, 'recipes');
+    assert.deepEqual(await titles(), before, 'auch nach dem Neuladen');
+    await page.locator('#tag-chips .chip', { hasText: '★ Favoriten' }).click();
+    assert.ok((await titles()).includes(last));
     assert.deepEqual(problems, []); await ctx.close();
   });
 

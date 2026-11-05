@@ -89,7 +89,7 @@
       <div id="plan-view">
       <span id="store-tabs-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <form id="item-form" class="card add-form">
-        <div class="name-field wide"><input name="name" placeholder="Was brauchst du?" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden>×</button></div>
+        <div class="name-field wide"><input name="name" placeholder="Was brauchst du?" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
 
         <input name="storeId" type="hidden" value="">
@@ -193,7 +193,7 @@
     <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Optionen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span><small id="sync-detail"></small></p>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
-      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan <small class="app-version" data-app-version>Version 2.164</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
+      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name">Sattplan <small class="app-version" data-app-version>Version 2.165</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <div id="quarantine-card" class="card stack quarantine-card" role="region" aria-labelledby="quarantine-title" hidden><h3 id="quarantine-title">Nicht übernommene Änderungen</h3><p id="quarantine-text"></p><div class="quarantine-actions"><button id="quarantine-save" type="button" class="secondary">Als Datei sichern</button><button id="quarantine-discard" type="button" class="secondary">Verwerfen</button></div></div>
 
       <p class="settings-section-title">Aussehen und Bedienung</p><div id="display-card" data-auto-save class="card stack display-card"><details id="display-details" class="fold"><summary><h3>Darstellung</h3></summary><div class="stack">
@@ -232,7 +232,7 @@
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint"><span data-app-version>Version 2.164</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint"><span data-app-version>Version 2.165</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -302,7 +302,7 @@
   <aside id="notice" class="toast" role="status" hidden><svg id="notice-icon" class="icon toast-icon" aria-hidden="true" hidden><use href="#i-trash"/></svg><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
   <dialog id="trash-dialog" aria-labelledby="trash-title" aria-describedby="trash-intro"><div class="stack trash-shell">
-    <div class="sheet-head"><h2 id="trash-title">Kürzlich gelöscht</h2><button type="button" data-close="trash-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-head"><h2 id="trash-title" tabindex="-1">Kürzlich gelöscht</h2><button type="button" data-close="trash-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="trash-intro" class="hint trash-intro">Was in den letzten 14 Tagen gelöscht wurde, kannst du hier zurückholen – auf allen verbundenen Geräten.</p>
     <div id="trash-filter" class="chips trash-filter" role="group" aria-label="Nach Art filtern"></div>
     <p id="trash-status" class="trash-status" role="status" hidden><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span id="trash-status-text"></span><button id="trash-undo" type="button" class="text-button">Rückgängig</button></p>
