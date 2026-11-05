@@ -89,7 +89,7 @@
       <div id="plan-view">
       <span id="store-tabs-status" class="sr-only" role="status" aria-live="polite"></span><div id="store-chips" class="chips" role="tablist" aria-label="Geschäft wählen"></div>
       <form id="item-form" class="card add-form">
-        <div class="name-field wide"><input name="name" placeholder="Was brauchst du?" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden>×</button></div>
+        <div class="name-field wide"><input name="name" placeholder="Was brauchst du?" aria-label="Was brauchst du?" maxlength="120" required autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-controls="item-suggestions"><button class="add-button" type="submit" aria-label="Zur Liste hinzufügen"><svg class="icon"><use href="#i-plus"/></svg></button><button id="clear-item-name" class="clear-item-name" type="button" aria-label="Eingabe löschen und schließen" hidden><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
         <div id="item-suggestions" class="wide item-suggestions" role="group" aria-label="Artikelvorschläge" hidden></div>
 
         <input name="storeId" type="hidden" value="">
@@ -302,7 +302,7 @@
   <aside id="notice" class="toast" role="status" hidden><svg id="notice-icon" class="icon toast-icon" aria-hidden="true" hidden><use href="#i-trash"/></svg><span id="notice-text"></span><button id="notice-undo" type="button" class="text-button small" hidden>Rückgängig</button></aside>
 
   <dialog id="trash-dialog" aria-labelledby="trash-title" aria-describedby="trash-intro"><div class="stack trash-shell">
-    <div class="sheet-head"><h2 id="trash-title">Kürzlich gelöscht</h2><button type="button" data-close="trash-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div class="sheet-head"><h2 id="trash-title" tabindex="-1">Kürzlich gelöscht</h2><button type="button" data-close="trash-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p id="trash-intro" class="hint trash-intro">Was in den letzten 14 Tagen gelöscht wurde, kannst du hier zurückholen – auf allen verbundenen Geräten.</p>
     <div id="trash-filter" class="chips trash-filter" role="group" aria-label="Nach Art filtern"></div>
     <p id="trash-status" class="trash-status" role="status" hidden><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span id="trash-status-text"></span><button id="trash-undo" type="button" class="text-button">Rückgängig</button></p>

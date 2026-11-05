@@ -108,3 +108,15 @@ test('2.145: eigene Produkte, Schreibweisen und Kategorien im Papierkorb – mit
   assert.equal(purged.productRemovals.find(row => row.id === 'own-keckd').deletedAt, null, 'die Löschmarke selbst bleibt aktiv');
   assert.deepEqual(restoreChanges(purged, 'productRemovals', 'own-keckd'), []);
 });
+
+test('2.165: purgeChanges leert auf Wunsch nur bestimmte Arten (gewählter Reiter)', async () => {
+  const { purgeChanges, trashEntries } = await import('../trash.js');
+  const now = Date.parse('2026-11-05T12:00:00.000Z'), stamp = new Date(now - 3600000).toISOString(), created = new Date(now - 7200000).toISOString();
+  const data = merge(emptyData(), [operation('items', 'a', { name: 'Tomaten', quantity: 1, unit: 'Stück', checked: false, createdBy: 'Nico', storeId: '' }, 'Nico', created),
+    operation('purchases', 'p', { date: '2026-11-05', cents: 200 }, 'Nico', created)]);
+  const deleted = merge(data, [operation('items', 'a', { deletedAt: stamp }, 'Nico', stamp), operation('purchases', 'p', { deletedAt: stamp }, 'Nico', stamp)]);
+  assert.deepEqual(trashEntries(deleted, now).map(entry => entry.kind).sort(), ['items', 'purchases']);
+  assert.deepEqual(purgeChanges(deleted, stamp, now, ['purchases']).map(change => change.collection), ['purchases']);
+  assert.deepEqual(purgeChanges(deleted, stamp, now, ['items']).map(change => change.collection), ['items']);
+  assert.deepEqual(purgeChanges(deleted, stamp, now).map(change => change.collection).sort(), ['items', 'purchases'], 'ohne Angabe: alles');
+});
