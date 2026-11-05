@@ -2,7 +2,9 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
-## Neu in Version 2.165: Papierkorb je Reiter leeren, klarere Vorschläge und Trennlinien
+## Neu in Version 2.165: Papierkorb je Reiter leeren, Favoriten bleiben am Platz, klarere Vorschläge und Trennlinien
+
+**Ein Stern verschiebt das Rezept nicht mehr.** Bisher rutschte ein Rezept, sobald man es mit dem Stern als Favorit markierte, sofort ganz nach oben. Jetzt sortiert **A–Z** rein alphabetisch: Das Rezept bleibt an seinem Platz, nur der Stern wird gefüllt. Alle Favoriten zeigt wie bisher der Filter **★ Favoriten**.
 
 **Papierkorb leert nur den gewählten Reiter.** Bisher löschte **Papierkorb leeren** immer alles, auch wenn oben z. B. **Ausgaben** gewählt war. Jetzt gilt:
 - unter **Alle**: alles, wie bisher (**Papierkorb leeren**);

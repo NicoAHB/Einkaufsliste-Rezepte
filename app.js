@@ -92,7 +92,7 @@ let favoritesOnly = false, planWeek = weekStart(isoDate()), mealBaseline = null;
 const RECIPE_SORT_KEY = 'einkauf-recipe-sort-v1';
 const byTitle = (a, b) => a.name.localeCompare(b.name, 'de');
 const RECIPE_ORDER = {
-  name: (a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || byTitle(a, b),
+  name: byTitle,   // rein alphabetisch (2.165): Ein Stern verschiebt das Rezept nicht mehr; Favoriten zeigt der Filter „★ Favoriten“
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
   cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b)
 };

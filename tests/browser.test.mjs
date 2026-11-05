@@ -5829,7 +5829,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const titles = () => page.locator('.recipe-card h3').allTextContents();
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').click();
-    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry'], 'Favoriten stehen zuerst');
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta'], 'seit 2.165 bleibt ein Favorit an seinem Platz (A–Z rein alphabetisch)');
     assert.equal(await page.locator('.recipe-card', { hasText: 'Tomaten-Pasta' }).locator('.fav').getAttribute('aria-pressed'), 'true');
     await page.getByRole('button', { name: '★ Favoriten' }).click();
     assert.deepEqual(await titles(), ['Tomaten-Pasta']);
@@ -10835,9 +10835,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await goTab(page, 'recipes');
     const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents();
     const label = () => page.textContent('#recipe-sort-label');
-    // Standard wie bisher: Favoriten zuerst, dann A–Z; „Lange nicht gekocht“ ist kein Filterknopf mehr, sondern eine Sortierung
+    // Standard: A–Z rein alphabetisch, der Favorit (Tomaten-Pasta) steht an seinem Platz (2.165); „Lange nicht gekocht“ ist eine Sortierung, kein Filterknopf
     assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
-    assert.deepEqual(await titles(), ['Tomaten-Pasta', 'Apfel-Pfannkuchen', 'Kichererbsen-Curry']);
+    assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
     assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht']);
     assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
@@ -12228,6 +12228,25 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#stores-dialog .sheet-head [data-close]'); await page.click('#manage-stores'); await sheetOpen(page);
     assert.deepEqual(await layout(), ['store-edeka', 'store-lidl', '--', 'trip-152', 'store-rewe', '--', 'plain-152', 'store-wishes-placeholder'], 'auch nach dem erneuten Öffnen');
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  test('2.165: Stern setzen lässt das Rezept an seinem Platz (A–Z rein alphabetisch); „★ Favoriten“ zeigt die Favoriten', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page); await goTab(page, 'recipes');
+    const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents(), before = await titles();
+    assert.deepEqual(before, [...before].sort((a, b) => a.localeCompare(b, 'de')), 'alphabetisch');
+    const last = before.at(-1), card = page.locator('#recipe-list .recipe-card', { hasText: last });
+    await card.locator('.fav').scrollIntoViewIfNeeded(); const top = await card.evaluate(node => node.getBoundingClientRect().top);
+    await card.locator('.fav').click();
+    assert.equal(await card.locator('.fav').getAttribute('aria-pressed'), 'true', 'Stern ist gesetzt');
+    assert.deepEqual(await titles(), before, 'die Reihenfolge bleibt');
+    assert.ok(Math.abs(await card.evaluate(node => node.getBoundingClientRect().top) - top) < 2, 'die Karte bleibt an ihrer Stelle');
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await goTab(page, 'recipes');
+    assert.deepEqual(await titles(), before, 'auch nach dem Neuladen');
+    await page.locator('#tag-chips .chip', { hasText: '★ Favoriten' }).click();
+    assert.ok((await titles()).includes(last));
     assert.deepEqual(problems, []); await ctx.close();
   });
 
