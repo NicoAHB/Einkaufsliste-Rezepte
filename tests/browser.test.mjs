@@ -7473,7 +7473,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const hints=async()=> (await page.locator('#recipe-pick .pick-row small').allTextContents()).map(text=>text.split(' · ').filter(part=>!/Produkte? fehl|Keine prüfbaren Zutaten/.test(part)).join(' · '));
     assert.equal(await select.isVisible(), true);
     assert.equal(await select.getAttribute('aria-label'), 'Rezepte filtern');
-    assert.deepEqual(await select.locator('option').allTextContents(), ['Alle Rezepte (6)','Sofort kochbar (0)','Nach dem Einkauf (0)', '★ Favoriten (1)', 'Lange nicht gekocht (3)', 'Einfach (2)', 'Schnell (1)', 'Suppe (2)', 'Süß (2)', 'Vegan (2)', 'Vegetarisch (2)']);
+    assert.deepEqual(await select.locator('option').allTextContents(), ['Alle Rezepte (6)','Sofort kochbar (0)','Nach dem Einkauf (0)', '★ Favoriten (1)', 'Lange nicht gekocht (3)', 'Häufig gekocht (5)', 'Einfach (2)', 'Schnell (1)', 'Suppe (2)', 'Süß (2)', 'Vegan (2)', 'Vegetarisch (2)']);
     assert.deepEqual(await select.locator('optgroup').evaluateAll(nodes=>nodes.map(node=>node.label)), ['Kochbarkeit','Deine Auswahl','Rezeptgruppen']);
     assert.equal(await select.inputValue(), '', 'zuerst alle Rezepte');
     assert.deepEqual(await pickRows(page), ['★ Kichererbsen-Curry', 'Apfel-Pfannkuchen', 'Kürbissuppe', 'Linsensuppe', 'Schokokuchen', 'Tomaten-Pasta', 'Eigenes Gericht (ohne Rezept)']);
