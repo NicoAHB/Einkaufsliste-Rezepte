@@ -12280,4 +12280,32 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  test('2.168: Ziehen und zurückschieben bricht ab – „Verschieben nach“ öffnet sich nur nach Halten ohne Ziehen', async () => {
+    const { ctx, page, problems } = await context();
+    await open(page);
+    const items = () => storedDemo(page).then(data => data.items.filter(row => !row.deletedAt));
+    const before = await items();
+    // Richtung Geschäfteleiste ziehen, es sich anders überlegen, an die Ausgangsstelle zurück und loslassen: nichts
+    let { at } = await holdRow(page, 'Nudeln'); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 30, at.y - 150, { steps: 6 });
+    await page.mouse.move(at.x, at.y, { steps: 6 });
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'kein „Verschieben nach“ nach Ziehen und Zurückschieben');
+    assert.deepEqual(await items(), before, 'nichts geändert');
+    assert.equal(await page.locator('#items .item.drag-origin').count(), 0);
+    assert.equal(await page.locator('#move-bar').isVisible(), false);
+    // Nur ein kleines Stück (20 px) ziehen und loslassen: ebenfalls nichts
+    ({ at } = await holdRow(page, 'Nudeln')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 20, at.y, { steps: 4 });
+    await page.mouse.up(); await page.waitForSelector('.drag-ghost', { state: 'detached' });
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'ein Stück gezogen ist kein Halten');
+    // Leichtes Zittern beim Halten zählt weiter als still: „Verschieben nach“ öffnet sich
+    ({ at } = await holdRow(page, 'Nudeln')); await page.waitForSelector('.drag-ghost');
+    await page.mouse.move(at.x + 4, at.y + 3, { steps: 2 }); await page.mouse.move(at.x + 1, at.y - 2);
+    await page.mouse.up(); await page.waitForSelector('#move-dialog[open]');
+    await page.click('#move-dialog [data-close]'); await page.waitForSelector('#move-dialog', { state: 'hidden' });
+    assert.deepEqual(await items(), before, 'Schließen ändert nichts');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

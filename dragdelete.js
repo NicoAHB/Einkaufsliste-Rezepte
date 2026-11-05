@@ -3,14 +3,15 @@ import { vibrate } from './platform.js';
 // Zeilen ziehen: Zeile lange gedrückt halten, bis sie „abhebt“. Dann
 //  - nach rechts in die rote Fläche schieben und loslassen: löschen,
 //  - (nur wenn `options.target` gesetzt ist) frei über den Bildschirm auf ein Ziel schieben, z. B. ein Geschäft, und loslassen: dorthin verschieben,
-//  - (nur mit `options.onHold`) loslassen, ohne zu ziehen: z. B. eine Auswahl öffnen.
+//  - (nur mit `options.onHold`) loslassen, ohne zu ziehen: z. B. eine Auswahl öffnen. Wurde die Zeile einmal bewegt, öffnet das Loslassen nichts mehr,
+//    auch nicht an der Ausgangsstelle: Wer zieht und es sich anders überlegt, bricht damit ab (2.168).
 // Ein kurzer Tipp (Bearbeiten) und das Scrollen bleiben unberührt: Wer sich vor Ablauf der Haltezeit bewegt, scrollt nur.
 export const HOLD_MS = 450;     // so lange gedrückt halten, bis die Zeile „abhebt“
 export const SLOP = 10;         // so weit darf sich der Finger beim Halten bewegen (px)
 export const ZONE_WIDTH = 96;   // Breite der roten Fläche am rechten Rand (px)
 export const ZONE_REACH = 16;   // so weit vor der Fläche zählt sie schon als getroffen (px)
 export const BAND_REACH = 24;   // so weit über oder unter der roten Fläche zählt sie noch als getroffen (px, nur beim freien Ziehen)
-export const HOLD_RELEASE = 24; // wer die lange gedrückte Zeile kaum bewegt und loslässt, will sie „halten“ (z. B. verschieben), nicht löschen (px)
+export const HOLD_RELEASE = 16; // wer die lange gedrückte Zeile nie weiter als so weit bewegt hat und loslässt, will sie „halten“ (z. B. verschieben) (px)
 
 // Liegt der Finger (x) über der roten Fläche am rechten Rand?
 export function overZone(x, width, zoneWidth = ZONE_WIDTH, reach = ZONE_REACH) {
@@ -20,7 +21,8 @@ export function overZone(x, width, zoneWidth = ZONE_WIDTH, reach = ZONE_REACH) {
 export function overBand(y, top, bottom, reach = BAND_REACH) {
   return y >= top - reach && y <= bottom + reach;
 }
-// Wurde die abgehobene Zeile beim Loslassen kaum bewegt? Dann gilt das Loslassen als „Halten und Loslassen“.
+// Wurde die abgehobene Zeile nie spürbar bewegt? Dann gilt das Loslassen als „Halten und Loslassen“. `dx` ist die weiteste Entfernung des Fingers
+// während des Ziehens, nicht die beim Loslassen: Zurückschieben an die Ausgangsstelle bleibt ein Abbruch.
 export function heldStill(dx, dy = 0, limit = HOLD_RELEASE) {
   return Math.hypot(dx, dy) <= limit;
 }
@@ -39,7 +41,7 @@ export const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
  * @param zone      die rote Fläche (wird ein- und ausgeblendet)
  * @param onDelete  wird mit dem Wert von `data-id` der Zeile aufgerufen, wenn sie in der Fläche losgelassen wurde
  * @param selector  Zeilen, die gezogen werden dürfen
- * @param options   `onHold(id)`: Loslassen mit höchstens 24 px Bewegung (z. B. „Verschieben nach“ öffnen);
+ * @param options   `onHold(id)`: Loslassen, ohne die Zeile je weiter als 16 px bewegt zu haben (z. B. „Verschieben nach“ öffnen);
  *                  `hint`: Hinweisfläche, die beim Abheben ein- und beim Loslassen ausgeblendet wird;
  *                  `noZone`: ohne rote Fläche (Löschen durch Ziehen gibt es dort nicht; `zone` und `onDelete` werden nicht gebraucht), z. B. beim Verschieben eines Gerichts auf einen anderen Tag;
  *                  `target`: Ziele zum Ablegen. Die Zeile folgt dann dem Finger frei in alle Richtungen.
@@ -71,10 +73,11 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     options.hint?.classList.add('show');
     getSelection?.()?.removeAllRanges();   // was beim Halten doch markiert wurde (iOS), verschwindet beim Abheben
     vibrate(12);
-    drag = { row, ghost, id: row.dataset.id, startX: point.x, startY: point.y, left: box.left, top: box.top, height: box.height, dx: 0, dy: 0, hot: false, goal: null, band: [middle - half, middle + half] };
+    drag = { row, ghost, id: row.dataset.id, startX: point.x, startY: point.y, left: box.left, top: box.top, height: box.height, dx: 0, dy: 0, far: 0, hot: false, goal: null, band: [middle - half, middle + half] };
     swallow = true;
   }
   function follow(x, y) {
+    drag.far = Math.max(drag.far, Math.hypot(x - drag.startX, y - drag.startY));   // in jede Richtung, auch dorthin, wohin die Zeile nicht folgt
     if (target) {
       // Frei in alle Richtungen, aber die Zeile bleibt ganz auf dem Bildschirm.
       drag.dx = clamp(x - drag.startX, -drag.left, innerWidth - drag.left - 40);
@@ -89,7 +92,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     }
   }
   function finish(drop) {
-    const { row, ghost, id, hot, dx, dy, goal } = drag; drag = null;
+    const { row, ghost, id, hot, dx, dy, far, goal } = drag; drag = null;
     zone?.classList.remove('show', 'hot'); options.hint?.classList.remove('show'); target?.hide();
     const done = () => { ghost.remove(); row.classList.remove('drag-origin'); };
     // Die Zeile „verschwindet“ an der Stelle des Fingers und das Ergebnis wird ausgeführt.
@@ -100,7 +103,7 @@ export function dragDelete(list, zone, onDelete, selector = '.item[data-id]', op
     };
     if (drop && hot) away(40, () => onDelete(id));
     else if (drop && goal !== null) away(0, () => target.drop(id, goal));
-    else if (drop && options.onHold && heldStill(dx, dy)) { done(); options.onHold(id); }
+    else if (drop && options.onHold && heldStill(far)) { done(); options.onHold(id); }
     else if (still()) done(); else {
       ghost.classList.add('back'); ghost.style.transform = 'translate(0, 0)';
       setTimeout(done, 190);
