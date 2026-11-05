@@ -10130,10 +10130,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.106: Vorratszeile klappt fehlende rote Zutaten vor vorhandenen grünen aus; Mengen folgen Portionen, beide Einklappwege schreiben keine Daten',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,stockData2106());await open(page);await goTab(page,'recipes');const before=await storedDemo(page),card=page.locator('#recipe-list [data-recipe-id=stock2106-0]'),toggle=card.locator('.recipe-stock-toggle');
     assert.match(await toggle.textContent(),/1 von 3 Zutaten da · 2 fehlen/);assert.equal(await toggle.locator('use[href="#i-info"]').count(),1);assert.equal(await toggle.getAttribute('aria-expanded'),'false');
-    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['200 ml Milch','150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel']);assert.deepEqual(await card.locator('.recipe-stock-group').evaluateAll(nodes=>nodes.map(n=>n.classList.contains('missing')?'missing':'have')),['missing','have']);
+    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['200 ml Milch','150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel']);assert.deepEqual(await card.locator('.recipe-stock-group').evaluateAll(nodes=>nodes.map(n=>n.classList.contains('missing')?'missing':'have')),['missing','have']);
     assert.equal(await card.locator('.recipe-stock-group.have li').evaluate(n=>getComputedStyle(n).color),'rgb(20, 108, 67)');assert.equal(await card.locator('.recipe-stock-group.missing li').first().evaluate(n=>{const [r,g,b]=getComputedStyle(n).color.match(/\d+/g).map(Number);return r>g*1.4&&r>b*1.4;}),true);
     await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>n.inert),true);await toggle.focus();await page.keyboard.press('Enter');assert.equal(await toggle.getAttribute('aria-expanded'),'true');
-    await card.locator('.recipe-details>summary').click();await card.getByRole('button',{name:'Eine Portion mehr',exact:true}).click();assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['300 ml Milch','225 g Mehl']);await card.locator('.recipe-stock-collapse').click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await toggle.evaluate(n=>n===document.activeElement),true);assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
+    await card.locator('.recipe-details>summary').click();await card.getByRole('button',{name:'Eine Portion mehr',exact:true}).click();assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['300 ml Milch','225 g Mehl']);await card.locator('.recipe-stock-collapse').click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await toggle.evaluate(n=>n===document.activeElement),true);assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
   });
   test('2.106: Vorratsdetails schließen beim anderen Rezept und Ansichtswechsel; normale Neuzeichnung erhält die offene Anzeige',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,stockData2106());await open(page);await goTab(page,'recipes');const first=page.locator('#recipe-list [data-recipe-id=stock2106-0]'),second=page.locator('#recipe-list [data-recipe-id=stock2106-1]');
@@ -10144,7 +10144,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.106: offener Vorratsabgleich aktualisiert sich bei Änderungen vom zweiten Gerät',async()=>{
     const api=github(stockData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',api.handler);await open(page);await synced(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();
     api.remoteChange(data=>{data.pantry.push({...data.pantry[0],id:'stock2106-new',name:'Milch'});});await pollNow(page);await page.waitForFunction(()=>document.querySelector('[data-recipe-id=stock2106-0] .recipe-stock-toggle').textContent.includes('2 von 3'));
-    assert.equal(await card.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing li').allTextContents(),['150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel','200 ml Milch']);assert.deepEqual(problems,[]);await ctx.close();
+    assert.equal(await card.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel','200 ml Milch']);assert.deepEqual(problems,[]);await ctx.close();
   });
   for(const [width,theme]of [[280,'light'],[390,'dark'],[390,'auto']])test(`2.106: Vorratsakkordeon bleibt bei ${width}px ${theme} lesbar und ohne seitlichen Überlauf`,async()=>{
     const data=stockData2106();data.ingredients[0].name='Äpfel mit einer sehr langen eigenen Beschreibung';const {ctx,page,problems}=await context({config:{theme},context:{viewport:{width,height:844},colorScheme:theme==='auto'?'dark':theme,reducedMotion:'reduce'}});await seedLocal(ctx,data);await open(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();assert.equal(await horizontalOverflow(page),0);assert.equal(await card.locator('.recipe-stock').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.ok((await card.locator('.recipe-stock-toggle').boundingBox()).height>=44);assert.ok((await card.locator('.recipe-stock-collapse').boundingBox()).height>=44);assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>getComputedStyle(n).transitionDuration),'0s');assert.equal(await card.locator('.recipe-stock-group.have').evaluate(n=>getComputedStyle(n).color),theme==='light'?'rgb(20, 108, 67)':'rgb(126, 224, 173)');assert.deepEqual(problems,[]);await ctx.close();
@@ -12089,6 +12089,86 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await toggle.click(); assert.equal(await row('Milch').locator('.shop-prices').isVisible(), false, 'gesperrt: Tipp verschluckt');
     await pressAndHold(page, '#shop-list .shop-item:has-text("Milch") .shop-price-toggle', 700); await page.mouse.up();
     assert.equal(await row('Milch').locator('.shop-prices').isVisible(), true, 'gesperrt: gedrückt halten öffnet');
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  // ---- 2.164: „✓ Hab ich“ übernimmt eine fehlende Zutat in den Vorrat ----
+  const haveData164 = () => {
+    const data = pantryData278([{ name: 'Äpfel', category: 'obst', available: true }, { name: 'Mehl', category: 'vorrat', available: false }]), stamp = '2026-10-29T09:00:00.000Z';
+    data.recipes = [{ ...demo.recipes[0], id: 'have164', name: 'Walnusskuchen', servings: 4, tags: [], favorite: false }];
+    data.ingredients = [['Äpfel', 3, 'Stück'], ['Walnüsse, gehackt', 50, 'g'], ['Milch', 200, 'ml'], ['Mehl', 250, 'g'], ['Salz', 1, 'Prise']]
+      .map(([name, quantity, unit], index) => ({ ...demo.ingredients[0], id: `have164-${index}`, recipeId: 'have164', name, quantity, unit, createdAt: stamp, updatedAt: stamp }));
+    return data;   // Milch steht in den Beispieldaten offen auf dem Einkaufszettel (Lidl)
+  };
+  test('2.164: „✓ Hab ich“ – fehlende Zutat ohne Rückfrage als Produkt in den Vorrat, Zeile wird grün, Balken und Überschrift folgen, 4 Sekunden „Rückgängig“', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await seedLocal(ctx, haveData164()); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=have164]'), toggle = card.locator('.recipe-stock-toggle');
+    const missing = () => card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(), have = () => card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents();
+    const pantry = () => storedDemo(page).then(data => data.pantry.filter(row => !row.deletedAt));
+    await toggle.click();
+    assert.match(await toggle.textContent(), /1 von 4 Zutaten da · 3 fehlen/);
+    assert.deepEqual(await missing(), ['50 g Walnüsse, gehackt', '200 ml Milch', '250 g Mehl']);
+    // Ein Knopf je Zeile, mit Text und Haken, mindestens 44 px hoch, deutlich anders als „Einkaufen“
+    const buttons = card.locator('.recipe-stock-group.missing .recipe-stock-have');
+    assert.equal(await buttons.count(), 3); assert.deepEqual(await buttons.allTextContents(), ['✓ Hab ich', '✓ Hab ich', '✓ Hab ich']);
+    for (const box of await buttons.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 44, `Höhe ${box}`);
+    assert.equal(await card.locator('.recipe-stock-group.have .recipe-stock-have').count(), 0, 'nur bei fehlenden Zutaten');
+    // Walnüsse (nicht auf dem Einkaufszettel): sofort, ohne Rückfrage
+    await card.getByRole('button', { name: 'Walnüsse, gehackt: hab ich, in den Vorrat übernehmen', exact: true }).click();
+    assert.equal(await page.locator('#ask-dialog[open]').count(), 0, 'kein Bestätigungsdialog');
+    assert.match(await toggle.textContent(), /2 von 4 Zutaten da · 2 fehlen/);
+    assert.equal(await card.locator('.recipe-stock-track').getAttribute('aria-valuenow'), '2');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'bleibt aufgeklappt');
+    assert.deepEqual(await missing(), ['200 ml Milch', '250 g Mehl']); assert.deepEqual(await have(), ['3 Stück Äpfel', '50 g Walnüsse, gehackt']);
+    const nuts = (await pantry()).filter(row => row.name === 'Walnüsse');
+    assert.equal(nuts.length, 1); assert.equal(nuts[0].category, 'vorrat'); assert.equal(nuts[0].available, true);
+    assert.equal(['quantity', 'unit'].some(key => key in nuts[0]), false, 'ohne Menge und Einheit');
+    assert.equal(await page.textContent('#notice-text'), 'Walnüsse zum Vorrat hinzugefügt'); assert.equal(await page.isVisible('#notice-undo'), true);
+    // Rückgängig setzt alles zurück
+    await page.click('#notice-undo');
+    assert.equal((await pantry()).some(row => row.name === 'Walnüsse'), false);
+    assert.match(await toggle.textContent(), /1 von 4 Zutaten da · 3 fehlen/);
+    // Mehl war als aufgebraucht gespeichert: wird wieder vorhanden, nicht doppelt angelegt; Rückgängig macht es wieder aufgebraucht
+    await card.getByRole('button', { name: 'Mehl: hab ich, in den Vorrat übernehmen', exact: true }).click();
+    let flour = (await storedDemo(page)).pantry.filter(row => row.name === 'Mehl'); assert.equal(flour.length, 1); assert.equal(flour[0].available, true);
+    await page.click('#notice-undo'); flour = (await storedDemo(page)).pantry.filter(row => row.name === 'Mehl'); assert.equal(flour[0].available, false);
+    // Der Hinweis verschwindet nach 4 Sekunden
+    await card.getByRole('button', { name: 'Mehl: hab ich, in den Vorrat übernehmen', exact: true }).click();
+    await page.waitForTimeout(3000); assert.equal(await page.isVisible('#notice'), true);
+    await page.waitForSelector('#notice', { state: 'hidden', timeout: 2000 });
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.164: „✓ Hab ich“ bei einer Zutat auf dem Einkaufszettel fragt, ob sie dort entfernt werden soll; ohne offene Zutaten entfällt „Fehlt im Vorrat“', async () => {
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, haveData164()); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=have164]'), toggle = card.locator('.recipe-stock-toggle');
+    const milkOnList = () => storedDemo(page).then(data => data.items.filter(row => !row.deletedAt && row.name === 'Milch').length);
+    await toggle.click();
+    // Behalten: Milch kommt in den Vorrat, bleibt aber auf dem Einkaufszettel
+    await card.getByRole('button', { name: 'Milch: hab ich, in den Vorrat übernehmen', exact: true }).click();
+    await answerAsk(page, false, /Milch vom Einkaufszettel entfernen\?/, /steht noch auf dem Einkaufszettel/);
+    assert.equal(await milkOnList(), 1);
+    assert.ok((await storedDemo(page)).pantry.some(row => !row.deletedAt && row.name === 'Milch' && row.category === 'kuehl'));
+    assert.equal(await page.textContent('#notice-text'), 'Milch zum Vorrat hinzugefügt');
+    await page.click('#notice-undo');
+    // Entfernen: vom Einkaufszettel gelöscht; Rückgängig stellt beides wieder her
+    await card.getByRole('button', { name: 'Milch: hab ich, in den Vorrat übernehmen', exact: true }).click();
+    await answerAsk(page, true, /Milch vom Einkaufszettel entfernen\?/);
+    assert.equal(await milkOnList(), 0);
+    assert.equal(await page.textContent('#notice-text'), 'Milch zum Vorrat hinzugefügt und vom Einkaufszettel entfernt');
+    await page.click('#notice-undo');
+    assert.equal(await milkOnList(), 1, 'wieder auf dem Einkaufszettel');
+    assert.equal((await storedDemo(page)).pantry.some(row => !row.deletedAt && row.name === 'Milch'), false);
+    // Alle offenen Zutaten übernehmen: der Abschnitt „Fehlt im Vorrat“ entfällt
+    for (const name of ['Walnüsse, gehackt', 'Mehl']) await card.getByRole('button', { name: `${name}: hab ich, in den Vorrat übernehmen`, exact: true }).click();
+    await card.getByRole('button', { name: 'Milch: hab ich, in den Vorrat übernehmen', exact: true }).click(); await answerAsk(page, true);
+    assert.match(await toggle.textContent(), /4 von 4 Zutaten da · 0 fehlen/);
+    assert.equal(await card.locator('.recipe-stock-group.missing').count(), 0);
+    assert.equal(await card.locator('.recipe-stock-group.have li').count(), 4);
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
 

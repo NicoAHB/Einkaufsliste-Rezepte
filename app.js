@@ -24,7 +24,7 @@ import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
 import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMember } from './family.js';
-import { pantryChanges, pantrySelectionChanges } from './pantry.js';
+import { ingredientPantryProduct, pantryChanges, pantrySelectionChanges } from './pantry.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, dailyRecord, dailyHistory, dailySnapshot, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { wishGroup, wishImage } from './wish-images.js';
@@ -265,13 +265,13 @@ function stockRemovalOperations(products){
 }
 // Kurzer Hinweis; verschwindet von selbst. Mit `undo` steht ein Knopf „Rückgängig“ dabei (etwas länger sichtbar).
 let noticeUndo = null;
-function showNotice(text, undo = null, { trash = false, action = '' } = {}) {
+function showNotice(text, undo = null, { trash = false, action = '', ms = 0 } = {}) {
   $('#notice-text').textContent = text; $('#notice').hidden = false;
   $('#notice-undo').textContent = action || 'Rückgängig';   // z. B. „Liste öffnen“ nach dem Anlegen (2.152)
   // Gelöschtes (2.147): kleiner Mülleimer vor dem Text, „Rückgängig“ daneben; was nicht zurückgenommen wird, liegt danach im Papierkorb.
   $('#notice').classList.toggle('toast-trash', trash); $('#notice-icon').toggleAttribute('hidden', !trash);   // SVG kennt .hidden nicht
   noticeUndo = undo; $('#notice-undo').hidden = !undo;
-  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; noticeUndo = null; }, undo ? 6000 : 4000);
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; noticeUndo = null; }, ms || (undo ? 6000 : 4000));   // `ms`: eigene Anzeigedauer (z. B. „✓ Hab ich“, 2.164)
 }
 // Nach dem Speichern eines Bearbeiten-Fensters (2.147): kurze Bestätigung mit Uhrzeit; beim nächsten Öffnen steht sie grau auf dem Knopf.
 const savedNotice = (name = '') => showNotice(`${name ? `„${name}“ gespeichert` : 'Änderungen gespeichert'} um ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`);
@@ -1462,6 +1462,37 @@ $('#recipe-sort').addEventListener('change', event => {
   try { localStorage.setItem(RECIPE_SORT_KEY, recipeSort); } catch { /* ohne Speicher gilt die Wahl bis zum Schließen */ }
   renderRecipes();
 });
+/* „✓ Hab ich“ (2.164): Eine fehlende Zutat ist doch da. Sie kommt sofort als Produkt (ohne Menge und Einheit) in den aktuellen Vorrat, wie eine Auswahl in der
+   Vorratsauswahl; nichts wird doppelt angelegt (pantryChanges). Die Karte zeichnet sich neu: Die Zeile wandert nach „Im Vorrat vorhanden“, Balken und Überschrift
+   folgen. Steht die Zutat offen auf dem Einkaufszettel, fragt die App, ob sie dort entfernt werden soll. Unten steht 4 Sekunden „Rückgängig“ für beides. */
+async function haveIngredient(row) {
+  if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+  const product = ingredientPantryProduct(row), scope = namespace(), before = clone(state.pantry || []);
+  const changes = pantryChanges([product], before);
+  if (!changes.length) { showNotice(`${product.name} steht schon im Vorrat`); return; }
+  commit(changes.map(({ id, patch }) => nextOp('pantry', id, patch)));
+  // Zurücknehmen: neu angelegte Einträge löschen, wiederbelebte bekommen ihren vorigen Stand (aufgebraucht, automatisch, gelöscht) zurück
+  const undoPantry = changes.map(({ id, patch }) => {
+    const old = before.find(entry => entry.id === id);
+    if (!old) return { id, patch: { deletedAt: new Date().toISOString() } };
+    return { id, patch: Object.fromEntries(Object.keys(patch).map(key => [key, old[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
+  });
+  const listed = () => active(withoutSeparate(state.items, state.stores)).filter(item => !item.checked && sameIngredient(item.name, row.name));
+  let removed = [];
+  if (listed().length) {
+    const first = listed()[0];
+    const remove = await ask({ title: `${product.name} vom Einkaufszettel entfernen?`, message: `„${first.name}“ (${shoppingAmount(first)}) steht noch auf dem Einkaufszettel. Du hast es jetzt im Vorrat.`, confirmLabel: 'Entfernen', cancelLabel: 'Behalten' });
+    if (scope !== namespace()) return;
+    const ids = remove ? listed().map(item => item.id) : [];
+    if (ids.length) { commit(deleteOps('items', ids)); removed = ids; }
+  }
+  showNotice(`${product.name} zum Vorrat hinzugefügt${removed.length ? ' und vom Einkaufszettel entfernt' : ''}`, () => guard(() => {
+    if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte im Vorrat prüfen.');
+    const at = new Date().toISOString(), restore = removed.flatMap(id => restoreChanges(state, 'items', id, at)).filter(change => change.collection === 'items');
+    commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...restore.map(change => nextOp(change.collection, change.id, change.patch))]);
+    showNotice(`${product.name} ist wieder als fehlend markiert${restore.length ? ' und steht wieder auf dem Einkaufszettel' : ''}`);
+  }), { ms: 4000 });
+}
 function addedLabel(at) { const day = relativeDay(at); return `hinzugefügt ${day === 'geplant' ? 'heute' : day}`; }
 function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
@@ -1487,7 +1518,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   const showStock=stock.have.length>0;
   let stockView=null;
   if(showStock && tracked.length) {
-    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel});
+    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel,onHave:row=>guard(()=>haveIngredient(row))});
     card.append(stockView.element);
   }
   const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);

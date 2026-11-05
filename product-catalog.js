@@ -114,6 +114,8 @@ export function pantryProductAllowed(product) {
    Katalogbild, statt dass die Sorte die Gruppenkachel umbenennt. Häufigkeit und Sterne zählen weiter je Gruppe bzw. Name. */
 const catalogByStock = new Map();
 for (const raw of GROCERY_PRODUCTS) if (!catalogByStock.has(stockKey(raw.name))) catalogByStock.set(stockKey(raw.name), raw);
+// Katalogprodukt zu einem Namen (2.164): zuerst die genaue Sorte („Basmati-Reis“), sonst die Produktfamilie („Tomaten (Konserve)“), sonst null.
+export const catalogProductFor = name => catalogByStock.get(stockKey(name)) || (productGroup(name) ? productById(productGroup(name).id) : null);
 export function pantryProductLibrary(history = [], favorites = [], pantry = [], removals = []) {
   const inventory=new Map(pantryRows(pantry).map(row=>[stockKey(row.name),row]));
   const allowed=product=>inventory.has(stockKey(product.name)) || (pantryProductAllowed(product)&&(catalogNames.has(productKey(product.name))||product.favorite||(product.category&&product.category!=='sonstiges')));

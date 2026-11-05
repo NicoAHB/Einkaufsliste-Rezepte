@@ -8,7 +8,8 @@ const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!=
 
 // Pro Ansicht bleibt nur ein Vorratsabgleich offen. Ein normales Neuzeichnen
 // nach dem Datenabgleich erhält den geöffneten Abgleich desselben Rezepts.
-export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel}) {
+// `onHave(row)` (2.164): „✓ Hab ich“ an einer fehlenden Zutat übernimmt sie in den Vorrat (die App zeichnet danach neu; die Ansicht bleibt offen).
+export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel,onHave=null}) {
   const tracked=ingredients.filter(required),have=tracked.filter(row=>availability(row,index)==='have'),missing=tracked.filter(row=>availability(row,index)!=='have');
   const badge=node('div',undefined,`recipe-stock ${missing.length===0?'complete':have.length?'partial':'empty'}`);
   const trigger=node('button',undefined,'recipe-stock-toggle');trigger.type='button';
@@ -20,9 +21,23 @@ export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredien
   expansion.id=`recipe-stock-${crypto.randomUUID()}`;trigger.setAttribute('aria-controls',expansion.id);
   const labels=[];
   for(const [rows,title,kind] of [[missing,'Fehlt im Vorrat','missing'],[have,'Im Vorrat vorhanden','have']]) {
+    if(kind==='missing'&&!rows.length)continue;   // 2.164: Fehlt nichts mehr, entfällt der Abschnitt „Fehlt im Vorrat“
     const group=node('div',undefined,`recipe-stock-group ${kind}`);group.append(node('h4',title));
-    if(rows.length){const list=node('ul');for(const row of rows){const li=node('li');list.append(li);labels.push([li,row]);}group.append(list);}
-    else group.append(node('p',kind==='missing'?'Es fehlt keine Zutat.':'Noch keine der mitgezählten Zutaten vorhanden.','hint'));
+    if(rows.length){
+      const list=node('ul');
+      for(const row of rows){
+        const li=node('li'),label=node('span',undefined,'recipe-stock-label');li.append(label);list.append(li);labels.push([label,row]);
+        if(kind==='missing'&&onHave){
+          // Eindeutig anders als „Einkaufen“: Text mit Haken, kein reines Plus; mindestens 44 px hoch
+          const mark=node('button','✓ Hab ich','recipe-stock-have');mark.type='button';
+          mark.setAttribute('aria-label',`${row.name}: hab ich, in den Vorrat übernehmen`);
+          mark.addEventListener('click',event=>{event.stopPropagation();onHave(row);});
+          li.append(mark);
+        }
+      }
+      group.append(list);
+    }
+    else group.append(node('p','Noch keine der mitgezählten Zutaten vorhanden.','hint'));
     inner.append(group);
   }
   const hint=node('p','Abgleich mit dem Vorrat; Mengen werden nicht geprüft.','hint');

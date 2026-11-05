@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import { active, addToList, emptyData, inPantry, merge, operation, pantryKey, pantryKeys, pantryRows, validate } from '../data.js';
 import { compact } from '../compact.js';
 import { namesFrom } from '../cookable.js';
@@ -150,4 +150,23 @@ test('Vorrat: ein eigener Favorit ohne bekannte Kategorie bleibt schon vor der V
   const library=pantryProductLibrary([], [favorite], []),found=filterProducts(library,{mode:'favorites',includeOwn:true});
   assert.deepEqual(found.map(row=>row.name),['Meine Hausmischung']);assert.equal(found[0].favorite.id,favorite.id);
   assert.ok(!pantryProductLibrary([], [{...favorite,name:'TV'}], []).some(row=>row.name==='TV'));
+});
+
+describe('2.164: „✓ Hab ich“ – Rezeptzutat als Vorratsprodukt', () => {
+  test('nur das Produkt, ohne Menge, Einheit und Zubereitung; Katalogname und Gang wie bei der Vorratsauswahl', async () => {
+    const { ingredientPantryProduct } = await import('../pantry.js');
+    const cases = [[{ name: 'Walnüsse', quantity: 50, unit: 'g' }, { name: 'Walnüsse', category: 'vorrat' }], [{ name: 'Walnüsse, gehackt', quantity: 50, unit: 'g' }, { name: 'Walnüsse', category: 'vorrat' }],
+      [{ name: 'Knoblauchzehen', quantity: 2, unit: 'Stück' }, { name: 'Knoblauch', category: 'obst' }], [{ name: 'Tomaten', quantity: 1, unit: 'Dose' }, { name: 'Tomaten (Konserve)', category: 'vorrat' }],
+      [{ name: 'Basmati-Reis', quantity: 200, unit: 'g' }, { name: 'Basmati-Reis', category: 'vorrat' }], [{ name: 'Hähnchenbrustfilet', quantity: 400, unit: 'g' }, { name: 'Hähnchenbrustfilet' }]];
+    for (const [row, product] of cases) assert.deepEqual(ingredientPantryProduct(row), product, row.name);
+  });
+  test('angelegt wie eine Auswahl, nie doppelt: vorhandene Sorte bleibt, aufgebrauchte wird wieder vorhanden', async () => {
+    const { ingredientPantryProduct } = await import('../pantry.js');
+    const product = ingredientPantryProduct({ name: 'Walnüsse, gehackt', quantity: 50, unit: 'g' });
+    const [created] = pantryChanges([product], []);
+    assert.deepEqual(created.patch, { name: 'Walnüsse', category: 'vorrat', imageKey: null, available: true, deletedAt: null });
+    const stamp = '2026-11-01T10:00:00.000Z', live = [{ id: 'w', name: 'Walnüsse', available: true, createdAt: stamp, updatedAt: stamp }];
+    assert.deepEqual(pantryChanges([product], live), [], 'schon im Vorrat: keine Änderung');
+    assert.deepEqual(pantryChanges([product], [{ ...live[0], available: false }]), [{ id: 'w', patch: { available: true } }]);
+  });
 });

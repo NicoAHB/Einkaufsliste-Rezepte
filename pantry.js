@@ -4,7 +4,8 @@ import { stockKey, pantryRows } from './data.js';
 // Seit 2.145 führt der Vorrat Sorten getrennt (stockKey statt pantryKey): „Basmati-Reis“ legt einen eigenen Eintrag an,
 // statt einen vorhandenen „Reis“ zu überschreiben. Rezepte prüfen weiter nach Gruppe (pantryKey in data.js).
 import { isCategory, suggestCategory } from './categories.js';
-import { pantryProductAllowed } from './product-catalog.js';
+import { catalogProductFor, pantryProductAllowed } from './product-catalog.js';
+import { ingredientMatchName, varietyName } from './product-groups.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
@@ -34,6 +35,13 @@ export function pantryChanges(products, rows = []) {
   return changes;
 }
 
+/* „✓ Hab ich“ (2.164): Aus einer Rezeptzutat wird das Produkt für den Vorrat, ohne Menge und Einheit („50 g Walnüsse, gehackt“ → „Walnüsse“,
+   „2 Knoblauchzehen“ → „Knoblauch“, „1 Dose Tomaten“ → „Tomaten (Konserve)“). Steht es im Katalog, gelten dessen Name und Gang, wie bei einer
+   Auswahl in der Vorratsauswahl; das Bild ergibt sich dort wie gewohnt aus dem Namen. Anlegen und Wiederbeleben übernimmt pantryChanges. */
+export function ingredientPantryProduct(row) {
+  const name = String(varietyName(ingredientMatchName(row)) || row?.name || '').trim().replace(/\s+/g, ' '), known = catalogProductFor(name);
+  return known ? { name: known.name, category: known.category } : { name };
+}
 // Bildauswahl: nur ausdrückliche Zu-/Abwahlen übernehmen. Bestehende IDs,
 // Namen, Kategorien, Bilder und unbekannte Erweiterungen bleiben erhalten.
 export function pantrySelectionChanges(products,rows=[]) {
