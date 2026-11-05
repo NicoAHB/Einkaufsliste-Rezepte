@@ -2102,31 +2102,29 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Angebote mit „gültig bis“ bleiben freiwillige Notizen; keine Schätzung oder Preise in der Liste', async () => {
+  test('2.163: Unter „Einkauf“ gibt es keine Preisfelder mehr – Bearbeiten nur Name, Menge, Einheit, Geschäft, Kategorie; alte Preisnotizen bleiben unverändert in der Datei', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    const day = offset => { const date = new Date(Date.now() + offset * 86400000); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
-    const apples = () => page.locator('#items .item', { hasText: 'Äpfel' });
-    const edit = async until => {
-      await apples().getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
-      await page.click('#item-price-fold > summary');   // Preis & Angebot sind zugeklappt
-      if (!(await page.isChecked('#edit-item-form input[name=onSale]'))) {
-        await page.check('#edit-item-form input[name=onSale]');
-        await page.fill('#edit-item-form input[name=saleEuros]', '0,10');
-      }
-      await page.fill('#edit-item-form input[name=saleUntil]', until);
-    };
+    const stored = name => page.evaluate(name => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.find(row => row.name === name && !row.deletedAt), name);
+    const before = await stored('Tomaten');
+    assert.ok(before.price, 'die Beispieldaten haben eine alte Preisnotiz');
+    await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
+    assert.equal(await page.textContent('#item-dialog h2'), 'Artikel bearbeiten');
+    assert.equal(await page.locator('#item-price-fold, #edit-item-form [name=priceEuros], #edit-item-form [name=onSale], #edit-item-form [name=saleEuros], #edit-item-form [name=saleUntil]').count(), 0);
+    assert.doesNotMatch(await page.locator('#edit-item-form').textContent(), /Preis|Angebot|€/);
+    for (const field of ['name', 'quantity', 'unit', 'storeId', 'category']) assert.equal(await page.locator(`#edit-item-form [name=${field}]`).count(), 1, field);
+    // Menge ändern und speichern wie bisher; die alte Preisnotiz bleibt unberührt in der Datei
+    await page.fill('#edit-item-form [name=quantity]', '750'); await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
+    const after = await stored('Tomaten');
+    assert.equal(after.quantity, 750); assert.deepEqual([after.price, after.onSale, after.salePrice], [before.price, before.onSale, before.salePrice]);
+    // Hinzufügen: nur noch „Kategorie (optional)“, kein Preis und kein Angebot
+    await page.focus('#item-form input[name=name]'); await page.waitForSelector('#item-form:not(.compact)');
+    assert.equal(await page.locator('#item-form [name=priceEuros], #item-form [name=onSale], #item-form [name=saleEuros]').count(), 0);
+    assert.equal((await page.textContent('#item-form .price-fields summary')).trim(), 'Kategorie (optional)');
+    await page.fill('#item-form input[name=name]', 'Hafermilch'); await page.click('#add-item-confirm');
+    const added = await stored('Hafermilch'); assert.ok(added); assert.equal(['price', 'onSale', 'salePrice', 'saleUntil'].some(key => key in added), false, 'neue Artikel ohne Preisfelder');
     assert.equal(await page.locator('#shopping-total').count(), 0);
-    await edit(day(-1));
-    assert.equal(await page.locator('#price-comparison').count(), 0, 'kein Preisvergleich im Bearbeiten-Fenster');
-    await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
-    assert.equal(await apples().locator('.sale-badge, small.price-note').count(), 0, 'keine Angebotsangaben in der Zeile');
-    assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./);
-    assert.equal(await page.locator('#shopping-total').count(), 0);
-    await edit(day(2));
-    await page.click('#edit-item-form button[type=submit]'); await page.waitForSelector('#item-dialog', { state: 'hidden' });
-    assert.doesNotMatch(await apples().textContent(), /Angebot|€|ca\./, 'auch ein gültiges Angebot steht nicht in der Zeile');
-    assert.equal(await page.locator('#shopping-total').count(), 0);
+    assert.doesNotMatch(await page.locator('#items').textContent(), /€/);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -4505,16 +4503,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
-  test('Hinweise zu Preisen im Artikelfenster versprechen nichts Entferntes mehr (keine früheren Kaufpreise, kein vorgeschlagener Preis)', async () => {
+  test('Artikelfenster ohne Preishinweise (seit 2.163 ohne Preisfelder); nichts verspricht Entferntes (keine früheren Kaufpreise, kein vorgeschlagener Preis)', async () => {
     const { ctx, page, problems } = await context();
     await open(page);
-    const hints = async () => (await page.locator('[data-price-hint]').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    await page.fill('#item-form input[name=name]', 'Zucchini');   // das Formular zeigt dann seinen Preishinweis
-    assert.deepEqual(await hints(), ['Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.']);
+    await page.fill('#item-form input[name=name]', 'Zucchini');
+    assert.equal(await page.locator('[data-price-hint]').count(), 0);
     await page.fill('#item-form input[name=name]', '');
     await page.getByRole('button', { name: /^Nudeln, .*bearbeiten/ }).click(); await sheetOpen(page);
-    assert.ok((await hints()).includes('Freiwillige Preisnotiz für diesen Artikel.'));
-    const all = (await hints()).join(' ') + ' ' + await page.evaluate(() => document.documentElement.textContent);
+    assert.equal(await page.locator('[data-price-hint]').count(), 0);
+    const all = await page.evaluate(() => document.documentElement.textContent);
     for (const gone of [/Frühere Kaufpreise/, /Artikelnamen antippst/, /bereits gemerkter Preis/, /Zuletzt bezahlt/]) assert.ok(!gone.test(all), `${gone} steht noch da`);
     assert.deepEqual(problems, []);
     await ctx.close();
@@ -4580,16 +4577,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Name und Menge sind deutlich, die kleine Zeile ist kleiner und gedämpft
     const sizes = await row.evaluate(node => ({ name: parseFloat(getComputedStyle(node.querySelector('strong')).fontSize), qty: parseFloat(getComputedStyle(node.querySelector('.item-qty')).fontSize), meta: parseFloat(getComputedStyle(node.querySelector('.item-meta')).fontSize) }));
     assert.ok(sizes.qty >= sizes.name - 0.5 && sizes.meta < sizes.name, JSON.stringify(sizes));
-    // Der eigene Schätzpreis steht im Bearbeiten-Fenster, im ausklappbaren Bereich „Preis & Angebot“; einen Preisvergleich gibt es dort nicht mehr
+    // Seit 2.163 gibt es im Bearbeiten-Fenster weder Preis noch Angebot (Preise werden unter „Ausgaben“ am Einkauf nachgetragen)
     await row.getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
-    assert.equal(await page.locator('#price-comparison').count(), 0);
-    assert.equal(await page.locator('#item-price-fold').evaluate(node => node.open), false, 'zugeklappt');
-    assert.match(await page.textContent('#item-price-summary'), /€ für 500 g/);
+    assert.equal(await page.locator('#price-comparison, #item-price-fold, #edit-item-form [name=priceEuros]').count(), 0);
     assert.deepEqual(problems, []);
     await ctx.close();
   });
 
-  test('Bearbeiten-Fenster: Name, Menge, Einheit, Geschäft stehen oben ohne Scrollen, Preise sind ausklappbar, „Speichern“ bleibt am unteren Rand (auch beim Rezept mit vielen Zutaten)', async () => {
+  test('Bearbeiten-Fenster: Name, Menge, Einheit, Geschäft stehen oben ohne Scrollen, keine Preisfelder, „Speichern“ bleibt am unteren Rand (auch beim Rezept mit vielen Zutaten)', async () => {
     const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 664 } } });
     await open(page);
     const view = page.viewportSize();
@@ -4598,10 +4593,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const box = await page.locator(`#edit-item-form [name=${field}]`).boundingBox();
       assert.ok(box && box.y + box.height < view.height - 90, `${field} ist sofort zu sehen (${Math.round(box?.y)})`);
     }
-    // Preisfelder sind zu, bis man den Bereich öffnet
-    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), false);
-    await page.click('#item-price-fold > summary');
-    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').isVisible(), true);
+    assert.equal(await page.locator('#edit-item-form input[name=priceEuros]').count(), 0, 'seit 2.163 keine Preisfelder');
     // „Speichern“ steht am unteren Rand, auch wenn man oben ist und das Fenster lang ist
     await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
     const save = await page.locator('#edit-item-form .sheet-actions button').boundingBox();
@@ -6958,7 +6950,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       await check('#stores-dialog', 'Geschäfte & Angebote');
       // Artikel bearbeiten: die Knopfleiste unten bleibt stehen und ist undurchsichtig (nichts schimmert durch)
       await page.locator('#items .item', { hasText: 'Tomaten' }).getByRole('button', { name: /bearbeiten/ }).click(); await sheetOpen(page);
-      await page.click('#item-price-fold > summary');
       await page.evaluate(() => { document.querySelector('#item-dialog').scrollTop = 0; });
       const bar = await page.locator('#edit-item-form .sheet-actions').boundingBox(), shell = await page.locator('#item-dialog').boundingBox();
       assert.ok(Math.abs(bar.y + bar.height - (shell.y + shell.height)) <= 2, 'die Knopfleiste sitzt am unteren Rand');
@@ -11961,6 +11952,136 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.fill('#member-form input[name=name]', 'Nadiia'); await page.click('#member-form button[type=submit]');
     assert.equal(await page.locator('#members-list li', { hasText: 'Nadiia' }).count(), 1);
     assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+
+  // ---- 2.163: Preise unter „Ausgaben“ nachtragen und „Im Laden“ ansehen ----
+  const priceData163 = () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 86400000).toISOString(), day = back => isoDay(new Date(Date.now() - back * 86400000));
+    // Angelegt kurz nach dem Kauf, nie in der Zukunft (sonst gewänne der gespeicherte Stand gegen eine Änderung von jetzt)
+    const purchase = (id, storeId, storeName, date, cents, items, extra = {}) => ({ id, storeId, storeName, date, cents, items, source: 'hand', note: '', kind: 'purchase', buyerId: 'member-nico', buyerName: 'Nico',
+      createdAt: new Date(Math.min(Date.parse(`${date}T12:00:00`), Date.now() - 3600000)).toISOString(), updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
+    data.members = [{ id: 'member-nico', name: 'Nico', createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} }];
+    data.purchases = [
+      purchase('lidl-today', 'store-lidl', 'Lidl', day(0), 1802, [{ name: 'Milch', amount: '1 Liter', cents: 109 }, { name: 'Nudeln', amount: '500 g' }, { name: 'Honig', amount: '1 Stück' }]),
+      purchase('edeka-2', 'store-edeka', 'Edeka', day(2), 2564, [{ name: 'Milch', amount: '1 Liter', cents: 129 }, { name: 'Tomaten', amount: '500 g', cents: 199, offer: true }]),
+      purchase('rewe-5', 'store-rewe', 'Rewe', day(5), 1250, [{ name: 'Milch', amount: '1 Liter', cents: 99, offer: true }]),
+      purchase('lidl-9', 'store-lidl', 'Lidl', day(9), 900, [{ name: 'Milch', amount: '1 Liter', cents: 119 }]),
+      purchase('gone', 'store-lidl', 'Lidl', day(1), 700, [{ name: 'Milch', amount: '1 Liter', cents: 59 }], { deletedAt: stamp }),
+    ];
+    return data;
+  };
+
+  test('2.163: Ausgaben – Preis je Produkt nachtragen (Pfeil, Zahlenfeld, „Angebot“, Speichern), ändern und löschen; der Gesamtbetrag bleibt', async () => {
+    const { ctx, page, problems } = await localExpenses({ config: { productImages: true } }, priceData163());
+    const lidl = page.locator('#purchase-list .spend-item[data-id="lidl-today"]'), product = name => lidl.locator('.spend-product', { hasText: name });
+    const stored = () => expenseStored(page).then(data => data.purchases.find(row => row.id === 'lidl-today'));
+    await lidl.locator('.spend-row').click();
+    // Jeder Produktzeile ihr Pfeil; ein gespeicherter Preis steht unter der Menge
+    assert.equal(await lidl.locator('.spend-price-toggle').count(), 3);
+    assert.match(await product('Milch').locator('.spend-product-price').textContent(), /1,09\s€/);
+    assert.equal(await product('Honig').locator('.spend-product-price').count(), 0);
+    const toggle = product('Honig').locator('.spend-price-toggle');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Honig: Preis nachtragen');
+    const size = await toggle.boundingBox(); assert.ok(size.width >= 44 && size.height >= 44, 'große Tippfläche');
+    // Aufklappen: Betrag in €, Zahlentastatur, „Angebot“ und „Speichern“; nochmals tippen schließt
+    await toggle.click();
+    const form = product('Honig').locator('.spend-price-form');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.match(await form.textContent(), /Preis nachtragen[\s\S]*Bezahlt für 1 Stück[\s\S]*€[\s\S]*Angebot[\s\S]*Speichern/);
+    assert.equal(await form.locator('input[name=price]').getAttribute('inputmode'), 'decimal');
+    assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'price', 'die Tastatur öffnet sich nicht von selbst');
+    assert.equal(await form.locator('.spend-price-remove').count(), 0, 'ohne Preis nichts zu löschen');
+    await toggle.click(); assert.equal(await product('Honig').locator('.spend-price-form').count(), 0);
+    // Nur ein Preisbereich ist offen
+    await product('Milch').locator('.spend-price-toggle').click(); await toggle.click();
+    assert.equal(await lidl.locator('.spend-price-form').count(), 1); assert.equal(await product('Honig').locator('.spend-price-form').count(), 1);
+    // Falsche Eingabe: deutsche Meldung, nichts gespeichert
+    await form.locator('input[name=price]').fill('abc'); await form.locator('.spend-price-save').click();
+    assert.match(await form.locator('.spend-price-error').textContent(), /bezahlten Preis in Euro/);
+    assert.equal((await stored()).items[2].cents, undefined);
+    // Speichern mit Komma und Angebot
+    await form.locator('input[name=price]').fill('3,49'); await form.locator('input[name=offer]').check(); await form.locator('.spend-price-save').click();
+    assert.equal(await product('Honig').locator('.spend-price-form').count(), 0, 'nach dem Speichern zu');
+    let saved = await stored();
+    assert.deepEqual(saved.items[2], { name: 'Honig', amount: '1 Stück', cents: 349, offer: true });
+    assert.equal(saved.cents, 1802, 'der Gesamtbetrag bleibt'); assert.equal(saved.storeId, 'store-lidl'); assert.deepEqual(saved.items[0], { name: 'Milch', amount: '1 Liter', cents: 109 });
+    assert.match(await page.textContent('#notice-text'), /Preis für „Honig“ gespeichert: 3,49\s€ \(Angebot\)/);
+    assert.match(await product('Honig').locator('.spend-product-price').textContent(), /3,49\s€\s*Angebot/);
+    assert.match(await toggle.getAttribute('aria-label'), /Honig: Preis 3,49\s€, Angebot ändern oder löschen/);
+    assert.match(await lidl.locator('.spend-amount').textContent(), /18,02/);
+    // Ändern: Feld und Häkchen sind vorbelegt
+    await toggle.click();
+    assert.equal(await form.locator('input[name=price]').inputValue(), '3,49'); assert.equal(await form.locator('input[name=offer]').isChecked(), true);
+    assert.match(await form.locator('.spend-price-title').textContent(), /Preis ändern/);
+    await form.locator('input[name=price]').fill('3.29'); await form.locator('input[name=offer]').uncheck(); await form.locator('input[name=price]').press('Enter');
+    saved = await stored(); assert.deepEqual(saved.items[2], { name: 'Honig', amount: '1 Stück', cents: 329 });
+    // Löschen mit „Rückgängig“
+    await toggle.click(); await form.locator('.spend-price-remove').click();
+    assert.equal((await stored()).items[2].cents, undefined);
+    assert.match(await page.textContent('#notice-text'), /Preis für „Honig“ gelöscht/);
+    await page.click('#notice-undo');
+    assert.deepEqual((await stored()).items[2], { name: 'Honig', amount: '1 Stück', cents: 329 });
+    // Zuklappen des Einkaufs schließt auch den Preisbereich
+    await toggle.click(); await lidl.locator('.spend-row').click();
+    assert.equal(await lidl.locator('.spend-price-form').count(), 0);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.163: Preisbereich – eine Eingabe bleibt stehen, auch wenn die Ausgaben im Hintergrund neu gezeichnet werden', async () => {
+    const { ctx, page, problems } = await localExpenses({}, priceData163());
+    const lidl = page.locator('#purchase-list .spend-item[data-id="lidl-today"]'), honig = lidl.locator('.spend-product', { hasText: 'Honig' });
+    await lidl.locator('.spend-row').click(); await honig.locator('.spend-price-toggle').click();
+    const input = honig.locator('input[name=price]'); await input.click(); await input.type('2,1');
+    // Eine Änderung auf einem anderen Weg (wie ein Abgleich): die Liste wartet, solange getippt wird
+    await page.evaluate(() => document.querySelector('[data-tab=spending]').click());
+    assert.equal(await page.evaluate(() => document.activeElement?.name), 'price', 'Fokus und Tastatur bleiben');
+    await input.type('9'); assert.equal(await input.inputValue(), '2,19');
+    // Den Bereich verlassen: neu gezeichnet, die Eingabe bleibt erhalten
+    await page.locator('#month-label').click();
+    assert.equal(await honig.locator('input[name=price]').inputValue(), '2,19');
+    await honig.locator('.spend-price-save').click();
+    assert.equal((await expenseStored(page)).purchases.find(row => row.id === 'lidl-today').items[2].cents, 219);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  for (const [width, theme] of [[320, 'dark'], [390, 'light']]) test(`2.163: Im Laden – Pfeil nur bei Produkten mit Preis; je Geschäft der letzte Preis mit Datum, „Angebot“ und günstigstem Normalpreis (${width}px ${theme})`, async () => {
+    const { ctx, page, problems } = await context({ config: { productImages: true, theme }, context: { viewport: { width, height: 760 }, colorScheme: theme } });
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, priceData163());
+    await open(page); await page.click('#mode-shop');
+    const row = name => page.locator('#shop-list .shop-item', { hasText: name });
+    assert.equal(await row('Milch').locator('.shop-price-toggle').count(), 1);
+    assert.equal(await row('Tomaten').locator('.shop-price-toggle').count(), 1, 'auch ein Angebotspreis zählt');
+    assert.equal(await row('Äpfel').locator('.shop-price-toggle').count(), 0, 'ohne gespeicherten Preis kein Pfeil');
+    // Die Bilder bleiben rechts bündig, ob mit oder ohne Pfeil
+    const right = async name => { const box = await row(name).locator('.item-thumb').boundingBox(); return Math.round(box.x + box.width); };
+    assert.equal(await right('Milch'), await right('Äpfel'));
+    const toggle = row('Milch').locator('.shop-price-toggle'), size = await toggle.boundingBox();
+    assert.ok(size.width >= 44 && size.height >= 44);
+    assert.equal(await row('Milch').locator('.shop-prices').isVisible(), false, 'zu Beginn zugeklappt');
+    await toggle.click();
+    const prices = row('Milch').locator('.shop-price');
+    const text = await prices.evaluateAll(nodes => nodes.map(node => node.innerText.replace(/\s+/g, ' ').trim()));
+    assert.equal(text.length, 3, 'je Geschäft ein Preis; der ältere Lidl-Preis und gelöschte Einkäufe zählen nicht');
+    assert.match(text[0], /^Lidl Heute 1,09 € Günstigster$/);
+    assert.match(text[1], /^Edeka .+ 1,29 €$/);
+    assert.match(text[2], /^Rewe .+ 0,99 € Angebot$/);
+    assert.equal(await row('Milch').locator('.shop-price.cheapest').count(), 1);
+    assert.equal(await row('Milch').locator('.shop-price-logo').count(), 3, 'mit Händlerlogo');
+    for (const box of await prices.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 44, `Zeilenhöhe ${box}`);
+    // Bleibt beim Neuzeichnen offen (z. B. nach dem Abhaken eines anderen Artikels)
+    await page.getByRole('button', { name: /^Äpfel, .*abhaken/ }).click();
+    assert.equal(await row('Milch').locator('.shop-prices').isVisible(), true);
+    assert.equal(await horizontalOverflow(page), 0);
+    // Nochmals tippen schließt
+    await toggle.click(); assert.equal(await row('Milch').locator('.shop-prices').isVisible(), false);
+    // Gesperrt: ein kurzer Tipp tut nichts, gedrückt halten öffnet
+    await page.click('#shop-lock');
+    await toggle.click(); assert.equal(await row('Milch').locator('.shop-prices').isVisible(), false, 'gesperrt: Tipp verschluckt');
+    await pressAndHold(page, '#shop-list .shop-item:has-text("Milch") .shop-price-toggle', 700); await page.mouse.up();
+    assert.equal(await row('Milch').locator('.shop-prices').isVisible(), true, 'gesperrt: gedrückt halten öffnet');
     assert.deepEqual(problems, []); await ctx.close();
   });
 

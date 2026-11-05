@@ -4,6 +4,7 @@ import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './fa
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
   periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE } from './spending.js';
 import { groupImageFor, imageByKey, imageForProduct, paintProductImage } from './product-images.js';
+import { hasProductPrice, productPriceCents } from './product-prices.js';
 
 const node = (tag, text, cls) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; };
 const button = (label, click, cls = 'text-button') => { const el = node('button', label, cls); el.type = 'button'; el.addEventListener('click', click); return el; };
@@ -21,12 +22,23 @@ const productThumb = product => {
 };
 const svgIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 
-export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onMemberDelete, onExport, onMessage, productImages }) {
+export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onMemberDelete, onProductPrice, onExport, onMessage, productImages }) {
   // Aufgeklappter Einkauf (2.160): höchstens einer; ein zweiter Tipp oder das Aufklappen eines anderen schließt ihn
   let expanded = '';
+  // Preis nachtragen (2.163): höchstens ein Produkt hat seinen Preisbereich offen; die Eingabe überlebt ein Neuzeichnen (Abgleich im Hintergrund)
+  let priceOpen = '', priceDraft = null, pendingRender = false;
+  const typingPrice = () => Boolean(document.activeElement?.closest?.('#purchase-list .spend-price-form'));
+  const closePrice = () => {
+    if (!priceOpen) return;
+    priceOpen = ''; priceDraft = null;
+    for (const form of document.querySelectorAll('#purchase-list .spend-price-form')) {
+      const row = form.closest('.spend-product'); row?.classList.remove('price-open'); row?.querySelector('.spend-price-toggle')?.setAttribute('aria-expanded', 'false'); form.remove();
+    }
+  };
   const setOpen = (li, open) => { li.classList.toggle('open', open); li.querySelector('.spend-row').setAttribute('aria-expanded', String(open)); li.querySelector('.spend-products').hidden = !open; };
   const toggle = li => {
     const open = !li.classList.contains('open');
+    closePrice();
     for (const other of li.parentElement.querySelectorAll('.spend-item.open')) if (other !== li) setOpen(other, false);
     setOpen(li, open); expanded = open ? li.dataset.id : '';
     if (open) li.scrollIntoView({ block: 'nearest' });
@@ -85,6 +97,62 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       row.append(label, actions); (member.archived ? archived : active).append(row);
     }
     $('members-archived').hidden = !list.some(row => row.archived);
+  }
+  /* Ein Produkt eines Einkaufs (2.160): wie in der Einkaufsliste der Name, darunter klein die Menge, das Bild rechts. Seit 2.163 steht ganz rechts
+     ein Pfeil: Er klappt darunter „Preis nachtragen“ auf (nochmals tippen schließt). Ein gespeicherter Preis steht unter der Menge, mit „Angebot“. */
+  const priceKey = (purchaseId, index) => `${purchaseId}:${index}`;
+  function productRow(entry, product, index, pictures) {
+    const key = priceKey(entry.id, index), open = priceOpen === key, priced = hasProductPrice(product);
+    const row = node('li', undefined, `spend-product${open ? ' price-open' : ''}${priced ? ' priced' : ''}`), line = node('div', undefined, 'spend-product-line'), text = node('span', undefined, 'spend-product-text');
+    text.append(node('span', product.name, 'spend-product-name'));
+    if (product.amount) text.append(node('span', product.amount, 'spend-product-amount'));
+    if (priced) {
+      const price = node('span', undefined, 'spend-product-price'); price.append(node('strong', euros(product.cents)));
+      if (product.offer) price.append(node('span', 'Angebot', 'offer-tag'));
+      text.append(price);
+    }
+    line.append(text); if (pictures) line.append(productThumb(product));
+    const toggle = button(undefined, () => {
+      const opening = priceOpen !== key; closePrice();
+      if (opening) { priceOpen = key; row.classList.add('price-open'); toggle.setAttribute('aria-expanded', 'true'); row.append(priceForm(entry, product, index)); }
+    }, 'icon-button spend-price-toggle');
+    toggle.append(svgIcon('down')); toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', priced ? `${product.name}: Preis ${euros(product.cents)}${product.offer ? ', Angebot' : ''} ändern oder löschen` : `${product.name}: Preis nachtragen`);
+    line.append(toggle); row.append(line);
+    if (open) row.append(priceForm(entry, product, index));
+    return row;
+  }
+  // Preisbereich: Betrag in Euro (Zahlentastatur, Komma erlaubt), Häkchen „Angebot“, „Speichern“; mit gespeichertem Preis auch „Preis löschen“.
+  // Geschäft, Datum und Produkt stehen schon am Einkauf und werden nicht abgefragt.
+  function priceForm(entry, product, index) {
+    const key = priceKey(entry.id, index), draft = priceDraft?.key === key ? priceDraft : null, priced = hasProductPrice(product), id = `spend-price-${entry.id}-${index}`;
+    const form = node('form', undefined, 'spend-price-form'); form.noValidate = true; form.id = id; form.setAttribute('aria-label', `Preis für ${product.name}`);
+    const input = node('input'); input.name = 'price'; input.inputMode = 'decimal'; input.autocomplete = 'off'; input.enterKeyHint = 'done'; input.maxLength = 12; input.placeholder = '0,00';
+    input.value = draft ? draft.value : priced ? (product.cents / 100).toFixed(2).replace('.', ',') : '';
+    const field = node('label', undefined, 'spend-price-field'), money = node('span', undefined, 'spend-price-money');
+    money.append(input, node('span', '€', 'spend-price-euro'));
+    field.append(node('span', product.amount ? `Bezahlt für ${product.amount}` : 'Bezahlter Preis', 'spend-price-label'), money);
+    const offer = node('label', undefined, 'checkbox-label spend-price-offer'), box = node('input'); box.type = 'checkbox'; box.name = 'offer';
+    box.checked = draft ? draft.offer : product.offer === true; offer.append(box, document.createTextNode('Angebot'));
+    const fields = node('div', undefined, 'spend-price-fields'); fields.append(field, offer);
+    const error = node('p', undefined, 'dialog-error spend-price-error'); error.id = `${id}-error`; error.hidden = true; error.setAttribute('role', 'alert'); input.setAttribute('aria-describedby', error.id);
+    const save = node('button', 'Speichern', 'spend-price-save'); save.type = 'submit';
+    const actions = node('div', undefined, 'spend-price-actions'); actions.append(save);
+    const store = (price) => {
+      try {
+        onProductPrice(entry.id, index, product.name, price);
+        priceOpen = ''; priceDraft = null; document.activeElement?.blur?.(); render(true);
+      } catch (problem) { error.textContent = problem.message; error.hidden = false; }
+    };
+    if (priced) actions.append(button('Preis löschen', () => store(null), 'text-button spend-price-remove'));
+    const remember = () => { priceDraft = { key, value: input.value, offer: box.checked }; error.hidden = true; };
+    input.addEventListener('input', remember); box.addEventListener('change', remember);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      try { store({ cents: productPriceCents(input.value), offer: box.checked }); } catch (problem) { error.textContent = problem.message; error.hidden = false; input.focus({ preventScroll: true }); }
+    });
+    form.append(node('p', priced ? 'Preis ändern' : 'Preis nachtragen', 'spend-price-title'), fields, error, actions);
+    return form;
   }
   function openMembers(select = null) {
     returnSelect = select; resetMemberForm(); $('members-error').hidden = true; renderMembers(); membersDialog.showModal(); membersDialog.scrollTop = 0;
@@ -163,7 +231,11 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     }
     if (!result.byStore.length) list.append(node('li', 'Noch keine Geschäfte oder Einkäufe vorhanden.', 'empty'));
   }
-  function render() {
+  /* Neu zeichnen. Während jemand einen Produktpreis eintippt (Fokus im Preisbereich), wartet die Liste, damit Tastatur und Eingabe bleiben;
+     sie wird nachgeholt, sobald der Fokus den Bereich verlässt. `force`: nach dem eigenen Speichern sofort. */
+  function render(force = false) {
+    if (!force && getScope() === scope && typingPrice()) { pendingRender = true; return; }
+    pendingRender = false;
     refresh(); if ($('spending').hidden) return;
     const frequency = analysis === 'frequency'; $('spending-analysis').value = analysis;
     const allRows = rows(), shops = (data().stores || []).filter(row => !row.deletedAt), month = fullMonth(period()), now = monthOf(today());
@@ -214,12 +286,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
         panel.append(node('p', `${plural(products.length, 'Produkt', 'Produkte')} aus diesem Einkauf`, 'spend-products-head'));
         const items = node('ul', undefined, 'spend-product-list');
         const pictures = productImages?.() !== false;
-        for (const product of products) {
-          // Wie in der Einkaufsliste: Name, darunter klein die Menge, das Bild rechts
-          const row = node('li'), text = node('span', undefined, 'spend-product-text');
-          text.append(node('span', product.name, 'spend-product-name')); if (product.amount) text.append(node('span', product.amount, 'spend-product-amount'));
-          row.append(text); if (pictures) row.append(productThumb(product)); items.append(row);
-        }
+        products.forEach((product, index) => items.append(productRow(entry, product, index, pictures)));
         panel.append(items);
       } else panel.append(node('p', 'Zu diesem Einkauf sind keine Produkte gespeichert. Sie werden zugeordnet, wenn du sie „Im Laden“ abhakst und bei „Einkauf beenden“ den Betrag speicherst.', 'hint spend-products-empty'));
       open.setAttribute('aria-label', `${date}, ${store || 'ohne Geschäft'}, ${buyer}, ${euros(value)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: Produkte ${products.length ? `(${products.length}) ` : ''}anzeigen`);
@@ -245,6 +312,7 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     if (kind === 'year') choosePeriod({ from: `${today().slice(0, 4)}-01-01`, to: today() }); else chooseMonth(kind === 'last' ? shiftMonth(monthOf(today()), -1) : monthOf(today()));
     rangeDialog.close();
   });
+  $('purchase-list').addEventListener('focusout', () => setTimeout(() => { if (pendingRender && !typingPrice()) render(); }, 0));
   $('spending-members').addEventListener('click', () => openMembers());
   $('purchase-person-add').addEventListener('click', () => openMembers($('purchase-form').elements.buyerId));
   $('finish-person-add').addEventListener('click', () => openMembers($('finish-form').elements.buyerId));

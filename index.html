@@ -100,12 +100,8 @@
         <label class="unit">Einheit<input name="unit" value="Stück" list="units" maxlength="30" required autocomplete="off"></label>
         <button id="add-item-confirm" type="submit" class="wide">Hinzufügen</button>
         <label class="checkbox-label wide once-only"><input name="onceOnly" type="checkbox"> Nur für diesen Einkauf</label>
-        <details class="wide price-fields"><summary>Kategorie, Preis & Angebot (optional)</summary>
+        <details class="wide price-fields"><summary>Kategorie (optional)</summary>
           <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
-          <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" placeholder="z. B. 1,99" maxlength="12"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" value="Stück" list="units" maxlength="30"></label></div>
-          <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
-          <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" value="Stück" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Der Angebotspreis bleibt als Notiz gespeichert, solange „Im Angebot“ angehakt und das Angebot nicht abgelaufen ist. Ohne Datum gilt es, bis du es ausschaltest. Der normale Preis bleibt erhalten.</p></div>
-          <p class="hint" data-price-hint>Beispiel: 1,99 € für 500 g. Freiwillige Preisnotiz für diesen Artikel.</p>
         </details>
       </form>
       <div id="shared-list-actions" class="section-head list-head"><button id="select-mode" class="text-button" type="button" aria-pressed="false">Auswählen</button></div>
@@ -383,20 +379,12 @@
     <p id="store-catalog-count" class="hint" role="status"></p><div id="store-catalog-list" class="store-catalog-list"></div>
     <button type="button" data-close="store-catalog-dialog" class="secondary catalog-custom">Eigenen Namen eingeben</button>
   </dialog>
-  <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel & Preis</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+  <dialog id="item-dialog"><form id="edit-item-form" class="stack"><div class="sheet-head"><h2>Artikel bearbeiten</h2><button type="button" data-close="item-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <input name="rowId" type="hidden"><label>Artikelname<input name="name" required maxlength="120"></label><div class="price-grid unit-grid"><label>Menge<input name="quantity" inputmode="decimal" required maxlength="16"></label><label>Einheit<input name="unit" list="units" required maxlength="30"></label></div>
     <label>Geschäft<select name="storeId"></select></label>
     <section class="remembered-amount" aria-label="Gemerkte Einkaufsmenge"><p id="remembered-amount-text" class="hint"></p><div class="row-actions"><button id="change-remembered-amount" type="button" class="text-button">Ändern</button><button id="reset-remembered-amount" type="button" class="text-button">Zurücksetzen</button></div><div id="remembered-amount-editor" hidden><div class="price-grid unit-grid"><label>Gemerkte Menge<input name="memoryQuantity" inputmode="decimal" maxlength="16"></label><label>Einheit<input name="memoryUnit" list="units" maxlength="30"></label></div><button id="save-remembered-amount" type="button" class="secondary">Vorgabe speichern</button></div></section>
     <label class="checkbox-label once-only"><input name="onceOnly" type="checkbox"> Nur für diesen Einkauf – gemerkte Menge behalten</label>
     <label>Kategorie (Gang im Laden)<select name="category" data-categories></select></label>
-    <details id="item-price-fold" class="price-fold"><summary><span>Preis & Angebot</span><small id="item-price-summary"></small></summary>
-      <div class="stack">
-        <p class="hint">Normaler Preis und Angebotspreis werden getrennt gespeichert. Ein leerer Preis bedeutet unbekannt.</p>
-        <div class="price-grid"><label>Normaler Preis (€)<input name="priceEuros" inputmode="decimal" maxlength="12" placeholder="optional"></label><label>Für Menge<input name="priceQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Preiseinheit<input name="priceUnit" list="units" maxlength="30"></label></div>
-        <label class="checkbox-label"><input name="onSale" type="checkbox"> Im Angebot</label>
-        <div data-sale-fields hidden><div class="price-grid"><label>Angebotspreis (€)<input name="saleEuros" inputmode="decimal" placeholder="z. B. 1,49" maxlength="12"></label><label>Angebot für Menge<input name="saleQuantity" inputmode="decimal" value="1" maxlength="16"></label><label>Angebotseinheit<input name="saleUnit" list="units" maxlength="30"></label></div><label>Angebot gültig bis (optional)<input name="saleUntil" type="date"></label><p class="hint">Angebotspreis verwenden, solange das Häkchen aktiv und das Angebot nicht abgelaufen ist. Der normale Preis bleibt als Notiz erhalten.</p></div>
-        <p class="hint" data-price-hint></p>
-      </div></details>
     <button id="delete-item" type="button" class="danger">Artikel löschen</button>
     <div class="sheet-actions"><button type="submit">Artikel speichern</button></div>
   </form></dialog>
