@@ -117,6 +117,21 @@ if (typeof HTMLDialogElement === 'function' && !HTMLDialogElement.prototype.show
   calmShowModal.calmFocus = true;
   HTMLDialogElement.prototype.showModal = calmShowModal;
 }
+/* Fokusring nur bei Tastaturbedienung (2.169): Setzt die App den Fokus selbst auf einen Knopf (z. B. „Abbrechen“ in einer Rückfrage, das × oder
+   „Weiter“), zeichnet Safari auf dem iPhone einen zweiten Ring um den Knopf, obwohl nur getippt wurde. Nach einem Tipp oder Klick trägt <html> darum
+   data-pointer, und styles.css zeichnet dann keinen Fokusring. Eine Taste außerhalb eines Textfelds (Tab auch darin) schaltet die Ringe wieder ein;
+   Tippen in ein Feld, auch auf der Bildschirmtastatur, zählt nicht als Tastaturbedienung. */
+{
+  const html = document.documentElement, modifiers = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn']);
+  const typing = target => target?.isContentEditable || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLInputElement && !/^(button|submit|reset|checkbox|radio|range|file|color|image)$/.test(target.type));
+  document.addEventListener('pointerdown', () => { html.dataset.pointer = ''; }, true);
+  document.addEventListener('keydown', event => {
+    if (event.metaKey || event.ctrlKey || event.altKey || modifiers.has(event.key)) return;
+    if (event.key !== 'Tab' && typing(event.target)) return;
+    delete html.dataset.pointer;
+  }, true);
+}
 singleOpenAccordion($('#help-body'), '.help-section');
 singleOpenAccordion($('#recipe-list'), '.recipe-details', () => {
   openRecipes.clear();

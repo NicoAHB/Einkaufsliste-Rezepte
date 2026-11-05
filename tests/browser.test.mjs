@@ -12308,4 +12308,42 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  test('2.169: Nach einem Tipp kein zweiter Ring um Knöpfe, auf die die App den Fokus setzt („Abbrechen“ in der Rückfrage); mit der Tastatur bleibt der Ring', async () => {
+    const data = structuredClone(demo), deletedAt = new Date(Date.now() - 3600000).toISOString();
+    data.items.find(row => row.name === 'Tomaten').deletedAt = deletedAt;
+    data.purchases = [{ id: 'gone-purchase', date: isoDate(), cents: 200, storeId: data.stores[0].id, buyerName: 'Nico', source: 'hand', createdAt: deletedAt, updatedAt: deletedAt, deletedAt, _clock: {} }];   // zwei Arten, damit es den Reiter „Artikel“ gibt
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    await open(page); await openSettings(page); await page.tap('#trash-open'); await sheetOpen(page);
+    await page.locator('#trash-filter .chip', { hasText: 'Artikel' }).tap(); await page.tap('#trash-purge');
+    await page.locator('#ask-dialog[open]').waitFor();
+    assert.equal(await page.textContent('#ask-title'), 'Artikel endgültig löschen?');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'ask-cancel', 'Fokus auf „Abbrechen“: ein versehentliches Enter löscht nichts');
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-pointer')), true);
+    /* Safari auf dem iPhone setzt beim Tippen keinen Fokus auf den Knopf; setzt die Rückfrage ihn danach selbst, gilt er als sichtbar (:focus-visible)
+       und Safari zeichnete den zweiten Ring. Chromium entscheidet hier anders, darum wird der Zustand wie in den Entwicklerwerkzeugen erzwungen. */
+    const cdp = await ctx.newCDPSession(page); await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const forceVisible = async (selector, on = true) => cdp.send('CSS.forcePseudoState', { nodeId: (await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector })).nodeId, forcedPseudoClasses: on ? ['focus-visible'] : [] });
+    const outline = selector => page.locator(selector).evaluate(node => getComputedStyle(node).outlineStyle);
+    await forceVisible('#ask-cancel');
+    assert.equal(await outline('#ask-cancel'), 'none', 'kein zweiter Ring um „Abbrechen“ nach einem Tipp');
+    await forceVisible('#ask-cancel', false);
+    // Tastatur: Tab zeigt den Ring wieder, auch zurück auf „Abbrechen“
+    await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement?.id), 'ask-ok'); assert.equal(await outline('#ask-ok'), 'solid');
+    await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(() => document.activeElement?.id), 'ask-cancel'); assert.equal(await outline('#ask-cancel'), 'solid');
+    await page.keyboard.press('Escape'); await page.locator('#ask-dialog').waitFor({ state: 'hidden' });
+    // Ein erneuter Tipp blendet den Ring wieder aus
+    await page.tap('#trash-purge'); await page.locator('#ask-dialog[open]').waitFor();
+    await forceVisible('#ask-cancel'); assert.equal(await outline('#ask-cancel'), 'none'); await forceVisible('#ask-cancel', false);
+    await page.tap('#ask-cancel'); await page.locator('#ask-dialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base.items.some(row => row.name === 'Tomaten')), true, 'Abbrechen löscht nichts');
+    // Tippen in ein Textfeld (auch auf der Bildschirmtastatur) zählt nicht als Tastaturbedienung
+    await page.tap('#trash-dialog .sheet-head [data-close]'); await goTab(page, 'shopping');
+    await page.tap('#item-form [name=name]'); await page.keyboard.type('Mi');
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-pointer')), true);
+    await cdp.detach();
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

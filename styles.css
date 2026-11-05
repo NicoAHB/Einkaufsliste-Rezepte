@@ -5518,7 +5518,7 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 /* Hinzufügen: erst die Aufgabe wählen */
 .store-add-dialog .sheet-head { gap:8px }
 .store-add-dialog .sheet-head h2 { flex:1; min-width:0 }
-.sheet-head :is(h2,h3)[tabindex="-1"]:focus { outline:none }   /* nur Orientierung beim Öffnen eines Fensters (2.167), kein Bedienelement */   /* nur Orientierung für Bildschirmleser, kein Bedienelement */
+.sheet-head :is(h2,h3)[tabindex="-1"]:focus { outline:none }   /* nur Orientierung beim Öffnen eines Fensters (2.167), kein Bedienelement */
 .store-add-question { margin:2px 0 12px; font-size:1.05rem; font-weight:700 }
 .store-add-choice { display:grid; gap:10px }
 .store-add-choice .store-group-line { margin:8px 0 2px }
@@ -5656,3 +5656,11 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .spend-price-actions .spend-price-save { flex:1 1 140px; min-height:48px }
 :root .spend-price-actions .spend-price-remove { min-height:44px; color:var(--danger) }
 @media (prefers-reduced-motion:reduce) { .spend-price-toggle .icon { transition:none } }
+
+/* Fokusring nur bei Tastaturbedienung (2.169): Nach einem Tipp oder Klick trägt <html> data-pointer (app.js). Setzt die App den Fokus dann selbst auf
+   einen Knopf (z. B. „Abbrechen“ in einer Rückfrage), zeichnet Safari keinen zweiten Ring mehr um dessen Rahmen. Mit der Tastatur bleibt der Ring. */
+:root[data-pointer] :focus-visible,
+:root[data-pointer] :is(.store-symbol-choice,.store-display-choice,.file-drop):focus-within,
+:root[data-pointer] .recipe-sort:focus-within .recipe-sort-face { outline:none !important }
+:root[data-pointer] input[type=range]:focus-visible::-webkit-slider-thumb { outline:none !important }
+:root[data-pointer] input[type=range]:focus-visible::-moz-range-thumb { outline:none !important }
