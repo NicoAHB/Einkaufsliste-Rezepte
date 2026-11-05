@@ -2,6 +2,15 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.168: Ziehen und zurückschieben bricht ab
+
+**„Verschieben nach“ nur noch nach Halten und Loslassen.** Bisher öffnete sich das Fenster auch, wenn man eine Zeile lange hielt, ein Stück zog (z. B. Richtung Geschäfteleiste) und sie dann wieder an ihren Platz zurückschob, weil nur die Stelle beim Loslassen zählte. Jetzt gilt: Sobald die Zeile einmal spürbar bewegt wurde, passiert beim Loslassen ohne Ziel **nichts**, auch an der Ausgangsstelle; die Zeile springt nur an ihren Platz zurück.
+- Halten und loslassen, ohne zu ziehen, öffnet **Verschieben nach** wie bisher. Ein leichtes Zittern des Fingers zählt weiter als still.
+- Auf ein Geschäft ziehen verschiebt, in die rote Fläche ziehen löscht, wie bisher.
+- Gilt ebenso für Wünsche (Details), Notizen (Bearbeiten), geheime Listen (Eintrag öffnen) und Ausgaben.
+
+Offline-Paket `einkauf-shell-v180`.
+
 ## Neu in Version 2.167: Geplante Gerichte zählen für „Häufig gekocht“
 
 Bisher zählte „Häufig gekocht“ nur **Heute gekocht** im Kochmodus und abgehakte Gerichte. Jetzt zählt jedes Rezept, das einem **Tag im Wochenplan zugeordnet** wird (auch über die Wochenplanung).

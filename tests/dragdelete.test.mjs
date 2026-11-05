@@ -29,10 +29,11 @@ describe('Zum Löschen ziehen', () => {
     assert.equal(heldStill(HOLD_RELEASE), true);
     assert.equal(heldStill(HOLD_RELEASE + 1), false);
     assert.equal(heldStill(-HOLD_RELEASE), true);
-    assert.equal(heldStill(HOLD_RELEASE, HOLD_RELEASE), false, 'schräg gemessen: 34 px');
+    assert.equal(heldStill(HOLD_RELEASE, HOLD_RELEASE), false, 'schräg gemessen: 22,6 px');
     assert.equal(heldStill(0, -(HOLD_RELEASE + 1)), false, 'auch nach oben und unten');
     assert.ok(HOLD_RELEASE > SLOP, 'das Zittern des Fingers beim Halten zählt noch als still');
     assert.ok(HOLD_RELEASE < ZONE_WIDTH, 'die rote Fläche liegt weit außerhalb');
+    assert.ok(HOLD_RELEASE <= 16, 'ein kleines Stück gezogen ist schon ein Ziehen, kein Halten (2.168)');
   });
   test('beim freien Ziehen zählt die rote Fläche nur in ihrer Höhe, damit der Weg zu einem Geschäft am Rand nichts löscht', () => {
     assert.equal(overBand(300, 260, 344), true);
