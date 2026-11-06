@@ -4067,10 +4067,10 @@ function renderLastRating() {
 }
 // Seit 2.177 gibt es die Bewertung bei Restaurant und Getränken gleich; beim Wechsel der Art bleibt sie stehen.
 // Die Beispiele in den Feldern passen zur Art (2.179): bei Getränken kein „Pizza top“.
-const DINING_EXAMPLES = { restaurant: { place: 'z. B. Pizzeria Roma', ratingNote: 'z. B. Pizza top, Bedienung langsam' }, drinks: { place: 'z. B. Café Lotte', ratingNote: 'z. B. Cappuccino top, gemütliche Sessel' } };
+const DINING_EXAMPLES = { restaurant: { amount: 'z. B. 34,50', place: 'z. B. Pizzeria Roma', ratingNote: 'z. B. Pizza top, Bedienung langsam' }, drinks: { amount: 'z. B. 8,79', place: 'z. B. Café Lotte', ratingNote: 'z. B. Cappuccino top, gemütliche Sessel' } };
 function syncDiningKind() {
   const form = $('#dining-form'), examples = DINING_EXAMPLES[diningKind({ dining: form.elements.kind.value }).id];
-  form.elements.place.placeholder = examples.place; form.elements.ratingNote.placeholder = examples.ratingNote;
+  form.elements.amount.placeholder = examples.amount; form.elements.place.placeholder = examples.place; form.elements.ratingNote.placeholder = examples.ratingNote;
   renderLastRating();
 }
 function openDining(id = '') {

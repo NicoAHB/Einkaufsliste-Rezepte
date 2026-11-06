@@ -12548,6 +12548,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // 2.179: Beispiele passend zu Getränken, kein „Pizza top“
     assert.equal(await page.getAttribute('#dining-form input[name=ratingNote]', 'placeholder'), 'z. B. Cappuccino top, gemütliche Sessel');
     assert.equal(await page.getAttribute('#dining-form input[name=place]', 'placeholder'), 'z. B. Café Lotte');
+    assert.equal(await page.getAttribute('#dining-form input[name=amount]', 'placeholder'), 'z. B. 8,79', '2.180: kleinerer Beispielbetrag bei Getränken');
+    await page.locator('.dining-kind', { hasText: 'Restaurant' }).tap(); assert.equal(await page.getAttribute('#dining-form input[name=amount]', 'placeholder'), 'z. B. 34,50');
+    await page.locator('.dining-kind', { hasText: 'Getränke' }).tap();
     assert.equal(await page.locator('#dining-rating').isVisible(), true); assert.equal(await page.locator('#dining-last-rating').isVisible(), true);
     await page.fill('#dining-form input[name=place]', 'Café Lotte'); assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'Café Lotte noch nie bewertet');
     await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');

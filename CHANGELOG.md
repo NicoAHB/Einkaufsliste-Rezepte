@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.180: Kleinerer Beispielbetrag bei Getränken
+
+Im Fenster **Restaurant/Café/Bar** steht bei **Getränke** im Feld „Betrag (€)“ jetzt „z. B. 8,79“ statt „z. B. 34,50“; bei **Restaurant** bleibt „z. B. 34,50“. Offline-Paket `einkauf-shell-v192`.
+
 ## Neu in Version 2.179: Passende Beispiele bei Getränken
 
 Im Fenster **Restaurant/Café/Bar** stehen bei **Getränke** jetzt passende Beispiele in den Feldern: beim Lokal „z. B. Café Lotte“, in der Notiz zur Bewertung „z. B. Cappuccino top, gemütliche Sessel“ (bisher auch hier „Pizza top, Bedienung langsam“). Bei **Restaurant** bleibt alles wie bisher. Offline-Paket `einkauf-shell-v191`.
