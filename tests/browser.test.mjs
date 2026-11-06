@@ -12152,10 +12152,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await toggle.click();
     assert.match(await toggle.textContent(), /1 von 4 Zutaten da · 3 fehlen/);
     assert.deepEqual(await missing(), ['50 g Walnüsse, gehackt', '200 ml Milch', '250 g Mehl']);
-    // Ein Knopf je Zeile, mit Text und Haken, mindestens 44 px hoch, deutlich anders als „Einkaufen“
+    // Ein Knopf je Zeile, mit Text und Haken-Symbol, deutlich anders als „Einkaufen“; seit 2.178 klein und dezent wie „Aufgebraucht“, Tippfläche 44 px
     const buttons = card.locator('.recipe-stock-group.missing .recipe-stock-have');
-    assert.equal(await buttons.count(), 3); assert.deepEqual(await buttons.allTextContents(), ['✓ Hab ich', '✓ Hab ich', '✓ Hab ich']);
-    for (const box of await buttons.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))) assert.ok(box >= 44, `Höhe ${box}`);
+    assert.equal(await buttons.count(), 3); assert.deepEqual(await buttons.allTextContents(), ['Hab ich', 'Hab ich', 'Hab ich']);
+    assert.equal(await buttons.first().locator('svg use').getAttribute('href'), '#i-check');
+    for (const box of await buttons.evaluateAll(nodes => nodes.map(node => { const after = getComputedStyle(node, '::after'); return node.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom); }))) assert.ok(box >= 44, `Tippfläche ${box}`);
+    const look = selector => card.locator(selector).first().evaluate(node => { const s = getComputedStyle(node); return [Math.round(node.getBoundingClientRect().height), s.fontSize, s.borderTopWidth, s.borderTopLeftRadius, s.backgroundColor]; });
+    assert.deepEqual(await look('.recipe-stock-have'), await look('.recipe-stock-used'), 'gleich groß und gestaltet wie „Aufgebraucht“');
     assert.equal(await card.locator('.recipe-stock-group.have .recipe-stock-have').count(), 0, 'nur bei fehlenden Zutaten');
     // Walnüsse (nicht auf dem Einkaufszettel): sofort, ohne Rückfrage
     await card.getByRole('button', { name: 'Walnüsse, gehackt: hab ich, in den Vorrat übernehmen', exact: true }).click();
@@ -12205,7 +12208,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual([...new Set(await used.allTextContents())], ['Aufgebraucht']);
     const sizes = await card.evaluate(node => { const button = node.querySelector('.recipe-stock-used'), label = button.closest('li').querySelector('.recipe-stock-label'), have = node.querySelector('.recipe-stock-have');
       const after = getComputedStyle(button, '::after'); return { button: button.getBoundingClientRect().height, tap: button.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom), font: parseFloat(getComputedStyle(button).fontSize), label: parseFloat(getComputedStyle(label).fontSize), have: have.getBoundingClientRect().height }; });
-    assert.ok(sizes.tap >= 44, `Tippfläche ${sizes.tap}`); assert.ok(sizes.button < sizes.have, 'dezenter als „✓ Hab ich“'); assert.ok(sizes.font < sizes.label, 'Schrift kleiner als die Zutat');
+    assert.ok(sizes.tap >= 44, `Tippfläche ${sizes.tap}`); assert.equal(sizes.button, sizes.have, 'so groß wie „Hab ich“ (2.178)'); assert.ok(sizes.font < sizes.label, 'Schrift kleiner als die Zutat');
     // Abbrechen ändert nichts
     await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
     await answerAsk(page, false, /Mehl ist aufgebraucht/, /Aus dem Vorrat nehmen und auf die Einkaufsliste setzen\?/, /Überall möglich/);
