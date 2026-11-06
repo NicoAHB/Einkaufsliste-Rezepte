@@ -9,7 +9,8 @@ const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!=
 // Pro Ansicht bleibt nur ein Vorratsabgleich offen. Ein normales Neuzeichnen
 // nach dem Datenabgleich erhält den geöffneten Abgleich desselben Rezepts.
 // `onHave(row)` (2.164): „✓ Hab ich“ an einer fehlenden Zutat übernimmt sie in den Vorrat (die App zeichnet danach neu; die Ansicht bleibt offen).
-export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel,onHave=null}) {
+// `onUsedUp(row)` (2.175): „Aufgebraucht“ an einer vorhandenen Zutat, das Gegenstück: aus dem Vorrat nehmen und auf die Einkaufsliste setzen.
+export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel,onHave=null,onUsedUp=null}) {
   const tracked=ingredients.filter(required),have=tracked.filter(row=>availability(row,index)==='have'),missing=tracked.filter(row=>availability(row,index)!=='have');
   const badge=node('div',undefined,`recipe-stock ${missing.length===0?'complete':have.length?'partial':'empty'}`);
   const trigger=node('button',undefined,'recipe-stock-toggle');trigger.type='button';
@@ -26,7 +27,15 @@ export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredien
     if(rows.length){
       const list=node('ul');
       for(const row of rows){
-        const li=node('li'),label=node('span',undefined,'recipe-stock-label');li.append(label);list.append(li);labels.push([label,row]);
+        const li=node('li'),label=node('span',undefined,'recipe-stock-label');list.append(li);labels.push([label,row]);
+        if(kind==='have'&&onUsedUp){
+          // Dezent und klein (die Zutat bleibt die Hauptsache), mit Einkaufswagen; die Tippfläche ist trotzdem 44 px hoch
+          const line=node('span',undefined,'recipe-stock-line'),used=node('button',undefined,'recipe-stock-used');used.type='button';
+          used.append(makeIcon('cart'),node('span','Aufgebraucht'));
+          used.setAttribute('aria-label',`${row.name}: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen`);
+          used.addEventListener('click',event=>{event.stopPropagation();onUsedUp(row);});
+          line.append(label,used);li.append(line);
+        } else li.append(label);
         if(kind==='missing'&&onHave){
           // Eindeutig anders als „Einkaufen“: Text mit Haken, kein reines Plus; mindestens 44 px hoch
           const mark=node('button','✓ Hab ich','recipe-stock-have');mark.type='button';

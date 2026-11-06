@@ -7,7 +7,7 @@ import { mountExpenseCategoryPicker } from './expense-category-view.js';
 import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
-import { active, addToList, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, pantryRows, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
 import { defaultOfferUrl, localDay, offerUrl, productKey, storeOfferUrl, unitSpec } from './prices.js';
 import { hasProductPrice, priceOverview, productPriceIndex, withProductPrice } from './product-prices.js';
@@ -18,8 +18,8 @@ import { REGULAR_SYMBOLS, NOTES_SYMBOL, DISPLAY_MODES, DISPLAY_LABELS, displayMo
 import { privateView, privateViewId } from './private-list.js';
 import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
-import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
-import { GROCERY_PRODUCTS, favoriteId, ownProductRemoval } from './product-catalog.js';
+import { ingredientMatchName, productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
+import { GROCERY_PRODUCTS, catalogProductFor, favoriteId, ownProductRemoval } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
@@ -36,7 +36,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerAddress, wor
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
-import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
+import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice, standardPurchase } from './buying.js';
 import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetails } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
@@ -54,7 +54,7 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
@@ -1558,6 +1558,49 @@ async function haveIngredient(row) {
     showNotice(`${product.name} ist wieder als fehlend markiert${restore.length ? ' und steht wieder auf dem Einkaufszettel' : ''}`);
   }), { ms: 4000 });
 }
+/* „Aufgebraucht“ (2.175): Gegenstück zu „✓ Hab ich“. Eine vorhandene Zutat ist alle: Nach einer Rückfrage wird sie im Vorrat als aufgebraucht
+   markiert (alle Vorratseinträge, die sie zu „da“ machen, z. B. auch „Weizenmehl“ für „Mehl“; wie das Abwählen in der Vorratsauswahl) und als
+   Produkt mit der üblichen Einkaufsmenge auf die Einkaufsliste gesetzt (keine Rezeptmenge), im zuletzt dafür genutzten Geschäft, sonst ohne
+   Geschäft („Überall möglich“). Steht sie schon offen auf der Liste, wird nichts doppelt angelegt. Beides ist eine Änderung (Abgleich und
+   Offline-Speicher wie bei allen Vorratsaktionen); die Karte zeichnet sich neu, unten steht „Rückgängig“ für beides. */
+function lastStoreFor(name) {
+  const live = new Set(orderedStores(state.stores).filter(store => visibleStore(store) && !isSeparate(store) && !isNotesStore(store)).map(store => store.id));
+  const used = (state.items || []).filter(item => item.storeId && live.has(item.storeId) && sameIngredient(item.name, name))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+  return used[0]?.storeId || '';
+}
+async function usedUpIngredient(row) {
+  if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+  const product = ingredientPantryProduct(row), scope = namespace();
+  const listed = () => active(withoutSeparate(state.items, state.stores)).filter(item => !item.checked && sameIngredient(item.name, product.name));
+  const storeId = lastStoreFor(product.name), already = listed().length > 0;
+  const where = already ? 'Es steht schon auf deiner Einkaufsliste und wird nicht doppelt angelegt.' : storeId ? `Es kommt zu „${storeName(storeId)}“.` : 'Es kommt unter „Überall möglich“ (ohne Geschäft).';
+  if (!await ask({ title: `${product.name} ist aufgebraucht`, message: `Aus dem Vorrat nehmen und auf die Einkaufsliste setzen? ${where}`, confirmLabel: 'Ja', cancelLabel: 'Abbrechen' })) return;
+  if (scope !== namespace()) return;
+  const before = clone(state.pantry || []);
+  const stocked = pantryRows(before).filter(entry => entry.available !== false && coveringStock(row, [ingredientMatchName(entry)]).length);
+  const pantryOps = pantrySelectionChanges(stocked.map(entry => ({ name: entry.name, pantryAvailable: false })), before).map(({ id, patch }) => nextOp('pantry', id, patch));
+  let itemOps = [];
+  if (!listed().length) {
+    const known = catalogProductFor(product.name), target = storeId && active(state.stores).some(store => store.id === storeId) ? storeId : '';
+    const item = standardPurchase({ name: product.name, ...(product.category ? { category: product.category } : {}), ...(known ? { quantity: known.quantity, unit: known.unit } : {}) }, itemHistory());
+    lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+    itemOps = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
+  }
+  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deiner Einkaufsliste`); return; }
+  commit([...pantryOps, ...itemOps]);
+  const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
+  // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), der neu angelegte Artikel verschwindet wieder von der Liste
+  const undoPantry = pantryOps.map(({ entityId: id, patch }) => {
+    const old = before.find(entry => entry.id === id);
+    return { id, patch: Object.fromEntries(Object.keys(patch).filter(key => key !== 'productGroupVersion').map(key => [key, old?.[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
+  });
+  showNotice(added.length ? `Auf die Einkaufsliste gesetzt: ${product.name}` : `${product.name} steht schon auf deiner Einkaufsliste – aus dem Vorrat genommen`, () => guard(() => {
+    if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
+    commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
+    showNotice(`${product.name} ist wieder im Vorrat${added.length ? ' und nicht mehr auf der Einkaufsliste' : ''}`);
+  }));
+}
 function addedLabel(at) { const day = relativeDay(at); return `hinzugefügt ${day === 'geplant' ? 'heute' : day}`; }
 function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
@@ -1583,7 +1626,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   const showStock=stock.have.length>0;
   let stockView=null;
   if(showStock && tracked.length) {
-    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel,onHave:row=>guard(()=>haveIngredient(row))});
+    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel,onHave:row=>guard(()=>haveIngredient(row)),onUsedUp:row=>guard(()=>usedUpIngredient(row))});
     card.append(stockView.element);
   }
   const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);

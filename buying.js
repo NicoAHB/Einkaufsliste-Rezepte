@@ -111,6 +111,16 @@ export function preferredPurchase(name, history = []) {
   const remembered = choices[0], legacy=history.filter(row=>key(row.name)===key(name)&&row.unit).sort((a,b)=>String(b.updatedAt||b.at||b.createdAt||'').localeCompare(String(a.updatedAt||a.at||a.createdAt||'')))[0];
   return { remembered:Boolean(remembered), purchaseUnit: remembered ? remembered.purchaseUnit : defaultPurchaseUnit(name), ...unitChoice(remembered), unit: remembered?.purchaseMeasure || remembered?.unit || legacy?.unit || catalog.get(key(name))?.[3] || (looseMeat(name)?'g':'Stück') };
 }
+/* Übliche Einkaufsmenge eines Produkts (2.175), wie beim Antippen unter „Produkte auswählen“: die zuletzt gewählte Packung oder Menge,
+   sonst die Angabe des Produktkatalogs (`product.quantity`/`unit`, z. B. Mehl 1 kg als Packung), sonst die Startmenge der Einheit.
+   Keine Rezeptmenge: Wer etwas als aufgebraucht meldet, kauft das Produkt wie gewohnt nach. */
+export function standardPurchase(product, history = []) {
+  const p = preferredPurchase(product.name, history);
+  if (p.purchaseUnit) return { ...product, ...rawPurchase(preferredQuantity(product.name, history, p.unit, p.purchaseUnit, 1), p.purchaseUnit, p.unit), ...unitChoice(p) };
+  const baseUnit = product.unit || p.unit, baseQuantity = product.quantity || startQuantity(product.name, baseUnit);
+  const a = unitSpec(baseUnit), b = unitSpec(p.unit), unit = p.remembered ? p.unit : baseUnit, fallback = p.remembered && a.group === b.group ? baseQuantity * a.factor / b.factor : baseQuantity;
+  return { ...product, ...(p.remembered ? { purchaseUnit: null, ...unitChoice(p) } : {}), unit, quantity: preferredQuantity(product.name, history, unit, null, fallback) };
+}
 // Auch Rezeptangaben wie „½ Packung Wraps“ sind bei bekannter Größe eindeutig.
 // Keine Gramm/Stück-Schätzung und kein Erfinden eines unbekannten Inhalts.
 export function withKnownPack(row,history=[]) {

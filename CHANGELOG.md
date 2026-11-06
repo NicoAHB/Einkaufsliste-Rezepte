@@ -2,6 +2,17 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.175: „Aufgebraucht“ in der Rezeptkarte
+
+**Das Gegenstück zu „✓ Hab ich“.** In der Karte **„… von … Zutaten da“** steht unter **Im Vorrat vorhanden** rechts neben jeder Zutat ein kleiner Knopf **Aufgebraucht** mit Einkaufswagen (dezent im Grün der Liste, Tippfläche trotzdem 44 px). Nach der Rückfrage „Mehl ist aufgebraucht – Aus dem Vorrat nehmen und auf die Einkaufsliste setzen?“ und **Ja**:
+- Die Zutat ist im Vorrat **aufgebraucht** (alle Einträge, die sie zu „da“ machen, z. B. auch eine Sorte), wie das Abwählen in der Vorratsauswahl.
+- Sie steht als **Produkt** auf der Einkaufsliste, mit der üblichen Einkaufsmenge wie beim Antippen unter „Produkte“ (z. B. 1 Packung Mehl à 1 kg), nicht mit der Rezeptmenge.
+- Sie landet im Geschäft, in dem sie zuletzt eingekauft wurde, sonst unter **Überall möglich**; die Rückfrage nennt es.
+- Steht sie schon auf der Einkaufsliste, wird nichts doppelt angelegt: „… steht schon auf deiner Einkaufsliste“.
+- Die Karte zeigt sofort den neuen Stand (z. B. „5 von 7 Zutaten da · 2 fehlen“), die Zutat steht unter **Fehlt im Vorrat**. Unten steht **Auf die Einkaufsliste gesetzt** mit **Rückgängig** für beides.
+
+Abgleich und Offline-Speicher wie bei allen Vorratsaktionen. Offline-Paket `einkauf-shell-v187`.
+
 ## Neu in Version 2.174: Restaurant bewerten, kein Plus mehr im Betragsfeld
 
 **Kein grünes Plus mehr.** Im Fenster **Restaurant/Café/Bar** speicherte das grüne Plus im Feld „Betrag (€)“ nur dasselbe wie **Speichern**; es ist entfallen, das Feld nutzt die volle Breite. Gespeichert wird nur noch mit **Speichern**: Die Eingabetaste bzw. **Fertig** auf der Tastatur schließt in den Feldern nur die Tastatur.

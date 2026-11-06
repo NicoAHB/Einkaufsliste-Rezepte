@@ -45,6 +45,13 @@ export function availability(entry, index) {
   }
   return worst;
 }
+/* „Aufgebraucht“ (2.175): Welche Vorratsnamen machen diese Zutat zu „da“? Alle Namen aus `names`, die mindestens einen mitgezählten Teil der
+   Zutat abdecken (gleiche Regeln wie availability, z. B. „Weizenmehl“ für „Mehl“). Werden sie aufgebraucht, fehlt die Zutat. */
+export function coveringStock(entry, names) {
+  const name = entry && typeof entry === 'object' ? ingredientMatchName(entry) : entry;
+  const wanted = parts(name).filter(part => !part.every(token => ALWAYS.has(token)));
+  return names.filter(candidate => parts(candidate).some(have => wanted.some(part => same(part, have))));
+}
 // Muss die Zutat vorhanden sein? „Nach Bedarf“ (Salz, Pfeffer) und Wasser nicht.
 export const required = row => !isCookingWater(row.name) && row.unit !== NO_AMOUNT && parts(row.name).some(part => !part.every(token => ALWAYS.has(token)));
 

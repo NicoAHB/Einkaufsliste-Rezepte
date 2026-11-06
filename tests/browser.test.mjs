@@ -12183,6 +12183,87 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.175: „Aufgebraucht“ – das Gegenstück zu „✓ Hab ich“ ----
+  const bananaData175 = (extra = data => data) => {
+    const data = pantryData278(['Bananen', 'Mehl', 'Zucker', 'Butter', 'Eier', 'Backpulver'].map(name => ({ name, available: true }))), stamp = '2026-10-29T09:00:00.000Z';
+    data.recipes = [{ ...demo.recipes[0], id: 'banana175', name: 'Bananenbrot', servings: 4, tags: [], favorite: false, photoId: null }];
+    data.ingredients = [['reife Bananen', 3, 'Stück'], ['Mehl', 200, 'g'], ['Zucker', 80, 'g'], ['Butter', 100, 'g'], ['Eier', 2, 'Stück'], ['Backpulver', 1, 'Päckchen'], ['Walnüsse', 50, 'g'], ['Salz', 1, 'Prise']]
+      .map(([name, quantity, unit], index) => ({ ...demo.ingredients[0], id: `banana175-${index}`, recipeId: 'banana175', name, quantity, unit, createdAt: stamp, updatedAt: stamp }));
+    return extra(data);
+  };
+  test('2.175: Bananenbrot – „Aufgebraucht“ bei Mehl: Rückfrage, Ja nimmt es aus dem Vorrat und setzt es auf die Einkaufsliste, Karte zeigt 5 von 7; Rückgängig stellt alles wieder her', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await seedLocal(ctx, bananaData175()); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=banana175]'), toggle = card.locator('.recipe-stock-toggle');
+    const missing = () => card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(), have = () => card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents();
+    const flour = () => storedDemo(page).then(data => ({ pantry: data.pantry.filter(row => !row.deletedAt && row.name === 'Mehl').map(row => row.available), items: data.items.filter(row => !row.deletedAt && row.name === 'Mehl') }));
+    await toggle.click();
+    assert.match(await toggle.textContent(), /6 von 7 Zutaten da · 1 fehlen/);
+    // Ein kleiner Knopf je vorhandener Zutat, nicht bei fehlenden; klar antippbar (44 px), aber niedriger als „✓ Hab ich“
+    const used = card.locator('.recipe-stock-group.have .recipe-stock-used');
+    assert.equal(await used.count(), 6); assert.equal(await card.locator('.recipe-stock-group.missing .recipe-stock-used').count(), 0);
+    assert.deepEqual([...new Set(await used.allTextContents())], ['Aufgebraucht']);
+    const sizes = await card.evaluate(node => { const button = node.querySelector('.recipe-stock-used'), label = button.closest('li').querySelector('.recipe-stock-label'), have = node.querySelector('.recipe-stock-have');
+      const after = getComputedStyle(button, '::after'); return { button: button.getBoundingClientRect().height, tap: button.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom), font: parseFloat(getComputedStyle(button).fontSize), label: parseFloat(getComputedStyle(label).fontSize), have: have.getBoundingClientRect().height }; });
+    assert.ok(sizes.tap >= 44, `Tippfläche ${sizes.tap}`); assert.ok(sizes.button < sizes.have, 'dezenter als „✓ Hab ich“'); assert.ok(sizes.font < sizes.label, 'Schrift kleiner als die Zutat');
+    // Abbrechen ändert nichts
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
+    await answerAsk(page, false, /Mehl ist aufgebraucht/, /Aus dem Vorrat nehmen und auf die Einkaufsliste setzen\?/, /Überall möglich/);
+    assert.deepEqual(await flour(), { pantry: [true], items: [] }); assert.match(await toggle.textContent(), /6 von 7/);
+    // Ja: aus dem Vorrat, auf die Liste (Produkt mit üblicher Einkaufsmenge, nicht 200 g; ohne Geschäft = „Überall möglich“), Karte sofort aktuell
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
+    assert.equal(await page.textContent('#ask-ok'), 'Ja'); assert.equal(await page.textContent('#ask-cancel'), 'Abbrechen');
+    await answerAsk(page, true);
+    const after = await flour();
+    assert.deepEqual(after.pantry, [false], 'im Vorrat aufgebraucht');
+    assert.equal(after.items.length, 1); assert.equal(after.items[0].storeId, ''); assert.equal(after.items[0].checked, false);
+    assert.notDeepEqual([after.items[0].quantity, after.items[0].unit], [200, 'g'], 'keine Rezeptmenge');
+    assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.equal(await card.locator('.recipe-stock-track').getAttribute('aria-valuenow'), '5');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'bleibt aufgeklappt');
+    assert.ok((await missing()).includes('200 g Mehl')); assert.ok(!(await have()).includes('200 g Mehl'));
+    assert.equal(await page.textContent('#notice-text'), 'Auf die Einkaufsliste gesetzt: Mehl'); assert.equal(await page.isVisible('#notice-undo'), true);
+    // Rückgängig: alles wie vorher
+    await page.click('#notice-undo');
+    assert.deepEqual(await flour(), { pantry: [true], items: [] });
+    assert.match(await toggle.textContent(), /6 von 7 Zutaten da · 1 fehlen/); assert.ok((await have()).includes('200 g Mehl'));
+    // Auf der Einkaufsliste steht Mehl dann wirklich unter „Überall möglich“ (ohne Geschäft)
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click(); await answerAsk(page, true);
+    await goTab(page, 'shopping'); assert.match(await page.textContent('#items'), /Mehl/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('2.175: „Aufgebraucht“ legt nichts doppelt an und nimmt das zuletzt genutzte Geschäft', async () => {
+    const stamp = '2026-10-30T09:00:00.000Z';
+    const data = bananaData175(data => {
+      // Butter steht schon offen auf der Liste; Zucker wurde zuletzt bei Rewe gekauft (abgehakt)
+      data.items.push({ ...data.items[0], id: 'butter-open', name: 'Butter', quantity: 250, unit: 'g', storeId: 'store-lidl', checked: false, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} },
+        { ...data.items[0], id: 'sugar-bought', name: 'Zucker', quantity: 1, unit: 'kg', storeId: 'store-rewe', checked: true, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+      return data;
+    });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=banana175]'), toggle = card.locator('.recipe-stock-toggle');
+    const openRows = (data, name) => data.items.filter(row => !row.deletedAt && !row.checked && row.name === name);
+    await toggle.click();
+    // Schon auf der Liste: nicht doppelt, kurzer Hinweis; aus dem Vorrat kommt es trotzdem
+    await card.getByRole('button', { name: /^Butter: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Butter ist aufgebraucht/, /schon auf deiner Einkaufsliste/);
+    let saved = await storedDemo(page);
+    assert.equal(openRows(saved, 'Butter').length, 1); assert.equal(openRows(saved, 'Butter')[0].quantity, 250, 'die vorhandene Zeile bleibt unverändert');
+    assert.equal(saved.pantry.find(row => row.name === 'Butter').available, false);
+    assert.match(await page.textContent('#notice-text'), /^Butter steht schon auf deiner Einkaufsliste/);
+    assert.match(await toggle.textContent(), /5 von 7/);
+    await page.click('#notice-undo'); saved = await storedDemo(page);
+    assert.equal(saved.pantry.find(row => row.name === 'Butter').available, true); assert.equal(openRows(saved, 'Butter').length, 1, 'Rückgängig löscht die vorhandene Zeile nicht');
+    // Zuletzt genutztes Geschäft
+    await card.getByRole('button', { name: /^Zucker: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Es kommt zu „Rewe“/);
+    saved = await storedDemo(page); assert.equal(openRows(saved, 'Zucker').length, 1); assert.equal(openRows(saved, 'Zucker')[0].storeId, 'store-rewe');
+    assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
   test('2.164: „✓ Hab ich“ bei einer Zutat auf dem Einkaufszettel fragt, ob sie dort entfernt werden soll; ohne offene Zutaten entfällt „Fehlt im Vorrat“', async () => {
     const { ctx, page, problems } = await context();
     await seedLocal(ctx, haveData164()); await open(page); await goTab(page, 'recipes');
