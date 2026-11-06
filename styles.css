@@ -5861,3 +5861,26 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 :root[data-glass] :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:focus { box-shadow:none }
 :root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
 :root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:disabled { opacity:.45; cursor:default }
+
+/* Ausgaben übersichtlicher (2.184): „Zeitraum wählen“ und „Personen verwalten“ stehen gleich gestaltet nebeneinander in einer Karte
+   (mit Kalender- bzw. Personen-Symbol), darunter nach einer Linie die Zeile „Person“ mit den Chips, bündig mit den Knöpfen. */
+.spend-filters { display:grid; gap:10px; margin:8px 0 12px; padding:12px; border:1px solid var(--line); border-radius:18px; background:var(--card) }
+.spend-filters .spend-toolbar { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:0 }
+:root .spend-filters button.secondary.spend-tool,:root[data-glass] .spend-filters button.secondary.spend-tool:not([aria-pressed=true]) {
+  display:flex; align-items:center; justify-content:center; gap:7px; min-width:0; min-height:46px; padding:8px 10px;
+  border:2px solid color-mix(in srgb, var(--accent) 40%, var(--line-strong)); border-radius:14px; background:var(--card); color:var(--accent);
+  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; font-size:.88rem; font-weight:700; line-height:1.25; text-align:center; white-space:normal
+}
+.spend-filters .spend-tool .icon { flex:none; width:18px; height:18px }
+:root .spend-filters .spend-tool:active:not(:disabled) { background:var(--accent-soft) }
+.spend-person-row { display:flex; align-items:center; gap:10px; min-width:0; padding-top:10px; border-top:1px solid var(--line) }
+.spend-person-label { flex:none; color:var(--muted); font-size:.82rem; font-weight:650 }
+.spend-filters .chips.spend-person-filter { flex:1; min-width:0; margin:0; padding:2px 0 }
+:root .spend-filters .chips .chip:not([aria-pressed=true]),:root[data-glass] .spend-filters .chips .chip:not([aria-pressed=true]) { border:1px solid var(--line-strong); background:var(--card); -webkit-backdrop-filter:none; backdrop-filter:none }
+@media (max-width:340px) { .spend-filters .spend-toolbar { grid-template-columns:1fr } }
+/* CSV-Download unter „Weitere Auswertungen“ mit leichtem Rahmen (2.184) */
+:root #spending-export,:root[data-glass] button.secondary#spending-export {
+  border:2px solid color-mix(in srgb, var(--accent) 40%, var(--line-strong)); border-radius:14px; background:var(--card); color:var(--accent);
+  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; font-weight:700
+}
+:root #spending-export:active:not(:disabled) { background:var(--accent-soft) }

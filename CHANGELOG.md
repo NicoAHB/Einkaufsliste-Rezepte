@@ -2,6 +2,18 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.185: Kürzere Sortier-Beschriftung
+
+Die Sortierung der Rezepte nach Vorrat heißt jetzt **Meiste Zutaten vorhanden**; auf der Pille über der Liste steht kurz **Zutaten vorhanden**. So passen die Anzahl der Rezepte und die Sortierung wieder in eine Zeile (bisher rutschte „Meiste Zutaten im Vorrat“ in eine eigene Zeile). Offline-Paket `einkauf-shell-v197`.
+
+## Neu in Version 2.184: Ausgaben übersichtlicher
+
+**Filter in einer Karte.** Unter dem Monat stehen **Zeitraum wählen** (mit Kalender) und **Personen verwalten** (mit Personen-Symbol) jetzt gleich gestaltet nebeneinander in einer Karte, darunter nach einer Linie die Zeile **Person** mit **Alle** und den Namen, bündig mit den Knöpfen. Auf sehr schmalen Geräten stehen die beiden Knöpfe untereinander.
+
+**CSV mit Rahmen.** **Diese Auswahl als CSV herunterladen** unter „Weitere Auswertungen“ hat einen leichten Rahmen.
+
+**Klarerer Name.** Die Auswertung heißt jetzt **Anzahl der Einkäufe je Geschäft** (bisher „Einkäufe je Geschäft“). Offline-Paket `einkauf-shell-v196`.
+
 ## Neu in Version 2.183: Schönere Kästchen überall
 
 **Kein blasser Kreis mehr.** Safari auf dem iPhone zeichnete leere Kästchen als blassen, unvollständigen Kreis, z. B. im Fenster **Einkauf für die Woche**. Jetzt sehen alle Kästchen aus wie der Haken fürs Auswärtsessen: abgerundetes Quadrat mit grünem Rand, angehakt grün gefüllt mit Haken. Das gilt für die Zutatenlisten zum Übernehmen (Wocheneinkauf, „Einkaufen“ am Rezept), für alle Haken in Formularen und unter **Optionen** sowie für den Kochmodus (etwas größer). Die Schalter unter „Geschäfte & Listen“ bleiben Schalter. Offline-Paket `einkauf-shell-v195`.
