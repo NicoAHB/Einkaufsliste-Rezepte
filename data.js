@@ -175,8 +175,13 @@ export function validateRow(key, row) {
         (entry.imageKey !== undefined && (typeof entry.imageKey !== 'string' || !/^[a-z0-9-]{1,80}$/.test(entry.imageKey))) ||
         (entry.category !== undefined && (typeof entry.category !== 'string' || !/^[a-z0-9-]{1,40}$/.test(entry.category))) ||
         !validProductPrice(entry)))) throw new Error('Ungültige Produkte eines Einkaufs.');   // Preis je Produkt (2.163): `cents`, optional `offer: true`, siehe product-prices.js
+  // Restaurant/Café/Bar (2.170): `dining` (Art des Lokals) und optional `time` (HH:MM, leer = ohne Uhrzeit), siehe spending.js
+  if (key === 'purchases' && ((row.dining !== undefined && !['restaurant', 'cafe', 'bar'].includes(row.dining)) ||
+      (row.time !== undefined && row.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(row.time))))) throw new Error('Ungültige Angabe zu Restaurant/Café/Bar.');
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
+  // Zählt Restaurant/Café/Bar zum Monatsbudget? (2.170) Zeile `dining` mit `counts` (true/false) und `cents: 0`, damit ältere Apps sie lesen.
+  if (key === 'budgets' && row.counts !== undefined && (row.id !== 'dining' || typeof row.counts !== 'boolean')) throw new Error('Ungültiges Budget.');
   if (key === 'aliases' && (typeof row.from !== 'string' || !row.from.trim() || typeof row.name !== 'string' || !row.name.trim())) throw new Error('Ungültige Namenszuordnung.');
   // `variant` (Version 2.40): Sorte, die zur Zuordnung gehört („gala äpfel“ → Äpfel, Gala).
   if (key === 'aliases' && row.variant !== undefined && (typeof row.variant !== 'string' || row.variant.length > 80)) throw new Error('Ungültige Namenszuordnung.');
@@ -206,7 +211,8 @@ export function validateRow(key, row) {
 // Revision 16: gemeinsame Smart-Stock-Einstellung, Ablaufzeiten und Aufbrauchen.
 // Revision 17: dauerhaft aus der eigenen Produktauswahl entfernte Namen.
 // Revision 18 (2.152): Anzeige im Reiter getrennt vom festen Listensymbol. Ältere Apps würden das Symbol beim Speichern austauschen.
-export const SCHEMA_REV = 18;
+// Revision 19 (2.170): Restaurant/Café/Bar (`purchases.dining`). Ältere Apps würden diese Beträge als Einkäufe zählen, auch wenn sie nicht zum Budget gehören.
+export const SCHEMA_REV = 19;
 export function validate(data) {
   if (!data || data.version !== 1) throw new Error('Unbekannte Datenversion. Bitte die App aktualisieren. Die Datei wird nicht verändert.');
   if (data.sync?.minRev !== undefined && (!Number.isInteger(data.sync.minRev) || data.sync.minRev < 1)) throw new Error('Die Synchronisierungsdaten sind beschädigt. Bitte ein Backup prüfen.');
@@ -295,6 +301,7 @@ const REVISION_RULES = [
   [17, data => data.productRemovals.length > 0],
   [16, data => data.stockSettings.length > 0 || data.pantry.some(row => row.autoStock) || data.items.some(row => row.stockConsumedAt !== undefined)],
   [18, data => data.stores.some(row => row.displayMode != null)],
+  [19, data => data.purchases.some(row => row.dining !== undefined)],
 ];
 export function merge(data, operations) {
   let next = clone(validate(data));

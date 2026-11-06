@@ -2,7 +2,8 @@
    Schreiben bleibt bei den App-Callbacks; offene Betrags-/Namensfelder werden nicht neu aufgebaut. */
 import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './family.js';
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
-  periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE } from './spending.js';
+  periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE,
+  budgetSpent, diningKind, isDining } from './spending.js';
 import { groupImageFor, imageByKey, imageForProduct, paintProductImage } from './product-images.js';
 import { hasProductPrice, productPriceCents } from './product-prices.js';
 
@@ -22,7 +23,7 @@ const productThumb = product => {
 };
 const svgIcon = name => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 
-export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onMemberDelete, onProductPrice, onExport, onMessage, productImages }) {
+export function mountSpending({ getData, getScope, getMonth, setMonth, today, getOwn, onEdit, onBudget, onMemberSave, onMemberArchive, onMemberDelete, onProductPrice, onExport, onMessage, productImages, getDiningCounts = () => true }) {
   // Aufgeklappter Einkauf (2.160): höchstens einer; ein zweiter Tipp oder das Aufklappen eines anderen schließt ihn
   let expanded = '';
   // Preis nachtragen (2.163): höchstens ein Produkt hat seinen Preisbereich offen; die Eingabe überlebt ein Neuzeichnen (Abgleich im Hintergrund)
@@ -49,7 +50,9 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   const period = () => range || getMonth();
   const data = () => getData(), rows = () => (data().purchases || []).filter(row => !row.deletedAt), members = () => liveMembers(data().members);
   const fail = (id, error) => { $(id).textContent = error.message; $(id).hidden = false; };
-  const entriesLabel = summary => [plural(summary.purchaseCount, 'Einkauf', 'Einkäufe'), summary.refundCount ? plural(summary.refundCount, 'Rückerstattung', 'Rückerstattungen') : ''].filter(Boolean).join(' · ');
+  const entriesLabel = summary => [summary.purchaseCount || !summary.dining.count ? plural(summary.purchaseCount, 'Einkauf', 'Einkäufe') : '', summary.dining.count ? `${summary.dining.count}× auswärts` : '',
+    summary.refundCount ? plural(summary.refundCount, 'Rückerstattung', 'Rückerstattungen') : ''].filter(Boolean).join(' · ');
+  const dateText = day => day === today() ? 'Heute' : day.slice(0, 4) === today().slice(0, 4) ? dayLabel(day) : shortDate(day);
   const nameFor = id => id === UNASSIGNED ? 'Nicht zugeordnet' : members().find(row => row.id === id)?.name || buyerNameOf(rows().find(row => row.buyerId === id) || { buyerId: id }, members());
   function chooseMonth(month) { if (!validMonth(month)) return; setMonth(month); range = null; render(); }
   function choosePeriod(value) {
@@ -161,13 +164,13 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
   function refresh() {
     if (getScope() !== scope) {
       scope = getScope(); person = 'all'; analysis = 'expenses'; range = null; setMonth(monthOf(today())); resetMemberForm();
-      membersDialog.close(); rangeDialog.close(); $('purchase-dialog').close(); $('finish-dialog').close(); $('budget-dialog').close(); $('spending-details').open = false; $('purchase-details').open = true;
+      membersDialog.close(); rangeDialog.close(); $('purchase-dialog').close(); $('dining-dialog').close(); $('finish-dialog').close(); $('budget-dialog').close(); $('spending-details').open = false; $('purchase-details').open = true;
     }
-    for (const id of ['purchase-form', 'finish-form']) {
+    for (const id of ['purchase-form', 'dining-form', 'finish-form']) {
       const form = $(id); if (form.closest('dialog').open) {
         const selected = form.elements.buyerId.value, row = rows().find(row => row.id === form.elements.rowId?.value);
         fillBuyer(form.elements.buyerId, selected, row?.buyerName || '');
-        if (id === 'purchase-form' && form.elements.rowId.value && !row) { form.closest('dialog').close(); onMessage('Dieser Eintrag wurde inzwischen entfernt.'); }
+        if (id !== 'finish-form' && form.elements.rowId.value && !row) { form.closest('dialog').close(); onMessage('Dieser Eintrag wurde inzwischen entfernt.'); }
       }
     }
     if (membersDialog.open) renderMembers();
@@ -231,6 +234,42 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     }
     if (!result.byStore.length) list.append(node('li', 'Noch keine Geschäfte oder Einkäufe vorhanden.', 'empty'));
   }
+  /* Restaurant/Café/Bar (2.170): eigene Karte, ob die Beträge zum Budget zählen oder nicht. Oben Summe, Zahl der Besuche und Durchschnitt,
+     darunter der Anteil an allen Ausgaben des Zeitraums und je Art (nur bei mehr als einer). Die Liste zeigt auf einen Blick Wann, Wo und
+     Wie teuer; ein Tipp öffnet den Eintrag zum Ändern oder Löschen, lange halten und in den Mülleimer ziehen löscht wie bei Einkäufen. */
+  function renderDining(summary, counts, twins) {
+    const dining = summary.dining, card = $('spending-dining'), list = $('spending-dining-list');
+    card.hidden = !dining.count; list.replaceChildren(); $('spending-dining-kinds').replaceChildren(); $('spending-dining-share').replaceChildren();
+    if (!dining.count) return;
+    $('spending-dining-total').textContent = euros(dining.total);
+    $('spending-dining-meta').textContent = `${plural(dining.count, 'Besuch', 'Besuche')} · Ø ${euros(dining.average)}`;
+    const note = $('spending-dining-budget'); note.dataset.counts = String(counts);
+    note.textContent = counts ? 'Zählt zum Monatsbudget' : 'Zählt nicht zum Monatsbudget';
+    if (dining.total < summary.total && summary.total > 0) {
+      const percent = Math.round(dining.share * 100), track = node('div', undefined, 'spend-share'), bar = node('span');
+      bar.style.width = `${Math.max(2, Math.min(100, percent))}%`; track.append(bar); track.setAttribute('aria-hidden', 'true');
+      $('spending-dining-share').append(node('small', `${percent} % ${person === 'all' ? 'eurer' : 'der'} Ausgaben in diesem Zeitraum`), track);
+    }
+    if (dining.byKind.length > 1) {
+      const max = Math.max(1, ...dining.byKind.map(kind => kind.total));
+      for (const kind of dining.byKind) {
+        const li = node('li', undefined, 'spend-store'), head = node('div', undefined, 'spend-store-head'), track = node('div', undefined, 'spend-share'), bar = node('span');
+        head.append(node('strong', `${kind.emoji} ${kind.label}`), node('span', euros(kind.total))); bar.style.width = `${Math.max(2, Math.round(kind.total / max * 100))}%`; track.append(bar);
+        li.append(head, track, node('small', plural(kind.count, 'Besuch', 'Besuche'))); $('spending-dining-kinds').append(li);
+      }
+    }
+    for (const entry of dining.list) {
+      const kind = diningKind(entry), place = entry.storeName?.trim() || '', buyer = buyerNameOf(entry, members()), when = [dateText(entry.date), entry.time ? `${entry.time} Uhr` : ''].filter(Boolean).join(', ');
+      const li = node('li', undefined, 'dining-item'), row = button(undefined, () => onEdit(entry.id), 'dining-row'), copy = node('span', undefined, 'dining-copy');
+      li.dataset.id = entry.id;
+      const badge = node('span', kind.emoji, `dining-badge dining-${kind.id}`); badge.setAttribute('aria-hidden', 'true');
+      copy.append(node('strong', place || kind.label), node('small', [when, place ? kind.label : '', buyer, twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
+      const edit = svgIcon('edit'); edit.classList.add('dining-edit');
+      row.append(badge, copy, node('span', euros(entry.cents), 'spend-amount'), edit);
+      row.setAttribute('aria-label', `${when}, ${place || kind.label}${place ? ` (${kind.label})` : ''}, ${buyer}, ${euros(entry.cents)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: bearbeiten`);
+      li.append(row); list.append(li);
+    }
+  }
   /* Neu zeichnen. Während jemand einen Produktpreis eintippt (Fokus im Preisbereich), wartet die Liste, damit Tastatur und Eingabe bleiben;
      sie wird nachgeholt, sobald der Fokus den Bereich verlässt. `force`: nach dem eigenen Speichern sofort. */
   function render(force = false) {
@@ -252,10 +291,12 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
     $('spending-budget').hidden = frequency || person !== 'all' || !month;
     $('spending-frequency').hidden = !frequency;
     if (frequency) renderFrequency(allRows);
-    if (person === 'all' && month) onBudget(current.total);
+    const diningOn = getDiningCounts();
+    if (person === 'all' && month) onBudget(budgetSpent(current, diningOn), { total: current.dining.total, counts: diningOn });
     const summary = $('spending-summary'); summary.replaceChildren();
     const label = person === 'all' ? 'Familie insgesamt' : `${nameFor(person)} · Ausgaben`;
     summary.append(node('span', label, 'spend-label'), node('strong', euros(current.total), 'spend-total'), node('small', entriesLabel(current)));
+    if (current.dining.count) summary.append(node('small', `davon Restaurant/Café/Bar: ${euros(current.dining.total)}`, 'spend-summary-dining'));
     if (current.refundCount) summary.append(node('small', `${euros(current.refunds)} Rückerstattungen abgezogen`));
     if (month) {
       const before = shiftMonth(month, -1), previous = summarizePeriod(allRows, before, shops, members(), person);
@@ -264,20 +305,22 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
         else { const diff = compareTotals(current.total, previous.total); summary.append(node('small', diff.diff ? `${euros(Math.abs(diff.diff))} ${diff.diff > 0 ? 'mehr' : 'weniger'} als im ${monthName(before)}` : `Genau so viel wie im ${monthName(before)}`)); }
       }
     }
-    const count = $('purchase-count'); count.textContent = plural(current.count, 'Eintrag', 'Einträge');
+    // Restaurant/Café/Bar steht in der eigenen Karte, nicht noch einmal in der Liste der Einkäufe (2.170)
+    const shopping = current.list.filter(entry => !isDining(entry)), twins = possibleDuplicates(filterPurchases(allRows, period()));
+    const count = $('purchase-count'); count.textContent = plural(shopping.length, 'Eintrag', 'Einträge');
+    $('spending-dining').hidden = true; if (!frequency) renderDining(current, diningOn, twins);
     renderChart(allRows, month); renderStores(current); renderStores(current,'notes',current.byNote);
-    $('spending-breakdown').textContent = `${euros(current.gross)} Einkäufe − ${euros(current.refunds)} Rückerstattungen = ${euros(current.total)}. ${current.purchaseCount ? `Ø ${euros(current.average)} pro Einkauf.` : ''}`;
+    $('spending-breakdown').textContent = `${euros(current.gross)} Einkäufe${current.dining.count ? ` + ${euros(current.dining.total)} Restaurant/Café/Bar` : ''} − ${euros(current.refunds)} Rückerstattungen = ${euros(current.total)}. ${current.purchaseCount ? `Ø ${euros(current.average)} pro Einkauf.` : ''}`;
     const list = $('purchase-list'); list.replaceChildren();
-    if (!current.count && !none) list.append(node('li', 'Für diese Person und diesen Zeitraum gibt es keine Einträge.', 'empty'));
-    const twins = possibleDuplicates(filterPurchases(allRows, period()));
+    if (!shopping.length && !none) list.append(node('li', current.dining.count ? 'Keine Einkäufe in diesem Zeitraum. Restaurant, Café und Bar stehen in der eigenen Übersicht.' : 'Für diese Person und diesen Zeitraum gibt es keine Einträge.', 'empty'));
     /* Jede Zeile (2.160): oben Betrag und Kaufdatum wie bisher. Ein Tipp auf die Zeile oder den Pfeil klappt darunter die Produkte dieses
        Einkaufs auf (die bei „Einkauf beenden“ abgehakten Artikel); es ist immer nur ein Einkauf aufgeklappt. „Bearbeiten“ öffnet die Maske. */
-    if (expanded && !current.list.some(entry => entry.id === expanded)) expanded = '';
-    for (const entry of current.list) {
+    if (expanded && !shopping.some(entry => entry.id === expanded)) expanded = '';
+    for (const entry of shopping) {
       const li = node('li', undefined, 'spend-item'), line = node('div', undefined, 'spend-line'), open = button(undefined, () => toggle(li), 'spend-row'), copy = node('span', undefined, 'spend-copy');
       li.dataset.id = entry.id;
       const products = Array.isArray(entry.items) ? entry.items : [];
-      const store = storeNameOf(entry, shops), buyer = buyerNameOf(entry, members()), date = entry.date === today() ? 'Heute' : entry.date.slice(0, 4) === today().slice(0, 4) ? dayLabel(entry.date) : shortDate(entry.date);
+      const store = storeNameOf(entry, shops), buyer = buyerNameOf(entry, members()), date = dateText(entry.date);
       copy.append(node('strong', store || (entry.kind === 'refund' ? 'Rückerstattung' : 'Einkauf')), node('small', [date, buyer, entry.kind === 'refund' ? 'Rückerstattung' : '', entry.note && entry.note !== DEFAULT_NOTE ? entry.note : '', products.length ? plural(products.length, 'Produkt', 'Produkte').replace(' ', '\u00a0') : '', twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
       const value = purchaseValue(entry), amount = node('span', euros(value), `spend-amount${entry.kind === 'refund' ? ' refund-amount' : ''}`), arrow = svgIcon('down');
       arrow.classList.add('spend-arrow');

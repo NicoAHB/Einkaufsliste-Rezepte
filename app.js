@@ -57,7 +57,7 @@ import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.j
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
-import { budgetStatus, dayLabel as spendDay, duplicatePurchase, formatAmount, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
@@ -602,6 +602,7 @@ function render() {
   $('#open-products').disabled = !ready;
   $('#open-pantry').disabled = !ready;
   $('#add-purchase').disabled = !ready; $('#spending-first').disabled = !ready; $('#spending-members').disabled = !ready;
+  $('#add-dining').disabled = !ready; $('#dining-budget').disabled = !ready;
 }
 function describeStoreChip(chip, id, label, selected) {
   chip.dataset.id = id; chip.setAttribute('aria-label', label);
@@ -3819,9 +3820,10 @@ function budgetNote(total) {
   const status = budgetStatus(total, budgetCents());
   return !status || status.level === 'ok' ? '' : status.level === 'over' ? ` · Budget um ${euros(-status.left)} überschritten` : ` · ${status.percent} % des Budgets verbraucht`;
 }
-// Summe des Monats nach dem Speichern eines Betrags (beim Ändern ohne den alten Betrag).
-const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter(row => monthOf(row.date) === month && row.id !== replacing?.id).reduce((sum, row) => sum + purchaseValue(row), 0) + cents;
-function renderBudget(spent) {
+// Summe des Monats nach dem Speichern eines Betrags (beim Ändern ohne den alten Betrag). Restaurant/Café/Bar nur, wenn es zum Budget zählt (2.170).
+const monthTotalWith = (month, cents, replacing = null) => purchaseRows().filter(row => monthOf(row.date) === month && row.id !== replacing?.id && (diningCountsNow() || !isDining(row))).reduce((sum, row) => sum + purchaseValue(row), 0) + cents;
+const diningCountsNow = () => diningCounts(state.budgets);
+function renderBudget(spent, dining = null) {
   const box = $('#spending-budget'), budget = budgetCents(), status = budgetStatus(spent, budget);
   box.replaceChildren();
   if (!status) { box.append(element('p', 'Noch kein Monatsbudget. Lege fest, wie viel ihr im Monat ausgeben wollt; die App zeigt dann, wie viel noch übrig ist.', 'hint empty-budget-text'), button('Monatsbudget festlegen', openBudget, 'text-button')); box.classList.add('empty-budget'); return; }
@@ -3834,6 +3836,8 @@ function renderBudget(spent) {
   bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.min(100, status.percent)));
   bar.setAttribute('aria-label', `Budget zu ${status.percent} Prozent verbraucht`);
   box.append(head, bar);
+  // Restaurant/Café/Bar ohne Haken „Zählt zum Monatsbudget“ (2.170): sagen, was herausgerechnet ist
+  if (dining?.total && !dining.counts) box.append(element('small', `Ohne Restaurant/Café/Bar (${euros(dining.total)}): zählt nicht zum Budget`, 'spend-budget-dining'));
 }
 function openBudget() {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -3865,6 +3869,7 @@ function renderSpending() {
       $('#identity').textContent = own.name; updateSaveButtons();
     } catch { /* Bei vollem Speicher bleibt die lesbare Ausgabenansicht benutzbar. */ }
   }
+  $('#dining-budget').checked = diningCountsNow();
   spendingView?.render();
 }
 function purchaseStatus(text, fraction) {
@@ -3930,7 +3935,8 @@ function duplicateWarning(fields, ignoreId, how) {
   if (duplicateWarned === key) { duplicateWarned = ''; return; }
   duplicateWarned = key;
   const store = storeNameOf(twin, orderedStores(state.stores));
-  throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein Einkauf über ${euros(twin.cents)}${store ? ` bei ${store}` : ''}${twin.buyerId ? ` (von ${buyerNameOf(twin, state.members)})` : ''}. War es ein zweiter Einkauf, ${how} noch einmal.`);
+  const what = isDining(twin) ? 'Besuch' : 'Einkauf';
+  throw new Error(`Möglicherweise doppelt: Am ${spendDay(twin.date)} steht schon ein ${what} über ${euros(twin.cents)}${store ? ` ${isDining(twin) ? 'in' : 'bei'} ${store}` : ''}${twin.buyerId ? ` (von ${buyerNameOf(twin, state.members)})` : ''}. War es ein zweiter ${what}, ${how} noch einmal.`);
 }
 function savePurchase() {
   const form = $('#purchase-form'), id = form.elements.rowId.value, editing = purchaseEditing, storeId = form.elements.storeId.value;
@@ -3959,6 +3965,81 @@ function savePurchase() {
   const notice = `${euros(purchaseValue(effective))} unter Ausgaben gespeichert${budgetNote(monthTotalWith(monthOf(effective.date), purchaseValue(effective), current))}`;
   if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
   commit(ops, notice); spendingView.reveal(effective); renderSpending(); $('#purchase-dialog').close();
+}
+
+/* ---------- Restaurant/Café/Bar (2.170) ---------- */
+// Auswärts essen und trinken mit wenigen Tipps: Art (Restaurant ist vorgewählt), Betrag, auf Wunsch das Lokal (zuletzt besuchte zum Antippen).
+// Datum, Uhrzeit und die eigene Person sind vorbelegt. Gespeichert wird eine normale Ausgabe mit `dining`; der Haken „Zählt zum Monatsbudget“
+// unter „Ausgaben“ entscheidet für die ganze Familie, ob diese Beträge vom Budget abgehen. In der Übersicht stehen sie immer.
+let diningScope = '', diningEditing = null;
+const clockNow = () => { const now = new Date(); return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; };
+function renderDiningPlaces() {
+  const form = $('#dining-form'), box = $('#dining-places'), places = diningPlaces(purchaseRows()), typed = form.elements.place.value.trim().toLocaleLowerCase('de');
+  box.replaceChildren(); box.hidden = !places.length;
+  for (const place of places) {
+    const chip = button(place.name, () => {
+      form.elements.place.value = place.name; form.elements.kind.value = place.kind;
+      renderDiningPlaces(); refreshDirty(form);
+    }, 'chip dining-place');
+    chip.setAttribute('aria-pressed', String(place.name.toLocaleLowerCase('de') === typed));
+    box.append(chip);
+  }
+}
+function openDining(id = '') {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  const row = id ? purchaseRows().find(entry => entry.id === id) : null;
+  if (id && !row) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  const form = $('#dining-form');
+  form.reset(); message(); duplicateWarned = '';
+  diningEditing = row ? clone(row) : null; diningScope = namespace();
+  form.elements.rowId.value = row?.id || '';
+  form.elements.kind.value = row ? diningKind(row).id : 'restaurant';
+  form.elements.amount.value = row ? formatAmount(row.cents) : '';
+  form.elements.place.value = row?.storeName || '';
+  form.elements.date.value = row?.date || isoDate();
+  form.elements.time.value = row ? row.time || '' : clockNow();
+  spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : spendingView.defaultBuyer(), row?.buyerName || '');
+  renderDiningPlaces();
+  $('#dining-budget-note').textContent = diningCountsNow() ? 'Zählt zum Monatsbudget.' : 'Zählt nicht zum Monatsbudget (Haken unter „Ausgaben“). In der Übersicht „Restaurant/Café/Bar“ steht der Betrag trotzdem.';
+  $('#dining-title').textContent = row ? 'Restaurant/Café/Bar bearbeiten' : DINING_LABEL;
+  $('#dining-delete').hidden = !row;
+  $('#dining-dialog').showModal();
+  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#dining-save'), $('#dining-plus')] }); else disarmDirty(form);
+  // Wie bei „Ausgabe eintragen“: Die Tastatur öffnet sich erst, wenn das Betragsfeld angetippt wird.
+  $('#dining-dialog [data-close]').focus({ preventScroll: true });
+}
+function saveDining() {
+  const form = $('#dining-form'), id = form.elements.rowId.value, editing = diningEditing;
+  if (diningScope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte den Eintrag erneut öffnen.');
+  const current = id ? purchaseRows().find(row => row.id === id) : null;
+  if (id && !current) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
+  const buyer = purchaseBuyer(form.elements.buyerId.value, editing);
+  const fields = diningFields({ amount: form.elements.amount.value, date: form.elements.date.value, time: form.elements.time.value, kind: form.elements.kind.value,
+    place: form.elements.place.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate());
+  let patch = fields;
+  if (editing) {
+    const prior = { storeName: '', time: '', note: '', source: 'hand', ...editing, buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
+    patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => key !== 'buyerName' && value !== prior[key]));
+    if (fields.buyerId !== prior.buyerId) patch.buyerName = fields.buyerName;
+    if (!Object.keys(patch).length) { $('#dining-dialog').close(); return; }
+  }
+  const effective = { ...current, ...patch };
+  duplicateWarning(effective, id, editing ? 'tippe auf „Änderungen speichern“' : 'tippe auf „Speichern“');
+  const ops = [...(buyer.change && effective.buyerId === buyer.id ? [nextOp('members', buyer.id, buyer.change.patch)] : []), nextOp('purchases', id || uid(), patch)];
+  const where = effective.storeName ? ` · ${effective.storeName}` : '';
+  const notice = `${euros(effective.cents)} ${diningKind(effective).label}${where} gespeichert${diningCountsNow() ? budgetNote(monthTotalWith(monthOf(effective.date), effective.cents, current)) : ' · zählt nicht zum Budget'}`;
+  if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
+  commit(ops, notice); spendingView.reveal(effective); renderSpending(); $('#dining-dialog').close();
+}
+// Eine Ausgabe löschen (Einkauf oder Restaurant/Café/Bar): in den Papierkorb, unten „Rückgängig“.
+function dropPurchase(row) {
+  removeRows('purchases', [row.id]); const scope = namespace();
+  showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([row.id], scope, 'purchases'), { trash: true });
+}
+function setDiningBudget(counts) {
+  if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
+  if (counts === diningCountsNow()) return;
+  commit([nextOp('budgets', 'dining', { cents: 0, counts })], counts ? 'Restaurant/Café/Bar zählt jetzt zum Monatsbudget' : 'Restaurant/Café/Bar zählt nicht mehr zum Monatsbudget');
 }
 
 /* ---------- Vorrat ---------- */
@@ -4540,7 +4621,8 @@ pantryBuyer = mountPantryBuy({
 spendingView = mountSpending({
   getData: () => ({ purchases: categorizedPurchases(state), members: state.members || [], stores: state.stores }), getScope: namespace,
   getMonth: () => spendMonth, setMonth: month => { spendMonth = month; }, today: isoDate, getOwn: ownExpenseMember,
-  onEdit: id => guard(() => openPurchase(id)), onBudget: renderBudget, onMessage: showNotice, productImages: () => imagesOn(),
+  onEdit: id => guard(() => (isDining(purchaseRows().find(row => row.id === id)) ? openDining(id) : openPurchase(id))), onBudget: renderBudget, onMessage: showNotice, productImages: () => imagesOn(),
+  getDiningCounts: diningCountsNow,
   onExport: (csv, name) => deliverFile(new File([csv], name, { type: 'text/csv;charset=utf-8' })),
   onMemberSave: (id, name) => {
     if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
@@ -5018,6 +5100,28 @@ $('#finish-form').addEventListener('submit', event => {
 });
 $('#add-purchase').addEventListener('click', () => guard(() => openPurchase()));
 $('#spending-first').addEventListener('click', () => guard(() => openPurchase()));
+$('#add-dining').addEventListener('click', () => guard(() => openDining()));
+$('#dining-budget').addEventListener('change', event => {
+  const box = event.target;
+  try { setDiningBudget(box.checked); } catch (error) { box.checked = diningCountsNow(); message(error.message); }
+});
+let diningPlus = 0;
+$('#dining-plus').addEventListener('pointerdown', () => { diningPlus = Date.now(); });
+$('#dining-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (Date.now() - diningPlus < 1500) document.activeElement?.blur?.();
+  diningPlus = 0; guard(saveDining);
+});
+$('#dining-form').elements.place.addEventListener('input', renderDiningPlaces);
+$('#dining-delete').addEventListener('click', () => guard(async () => {
+  const id = $('#dining-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
+  if (!row) { $('#dining-dialog').close(); return; }
+  const what = `${euros(row.cents)}${row.storeName ? ` in ${row.storeName}` : ''} vom ${new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE')}`;
+  if (!await ask({ title: `${diningKind(row).label}-Besuch löschen?`, message: `${what} wird gelöscht. 14 Tage lang lässt er sich unter „Kürzlich gelöscht“ zurückholen.`, confirmLabel: 'Löschen', danger: true })) return;
+  if (!purchaseRows().some(entry => entry.id === id)) { $('#dining-dialog').close(); return; }
+  $('#dining-dialog').close(); dropPurchase(row);
+}));
+$('#dining-dialog').addEventListener('close', () => { duplicateWarned = ''; });
 $('#budget-form').addEventListener('submit', event => { event.preventDefault(); guard(saveBudget); });
 $('#budget-remove').addEventListener('click', () => guard(() => { $('#budget-dialog').close(); commit([nextOp('budgets', 'monthly', { cents: 0 })], 'Monatsbudget entfernt'); }));
 // Das „+“ im Betragsfeld: Ein Tipp darauf fügt den Einkauf hinzu und schließt die Tastatur (auch wenn etwas fehlt, damit die Meldung nicht verdeckt wird).
@@ -5031,9 +5135,12 @@ $('#purchase-form').addEventListener('submit', event => {
 // Einträge wie Artikel löschen: Zeile lange halten und nach rechts in den roten Mülleimer schieben (statt nachträglich zu bearbeiten).
 dragDelete($('#purchase-list'), $('#trash-zone'), id => guard(() => {
   const row = purchaseRows().find(entry => entry.id === id);
-  if (!row) return;
-  removeRows('purchases', [id]); const scope = namespace(); showNotice(`${euros(row.cents)} gelöscht`, () => undoDelete([id], scope, 'purchases'), { trash: true });
+  if (row) dropPurchase(row);
 }), '.spend-item[data-id]');
+dragDelete($('#spending-dining-list'), $('#trash-zone'), id => guard(() => {
+  const row = purchaseRows().find(entry => entry.id === id);
+  if (row) dropPurchase(row);
+}), '.dining-item[data-id]');
 $('#purchase-form').elements.amount.addEventListener('input', () => { purchaseSource = 'hand'; });
 $('#purchase-form').elements.images.addEventListener('change', event => guard(() => readPurchasePhoto([...event.target.files])));
 $('#purchase-delete').addEventListener('click', () => guard(async () => {

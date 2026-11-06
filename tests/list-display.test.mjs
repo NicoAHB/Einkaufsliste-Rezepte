@@ -1,7 +1,7 @@
 // 2.152: Festes Listensymbol und Anzeige im Reiter (Nur Symbol, Nur Name, Symbol und Name)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emptyData, merge, operation, validate } from '../data.js';
+import { emptyData, merge, operation, validate, SCHEMA_REV } from '../data.js';
 import { DISPLAY_MODES, REGULAR_SYMBOLS, NOTES_SYMBOL, displayModeOf, fixedSymbol, symbolName } from '../list-symbols.js';
 import { validatePrivateList } from '../private-list.js';
 
@@ -94,7 +94,7 @@ test('Anzeige im Reiter wird geprüft und schützt vor älteren App-Versionen (R
   const broken = structuredClone(shown); row(broken).displayMode = 'gross';
   assert.throws(() => validate(broken), /Ungültige Anzeige im Reiter/);
   const legacy = structuredClone(shown); row(legacy).displayMode = null; assert.doesNotThrow(() => validate(legacy));
-  const old = structuredClone(shown); old.sync.minRev = 19;
+  const old = structuredClone(shown); old.sync.minRev = SCHEMA_REV + 1;
   assert.throws(() => validate(old), /App-Version ist für die Daten zu alt/);
 });
 

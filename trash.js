@@ -80,7 +80,7 @@ export function trashEntries(data, now = Date.now()) {
   for (const row of data.purchases || []) {
     if (!recent(row, since) || !Number.isSafeInteger(row.cents)) continue;
     const store = row.storeId ? storeLabel(row.storeId) : row.storeName || '';
-    entries.push({ kind: 'purchases', collection: 'purchases', id: row.id, title: `${row.kind === 'refund' ? '− ' : ''}${euros(row.cents)}${store ? ` · ${store}` : ''}`, detail: [row.date ? dayLabel(row.date) : '', row.buyerName || '', row.note || ''].filter(Boolean).join(' · '), deletedAt: row.deletedAt });
+    entries.push({ kind: 'purchases', collection: 'purchases', id: row.id, title: `${row.kind === 'refund' ? '− ' : ''}${euros(row.cents)}${store ? ` · ${store}` : ''}`, detail: [row.date ? dayLabel(row.date) : '', row.dining ? 'Restaurant/Café/Bar' : '', row.buyerName || '', row.note || ''].filter(Boolean).join(' · '), deletedAt: row.deletedAt });
   }
   const itemCount = new Map();
   for (const row of data.items || []) if (!row.deletedAt && !row._planEmpty) itemCount.set(row.storeId, (itemCount.get(row.storeId) || 0) + 1);
