@@ -3871,6 +3871,8 @@ function renderSpending() {
   }
   const diningOn = diningCountsNow(); $('#dining-budget').checked = diningOn;
   $('#dining-budget-state').textContent = diningOn ? 'Ja: wird vom Monatsbudget abgezogen' : 'Nein: Monatsbudget bleibt unberührt, Beträge nur in der Übersicht';
+  // Zugeklappt steht der Stand unauffällig in der Klappleiste (2.172)
+  $('#dining-budget-short').textContent = diningOn ? 'Ja' : 'Nein'; $('#dining-budget-details > summary').dataset.counts = String(diningOn);
   spendingView?.render();
 }
 function purchaseStatus(text, fraction) {
