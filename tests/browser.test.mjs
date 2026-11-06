@@ -12543,7 +12543,11 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.textContent('#dining-last-rating'), 'Zuletzt: ★★★★☆ · Pizza top, Bedienung langsam');
     await page.fill('#dining-form input[name=place]', 'PIZZERIA roma'); assert.equal(await page.locator('#dining-last-rating').isVisible(), true, 'ohne Groß-/Kleinschreibung');
     // 2.177: Getränke werden genauso bewertet; beim Wechsel der Art bleiben Sterne und Hinweis
+    assert.equal(await page.getAttribute('#dining-form input[name=ratingNote]', 'placeholder'), 'z. B. Pizza top, Bedienung langsam');
     await page.locator('.dining-kind', { hasText: 'Getränke' }).tap();
+    // 2.179: Beispiele passend zu Getränken, kein „Pizza top“
+    assert.equal(await page.getAttribute('#dining-form input[name=ratingNote]', 'placeholder'), 'z. B. Cappuccino top, gemütliche Sessel');
+    assert.equal(await page.getAttribute('#dining-form input[name=place]', 'placeholder'), 'z. B. Café Lotte');
     assert.equal(await page.locator('#dining-rating').isVisible(), true); assert.equal(await page.locator('#dining-last-rating').isVisible(), true);
     await page.fill('#dining-form input[name=place]', 'Café Lotte'); assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'Café Lotte noch nie bewertet');
     await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');
