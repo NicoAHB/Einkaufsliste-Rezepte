@@ -2,6 +2,14 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.169: Kein doppelter Rahmen mehr um Knöpfe
+
+**Nach einem Tipp kein zweiter Ring.** Setzte die App den Fokus selbst auf einen Knopf, zeichnete Safari auf dem iPhone um dessen Rahmen einen zweiten, grünen Ring, z. B. um **Abbrechen** in Rückfragen wie „Artikel endgültig löschen?“, um das × in manchen Fenstern (Ausgabe, Familienmitglieder, Vorrat, Packungsgröße) oder um die Auswahlkarten beim Symbol. Jetzt gilt überall:
+- Nach einem Tipp oder Klick zeichnet die App keinen Fokusring. Der Fokus bleibt, wo er war: In Rückfragen zum Löschen liegt er weiter auf **Abbrechen**, damit ein versehentliches Enter nichts löscht.
+- Mit der Tastatur (Tab, Pfeiltasten usw.) ist der Ring wie bisher zu sehen, bis wieder getippt wird. Tippen in ein Textfeld, auch auf der Bildschirmtastatur, schaltet ihn nicht ein.
+
+Offline-Paket `einkauf-shell-v181`.
+
 ## Neu in Version 2.168: Ziehen und zurückschieben bricht ab
 
 **„Verschieben nach“ nur noch nach Halten und Loslassen.** Bisher öffnete sich das Fenster auch, wenn man eine Zeile lange hielt, ein Stück zog (z. B. Richtung Geschäfteleiste) und sie dann wieder an ihren Platz zurückschob, weil nur die Stelle beim Loslassen zählte. Jetzt gilt: Sobald die Zeile einmal spürbar bewegt wurde, passiert beim Loslassen ohne Ziel **nichts**, auch an der Ausgangsstelle; die Zeile springt nur an ihren Platz zurück.
