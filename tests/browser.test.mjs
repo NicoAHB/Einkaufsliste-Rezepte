@@ -10896,7 +10896,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
-    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht', 'Häufig gekocht', 'Meiste Zutaten im Vorrat']);
+    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht', 'Häufig gekocht', 'Meiste Zutaten vorhanden']);
     assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
     // Zuletzt hinzugefügt: strikt nach dem Anlegen, auch vor Favoriten; die Karte sagt, wann
     await page.selectOption('#recipe-sort', 'new');
@@ -12330,7 +12330,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.181: Sortierung „Meiste Zutaten im Vorrat“ – oben das vollständigste Rezept, unten das, bei dem am meisten fehlt; folgt dem Vorrat sofort', async () => {
+  test('2.181/2.185: Sortierung „Meiste Zutaten vorhanden“ – oben das vollständigste Rezept, unten das, bei dem am meisten fehlt; folgt dem Vorrat sofort', async () => {
     const data = bananaData175(data => {
       const stamp = '2026-10-29T09:00:00.000Z', add = (id, name, list) => { data.recipes.push({ ...demo.recipes[0], id, name, servings: 4, tags: [], favorite: false, photoId: null });
         data.ingredients.push(...list.map(([n, q, u], i) => ({ ...demo.ingredients[0], id: `${id}-${i}`, recipeId: id, name: n, quantity: q, unit: u, createdAt: stamp, updatedAt: stamp }))); };
@@ -12345,7 +12345,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents();
     const mine = async () => (await titles()).filter(title => ['Bananenbrot', 'Pfannkuchen', 'Linsencurry', 'Butterbrot', 'Salzwasser'].includes(title));
     await page.selectOption('#recipe-sort', 'stock');
-    assert.equal(await page.textContent('#recipe-sort-label'), 'Meiste Zutaten im Vorrat');
+    // 2.185: Auf der Pille die Kurzform; Anzahl und Sortierung bleiben in einer Zeile
+    assert.equal(await page.textContent('#recipe-sort-label'), 'Zutaten vorhanden');
+    const row = await page.evaluate(() => ['#recipe-count', '.recipe-sort-face'].map(selector => Math.round(document.querySelector(selector).getBoundingClientRect().top + document.querySelector(selector).getBoundingClientRect().height / 2)));
+    assert.ok(Math.abs(row[0] - row[1]) <= 2, `eine Zeile: ${row}`);
     // Butterbrot 1/1 (Salz zählt nicht), Bananenbrot 6/7, Pfannkuchen 2/3, Linsencurry 0/3; ohne mitgezählte Zutaten (nur Wasser, Salz) ganz unten
     assert.deepEqual(await mine(), ['Butterbrot', 'Bananenbrot', 'Pfannkuchen', 'Linsencurry', 'Salzwasser']);
     // Folgt dem Vorrat sofort: Butter aufgebraucht

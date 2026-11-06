@@ -96,7 +96,7 @@ const RECIPE_ORDER = {
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
   cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b),
   often: (a, b) => byOften(a, b),   // 2.166: am häufigsten gekochte zuerst
-  stock: byTitle   // 2.181: „Meiste Zutaten im Vorrat“; die eigentliche Reihenfolge braucht den Vorrat und entsteht in renderRecipes
+  stock: byTitle   // 2.181: „Meiste Zutaten vorhanden“ (bis 2.184 „… im Vorrat“); die eigentliche Reihenfolge braucht den Vorrat und entsteht in renderRecipes
 };
 let recipeSort = (() => { try { const value = localStorage.getItem(RECIPE_SORT_KEY); return Object.hasOwn(RECIPE_ORDER, value) ? value : 'name'; } catch { return 'name'; } })();
 let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
@@ -1509,7 +1509,7 @@ function renderRecipes() {
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
   let order = RECIPE_ORDER[recipeSort];
-  // „Meiste Zutaten im Vorrat“ (2.181): oben das Rezept mit dem größten Anteil vorhandener Zutaten, unten das, bei dem am meisten fehlt
+  // „Meiste Zutaten vorhanden“ (2.181): oben das Rezept mit dem größten Anteil vorhandener Zutaten, unten das, bei dem am meisten fehlt
   if (recipeSort === 'stock') {
     const index = indexNames(namesFrom({ pantry: state.pantry })), stats = new Map(recipes.map(recipe => [recipe.id, stockCompleteness(ingredientsOf(recipe.id), index)]));
     order = (a, b) => byCompleteness(stats.get(a.id), stats.get(b.id)) || byTitle(a, b);
@@ -1522,7 +1522,9 @@ function renderRecipes() {
   for (const recipe of shown) grid.append(recipeCard(recipe, ingredientsOf(recipe.id), { sort: recipeSort }));
   // Anzahl und Sortierung über der Liste; die Anzahl sagt bei Suche oder Filter, wie viele von allen zu sehen sind.
   $('#recipe-toolbar').hidden = !recipes.length; $('#recipe-sort').value = recipeSort;
-  $('#recipe-sort-label').textContent = $('#recipe-sort').selectedOptions[0]?.textContent || 'A–Z';
+  // Auf der Pille steht bei langen Namen eine Kurzform (2.185: „Zutaten vorhanden“), damit Anzahl und Sortierung in eine Zeile passen
+  const sortOption = $('#recipe-sort').selectedOptions[0];
+  $('#recipe-sort-label').textContent = sortOption?.dataset.short || sortOption?.textContent || 'A–Z';
   $('#recipe-count').textContent = shown.length === recipes.length ? `${recipes.length} ${recipes.length === 1 ? 'Rezept' : 'Rezepte'}` : `${shown.length} von ${recipes.length} ${recipes.length === 1 ? 'Rezept' : 'Rezepten'}`;
   refreshRecipeStock();
   if (!grid.children.length) grid.append(element('p', recipes.length ? 'Kein passendes Rezept. Ändere die Suche oder den Filter.' : 'Noch kein Rezept. Importiere eines aus einem Link oder Screenshot oder lege es von Hand an.', 'empty'));

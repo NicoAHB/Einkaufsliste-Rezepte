@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.185: Kürzere Sortier-Beschriftung
+
+Die Sortierung der Rezepte nach Vorrat heißt jetzt **Meiste Zutaten vorhanden**; auf der Pille über der Liste steht kurz **Zutaten vorhanden**. So passen die Anzahl der Rezepte und die Sortierung wieder in eine Zeile (bisher rutschte „Meiste Zutaten im Vorrat“ in eine eigene Zeile). Offline-Paket `einkauf-shell-v197`.
+
 ## Neu in Version 2.184: Ausgaben übersichtlicher
 
 **Filter in einer Karte.** Unter dem Monat stehen **Zeitraum wählen** (mit Kalender) und **Personen verwalten** (mit Personen-Symbol) jetzt gleich gestaltet nebeneinander in einer Karte, darunter nach einer Linie die Zeile **Person** mit **Alle** und den Namen, bündig mit den Knöpfen. Auf sehr schmalen Geräten stehen die beiden Knöpfe untereinander.
