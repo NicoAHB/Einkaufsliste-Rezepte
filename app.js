@@ -1587,7 +1587,7 @@ async function usedUpIngredient(row) {
     lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
     itemOps = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
   }
-  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deiner Einkaufsliste`); return; }
+  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deinem Einkaufszettel`); return; }
   commit([...pantryOps, ...itemOps]);
   const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
   // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), der neu angelegte Artikel verschwindet wieder von der Liste
@@ -1595,7 +1595,9 @@ async function usedUpIngredient(row) {
     const old = before.find(entry => entry.id === id);
     return { id, patch: Object.fromEntries(Object.keys(patch).filter(key => key !== 'productGroupVersion').map(key => [key, old?.[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
   });
-  showNotice(added.length ? `Auf die Einkaufsliste gesetzt: ${product.name}` : `${product.name} steht schon auf deiner Einkaufsliste – aus dem Vorrat genommen`, () => guard(() => {
+  // Die Meldung nennt beides, was passiert ist (2.177): aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt (bzw. stand schon darauf)
+  const fromStock = pantryOps.length ? ' aus dem Vorrat entfernt und' : '';
+  showNotice(added.length ? `${product.name}${fromStock} auf den Einkaufszettel gesetzt` : `${product.name}${fromStock ? ' aus dem Vorrat entfernt –' : ''} steht schon auf deinem Einkaufszettel`, () => guard(() => {
     if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
     commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
     showNotice(`${product.name} ist wieder im Vorrat${added.length ? ' und nicht mehr auf der Einkaufsliste' : ''}`);

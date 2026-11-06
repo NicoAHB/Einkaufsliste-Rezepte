@@ -12228,7 +12228,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.recipe-stock-track').getAttribute('aria-valuenow'), '5');
     assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'bleibt aufgeklappt');
     assert.ok((await missing()).includes('200 g Mehl')); assert.ok(!(await have()).includes('200 g Mehl'));
-    assert.equal(await page.textContent('#notice-text'), 'Auf die Einkaufsliste gesetzt: Mehl'); assert.equal(await page.isVisible('#notice-undo'), true);
+    assert.equal(await page.textContent('#notice-text'), 'Mehl aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt', 'die Meldung nennt beides'); assert.equal(await page.isVisible('#notice-undo'), true);
     // Rückgängig: alles wie vorher
     await page.click('#notice-undo');
     assert.deepEqual(await flour(), { pantry: [true], items: [] });
@@ -12258,7 +12258,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     let saved = await storedDemo(page);
     assert.equal(openRows(saved, 'Butter').length, 1); assert.equal(openRows(saved, 'Butter')[0].quantity, 250, 'die vorhandene Zeile bleibt unverändert');
     assert.equal(saved.pantry.find(row => row.name === 'Butter').available, false);
-    assert.match(await page.textContent('#notice-text'), /^Butter steht schon auf deiner Einkaufsliste/);
+    assert.equal(await page.textContent('#notice-text'), 'Butter aus dem Vorrat entfernt – steht schon auf deinem Einkaufszettel');
     assert.match(await toggle.textContent(), /5 von 7/);
     await page.click('#notice-undo'); saved = await storedDemo(page);
     assert.equal(saved.pantry.find(row => row.name === 'Butter').available, true); assert.equal(openRows(saved, 'Butter').length, 1, 'Rückgängig löscht die vorhandene Zeile nicht');
