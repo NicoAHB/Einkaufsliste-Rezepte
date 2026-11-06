@@ -7294,7 +7294,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('2.126: vollständig durch vorhandene Artikel abgedecktes Gericht bleibt auch nach erneuter Übernahme eindeutig zugeordnet',async()=>{
     const {data}=tomatoData2125();Object.assign(data.items[0],{quantity:4,unit:'Stück'});
-    const {ctx,page,problems}=await filterContext(data);await open(page);const original=(await storedDemo(page)).items;await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();await page.click('#meal-save-shopping');
+    const {ctx,page,problems}=await filterContext(data);await open(page);const original=(await storedDemo(page)).items;await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();
+    // 2.182: Kommt nichts auf den Einkaufszettel, gibt es nur „Speichern“
+    assert.equal(await page.locator('#meal-save-shopping').isHidden(),true);await page.click('#meal-save');
     await page.locator('.day.today .meal .link-button').click();await sheetOpen(page);await page.locator('#plan-recipe-content').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(page);await page.click('#transfer-form button[type=submit]');await page.waitForSelector('#transfer-dialog',{state:'hidden'});
     const transferred=await storedDemo(page);assert.deepEqual(transferred.meals[0].listedParts,[]);assert.equal(transferred.meals[0].listedUntracked,false);assert.deepEqual(transferred.items,original);
     await goTab(page,'plan');await page.getByRole('button',{name:'Ratatouille aus dem Plan entfernen',exact:true}).click();await sheetOpen(page);
@@ -7308,7 +7310,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const {ctx,page,problems}=await filterContext(data);await open(page);const before=(await storedDemo(page)).items;
     if(route==='Speichern mit Einkauf') {
       await openMealPicker(page);await page.locator('#recipe-pick [data-value=ratatouille2125]').click();
-      assert.match(await page.textContent('#meal-save-shopping small'),/0 noch auf den Einkaufszettel/);await page.click('#meal-save-shopping');
+      assert.match(await page.textContent('#meal-save-shopping small'),/0 noch auf den Einkaufszettel/);
+      // 2.182: nichts mehr hinzuzufügen – der zweite Knopf fällt weg, „Speichern“ sagt warum
+      assert.equal(await page.locator('#meal-save-shopping').isHidden(),true);assert.equal(await page.textContent('#meal-save-note'),'Fehlendes steht schon auf dem Einkaufszettel');await page.click('#meal-save');
     } else if(route==='Wocheneinkauf') {
       await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);
       assert.equal(await page.locator('#week-ingredients input:checked').count(),0);assert.match(await page.textContent('#week-ingredients'),/Bereits auf dem Einkaufszettel/);
@@ -7366,7 +7370,9 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.locator('#recipe-pick [data-value=banana-bread2124]').click();
     assert.equal(await page.inputValue('#meal-form input[name=servings]'),'10');
     assert.match(await page.textContent('#meal-save-shopping small'),new RegExp(`${remaining} noch auf den Einkaufszettel`));
-    await page.click('#meal-save-shopping');await page.waitForSelector('#meal-dialog',{state:'hidden'});
+    // 2.182: Ohne echte Fehlmenge gibt es nur „Speichern“
+    assert.equal(await page.locator('#meal-save-shopping').isVisible(),Boolean(remaining));
+    await page.click(remaining?'#meal-save-shopping':'#meal-save');await page.waitForSelector('#meal-dialog',{state:'hidden'});
     const saved=await storedDemo(page),items=active(saved.items);assert.equal(items.length,1);assert.equal(items[0].id,'banana-manual2124');assert.equal(items[0].name,'Bananen');
     assert.equal(items[0].quantity,unit==='Bund'?1:3);assert.equal(items[0].unit,unit);assert.equal(saved.ingredients[0].name,'Reife Bananen');
     if(!remaining)assert.deepEqual(saved.items,before,'ausreichende bzw. unbekannte Packungsgrößen werden nicht verdoppelt');
@@ -8801,7 +8807,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await pick277(page,'Tomaten-Pasta','4');await page.click('#meal-save-shopping');let data=await data277(page);assert.equal(data.meals.length,2);
     let pasta=data.meals.find(row=>row.recipeId==='recipe-pasta');assert.equal(pasta.listedServings,4);assert.ok(pasta.listedParts.length>0);assert.equal(data.meals.find(row=>row.recipeId==='recipe-curry').listedServings,undefined);
     assert.equal(data.items.some(row=>row.name==='Reis'),false);assert.equal(data.items.find(row=>row.name==='Nudeln').quantity,400);
-    await page.getByRole('button',{name:'Tomaten-Pasta ändern',exact:true}).click();await sheetOpen(page);await page.click('#meal-save-shopping');data=await data277(page);assert.equal(data.items.find(row=>row.name==='Nudeln').quantity,400);
+    // 2.182: Unverändert ist schon alles übernommen – nur „Speichern“
+    await page.getByRole('button',{name:'Tomaten-Pasta ändern',exact:true}).click();await sheetOpen(page);assert.equal(await page.locator('#meal-save-shopping').isHidden(),true);await page.click('#meal-save');data=await data277(page);assert.equal(data.items.find(row=>row.name==='Nudeln').quantity,400);
     await page.getByRole('button',{name:'Tomaten-Pasta ändern',exact:true}).click();await sheetOpen(page);await setMealPortions(page, '6');await page.click('#meal-save-shopping');data=await data277(page);assert.equal(data.items.find(row=>row.name==='Nudeln').quantity,600);assert.equal(data.meals.find(row=>row.recipeId==='recipe-pasta').listedServings,6);
     await page.click('#plan-shopping');await sheetOpen(page);assert.ok(!/Nudeln/.test(await page.textContent('#week-ingredients')));assert.deepEqual(problems,[]);await ctx.close();
   });

@@ -2024,7 +2024,22 @@ function renderPlan() {
     for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
     box.append(card);
   }
-  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
+  // 2.182: „Einkauf“ ist nur aktiv, wenn für die Woche wirklich etwas auf den Einkaufszettel käme; sonst ausgegraut mit dem Grund darunter
+  const shopping = weekShoppingState(days);
+  $('#plan-shopping').disabled = !ready || shopping !== 'needed';
+  $('#plan-shopping small').textContent = shopping === 'stocked' ? 'Alle Zutaten sind im Vorrat' : shopping === 'listed' ? 'Fehlendes steht schon auf dem Einkaufszettel' : 'Zutaten dieser Woche hinzufügen';
+}
+/* Gibt es für die Woche etwas einzukaufen? (2.182) Die geplanten, noch nicht gekochten Rezepte ab heute, wie im Fenster „Zutaten dieser Woche“,
+   aber mit allen Portionen (auch schon übernommene): Was im Vorrat ist oder offen auf dem Einkaufszettel steht, zählt als abgedeckt.
+   'none' = nichts geplant, 'needed' = es fehlt etwas, 'listed' = Fehlendes steht schon auf dem Zettel, 'stocked' = alles im Vorrat. */
+function weekShoppingState(days) {
+  const recipes = active(state.recipes), known = new Set(recipes.map(recipe => recipe.id));
+  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.date >= isoDate() && meal.recipeId && known.has(meal.recipeId) && !meal.done);
+  if (!meals.length) return 'none';
+  const basket = { ...weekBasket(meals, true), again: true };
+  if (weekShoppingNeeds({ meals, basket }).some(required)) return 'needed';
+  const keys = pantryKeys(state.pantry);
+  return aggregateIngredients(basket.use, recipes, active(state.ingredients)).some(row => required(row) && !inPantry(keys, row)) ? 'listed' : 'stocked';
 }
 function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);
@@ -2199,16 +2214,20 @@ function syncMealForm(changedRecipe) {
   if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
   $('#meal-save').disabled=!ready || (!recipe && choice!=='__custom');
   $('#meal-save-shopping').disabled = !recipe || !ready || form.elements.date.value < isoDate();
-  const hint=$('#meal-save-shopping small');
+  const hint=$('#meal-save-shopping small'), note=$('#meal-save-note');
   hint.hidden=!recipe;
   $('#meal-portions-down').disabled=parseQuantity(form.elements.servings.value)<=1;
+  let remaining=-1;
   if(recipe){
     const stock=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size;
     const servings=parseQuantity(form.elements.servings.value)||recipe.servings;
     const rows=aggregateIngredients([{recipeId:recipe.id,servings}],[recipe],active(state.ingredients)).filter(required);
-    const remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
+    remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
     hint.textContent=`Nur Vorrat: ${stock} ${stock===1?'Produkt fehlt':'Produkte fehlen'} · ${remaining} noch auf den Einkaufszettel`;
-  }else hint.textContent='Auf den Einkaufszettel für die gewählten Portionen';
+    // 2.182: Kommt nichts auf den Einkaufszettel (alles im Vorrat oder schon auf dem Zettel), gibt es nur „Speichern“; der Hinweis darunter sagt, warum
+    note.textContent=remaining?'Nur im Wochenplan':stock?'Fehlendes steht schon auf dem Einkaufszettel':'Alle Zutaten sind im Vorrat';
+  }else{hint.textContent='Auf den Einkaufszettel für die gewählten Portionen';note.textContent='Nur im Wochenplan';}
+  $('#meal-save-shopping').hidden=remaining===0;
 }
 function saveMeal(event) {
   event.preventDefault(); guard(() => {
@@ -2286,7 +2305,9 @@ function withMealShopping(ops,mealId) {
   const weekMeals=active(snapshot.meals).filter(row=>days.has(row.date)&&row.date>=isoDate()&&known.has(row.recipeId)&&(row.id===meal.id||!row.done));
   const takeUse=weekBasket(weekMeals).use;
   const transfer=prepareWeekParts({meals:[meal],coverageMeals:weekMeals,basket,rows,takeUse},selected,currentStore(defaultStore()),false,snapshot);
-  return {ops:[...ops,...transfer],notice:'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt'};
+  // 2.182: Nur melden, was wirklich passiert ist (kein „hinzugefügt“, wenn nichts auf den Einkaufszettel kam)
+  const added=transfer.some(op=>op.collection==='items');
+  return {ops:[...ops,...transfer],notice:added?'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt':'Gericht gespeichert · alle Zutaten sind im Vorrat oder stehen schon auf dem Einkaufszettel'};
 }
 let planAdjustment=null;
 const adjustmentSignature = id => JSON.stringify([state.meals.find(row=>row.id===id),state.items]);
