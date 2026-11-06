@@ -2,6 +2,22 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.173: Schreibweise SattPlan, Logo von NvF Digital
+
+**SattPlan.** Die App heißt jetzt in der neuen Schreibweise **SattPlan** (wie auf der Visitenkarte): im Titel, auf dem Home-Bildschirm, in der Anleitung, in Datensicherungen und PDFs. Unter **Optionen** steht der Name mit **S** und **P** in Orange.
+
+**Ein Produkt von NvF Digital.** Ganz unten unter **Optionen** steht „Ein Produkt von“ mit dem Logo von **NvF Digital** (im dunklen Erscheinungsbild auf heller Fläche).
+
+Daten, Speicherorte und die Adresse der App bleiben unverändert. Wer die App auf dem Home-Bildschirm hat, sieht den neuen Namen dort eventuell erst, nachdem sie neu hinzugefügt wurde. Offline-Paket `einkauf-shell-v185`.
+
+## Neu in Version 2.172: Haken fürs Auswärtsessen zum Aufklappen
+
+**Zugeklappt nur der Stand.** In der Karte **Restaurant/Café/Bar** steht unter dem Knopf eine schmale Zeile **Zählt zum Monatsbudget: Ja** (mit grünem Punkt) oder **Nein** (leerer Kreis). Ein Tipp darauf klappt den Haken **Auswärts essen & trinken zählt zum Monatsbudget** mit Erklärung auf, ein weiterer klappt ihn wieder zu. Beim Öffnen der App ist er zugeklappt.
+
+**Schöneres Kästchen.** Das Kästchen ist jetzt selbst gezeichnet: ein abgerundetes Quadrat mit grünem Rand, angehakt grün gefüllt mit weißem Haken. Safari auf dem iPhone zeichnete das leere Kästchen bisher als unvollständigen Kreis.
+
+Offline-Paket `einkauf-shell-v184`.
+
 ## Neu in Version 2.171: Restaurant/Café/Bar übersichtlicher, Restaurant und Getränke
 
 **Knopf und Haken in einer Karte.** Unter **Ausgaben** stehen der Knopf **Restaurant/Café/Bar** und sein Haken jetzt zusammen in einer Karte. Der Haken heißt **Auswärts essen & trinken zählt zum Monatsbudget** und steht eingerückt unter dem Knopf, damit klar ist, dass er nur fürs Auswärtsessen gilt. Darunter steht, was er gerade bewirkt: „Ja: wird vom Monatsbudget abgezogen“ oder „Nein: Monatsbudget bleibt unberührt, Beträge nur in der Übersicht“.

@@ -1,5 +1,5 @@
 /* Geräte- und Plattformdienste an einer Stelle (2.145), als Vorbereitung für eine spätere App für iOS und Android.
-   Heute läuft Sattplan als Web-App (PWA) im Browser. Eine App im App Store / Play Store wird voraussichtlich dieselben Dateien
+   Heute läuft SattPlan als Web-App (PWA) im Browser. Eine App im App Store / Play Store wird voraussichtlich dieselben Dateien
    in einer nativen Hülle ausliefern (z. B. Capacitor). Dort gibt es keinen Service Worker, Dateien werden über das Teilen-Menü
    gespeichert, Vibration heißt „Haptik“, und externe Links öffnen einen In-App-Browser.
    Für Teilen, Dateien speichern, Haptik, externe Links und den Service Worker rufen die übrigen Module diese Funktionen auf statt der

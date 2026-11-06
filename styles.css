@@ -5682,12 +5682,42 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .dining-add-copy strong { font-weight:700; color:var(--accent); overflow-wrap:anywhere }
 .dining-add-copy small { font-size:.82rem; font-weight:500; color:var(--muted) }
 .dining-add .icon.dining-add-plus { flex:none; width:22px; height:22px; color:var(--accent) }
-.dining-budget-toggle {
-  display:flex; align-items:flex-start; gap:12px; min-height:56px; margin:0; padding:12px 14px 12px 18px;
-  border-top:1px solid var(--line); color:var(--text); cursor:pointer; touch-action:manipulation
+/* Haken zum Auf- und Zuklappen (2.172): zugeklappt nur eine schmale Zeile mit dem Stand („Zählt zum Monatsbudget: Ja/Nein“), der Punkt
+   links steht in der Spalte des Kästchens. Aufgeklappt darunter das Kästchen mit Erklärung. Das Kästchen ist selbst gezeichnet (Safari auf
+   dem iPhone zeichnet ein natürliches Kästchen als halben Kreis): abgerundetes Quadrat, angehakt grün gefüllt mit weißem Haken. */
+.dining-budget-details { border-top:1px solid var(--line) }
+.dining-budget-summary {
+  display:flex; align-items:center; gap:12px; min-height:46px; padding:6px 14px 6px 18px; list-style:none; cursor:pointer; touch-action:manipulation;
+  color:var(--muted); font-size:.86rem; line-height:1.3
 }
-.dining-budget-toggle input { flex:none; width:24px; height:24px; min-height:24px; margin:0 8px 0 0; accent-color:var(--accent); -webkit-appearance:auto; appearance:auto }
-:root .dining-budget-toggle input:focus,:root[data-glass] .dining-budget-toggle input:focus { box-shadow:none }   /* kein zweiter Rahmen nach dem Antippen; mit der Tastatur bleibt der übliche Fokusring am Kästchen */
+.dining-budget-summary::-webkit-details-marker { display:none }
+.dining-budget-summary:active { background:var(--accent-soft) }
+.dining-budget-dot { display:inline-grid; place-items:center; flex:none; width:26px; height:26px; margin-right:8px }
+.dining-budget-dot::before { content:''; width:10px; height:10px; border:2px solid var(--line-strong); border-radius:50%; background:transparent }
+.dining-budget-summary[data-counts=true] .dining-budget-dot::before { border-color:var(--accent); background:var(--accent) }
+.dining-budget-summary-text { flex:1; min-width:0 }
+.dining-budget-summary strong { font-weight:700; color:var(--text) }
+.dining-budget-summary[data-counts=true] strong { color:var(--accent) }
+.dining-budget-summary .icon.dining-budget-chevron { flex:none; width:20px; height:20px; color:var(--muted); transition:transform .15s ease }
+.dining-budget-details[open] .dining-budget-chevron { transform:rotate(180deg) }
+.dining-budget-toggle {
+  display:flex; align-items:flex-start; gap:12px; min-height:56px; margin:0; padding:2px 14px 14px 18px; color:var(--text); cursor:pointer; touch-action:manipulation
+}
+.dining-check {
+  position:relative; display:inline-grid; place-items:center; flex:none; width:26px; height:26px; margin-right:8px; box-sizing:border-box;
+  border:2px solid color-mix(in srgb, var(--accent) 45%, var(--line-strong)); border-radius:8px; background:var(--card); color:var(--on-accent);
+  transition:background-color .15s ease,border-color .15s ease
+}
+.dining-check input {
+  position:absolute; inset:-2px; width:calc(100% + 4px); height:calc(100% + 4px); min-height:0; margin:0; padding:0; border:0; border-radius:8px;
+  background:none; box-shadow:none; opacity:0; cursor:pointer; -webkit-appearance:none; appearance:none
+}
+:root .dining-budget-toggle input:focus,:root[data-glass] .dining-budget-toggle input:focus { box-shadow:none }   /* kein zweiter Rahmen nach dem Antippen */
+.dining-check .icon { width:16px; height:16px; stroke-width:3.2; opacity:0; transform:scale(.6); transition:opacity .15s ease,transform .15s ease; pointer-events:none }
+.dining-check:has(input:checked) { border-color:var(--accent); background:var(--accent) }
+.dining-check:has(input:checked) .icon { opacity:1; transform:none }
+.dining-check:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:2px }
+:root[data-pointer] .dining-check:has(input:focus-visible) { outline:none }
 .dining-budget-toggle:has(input:disabled) { opacity:.6; cursor:default }
 .dining-budget-copy { display:grid; gap:2px; min-width:0; line-height:1.3 }
 .dining-budget-text { font-size:.92rem; font-weight:650; overflow-wrap:anywhere }
@@ -5736,3 +5766,16 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .dining-row .icon.dining-edit { flex:none; width:18px; height:18px; color:var(--muted) }
 .spend-summary .spend-summary-dining { font-weight:600 }
 .spend-budget .spend-budget-dining { display:block; margin-top:6px; font-size:.82rem; color:var(--muted) }
+
+/* Schreibweise SattPlan (2.173): wie auf der Visitenkarte S und P in Orange, der Rest in der Schriftfarbe. */
+.brand-name { white-space:nowrap }
+.brand-initial { color:#c65a1e }
+@media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .brand-initial { color:#f08a4b } }
+:root[data-theme=dark] .brand-initial { color:#f08a4b }
+/* „Ein Produkt von NvF Digital“ (2.173) ganz unten unter Optionen. Das Logo ist dunkelgrün auf durchsichtigem Grund; im dunklen
+   Erscheinungsbild liegt es darum auf einer hellen Fläche. */
+.maker { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 12px; margin:28px 0 8px; padding:16px 0 4px; border-top:1px solid var(--line); color:var(--muted); font-size:.82rem }
+.maker-logo-plate { display:inline-flex; align-items:center; padding:6px 10px; border-radius:12px }
+.maker-logo { display:block; width:130px; height:auto }
+@media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .maker-logo-plate { background:#f4f6f2 } }
+:root[data-theme=dark] .maker-logo-plate { background:#f4f6f2 }
