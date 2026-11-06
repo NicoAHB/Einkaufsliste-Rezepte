@@ -1587,7 +1587,7 @@ async function usedUpIngredient(row) {
     lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
     itemOps = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
   }
-  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deiner Einkaufsliste`); return; }
+  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deinem Einkaufszettel`); return; }
   commit([...pantryOps, ...itemOps]);
   const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
   // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), der neu angelegte Artikel verschwindet wieder von der Liste
@@ -1595,7 +1595,9 @@ async function usedUpIngredient(row) {
     const old = before.find(entry => entry.id === id);
     return { id, patch: Object.fromEntries(Object.keys(patch).filter(key => key !== 'productGroupVersion').map(key => [key, old?.[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
   });
-  showNotice(added.length ? `Auf die Einkaufsliste gesetzt: ${product.name}` : `${product.name} steht schon auf deiner Einkaufsliste – aus dem Vorrat genommen`, () => guard(() => {
+  // Die Meldung nennt beides, was passiert ist (2.177): aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt (bzw. stand schon darauf)
+  const fromStock = pantryOps.length ? ' aus dem Vorrat entfernt und' : '';
+  showNotice(added.length ? `${product.name}${fromStock} auf den Einkaufszettel gesetzt` : `${product.name}${fromStock ? ' aus dem Vorrat entfernt –' : ''} steht schon auf deinem Einkaufszettel`, () => guard(() => {
     if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
     commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
     showNotice(`${product.name} ist wieder im Vorrat${added.length ? ' und nicht mehr auf der Einkaufsliste' : ''}`);
@@ -4031,7 +4033,7 @@ function renderDiningPlaces() {
     box.append(chip);
   }
 }
-/* Bewertung (2.174): nur bei Restaurant, zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
+/* Bewertung (2.174, seit 2.177 bei Restaurant und Getränken): zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
    Sterne ohne Tastatur; ein Tipp auf den gewählten Stern nimmt die Bewertung zurück. Dazu eine kurze Notiz. Unter dem Lokal zeigt ein kleiner
    Hinweis, wie es beim letzten Besuch dort bewertet wurde. Alles ist eine interne Notiz und ändert weder Summen noch Budget. */
 const starsLabel = stars => `${stars} von 5 Sternen (${RATING_MEANING[stars]})`;
@@ -4055,19 +4057,16 @@ function openDiningRating(open) {
   $('#dining-rating-panel').hidden = !open; $('#dining-rating-toggle').setAttribute('aria-expanded', String(open));
 }
 function renderLastRating() {
-  const form = $('#dining-form'), hint = $('#dining-last-rating'), restaurant = form.elements.kind.value === 'restaurant';
-  const last = restaurant ? lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value) : null;
+  const form = $('#dining-form'), hint = $('#dining-last-rating');
+  const last = lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value);
   hint.hidden = !last; hint.replaceChildren();
   if (!last) return;
   const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating);
   hint.append('Zuletzt: ', stars);
   if (last.ratingNote) hint.append(element('span', ` · ${last.ratingNote}`, 'dining-last-note'));
 }
-// Bewertung nur bei Restaurant: Bei „Getränke“ verschwinden Bewertung und Hinweis (eine eingegebene Bewertung wird dann nicht gespeichert)
-function syncDiningKind() {
-  const restaurant = $('#dining-form').elements.kind.value === 'restaurant';
-  $('#dining-rating').hidden = !restaurant; renderLastRating();
-}
+// Seit 2.177 gibt es die Bewertung bei Restaurant und Getränken gleich; beim Wechsel der Art bleibt sie stehen
+function syncDiningKind() { renderLastRating(); }
 function openDining(id = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   const row = id ? purchaseRows().find(entry => entry.id === id) : null;
@@ -4081,7 +4080,7 @@ function openDining(id = '') {
   form.elements.place.value = row?.storeName || '';
   form.elements.date.value = row?.date || isoDate();
   form.elements.time.value = row ? row.time || '' : clockNow();
-  form.elements.rating.value = hasRating(row) && diningKind(row).id === 'restaurant' ? String(row.rating) : '';
+  form.elements.rating.value = hasRating(row) ? String(row.rating) : '';
   form.elements.ratingNote.value = row?.ratingNote || '';
   spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : spendingView.defaultBuyer(), row?.buyerName || '');
   renderDiningPlaces(); openDiningRating(false); renderDiningRating(); syncDiningKind();

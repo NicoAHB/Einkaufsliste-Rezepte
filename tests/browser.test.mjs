@@ -12213,6 +12213,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Ja: aus dem Vorrat, auf die Liste (Produkt mit üblicher Einkaufsmenge, nicht 200 g; ohne Geschäft = „Überall möglich“), Karte sofort aktuell
     await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
     assert.equal(await page.textContent('#ask-ok'), 'Ja'); assert.equal(await page.textContent('#ask-cancel'), 'Abbrechen');
+    // 2.176: Knöpfe der Rückfrage einheitlich wie bei „Endgültig löschen“: beide umrandet und gleich geformt, „Ja“ zart gefüllt statt kräftig
+    const look = selector => page.locator(selector).evaluate(node => { const s = getComputedStyle(node); return { width: s.borderTopWidth, radius: s.borderTopLeftRadius, border: s.borderTopColor, fill: s.backgroundColor, text: s.color, height: Math.round(node.getBoundingClientRect().height) }; });
+    const yes = await look('#ask-ok'), no = await look('#ask-cancel');
+    assert.deepEqual([yes.width, yes.radius, no.width, no.radius], ['2px', '14px', '2px', '14px']); assert.equal(yes.height, no.height);
+    assert.equal(yes.border, yes.text, 'grüner Rand in der Schriftfarbe'); assert.notEqual(yes.fill, yes.text, 'nicht kräftig gefüllt');
+    assert.notEqual(no.border, 'rgba(0, 0, 0, 0)'); assert.notEqual(no.border, no.fill, '„Abbrechen“ mit sichtbarem Rand');
     await answerAsk(page, true);
     const after = await flour();
     assert.deepEqual(after.pantry, [false], 'im Vorrat aufgebraucht');
@@ -12222,7 +12228,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await card.locator('.recipe-stock-track').getAttribute('aria-valuenow'), '5');
     assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'bleibt aufgeklappt');
     assert.ok((await missing()).includes('200 g Mehl')); assert.ok(!(await have()).includes('200 g Mehl'));
-    assert.equal(await page.textContent('#notice-text'), 'Auf die Einkaufsliste gesetzt: Mehl'); assert.equal(await page.isVisible('#notice-undo'), true);
+    assert.equal(await page.textContent('#notice-text'), 'Mehl aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt', 'die Meldung nennt beides'); assert.equal(await page.isVisible('#notice-undo'), true);
     // Rückgängig: alles wie vorher
     await page.click('#notice-undo');
     assert.deepEqual(await flour(), { pantry: [true], items: [] });
@@ -12252,7 +12258,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     let saved = await storedDemo(page);
     assert.equal(openRows(saved, 'Butter').length, 1); assert.equal(openRows(saved, 'Butter')[0].quantity, 250, 'die vorhandene Zeile bleibt unverändert');
     assert.equal(saved.pantry.find(row => row.name === 'Butter').available, false);
-    assert.match(await page.textContent('#notice-text'), /^Butter steht schon auf deiner Einkaufsliste/);
+    assert.equal(await page.textContent('#notice-text'), 'Butter aus dem Vorrat entfernt – steht schon auf deinem Einkaufszettel');
     assert.match(await toggle.textContent(), /5 von 7/);
     await page.click('#notice-undo'); saved = await storedDemo(page);
     assert.equal(saved.pantry.find(row => row.name === 'Butter').available, true); assert.equal(openRows(saved, 'Butter').length, 1, 'Rückgängig löscht die vorhandene Zeile nicht');
@@ -12427,7 +12433,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.170–2.174: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke, Restaurant mit Sternen); der aufklappbare Haken steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
+  test('2.170–2.177: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke, beide mit Sternen); der aufklappbare Haken steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
     const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString(), today = isoDate();
     const row = extra => ({ createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
     data.budgets = [row({ id: 'monthly', cents: 10000 })];
@@ -12533,15 +12539,15 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.getAttribute('#dining-places .chip', 'aria-pressed'), 'true');
     assert.equal(await page.textContent('#dining-last-rating'), 'Zuletzt: ★★★★☆ · Pizza top, Bedienung langsam');
     await page.fill('#dining-form input[name=place]', 'PIZZERIA roma'); assert.equal(await page.locator('#dining-last-rating').isVisible(), true, 'ohne Groß-/Kleinschreibung');
-    // Bewertung nur bei Restaurant: bei Getränken verschwinden Sterne und Hinweis
+    // 2.177: Getränke werden genauso bewertet; beim Wechsel der Art bleiben Sterne und Hinweis
     await page.locator('.dining-kind', { hasText: 'Getränke' }).tap();
-    assert.equal(await page.locator('#dining-rating').isHidden(), true); assert.equal(await page.locator('#dining-last-rating').isHidden(), true);
-    await page.fill('#dining-form input[name=place]', 'Café Lotte');
+    assert.equal(await page.locator('#dining-rating').isVisible(), true); assert.equal(await page.locator('#dining-last-rating').isVisible(), true);
+    await page.fill('#dining-form input[name=place]', 'Café Lotte'); assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'Café Lotte noch nie bewertet');
     await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');
     await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     assert.match(await page.textContent('#notice'), /8,90\s€ Getränke · Café Lotte gespeichert · zählt nicht zum Budget/);
     assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').dining, 'drinks');
-    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').rating, undefined, 'Getränke ohne Bewertungsfelder');
+    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').rating, undefined, 'ohne Sterne keine Bewertungsfelder');
     assert.equal((await stored()).sync.minRev, 20, 'Version 2.170 kennt „Getränke“ nicht und verweist aufs Aktualisieren');
     assert.match(await page.textContent('#spending-dining-meta'), /2 Besuche · Ø 27,85/);
     assert.deepEqual((await page.locator('#spending-dining-kinds li strong').allTextContents()).map(text => text.replace(/^\S+\s/, '')), ['Restaurant', 'Getränke']);
@@ -12557,8 +12563,13 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.inputValue('#dining-form input[name=amount]'), '8,90');
     assert.equal(await page.isChecked('#dining-form input[name=kind][value=drinks]'), true);
     assert.equal(await page.inputValue('#dining-form input[name=time]'), '15:10');
-    await page.fill('#dining-form input[name=amount]', '9,90'); await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
-    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').cents, 990);
+    await page.fill('#dining-form input[name=amount]', '9,90');
+    assert.equal(await page.locator('#dining-rating').isVisible(), true, 'Bewertung auch bei Getränken');
+    await page.tap('#dining-rating-toggle'); await page.locator('.dining-star[data-value="5"]').tap(); await page.fill('#dining-form input[name=ratingNote]', 'Bester Cappuccino');
+    await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    const lotte = (await dining()).find(entry => entry.storeName === 'Café Lotte');
+    assert.deepEqual([lotte.cents, lotte.dining, lotte.rating, lotte.ratingNote], [990, 'drinks', 5, 'Bester Cappuccino']);
+    assert.equal(await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).locator('.dining-stars-small').textContent(), '★★★★★');
     // 5. Löschen mit Rückfrage
     await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).tap(); await sheetOpen(page);
     await page.tap('#dining-delete'); await answerAsk(page, true, /Getränke löschen\?/);

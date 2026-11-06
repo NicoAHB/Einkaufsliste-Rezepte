@@ -5822,3 +5822,12 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .recipe-stock .recipe-stock-used:active { background:color-mix(in srgb, currentColor 12%, transparent); transform:none }
 .recipe-stock .recipe-stock-used:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
 .recipe-stock-group.have ul:has(.recipe-stock-used) { gap:4px }
+
+/* Rückfragen einheitlich (2.176): Alle Knöpfe gleich geformt, wie „Endgültig löschen“ / „Abbrechen“. Die Aktion ist umrandet und zart gefüllt
+   (bei Löschen rot, sonst grün), „Abbrechen“ weiß mit sichtbarem grünem Rand, auch im Glas-Erscheinungsbild. Vorher war „Ja“ kräftig gefüllt
+   und „Abbrechen“ fast ohne Rand. */
+:root .ask-actions button,:root[data-glass] .ask-actions button { padding:10px 12px; border-width:2px; border-style:solid; border-radius:14px; box-shadow:none; font-weight:700; line-height:1.3 }
+:root #ask-ok:not(.danger),:root[data-glass] #ask-ok:not(.danger) { border-color:var(--accent); background:var(--accent-soft); color:var(--accent) }
+:root #ask-cancel,:root[data-glass] #ask-cancel { border-color:color-mix(in srgb, var(--accent) 45%, var(--line-strong)); background:var(--card); color:var(--accent); -webkit-backdrop-filter:none; backdrop-filter:none }
+:root #ask-ok:not(.danger):active:not(:disabled) { background:color-mix(in srgb, var(--accent) 16%, var(--accent-soft)) }
+:root #ask-cancel:active:not(:disabled) { background:var(--accent-soft) }

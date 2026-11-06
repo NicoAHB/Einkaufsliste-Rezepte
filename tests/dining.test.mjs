@@ -94,12 +94,12 @@ describe('Auswertung und Monatsbudget', () => {
 });
 
 describe('Bewertung eines Restaurantbesuchs (2.174)', () => {
-  test('Sterne 1–5 und eine kurze Notiz, nur bei Restaurant; leer oder 0 heißt keine Bewertung', () => {
+  test('Sterne 1–5 und eine kurze Notiz, bei Restaurant und (seit 2.177) Getränken; leer oder 0 heißt keine Bewertung', () => {
     const rated = diningFields({ amount: '46,80', date: '2026-11-05', kind: 'restaurant', rating: '4', ratingNote: '  Pizza top,   Bedienung langsam ' }, '2026-11-06');
     assert.equal(rated.rating, 4); assert.equal(rated.ratingNote, 'Pizza top, Bedienung langsam');
     assert.equal(diningFields({ amount: '5', date: '2026-11-05', kind: 'restaurant', rating: '' }, '2026-11-06').rating, null);
     assert.equal(diningFields({ amount: '5', date: '2026-11-05', kind: 'restaurant', rating: '0' }, '2026-11-06').rating, null, 'zurückgesetzt');
-    assert.deepEqual(['rating', 'ratingNote'].map(key => diningFields({ amount: '5', date: '2026-11-05', kind: 'drinks', rating: '5', ratingNote: 'x' }, '2026-11-06')[key]), [null, ''], 'Getränke haben keine Bewertung');
+    assert.deepEqual(['rating', 'ratingNote'].map(key => diningFields({ amount: '5', date: '2026-11-05', kind: 'drinks', rating: '5', ratingNote: ' Bester Cappuccino ' }, '2026-11-06')[key]), [5, 'Bester Cappuccino'], 'Getränke werden genauso bewertet');
     assert.equal(diningFields({ amount: '5', date: '2026-11-05', ratingNote: 'x'.repeat(300) }, '2026-11-06').ratingNote.length, 120);
     for (const bad of ['6', '-1', '2.5', 'viel']) assert.throws(() => diningRating(bad), /1 bis 5 Sterne/);
     assert.equal(ratingStars(4), '★★★★☆'); assert.equal(ratingStars(1), '★☆☆☆☆');
@@ -115,10 +115,11 @@ describe('Bewertung eines Restaurantbesuchs (2.174)', () => {
       dine('r2', '2026-11-01', 3000, 'restaurant', { storeName: 'pizzeria  ROMA', rating: 5, ratingNote: 'super', time: '19:00' }),
       dine('r3', '2026-11-03', 3000, 'restaurant', { storeName: 'Pizzeria Roma' }),   // ohne Bewertung: zählt nicht
       dine('r4', '2026-11-04', 3000, 'restaurant', { storeName: 'Pizzeria Roma', rating: 1, deletedAt: at }),
-      dine('x', '2026-11-05', 3000, 'restaurant', { storeName: 'Sushi Bar', rating: 3 })];
+      dine('x', '2026-11-05', 3000, 'restaurant', { storeName: 'Sushi Bar', rating: 3 }), dine('c', '2026-11-06', 450, 'drinks', { storeName: 'Café Lotte', rating: 4, ratingNote: 'Kuchen top' })];
     assert.equal(lastRating(rows, ' PIZZERIA roma ').id, 'r2');
     assert.equal(lastRating(rows, 'Pizzeria Roma', 'r2').id, 'r1');
     assert.equal(lastRating(rows, 'Unbekannt'), null); assert.equal(lastRating(rows, ''), null);
+    assert.equal(lastRating(rows, 'café lotte').ratingNote, 'Kuchen top', 'auch für Getränke');
   });
   test('Export enthält Sterne und Notiz; alte Einträge ohne Bewertung bleiben leer', () => {
     const csv = spendingCsv([dine('r', '2026-11-04', 4680, 'restaurant', { storeName: 'Roma', rating: 4, ratingNote: 'Pizza top', time: '19:30' }), dine('o', '2026-11-03', 500, 'restaurant')]);
