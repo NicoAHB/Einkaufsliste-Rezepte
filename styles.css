@@ -5779,3 +5779,46 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .maker-logo { display:block; width:130px; height:auto }
 @media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .maker-logo-plate { background:#f4f6f2 } }
 :root[data-theme=dark] .maker-logo-plate { background:#f4f6f2 }
+
+/* Bewertung eines Restaurantbesuchs (2.174): zugeklappt eine Zeile wie „Kategorie“ bei den Ausgaben (abgerundet, Pfeil rechts), mit den
+   Sternen, sobald bewertet. Aufgeklappt fünf große Sterne (48 px Tippfläche) ohne Tastatur, darunter die Bedeutung und eine kurze Notiz. */
+.dining-rating { display:grid; gap:8px }
+.dining-rating[hidden] { display:none }
+:root .dining-rating-trigger { font-weight:400 }
+.dining-rating-trigger .dining-rating-label { flex:1 }
+.dining-rating-value { flex:none; font-size:1.05rem; letter-spacing:.06em; line-height:1 }
+.dining-rating-panel { display:grid; gap:6px; padding:12px 12px 14px; border:1px solid var(--line-strong); border-radius:14px; background:var(--card) }
+.dining-rating-panel[hidden] { display:none }
+.dining-rating-question { margin:0; font-weight:700; text-align:center }
+.dining-stars { display:flex; justify-content:center; gap:4px }
+:root .dining-star,:root[data-glass] .dining-star {
+  display:inline-grid; place-items:center; width:52px; min-width:44px; height:52px; min-height:48px; padding:0; border:0; border-radius:14px;
+  background:transparent; color:var(--line-strong); box-shadow:none; touch-action:manipulation
+}
+:root .dining-star:active:not(:disabled) { background:var(--accent-soft); transform:scale(.94) }
+.dining-star .icon { width:36px; height:36px; stroke-width:1.6; fill:transparent; transition:fill .12s ease,color .12s ease }
+:root .dining-star.on,:root[data-glass] .dining-star.on { color:var(--accent) }
+.dining-star.on .icon { fill:currentColor }
+.dining-rating-scale { display:flex; justify-content:space-between; gap:8px; margin:0 6px; font-size:.76rem; color:var(--muted) }
+.dining-rating-note { margin-top:6px }
+.stars-on { color:var(--accent) }
+.stars-off { color:var(--line-strong) }
+.dining-last-rating { margin:-6px 0 0; font-size:.84rem; color:var(--muted) }
+.dining-last-rating[hidden] { display:none }
+.dining-last-stars { letter-spacing:.05em; font-size:.95rem }
+.dining-stars-small { font-size:.72rem; font-weight:400; letter-spacing:0; white-space:nowrap }
+@media (max-width:340px) { :root .dining-star,:root[data-glass] .dining-star { width:46px } .dining-star .icon { width:32px; height:32px } }
+
+/* „Aufgebraucht“ (2.175) unter „Im Vorrat vorhanden“: klein und dezent rechts neben der Zutat, in der grünen Schrift der Liste, mit
+   Einkaufswagen. Sichtbar 32 px hoch, die Tippfläche reicht unsichtbar auf 44 px; die Aufzählungspunkte bleiben. */
+.recipe-stock-line { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:40px }
+.recipe-stock .recipe-stock-used {
+  position:relative; flex:none; display:inline-flex; align-items:center; gap:5px; min-height:32px; margin:0; padding:0 10px;
+  border:1px solid color-mix(in srgb, currentColor 38%, transparent); border-radius:999px; background:transparent; color:inherit; box-shadow:none;
+  font:inherit; font-size:.76rem; font-weight:650; line-height:1; white-space:nowrap
+}
+.recipe-stock .recipe-stock-used::after { content:''; position:absolute; inset:-6px -2px }
+.recipe-stock .recipe-stock-used .icon { width:15px; height:15px }
+.recipe-stock .recipe-stock-used:active { background:color-mix(in srgb, currentColor 12%, transparent); transform:none }
+.recipe-stock .recipe-stock-used:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
+.recipe-stock-group.have ul:has(.recipe-stock-used) { gap:4px }

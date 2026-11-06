@@ -10130,7 +10130,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.106: Vorratszeile klappt fehlende rote Zutaten vor vorhandenen grünen aus; Mengen folgen Portionen, beide Einklappwege schreiben keine Daten',async()=>{
     const {ctx,page,problems}=await context();await seedLocal(ctx,stockData2106());await open(page);await goTab(page,'recipes');const before=await storedDemo(page),card=page.locator('#recipe-list [data-recipe-id=stock2106-0]'),toggle=card.locator('.recipe-stock-toggle');
     assert.match(await toggle.textContent(),/1 von 3 Zutaten da · 2 fehlen/);assert.equal(await toggle.locator('use[href="#i-info"]').count(),1);assert.equal(await toggle.getAttribute('aria-expanded'),'false');
-    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['200 ml Milch','150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel']);assert.deepEqual(await card.locator('.recipe-stock-group').evaluateAll(nodes=>nodes.map(n=>n.classList.contains('missing')?'missing':'have')),['missing','have']);
+    await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['200 ml Milch','150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents(),['100 g Äpfel']);assert.deepEqual(await card.locator('.recipe-stock-group').evaluateAll(nodes=>nodes.map(n=>n.classList.contains('missing')?'missing':'have')),['missing','have']);
     assert.equal(await card.locator('.recipe-stock-group.have li').evaluate(n=>getComputedStyle(n).color),'rgb(20, 108, 67)');assert.equal(await card.locator('.recipe-stock-group.missing li').first().evaluate(n=>{const [r,g,b]=getComputedStyle(n).color.match(/\d+/g).map(Number);return r>g*1.4&&r>b*1.4;}),true);
     await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>n.inert),true);await toggle.focus();await page.keyboard.press('Enter');assert.equal(await toggle.getAttribute('aria-expanded'),'true');
     await card.locator('.recipe-details>summary').click();await card.getByRole('button',{name:'Eine Portion mehr',exact:true}).click();assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['300 ml Milch','225 g Mehl']);await card.locator('.recipe-stock-collapse').click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await toggle.evaluate(n=>n===document.activeElement),true);assert.deepEqual(await storedDemo(page),before);assert.deepEqual(problems,[]);await ctx.close();
@@ -10144,7 +10144,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   test('2.106: offener Vorratsabgleich aktualisiert sich bei Änderungen vom zweiten Gerät',async()=>{
     const api=github(stockData2106()),{ctx,page,problems}=await context({config:connectedConfig});await ctx.route('https://api.github.com/**',api.handler);await open(page);await synced(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();
     api.remoteChange(data=>{data.pantry.push({...data.pantry[0],id:'stock2106-new',name:'Milch'});});await pollNow(page);await page.waitForFunction(()=>document.querySelector('[data-recipe-id=stock2106-0] .recipe-stock-toggle').textContent.includes('2 von 3'));
-    assert.equal(await card.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have li').allTextContents(),['100 g Äpfel','200 ml Milch']);assert.deepEqual(problems,[]);await ctx.close();
+    assert.equal(await card.locator('.recipe-stock-toggle').getAttribute('aria-expanded'),'true');assert.deepEqual(await card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(),['150 g Mehl']);assert.deepEqual(await card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents(),['100 g Äpfel','200 ml Milch']);assert.deepEqual(problems,[]);await ctx.close();
   });
   for(const [width,theme]of [[280,'light'],[390,'dark'],[390,'auto']])test(`2.106: Vorratsakkordeon bleibt bei ${width}px ${theme} lesbar und ohne seitlichen Überlauf`,async()=>{
     const data=stockData2106();data.ingredients[0].name='Äpfel mit einer sehr langen eigenen Beschreibung';const {ctx,page,problems}=await context({config:{theme},context:{viewport:{width,height:844},colorScheme:theme==='auto'?'dark':theme,reducedMotion:'reduce'}});await seedLocal(ctx,data);await open(page);await goTab(page,'recipes');const card=page.locator('#recipe-list [data-recipe-id=stock2106-0]');await card.locator('.recipe-stock-toggle').click();assert.equal(await horizontalOverflow(page),0);assert.equal(await card.locator('.recipe-stock').evaluate(n=>n.scrollWidth<=n.clientWidth),true);assert.ok((await card.locator('.recipe-stock-toggle').boundingBox()).height>=44);assert.ok((await card.locator('.recipe-stock-collapse').boundingBox()).height>=44);assert.equal(await card.locator('.recipe-stock-expansion').evaluate(n=>getComputedStyle(n).transitionDuration),'0s');assert.equal(await card.locator('.recipe-stock-group.have').evaluate(n=>getComputedStyle(n).color),theme==='light'?'rgb(20, 108, 67)':'rgb(126, 224, 173)');assert.deepEqual(problems,[]);await ctx.close();
@@ -12183,6 +12183,87 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  // ---- 2.175: „Aufgebraucht“ – das Gegenstück zu „✓ Hab ich“ ----
+  const bananaData175 = (extra = data => data) => {
+    const data = pantryData278(['Bananen', 'Mehl', 'Zucker', 'Butter', 'Eier', 'Backpulver'].map(name => ({ name, available: true }))), stamp = '2026-10-29T09:00:00.000Z';
+    data.recipes = [{ ...demo.recipes[0], id: 'banana175', name: 'Bananenbrot', servings: 4, tags: [], favorite: false, photoId: null }];
+    data.ingredients = [['reife Bananen', 3, 'Stück'], ['Mehl', 200, 'g'], ['Zucker', 80, 'g'], ['Butter', 100, 'g'], ['Eier', 2, 'Stück'], ['Backpulver', 1, 'Päckchen'], ['Walnüsse', 50, 'g'], ['Salz', 1, 'Prise']]
+      .map(([name, quantity, unit], index) => ({ ...demo.ingredients[0], id: `banana175-${index}`, recipeId: 'banana175', name, quantity, unit, createdAt: stamp, updatedAt: stamp }));
+    return extra(data);
+  };
+  test('2.175: Bananenbrot – „Aufgebraucht“ bei Mehl: Rückfrage, Ja nimmt es aus dem Vorrat und setzt es auf die Einkaufsliste, Karte zeigt 5 von 7; Rückgängig stellt alles wieder her', async () => {
+    const { ctx, page, problems } = await context({ context: { viewport: { width: 390, height: 844 } } });
+    await seedLocal(ctx, bananaData175()); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=banana175]'), toggle = card.locator('.recipe-stock-toggle');
+    const missing = () => card.locator('.recipe-stock-group.missing .recipe-stock-label').allTextContents(), have = () => card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents();
+    const flour = () => storedDemo(page).then(data => ({ pantry: data.pantry.filter(row => !row.deletedAt && row.name === 'Mehl').map(row => row.available), items: data.items.filter(row => !row.deletedAt && row.name === 'Mehl') }));
+    await toggle.click();
+    assert.match(await toggle.textContent(), /6 von 7 Zutaten da · 1 fehlen/);
+    // Ein kleiner Knopf je vorhandener Zutat, nicht bei fehlenden; klar antippbar (44 px), aber niedriger als „✓ Hab ich“
+    const used = card.locator('.recipe-stock-group.have .recipe-stock-used');
+    assert.equal(await used.count(), 6); assert.equal(await card.locator('.recipe-stock-group.missing .recipe-stock-used').count(), 0);
+    assert.deepEqual([...new Set(await used.allTextContents())], ['Aufgebraucht']);
+    const sizes = await card.evaluate(node => { const button = node.querySelector('.recipe-stock-used'), label = button.closest('li').querySelector('.recipe-stock-label'), have = node.querySelector('.recipe-stock-have');
+      const after = getComputedStyle(button, '::after'); return { button: button.getBoundingClientRect().height, tap: button.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom), font: parseFloat(getComputedStyle(button).fontSize), label: parseFloat(getComputedStyle(label).fontSize), have: have.getBoundingClientRect().height }; });
+    assert.ok(sizes.tap >= 44, `Tippfläche ${sizes.tap}`); assert.ok(sizes.button < sizes.have, 'dezenter als „✓ Hab ich“'); assert.ok(sizes.font < sizes.label, 'Schrift kleiner als die Zutat');
+    // Abbrechen ändert nichts
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
+    await answerAsk(page, false, /Mehl ist aufgebraucht/, /Aus dem Vorrat nehmen und auf die Einkaufsliste setzen\?/, /Überall möglich/);
+    assert.deepEqual(await flour(), { pantry: [true], items: [] }); assert.match(await toggle.textContent(), /6 von 7/);
+    // Ja: aus dem Vorrat, auf die Liste (Produkt mit üblicher Einkaufsmenge, nicht 200 g; ohne Geschäft = „Überall möglich“), Karte sofort aktuell
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
+    assert.equal(await page.textContent('#ask-ok'), 'Ja'); assert.equal(await page.textContent('#ask-cancel'), 'Abbrechen');
+    await answerAsk(page, true);
+    const after = await flour();
+    assert.deepEqual(after.pantry, [false], 'im Vorrat aufgebraucht');
+    assert.equal(after.items.length, 1); assert.equal(after.items[0].storeId, ''); assert.equal(after.items[0].checked, false);
+    assert.notDeepEqual([after.items[0].quantity, after.items[0].unit], [200, 'g'], 'keine Rezeptmenge');
+    assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.equal(await card.locator('.recipe-stock-track').getAttribute('aria-valuenow'), '5');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'bleibt aufgeklappt');
+    assert.ok((await missing()).includes('200 g Mehl')); assert.ok(!(await have()).includes('200 g Mehl'));
+    assert.equal(await page.textContent('#notice-text'), 'Auf die Einkaufsliste gesetzt: Mehl'); assert.equal(await page.isVisible('#notice-undo'), true);
+    // Rückgängig: alles wie vorher
+    await page.click('#notice-undo');
+    assert.deepEqual(await flour(), { pantry: [true], items: [] });
+    assert.match(await toggle.textContent(), /6 von 7 Zutaten da · 1 fehlen/); assert.ok((await have()).includes('200 g Mehl'));
+    // Auf der Einkaufsliste steht Mehl dann wirklich unter „Überall möglich“ (ohne Geschäft)
+    await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click(); await answerAsk(page, true);
+    await goTab(page, 'shopping'); assert.match(await page.textContent('#items'), /Mehl/);
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('2.175: „Aufgebraucht“ legt nichts doppelt an und nimmt das zuletzt genutzte Geschäft', async () => {
+    const stamp = '2026-10-30T09:00:00.000Z';
+    const data = bananaData175(data => {
+      // Butter steht schon offen auf der Liste; Zucker wurde zuletzt bei Rewe gekauft (abgehakt)
+      data.items.push({ ...data.items[0], id: 'butter-open', name: 'Butter', quantity: 250, unit: 'g', storeId: 'store-lidl', checked: false, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} },
+        { ...data.items[0], id: 'sugar-bought', name: 'Zucker', quantity: 1, unit: 'kg', storeId: 'store-rewe', checked: true, createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {} });
+      return data;
+    });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=banana175]'), toggle = card.locator('.recipe-stock-toggle');
+    const openRows = (data, name) => data.items.filter(row => !row.deletedAt && !row.checked && row.name === name);
+    await toggle.click();
+    // Schon auf der Liste: nicht doppelt, kurzer Hinweis; aus dem Vorrat kommt es trotzdem
+    await card.getByRole('button', { name: /^Butter: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Butter ist aufgebraucht/, /schon auf deiner Einkaufsliste/);
+    let saved = await storedDemo(page);
+    assert.equal(openRows(saved, 'Butter').length, 1); assert.equal(openRows(saved, 'Butter')[0].quantity, 250, 'die vorhandene Zeile bleibt unverändert');
+    assert.equal(saved.pantry.find(row => row.name === 'Butter').available, false);
+    assert.match(await page.textContent('#notice-text'), /^Butter steht schon auf deiner Einkaufsliste/);
+    assert.match(await toggle.textContent(), /5 von 7/);
+    await page.click('#notice-undo'); saved = await storedDemo(page);
+    assert.equal(saved.pantry.find(row => row.name === 'Butter').available, true); assert.equal(openRows(saved, 'Butter').length, 1, 'Rückgängig löscht die vorhandene Zeile nicht');
+    // Zuletzt genutztes Geschäft
+    await card.getByRole('button', { name: /^Zucker: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Es kommt zu „Rewe“/);
+    saved = await storedDemo(page); assert.equal(openRows(saved, 'Zucker').length, 1); assert.equal(openRows(saved, 'Zucker')[0].storeId, 'store-rewe');
+    assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
   test('2.164: „✓ Hab ich“ bei einer Zutat auf dem Einkaufszettel fragt, ob sie dort entfernt werden soll; ohne offene Zutaten entfällt „Fehlt im Vorrat“', async () => {
     const { ctx, page, problems } = await context();
     await seedLocal(ctx, haveData164()); await open(page); await goTab(page, 'recipes');
@@ -12346,7 +12427,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.170–2.172: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke); der aufklappbare Haken in derselben Karte steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
+  test('2.170–2.174: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke, Restaurant mit Sternen); der aufklappbare Haken steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
     const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString(), today = isoDate();
     const row = extra => ({ createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
     data.budgets = [row({ id: 'monthly', cents: 10000 })];
@@ -12389,11 +12470,37 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'amount');
     assert.equal(await page.locator('#dining-places').isHidden(), true, 'noch keine Lokale zum Antippen');
     assert.match(await page.textContent('#dining-budget-note'), /^Zählt zum Monatsbudget/);
-    await page.fill('#dining-form input[name=amount]', '46,80'); await page.fill('#dining-form input[name=place]', 'Pizzeria Roma'); await page.fill('#dining-form input[name=time]', '19:30');
+    // 2.174: kein grünes Plus mehr im Betragsfeld (es speicherte nur); das Feld nutzt die volle Breite, Enter speichert nicht
+    assert.equal(await page.locator('#dining-form .add-button').count(), 0);
+    const widths = await page.evaluate(() => ['amount', 'place'].map(name => Math.round(document.querySelector(`#dining-form input[name=${name}]`).getBoundingClientRect().width)));
+    assert.equal(widths[0], widths[1], 'Betrag so breit wie das Lokal');
+    await page.fill('#dining-form input[name=amount]', '46,80'); await page.focus('#dining-form input[name=amount]'); await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#dining-dialog').isVisible(), true, 'Enter schließt nur die Tastatur'); assert.equal((await dining()).length, 0);
+    assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'amount');
+    await page.fill('#dining-form input[name=place]', 'Pizzeria Roma'); await page.fill('#dining-form input[name=time]', '19:30');
+    assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'noch keine frühere Bewertung');
+    // 2.174: Bewertung zugeklappt unter „Bezahlt von“, aufgeklappt fünf Sterne; nochmals auf den gewählten Stern setzt zurück
+    const rating = await page.evaluate(() => { const box = selector => document.querySelector(selector).getBoundingClientRect(); return { buyer: box('#dining-form select[name=buyerId]').bottom, rating: box('#dining-rating-toggle').top, note: box('#dining-budget-note').top }; });
+    assert.ok(rating.rating >= rating.buyer && rating.rating < rating.note, 'zwischen „Bezahlt von“ und dem grauen Hinweis');
+    assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal((await page.textContent('#dining-rating-toggle')).trim(), 'Bewertung (optional)');
+    await page.tap('#dining-rating-toggle');
+    assert.equal(await page.textContent('#dining-rating-question'), 'Nochmal hingehen?');
+    assert.equal(await page.locator('.dining-star').count(), 5);
+    assert.ok((await page.locator('.dining-star').first().boundingBox()).height >= 48, 'große Sterne');
+    assert.match(await page.textContent('.dining-rating-scale'), /1 = nie wieder.*3 = geht so.*5 = unbedingt/);
+    await page.locator('.dining-star[data-value="4"]').tap();
+    assert.equal(await page.locator('.dining-star.on').count(), 4); assert.equal(await page.getAttribute('.dining-star[data-value="4"]', 'aria-pressed'), 'true');
+    await page.locator('.dining-star[data-value="4"]').tap();
+    assert.equal(await page.locator('.dining-star.on').count(), 0, 'zurückgesetzt'); assert.equal(await page.inputValue('#dining-form input[name=rating]'), '');
+    await page.locator('.dining-star[data-value="4"]').tap(); await page.fill('#dining-form input[name=ratingNote]', 'Pizza top, Bedienung langsam');
+    await page.tap('#dining-rating-toggle'); assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal(await page.textContent('#dining-rating-value'), '★★★★☆', 'zugeklappt stehen die Sterne in der Zeile');
     await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     const [first] = await dining();
-    assert.deepEqual({ dining: first.dining, cents: first.cents, storeName: first.storeName, time: first.time, date: first.date, buyerName: first.buyerName, storeId: first.storeId },
-      { dining: 'restaurant', cents: 4680, storeName: 'Pizzeria Roma', time: '19:30', date: today, buyerName: 'Nico', storeId: undefined });
+    assert.deepEqual({ dining: first.dining, cents: first.cents, storeName: first.storeName, time: first.time, date: first.date, buyerName: first.buyerName, storeId: first.storeId, rating: first.rating, ratingNote: first.ratingNote },
+      { dining: 'restaurant', cents: 4680, storeName: 'Pizzeria Roma', time: '19:30', date: today, buyerName: 'Nico', storeId: undefined, rating: 4, ratingNote: 'Pizza top, Bedienung langsam' });
+    assert.equal(await page.textContent('#spending-dining-list .dining-stars-small'), '★★★★☆', 'Sterne klein neben dem Lokalnamen');
     assert.equal((await stored()).sync.minRev, 19, 'ältere Apps rechnen Restaurantbesuche nicht falsch ins Budget');
     // Übersicht: eigene Karte, nicht noch einmal in der Liste der Einkäufe; mit Haken zählt der Betrag zum Budget
     assert.equal(await page.locator('#spending-dining').isVisible(), true);
@@ -12420,18 +12527,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // 3. Zweiter Besuch: das Lokal steht zum Antippen bereit; Getränke wählen
     await page.tap('#add-dining'); await sheetOpen(page);
     assert.match(await page.textContent('#dining-budget-note'), /^Zählt nicht zum Monatsbudget/);
+    assert.equal(await page.textContent('#dining-rating-value'), '', 'neuer Besuch ohne Bewertung');
     await page.locator('#dining-places .chip', { hasText: 'Pizzeria Roma' }).tap();
     assert.equal(await page.inputValue('#dining-form input[name=place]'), 'Pizzeria Roma');
     assert.equal(await page.getAttribute('#dining-places .chip', 'aria-pressed'), 'true');
-    await page.locator('.dining-kind', { hasText: 'Getränke' }).tap(); await page.fill('#dining-form input[name=place]', 'Café Lotte');
+    assert.equal(await page.textContent('#dining-last-rating'), 'Zuletzt: ★★★★☆ · Pizza top, Bedienung langsam');
+    await page.fill('#dining-form input[name=place]', 'PIZZERIA roma'); assert.equal(await page.locator('#dining-last-rating').isVisible(), true, 'ohne Groß-/Kleinschreibung');
+    // Bewertung nur bei Restaurant: bei Getränken verschwinden Sterne und Hinweis
+    await page.locator('.dining-kind', { hasText: 'Getränke' }).tap();
+    assert.equal(await page.locator('#dining-rating').isHidden(), true); assert.equal(await page.locator('#dining-last-rating').isHidden(), true);
+    await page.fill('#dining-form input[name=place]', 'Café Lotte');
     await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');
     await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     assert.match(await page.textContent('#notice'), /8,90\s€ Getränke · Café Lotte gespeichert · zählt nicht zum Budget/);
     assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').dining, 'drinks');
+    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').rating, undefined, 'Getränke ohne Bewertungsfelder');
     assert.equal((await stored()).sync.minRev, 20, 'Version 2.170 kennt „Getränke“ nicht und verweist aufs Aktualisieren');
     assert.match(await page.textContent('#spending-dining-meta'), /2 Besuche · Ø 27,85/);
     assert.deepEqual((await page.locator('#spending-dining-kinds li strong').allTextContents()).map(text => text.replace(/^\S+\s/, '')), ['Restaurant', 'Getränke']);
     assert.match(await page.textContent('#spending-budget'), /50 % verbraucht/);
+    // Ein bewerteter Besuch öffnet mit zugeklappter Bewertung und den Sternen in der Zeile; Abbrechen ändert nichts
+    await page.locator('#spending-dining-list .dining-row', { hasText: 'Pizzeria Roma' }).tap(); await sheetOpen(page);
+    assert.equal(await page.textContent('#dining-rating-value'), '★★★★☆'); assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'die eigene Bewertung ist kein „Zuletzt“');
+    await page.tap('#dining-dialog [data-close]'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     // 4. Ändern: ein Tipp auf den Besuch öffnet ihn
     await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).tap(); await sheetOpen(page);
     assert.equal(await page.textContent('#dining-title'), 'Restaurant/Café/Bar bearbeiten');

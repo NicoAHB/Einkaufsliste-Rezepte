@@ -5,8 +5,8 @@ import { describe, test } from 'node:test';
 import { emptyData, merge, operation, SCHEMA_REV, validate } from '../data.js';
 import { compact } from '../compact.js';
 import { trashEntries } from '../trash.js';
-import { budgetSpent, budgetStatus, diningCounts, diningFields, diningPlaces, duplicatePurchase, filterPurchases, possibleDuplicates, purchaseFrequency,
-  spendingCsv, summarizePeriod, DINING_LABEL } from '../spending.js';
+import { budgetSpent, budgetStatus, diningCounts, diningFields, diningPlaces, diningRating, duplicatePurchase, filterPurchases, hasRating, lastRating, possibleDuplicates, purchaseFrequency,
+  ratingStars, spendingCsv, summarizePeriod, DINING_LABEL } from '../spending.js';
 
 const at = '2026-11-01T12:00:00.000Z';
 const op = (collection, id, patch, time = at) => operation(collection, id, patch, 'Gerät', time);
@@ -16,7 +16,7 @@ const dine = (id, date, cents, dining = 'restaurant', extra = {}) => ({ id, date
 describe('Eingaben prüfen', () => {
   test('Betrag, Art, Uhrzeit und Lokal werden geprüft; Lokal und Uhrzeit stehen immer im Ergebnis', () => {
     const fields = diningFields({ amount: '46,80', date: '2026-11-05', time: '19:30', kind: 'drinks', place: '  Café   Lotte ', buyerId: null }, '2026-11-06');
-    assert.deepEqual(fields, { date: '2026-11-05', cents: 4680, source: 'hand', note: '', buyerId: null, buyerName: '', storeName: 'Café Lotte', dining: 'drinks', time: '19:30' });
+    assert.deepEqual(fields, { date: '2026-11-05', cents: 4680, source: 'hand', note: '', buyerId: null, buyerName: '', storeName: 'Café Lotte', dining: 'drinks', time: '19:30', rating: null, ratingNote: '' });
     const plain = diningFields({ amount: '8', date: '2026-11-06', kind: 'drinks' }, '2026-11-06');
     assert.equal(plain.storeName, ''); assert.equal(plain.time, ''); assert.equal(plain.dining, 'drinks'); assert.equal(plain.storeId, undefined);
     assert.equal(diningFields({ amount: '8', date: '2026-11-06' }, '2026-11-06').dining, 'restaurant', 'Restaurant ist vorgewählt');
@@ -87,9 +87,51 @@ describe('Auswertung und Monatsbudget', () => {
   });
   test('CSV nennt Art, Lokal und Uhrzeit', () => {
     const csv = spendingCsv(filterPurchases(rows, '2026-11'));
-    assert.match(csv.split('\r\n')[0], /"Kategorie";"Uhrzeit"$/);
-    assert.ok(csv.includes('"2026-11-04";"Restaurant/Café/Bar: Getränke";"Nicht zugeordnet";"Café Lotte";"8,90";"Restaurant/Café/Bar";"15:10"'));
-    assert.ok(csv.includes('"2026-11-02";"Einkauf";"Nicht zugeordnet";"";"100,00";"";""'));
+    assert.match(csv.split('\r\n')[0], /"Kategorie";"Uhrzeit";"Bewertung \(1–5\)";"Notiz zur Bewertung"$/);
+    assert.ok(csv.includes('"2026-11-04";"Restaurant/Café/Bar: Getränke";"Nicht zugeordnet";"Café Lotte";"8,90";"Restaurant/Café/Bar";"15:10";"";""'));
+    assert.ok(csv.includes('"2026-11-02";"Einkauf";"Nicht zugeordnet";"";"100,00";"";"";"";""'));
+  });
+});
+
+describe('Bewertung eines Restaurantbesuchs (2.174)', () => {
+  test('Sterne 1–5 und eine kurze Notiz, nur bei Restaurant; leer oder 0 heißt keine Bewertung', () => {
+    const rated = diningFields({ amount: '46,80', date: '2026-11-05', kind: 'restaurant', rating: '4', ratingNote: '  Pizza top,   Bedienung langsam ' }, '2026-11-06');
+    assert.equal(rated.rating, 4); assert.equal(rated.ratingNote, 'Pizza top, Bedienung langsam');
+    assert.equal(diningFields({ amount: '5', date: '2026-11-05', kind: 'restaurant', rating: '' }, '2026-11-06').rating, null);
+    assert.equal(diningFields({ amount: '5', date: '2026-11-05', kind: 'restaurant', rating: '0' }, '2026-11-06').rating, null, 'zurückgesetzt');
+    assert.deepEqual(['rating', 'ratingNote'].map(key => diningFields({ amount: '5', date: '2026-11-05', kind: 'drinks', rating: '5', ratingNote: 'x' }, '2026-11-06')[key]), [null, ''], 'Getränke haben keine Bewertung');
+    assert.equal(diningFields({ amount: '5', date: '2026-11-05', ratingNote: 'x'.repeat(300) }, '2026-11-06').ratingNote.length, 120);
+    for (const bad of ['6', '-1', '2.5', 'viel']) assert.throws(() => diningRating(bad), /1 bis 5 Sterne/);
+    assert.equal(ratingStars(4), '★★★★☆'); assert.equal(ratingStars(1), '★☆☆☆☆');
+    assert.equal(hasRating({ rating: null }), false); assert.equal(hasRating({}), false); assert.equal(hasRating({ rating: 5 }), true);
+  });
+  test('Die Bewertung ändert keine Summe und kein Budget', () => {
+    const plain = [dine('a', '2026-11-04', 4680, 'restaurant', { storeName: 'Roma' })], rated = [{ ...plain[0], rating: 1, ratingNote: 'nie wieder' }];
+    for (const counts of [true, false]) assert.equal(budgetSpent(summarizePeriod(rated, '2026-11'), counts), budgetSpent(summarizePeriod(plain, '2026-11'), counts));
+    assert.equal(summarizePeriod(rated, '2026-11').dining.total, 4680);
+  });
+  test('Letzte Bewertung je Lokal: ohne Groß-/Kleinschreibung, der jüngste bewertete Besuch, nicht der gerade bearbeitete', () => {
+    const rows = [dine('r1', '2026-10-01', 3000, 'restaurant', { storeName: 'Pizzeria Roma', rating: 2, ratingNote: 'zu salzig' }),
+      dine('r2', '2026-11-01', 3000, 'restaurant', { storeName: 'pizzeria  ROMA', rating: 5, ratingNote: 'super', time: '19:00' }),
+      dine('r3', '2026-11-03', 3000, 'restaurant', { storeName: 'Pizzeria Roma' }),   // ohne Bewertung: zählt nicht
+      dine('r4', '2026-11-04', 3000, 'restaurant', { storeName: 'Pizzeria Roma', rating: 1, deletedAt: at }),
+      dine('x', '2026-11-05', 3000, 'restaurant', { storeName: 'Sushi Bar', rating: 3 })];
+    assert.equal(lastRating(rows, ' PIZZERIA roma ').id, 'r2');
+    assert.equal(lastRating(rows, 'Pizzeria Roma', 'r2').id, 'r1');
+    assert.equal(lastRating(rows, 'Unbekannt'), null); assert.equal(lastRating(rows, ''), null);
+  });
+  test('Export enthält Sterne und Notiz; alte Einträge ohne Bewertung bleiben leer', () => {
+    const csv = spendingCsv([dine('r', '2026-11-04', 4680, 'restaurant', { storeName: 'Roma', rating: 4, ratingNote: 'Pizza top', time: '19:30' }), dine('o', '2026-11-03', 500, 'restaurant')]);
+    assert.ok(csv.includes('"Roma";"46,80";"Restaurant/Café/Bar";"19:30";"4";"Pizza top"'));
+    assert.ok(csv.includes('"2026-11-03";"Restaurant/Café/Bar: Restaurant";"Nicht zugeordnet";"";"5,00";"Restaurant/Café/Bar";"";"";""'));
+  });
+  test('Gemeinsame Datei: Bewertungen sind gültig, brauchen keine neuere App; Unsinn wird abgelehnt', () => {
+    const data = merge(emptyData(), [op('purchases', 'r1', { date: '2026-11-04', cents: 4680, source: 'hand', note: '', storeName: 'Roma', dining: 'restaurant', time: '19:30', rating: 4, ratingNote: 'Pizza top' })]);
+    assert.equal(data.sync.minRev, 19, 'nur die Restaurantzeile selbst, keine neue Revision'); assert.doesNotThrow(() => validate(data));
+    const cleared = merge(data, [op('purchases', 'r1', { rating: null, ratingNote: '' }, '2026-11-05T12:00:00.000Z')]);
+    assert.equal(cleared.purchases[0].rating, null); assert.equal(hasRating(cleared.purchases[0]), false); assert.doesNotThrow(() => validate(cleared));
+    for (const rating of [0, 6, 2.5, '4']) { const bad = structuredClone(data); bad.purchases[0].rating = rating; assert.throws(() => validate(bad), /Bewertung/); }
+    const long = structuredClone(data); long.purchases[0].ratingNote = 'x'.repeat(201); assert.throws(() => validate(long), /Bewertung/);
   });
 });
 

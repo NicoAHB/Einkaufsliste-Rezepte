@@ -2,6 +2,28 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.175: „Aufgebraucht“ in der Rezeptkarte
+
+**Das Gegenstück zu „✓ Hab ich“.** In der Karte **„… von … Zutaten da“** steht unter **Im Vorrat vorhanden** rechts neben jeder Zutat ein kleiner Knopf **Aufgebraucht** mit Einkaufswagen (dezent im Grün der Liste, Tippfläche trotzdem 44 px). Nach der Rückfrage „Mehl ist aufgebraucht – Aus dem Vorrat nehmen und auf die Einkaufsliste setzen?“ und **Ja**:
+- Die Zutat ist im Vorrat **aufgebraucht** (alle Einträge, die sie zu „da“ machen, z. B. auch eine Sorte), wie das Abwählen in der Vorratsauswahl.
+- Sie steht als **Produkt** auf der Einkaufsliste, mit der üblichen Einkaufsmenge wie beim Antippen unter „Produkte“ (z. B. 1 Packung Mehl à 1 kg), nicht mit der Rezeptmenge.
+- Sie landet im Geschäft, in dem sie zuletzt eingekauft wurde, sonst unter **Überall möglich**; die Rückfrage nennt es.
+- Steht sie schon auf der Einkaufsliste, wird nichts doppelt angelegt: „… steht schon auf deiner Einkaufsliste“.
+- Die Karte zeigt sofort den neuen Stand (z. B. „5 von 7 Zutaten da · 2 fehlen“), die Zutat steht unter **Fehlt im Vorrat**. Unten steht **Auf die Einkaufsliste gesetzt** mit **Rückgängig** für beides.
+
+Abgleich und Offline-Speicher wie bei allen Vorratsaktionen. Offline-Paket `einkauf-shell-v187`.
+
+## Neu in Version 2.174: Restaurant bewerten, kein Plus mehr im Betragsfeld
+
+**Kein grünes Plus mehr.** Im Fenster **Restaurant/Café/Bar** speicherte das grüne Plus im Feld „Betrag (€)“ nur dasselbe wie **Speichern**; es ist entfallen, das Feld nutzt die volle Breite. Gespeichert wird nur noch mit **Speichern**: Die Eingabetaste bzw. **Fertig** auf der Tastatur schließt in den Feldern nur die Tastatur.
+
+**Nochmal hingehen?** Bei **Restaurant** (nicht bei Getränken) steht unter „Bezahlt von“ die zugeklappte Zeile **Bewertung (optional)**. Aufgeklappt gibt es fünf große Sterne ohne Tastatur (1 = nie wieder, 3 = geht so, 5 = unbedingt); ein zweiter Tipp auf den gewählten Stern setzt die Bewertung zurück. Darunter passt eine kurze Notiz (z. B. „Pizza top, Bedienung langsam“). Zugeklappt zeigt die Zeile die Sterne (★★★★☆).
+- **Zuletzt:** Gibt jemand später dasselbe Lokal ein (Groß-/Kleinschreibung egal), steht darunter klein die letzte Bewertung mit Notiz.
+- **Übersicht:** In der Karte „Restaurant/Café/Bar“ stehen die Sterne klein neben dem Lokal.
+- Sterne und Notiz werden als neue, freiwillige Felder `rating` und `ratingNote` mit dem Besuch gespeichert, abgeglichen und gesichert; der CSV-Export hat zwei neue Spalten. Ältere Einträge ohne Bewertung funktionieren wie bisher, ältere App-Versionen lassen die Felder unberührt. Summen und Monatsbudget ändern sich dadurch nicht.
+
+Offline-Paket `einkauf-shell-v186`.
+
 ## Neu in Version 2.173: Schreibweise SattPlan, Logo von NvF Digital
 
 **SattPlan.** Die App heißt jetzt in der neuen Schreibweise **SattPlan** (wie auf der Visitenkarte): im Titel, auf dem Home-Bildschirm, in der Anleitung, in Datensicherungen und PDFs. Unter **Optionen** steht der Name mit **S** und **P** in Orange.

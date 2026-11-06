@@ -7,7 +7,7 @@ import { mountExpenseCategoryPicker } from './expense-category-view.js';
 import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
-import { active, addToList, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, pantryRows, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
 import { defaultOfferUrl, localDay, offerUrl, productKey, storeOfferUrl, unitSpec } from './prices.js';
 import { hasProductPrice, priceOverview, productPriceIndex, withProductPrice } from './product-prices.js';
@@ -18,8 +18,8 @@ import { REGULAR_SYMBOLS, NOTES_SYMBOL, DISPLAY_MODES, DISPLAY_LABELS, displayMo
 import { privateView, privateViewId } from './private-list.js';
 import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
-import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
-import { GROCERY_PRODUCTS, favoriteId, ownProductRemoval } from './product-catalog.js';
+import { ingredientMatchName, productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
+import { GROCERY_PRODUCTS, catalogProductFor, favoriteId, ownProductRemoval } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
@@ -36,7 +36,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerAddress, wor
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
-import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice } from './buying.js';
+import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice, standardPurchase } from './buying.js';
 import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetails } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
@@ -54,10 +54,10 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
-import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
@@ -1558,6 +1558,49 @@ async function haveIngredient(row) {
     showNotice(`${product.name} ist wieder als fehlend markiert${restore.length ? ' und steht wieder auf dem Einkaufszettel' : ''}`);
   }), { ms: 4000 });
 }
+/* „Aufgebraucht“ (2.175): Gegenstück zu „✓ Hab ich“. Eine vorhandene Zutat ist alle: Nach einer Rückfrage wird sie im Vorrat als aufgebraucht
+   markiert (alle Vorratseinträge, die sie zu „da“ machen, z. B. auch „Weizenmehl“ für „Mehl“; wie das Abwählen in der Vorratsauswahl) und als
+   Produkt mit der üblichen Einkaufsmenge auf die Einkaufsliste gesetzt (keine Rezeptmenge), im zuletzt dafür genutzten Geschäft, sonst ohne
+   Geschäft („Überall möglich“). Steht sie schon offen auf der Liste, wird nichts doppelt angelegt. Beides ist eine Änderung (Abgleich und
+   Offline-Speicher wie bei allen Vorratsaktionen); die Karte zeichnet sich neu, unten steht „Rückgängig“ für beides. */
+function lastStoreFor(name) {
+  const live = new Set(orderedStores(state.stores).filter(store => visibleStore(store) && !isSeparate(store) && !isNotesStore(store)).map(store => store.id));
+  const used = (state.items || []).filter(item => item.storeId && live.has(item.storeId) && sameIngredient(item.name, name))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+  return used[0]?.storeId || '';
+}
+async function usedUpIngredient(row) {
+  if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
+  const product = ingredientPantryProduct(row), scope = namespace();
+  const listed = () => active(withoutSeparate(state.items, state.stores)).filter(item => !item.checked && sameIngredient(item.name, product.name));
+  const storeId = lastStoreFor(product.name), already = listed().length > 0;
+  const where = already ? 'Es steht schon auf deiner Einkaufsliste und wird nicht doppelt angelegt.' : storeId ? `Es kommt zu „${storeName(storeId)}“.` : 'Es kommt unter „Überall möglich“ (ohne Geschäft).';
+  if (!await ask({ title: `${product.name} ist aufgebraucht`, message: `Aus dem Vorrat nehmen und auf die Einkaufsliste setzen? ${where}`, confirmLabel: 'Ja', cancelLabel: 'Abbrechen' })) return;
+  if (scope !== namespace()) return;
+  const before = clone(state.pantry || []);
+  const stocked = pantryRows(before).filter(entry => entry.available !== false && coveringStock(row, [ingredientMatchName(entry)]).length);
+  const pantryOps = pantrySelectionChanges(stocked.map(entry => ({ name: entry.name, pantryAvailable: false })), before).map(({ id, patch }) => nextOp('pantry', id, patch));
+  let itemOps = [];
+  if (!listed().length) {
+    const known = catalogProductFor(product.name), target = storeId && active(state.stores).some(store => store.id === storeId) ? storeId : '';
+    const item = standardPurchase({ name: product.name, ...(product.category ? { category: product.category } : {}), ...(known ? { quantity: known.quantity, unit: known.unit } : {}) }, itemHistory());
+    lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
+    itemOps = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
+  }
+  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deiner Einkaufsliste`); return; }
+  commit([...pantryOps, ...itemOps]);
+  const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
+  // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), der neu angelegte Artikel verschwindet wieder von der Liste
+  const undoPantry = pantryOps.map(({ entityId: id, patch }) => {
+    const old = before.find(entry => entry.id === id);
+    return { id, patch: Object.fromEntries(Object.keys(patch).filter(key => key !== 'productGroupVersion').map(key => [key, old?.[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
+  });
+  showNotice(added.length ? `Auf die Einkaufsliste gesetzt: ${product.name}` : `${product.name} steht schon auf deiner Einkaufsliste – aus dem Vorrat genommen`, () => guard(() => {
+    if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
+    commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
+    showNotice(`${product.name} ist wieder im Vorrat${added.length ? ' und nicht mehr auf der Einkaufsliste' : ''}`);
+  }));
+}
 function addedLabel(at) { const day = relativeDay(at); return `hinzugefügt ${day === 'geplant' ? 'heute' : day}`; }
 function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
@@ -1583,7 +1626,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   const showStock=stock.have.length>0;
   let stockView=null;
   if(showStock && tracked.length) {
-    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel,onHave:row=>guard(()=>haveIngredient(row))});
+    stockView=recipeStockView({key:options.isolated?`plan:${options.mealId}`:`book:${recipe.id}`,recipe,ingredients,index:stockIndex,makeIcon:icon,ingredientLabel,onHave:row=>guard(()=>haveIngredient(row)),onUsedUp:row=>guard(()=>usedUpIngredient(row))});
     card.append(stockView.element);
   }
   const details = element('details', undefined, 'recipe-details'); details.open = options.isolated ? options.expanded !== false : openRecipes.has(recipe.id);
@@ -3982,11 +4025,48 @@ function renderDiningPlaces() {
   for (const place of places) {
     const chip = button(place.name, () => {
       form.elements.place.value = place.name; form.elements.kind.value = place.kind;
-      renderDiningPlaces(); refreshDirty(form);
+      renderDiningPlaces(); syncDiningKind(); refreshDirty(form);
     }, 'chip dining-place');
     chip.setAttribute('aria-pressed', String(place.name.toLocaleLowerCase('de') === typed));
     box.append(chip);
   }
+}
+/* Bewertung (2.174): nur bei Restaurant, zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
+   Sterne ohne Tastatur; ein Tipp auf den gewählten Stern nimmt die Bewertung zurück. Dazu eine kurze Notiz. Unter dem Lokal zeigt ein kleiner
+   Hinweis, wie es beim letzten Besuch dort bewertet wurde. Alles ist eine interne Notiz und ändert weder Summen noch Budget. */
+const starsLabel = stars => `${stars} von 5 Sternen (${RATING_MEANING[stars]})`;
+function paintStars(target, stars) {
+  target.replaceChildren(element('span', '★'.repeat(stars), 'stars-on'), element('span', '☆'.repeat(5 - stars), 'stars-off'));
+  target.setAttribute('aria-label', starsLabel(stars)); target.setAttribute('role', 'img');
+}
+function renderDiningRating() {
+  const form = $('#dining-form'), stars = Number(form.elements.rating.value) || 0, value = $('#dining-rating-value');
+  for (const star of $('#dining-rating').querySelectorAll('.dining-star')) {
+    const own = Number(star.dataset.value); star.classList.toggle('on', own <= stars); star.setAttribute('aria-pressed', String(own === stars));
+  }
+  if (stars) paintStars(value, stars); else { value.replaceChildren(); value.removeAttribute('aria-label'); value.removeAttribute('role'); }
+}
+function setDiningRating(stars) {
+  const field = $('#dining-form').elements.rating;
+  field.value = stars ? String(stars) : ''; field.dispatchEvent(new Event('input', { bubbles: true }));
+  renderDiningRating();
+}
+function openDiningRating(open) {
+  $('#dining-rating-panel').hidden = !open; $('#dining-rating-toggle').setAttribute('aria-expanded', String(open));
+}
+function renderLastRating() {
+  const form = $('#dining-form'), hint = $('#dining-last-rating'), restaurant = form.elements.kind.value === 'restaurant';
+  const last = restaurant ? lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value) : null;
+  hint.hidden = !last; hint.replaceChildren();
+  if (!last) return;
+  const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating);
+  hint.append('Zuletzt: ', stars);
+  if (last.ratingNote) hint.append(element('span', ` · ${last.ratingNote}`, 'dining-last-note'));
+}
+// Bewertung nur bei Restaurant: Bei „Getränke“ verschwinden Bewertung und Hinweis (eine eingegebene Bewertung wird dann nicht gespeichert)
+function syncDiningKind() {
+  const restaurant = $('#dining-form').elements.kind.value === 'restaurant';
+  $('#dining-rating').hidden = !restaurant; renderLastRating();
 }
 function openDining(id = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -4001,13 +4081,15 @@ function openDining(id = '') {
   form.elements.place.value = row?.storeName || '';
   form.elements.date.value = row?.date || isoDate();
   form.elements.time.value = row ? row.time || '' : clockNow();
+  form.elements.rating.value = hasRating(row) && diningKind(row).id === 'restaurant' ? String(row.rating) : '';
+  form.elements.ratingNote.value = row?.ratingNote || '';
   spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : spendingView.defaultBuyer(), row?.buyerName || '');
-  renderDiningPlaces();
+  renderDiningPlaces(); openDiningRating(false); renderDiningRating(); syncDiningKind();
   $('#dining-budget-note').textContent = diningCountsNow() ? 'Zählt zum Monatsbudget.' : 'Zählt nicht zum Monatsbudget (Haken unter „Ausgaben“). In der Übersicht „Restaurant/Café/Bar“ steht der Betrag trotzdem.';
   $('#dining-title').textContent = row ? 'Restaurant/Café/Bar bearbeiten' : DINING_LABEL;
   $('#dining-delete').hidden = !row;
   $('#dining-dialog').showModal();
-  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#dining-save'), $('#dining-plus')] }); else disarmDirty(form);
+  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#dining-save')] }); else disarmDirty(form);
   // Wie bei „Ausgabe eintragen“: Die Tastatur öffnet sich erst, wenn das Betragsfeld angetippt wird.
   $('#dining-dialog [data-close]').focus({ preventScroll: true });
 }
@@ -4018,10 +4100,12 @@ function saveDining() {
   if (id && !current) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
   const buyer = purchaseBuyer(form.elements.buyerId.value, editing);
   const fields = diningFields({ amount: form.elements.amount.value, date: form.elements.date.value, time: form.elements.time.value, kind: form.elements.kind.value,
-    place: form.elements.place.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate());
+    place: form.elements.place.value, buyerId: buyer.id, buyerName: buyer.name, rating: form.elements.rating.value, ratingNote: form.elements.ratingNote.value }, isoDate());
+  // Ohne Bewertung bekommt ein neuer Eintrag keine leeren Felder; beim Ändern löscht null bzw. '' eine frühere Bewertung
+  if (!editing) { if (fields.rating === null) delete fields.rating; if (!fields.ratingNote) delete fields.ratingNote; }
   let patch = fields;
   if (editing) {
-    const prior = { storeName: '', time: '', note: '', source: 'hand', ...editing, buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
+    const prior = { storeName: '', time: '', note: '', source: 'hand', ...editing, rating: hasRating(editing) ? editing.rating : null, ratingNote: editing.ratingNote || '', buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
     patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => key !== 'buyerName' && value !== prior[key]));
     if (fields.buyerId !== prior.buyerId) patch.buyerName = fields.buyerName;
     if (!Object.keys(patch).length) { $('#dining-dialog').close(); return; }
@@ -4030,7 +4114,7 @@ function saveDining() {
   duplicateWarning(effective, id, editing ? 'tippe auf „Änderungen speichern“' : 'tippe auf „Speichern“');
   const ops = [...(buyer.change && effective.buyerId === buyer.id ? [nextOp('members', buyer.id, buyer.change.patch)] : []), nextOp('purchases', id || uid(), patch)];
   const where = effective.storeName ? ` · ${effective.storeName}` : '';
-  const notice = `${euros(effective.cents)} ${diningKind(effective).label}${where} gespeichert${diningCountsNow() ? budgetNote(monthTotalWith(monthOf(effective.date), effective.cents, current)) : ' · zählt nicht zum Budget'}`;
+  const notice = `${euros(effective.cents)} ${diningKind(effective).label}${where}${hasRating(effective) ? ` ${ratingStars(effective.rating)}` : ''} gespeichert${diningCountsNow() ? budgetNote(monthTotalWith(monthOf(effective.date), effective.cents, current)) : ' · zählt nicht zum Budget'}`;
   if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
   commit(ops, notice); spendingView.reveal(effective); renderSpending(); $('#dining-dialog').close();
 }
@@ -5108,14 +5192,19 @@ $('#dining-budget').addEventListener('change', event => {
   const box = event.target;
   try { setDiningBudget(box.checked); } catch (error) { box.checked = diningCountsNow(); message(error.message); }
 });
-let diningPlus = 0;
-$('#dining-plus').addEventListener('pointerdown', () => { diningPlus = Date.now(); });
-$('#dining-form').addEventListener('submit', event => {
-  event.preventDefault();
-  if (Date.now() - diningPlus < 1500) document.activeElement?.blur?.();
-  diningPlus = 0; guard(saveDining);
+$('#dining-form').addEventListener('submit', event => { event.preventDefault(); guard(saveDining); });
+// Gespeichert wird nur mit „Speichern“ (2.174): Enter bzw. „Fertig“ auf der Tastatur schließt in den Feldern nur die Tastatur.
+$('#dining-form').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.isComposing || !(event.target instanceof HTMLInputElement)) return;
+  event.preventDefault(); event.target.blur();
 });
-$('#dining-form').elements.place.addEventListener('input', renderDiningPlaces);
+$('#dining-form').elements.place.addEventListener('input', () => { renderDiningPlaces(); renderLastRating(); });
+for (const radio of $('#dining-form').querySelectorAll('input[name=kind]')) radio.addEventListener('change', syncDiningKind);
+$('#dining-rating-toggle').addEventListener('click', () => openDiningRating($('#dining-rating-panel').hidden));
+for (const star of $('#dining-rating').querySelectorAll('.dining-star')) star.addEventListener('click', () => {
+  const stars = Number(star.dataset.value), current = Number($('#dining-form').elements.rating.value) || 0;
+  setDiningRating(stars === current ? 0 : stars);   // nochmals auf den gewählten Stern: Bewertung zurücksetzen
+});
 $('#dining-delete').addEventListener('click', () => guard(async () => {
   const id = $('#dining-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
   if (!row) { $('#dining-dialog').close(); return; }
