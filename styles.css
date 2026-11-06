@@ -5833,3 +5833,31 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 :root #ask-cancel,:root[data-glass] #ask-cancel { border-color:color-mix(in srgb, var(--accent) 45%, var(--line-strong)); background:var(--card); color:var(--accent); -webkit-backdrop-filter:none; backdrop-filter:none }
 :root #ask-ok:not(.danger):active:not(:disabled) { background:color-mix(in srgb, var(--accent) 16%, var(--accent-soft)) }
 :root #ask-cancel:active:not(:disabled) { background:var(--accent-soft) }
+
+/* Kästchen einheitlich (2.183): Safari auf dem iPhone zeichnet ein leeres Kästchen als blassen, unvollständigen Kreis. Wie beim Haken fürs
+   Auswärtsessen (2.172) sind alle Kästchen in Formularen, in den Zutatenlisten zum Übernehmen und im Kochmodus jetzt selbst gezeichnet:
+   abgerundetes Quadrat mit grünem Rand, angehakt grün gefüllt mit Haken. Die Schalter unter „Geschäfte & Listen“ bleiben Schalter. */
+:root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox],
+:root[data-glass] :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox] {
+  -webkit-appearance:none; appearance:none; flex:none; box-sizing:border-box; width:26px; height:26px; min-height:26px; margin:0; padding:0;
+  border:2px solid color-mix(in srgb, var(--accent) 45%, var(--line-strong)); border-radius:8px; background:var(--card) no-repeat center / 16px 16px;
+  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; cursor:pointer; transition:background-color .15s ease,border-color .15s ease
+}
+:root .cook-list input[type=checkbox],:root[data-glass] .cook-list input[type=checkbox] { width:30px; height:30px; min-height:30px; border-radius:9px; background-size:19px 19px }
+:root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:checked,
+:root[data-glass] :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:checked {
+  border-color:var(--accent); background-color:var(--accent);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:checked {
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310261b' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")
+  }
+}
+:root[data-theme=dark] :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:checked {
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310261b' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")
+}
+:root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:focus,
+:root[data-glass] :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:focus { box-shadow:none }
+:root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:focus-visible { outline:3px solid var(--accent); outline-offset:2px }
+:root :is(.checkbox-label,.transfer-row,.cook-list) input[type=checkbox]:disabled { opacity:.45; cursor:default }
