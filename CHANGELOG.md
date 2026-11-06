@@ -2,6 +2,14 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.179: Passende Beispiele bei Getränken
+
+Im Fenster **Restaurant/Café/Bar** stehen bei **Getränke** jetzt passende Beispiele in den Feldern: beim Lokal „z. B. Café Lotte“, in der Notiz zur Bewertung „z. B. Cappuccino top, gemütliche Sessel“ (bisher auch hier „Pizza top, Bedienung langsam“). Bei **Restaurant** bleibt alles wie bisher. Offline-Paket `einkauf-shell-v191`.
+
+## Neu in Version 2.178: „Hab ich“ dezent wie „Aufgebraucht“
+
+**Kleiner Knopf statt großer Fläche.** In der Karte **„… von … Zutaten da“** war **✓ Hab ich** unter „Fehlt im Vorrat“ groß und auffällig. Jetzt sieht er aus wie **Aufgebraucht**: klein, zart umrandet, grün, mit Haken-Symbol; die Tippfläche bleibt 44 px hoch. Funktion unverändert. Offline-Paket `einkauf-shell-v190`.
+
 ## Neu in Version 2.177: Sterne auch für Getränke; klarere Meldung bei „Aufgebraucht“
 
 **Bewertung wie beim Restaurant.** Im Fenster **Restaurant/Café/Bar** gibt es **Bewertung (optional)** jetzt auch bei **Getränke**: dieselben fünf Sterne („Nochmal hingehen?“), dieselbe kurze Notiz, derselbe Hinweis „Zuletzt: ★★★★☆“ beim selben Lokal und die kleinen Sterne in der Übersicht. Beim Wechsel zwischen Restaurant und Getränke bleibt eine eingegebene Bewertung stehen. Gespeichert wird wie bei Restaurants (`rating`, `ratingNote`), ohne Einfluss auf Summen und Budget.

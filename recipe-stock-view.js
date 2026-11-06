@@ -37,8 +37,8 @@ export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredien
           line.append(label,used);li.append(line);
         } else li.append(label);
         if(kind==='missing'&&onHave){
-          // Eindeutig anders als „Einkaufen“: Text mit Haken, kein reines Plus; mindestens 44 px hoch
-          const mark=node('button','✓ Hab ich','recipe-stock-have');mark.type='button';
+          // Eindeutig anders als „Einkaufen“: Text mit Haken, kein reines Plus. Seit 2.178 so klein und dezent wie „Aufgebraucht“ (Tippfläche 44 px)
+          const mark=node('button',undefined,'recipe-stock-have');mark.type='button';mark.append(makeIcon('check'),node('span','Hab ich'));
           mark.setAttribute('aria-label',`${row.name}: hab ich, in den Vorrat übernehmen`);
           mark.addEventListener('click',event=>{event.stopPropagation();onHave(row);});
           li.append(mark);
