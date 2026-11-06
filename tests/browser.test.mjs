@@ -9208,6 +9208,18 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal((await look(page.locator('#group-items'))).appearance,'none');
     assert.deepEqual(problems,[]);await ctx.close();
   });
+  test('2.184: Ausgaben – Zeitraum und Personen nebeneinander in einer Karte, darunter die Zeile „Person“; CSV-Knopf mit Rahmen; „Anzahl der Einkäufe je Geschäft“',async()=>{
+    const {ctx,page,problems}=await context();await open(page);await goTab(page,'spending');
+    const box=selector=>page.locator(selector).boundingBox();
+    const [period,members,label,filters]=await Promise.all(['#spending-period','#spending-members','.spend-person-label','.spend-filters'].map(box));
+    assert.equal(Math.round(period.y),Math.round(members.y),'nebeneinander');assert.ok(label.y>period.y+period.height,'„Person“ darunter');
+    for(const button of [period,members,label])assert.ok(button.x>=filters.x&&button.x+button.width<=filters.x+filters.width+1,'in derselben Karte');
+    assert.equal(await page.locator('.spend-filters #spending-person-filter').count(),1);
+    const border=selector=>page.locator(selector).evaluate(node=>getComputedStyle(node).borderTopWidth);
+    assert.deepEqual([await border('#spending-period'),await border('#spending-members'),await border('#spending-export')],['2px','2px','2px']);
+    assert.equal(await page.locator('#spending-analysis option[value=frequency]').textContent(),'Anzahl der Einkäufe je Geschäft');
+    assert.equal(await horizontalOverflow(page),0);assert.deepEqual(problems,[]);await ctx.close();
+  });
   function data284(){const data=milkRecipes(),stamp='2026-10-30T09:00:00Z',record=(id,fields)=>({id,...fields,createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{}}),today=isoDay(new Date());data.items=[];data.recipes.push({...data.recipes[0],id:'old284',name:'Vergangenes Gericht'});data.ingredients.push({...data.ingredients[0],id:'old-i284',recipeId:'old284',name:'Hummer',quantity:1,unit:'Stück'});data.meals=[record('past284',{date:isoDay(new Date(Date.now()-86400000)),recipeId:'old284',servings:2,done:false})];return {data,record,today};}
   const milkAmount284=data=>data.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Milch').reduce((sum,row)=>sum+row.quantity*(row.unit==='l'?1000:1),0);
   test('2.84: Wochen-Einkauf ignoriert vergangene Tage und ergänzt nur die Mengendifferenz zum offenen Einkaufszettel',async()=>{
