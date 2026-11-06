@@ -3869,7 +3869,8 @@ function renderSpending() {
       $('#identity').textContent = own.name; updateSaveButtons();
     } catch { /* Bei vollem Speicher bleibt die lesbare Ausgabenansicht benutzbar. */ }
   }
-  $('#dining-budget').checked = diningCountsNow();
+  const diningOn = diningCountsNow(); $('#dining-budget').checked = diningOn;
+  $('#dining-budget-state').textContent = diningOn ? 'Ja: wird vom Monatsbudget abgezogen' : 'Nein: Monatsbudget bleibt unberührt, Beträge nur in der Übersicht';
   spendingView?.render();
 }
 function purchaseStatus(text, fraction) {
@@ -3968,7 +3969,7 @@ function savePurchase() {
 }
 
 /* ---------- Restaurant/Café/Bar (2.170) ---------- */
-// Auswärts essen und trinken mit wenigen Tipps: Art (Restaurant ist vorgewählt), Betrag, auf Wunsch das Lokal (zuletzt besuchte zum Antippen).
+// Auswärts essen und trinken mit wenigen Tipps: Art (Restaurant oder Getränke, Restaurant ist vorgewählt), Betrag, auf Wunsch das Lokal (zuletzt besuchte zum Antippen).
 // Datum, Uhrzeit und die eigene Person sind vorbelegt. Gespeichert wird eine normale Ausgabe mit `dining`; der Haken „Zählt zum Monatsbudget“
 // unter „Ausgaben“ entscheidet für die ganze Familie, ob diese Beträge vom Budget abgehen. In der Übersicht stehen sie immer.
 let diningScope = '', diningEditing = null;
@@ -5117,7 +5118,7 @@ $('#dining-delete').addEventListener('click', () => guard(async () => {
   const id = $('#dining-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
   if (!row) { $('#dining-dialog').close(); return; }
   const what = `${euros(row.cents)}${row.storeName ? ` in ${row.storeName}` : ''} vom ${new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE')}`;
-  if (!await ask({ title: `${diningKind(row).label}-Besuch löschen?`, message: `${what} wird gelöscht. 14 Tage lang lässt er sich unter „Kürzlich gelöscht“ zurückholen.`, confirmLabel: 'Löschen', danger: true })) return;
+  if (!await ask({ title: diningKind(row).id === 'drinks' ? 'Getränke löschen?' : 'Restaurantbesuch löschen?', message: `${what} wird gelöscht. 14 Tage lang lässt er sich unter „Kürzlich gelöscht“ zurückholen.`, confirmLabel: 'Löschen', danger: true })) return;
   if (!purchaseRows().some(entry => entry.id === id)) { $('#dining-dialog').close(); return; }
   $('#dining-dialog').close(); dropPurchase(row);
 }));

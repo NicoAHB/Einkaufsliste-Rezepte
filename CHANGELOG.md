@@ -2,6 +2,14 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.171: Restaurant/Café/Bar übersichtlicher, Restaurant und Getränke
+
+**Knopf und Haken in einer Karte.** Unter **Ausgaben** stehen der Knopf **Restaurant/Café/Bar** und sein Haken jetzt zusammen in einer Karte. Der Haken heißt **Auswärts essen & trinken zählt zum Monatsbudget** und steht eingerückt unter dem Knopf, damit klar ist, dass er nur fürs Auswärtsessen gilt. Darunter steht, was er gerade bewirkt: „Ja: wird vom Monatsbudget abgezogen“ oder „Nein: Monatsbudget bleibt unberührt, Beträge nur in der Übersicht“.
+
+**Restaurant und Getränke.** Im Fenster gibt es statt Restaurant, Café und Bar zwei Kacheln: **Restaurant** (Essen gehen) und **Getränke** (Café, Bar …). Bereits eingetragene Café- und Bar-Besuche zählen als Getränke; nichts geht verloren.
+
+**Bitte alle Geräte aktualisieren.** Sobald der erste Eintrag unter „Getränke“ gespeichert ist, lesen ältere App-Versionen die gemeinsame Datei nicht mehr (Datenrevision 20). App ganz schließen und neu öffnen, notfalls zweimal. Offline-Paket `einkauf-shell-v183`.
+
 ## Neu in Version 2.170: Restaurant/Café/Bar unter Ausgaben
 
 **Auswärts essen und trinken mit wenigen Tipps.** Unter **Ausgaben** steht direkt unter „Ausgabe nachträglich eintragen“ der neue Knopf **Restaurant/Café/Bar**. Im Fenster **Restaurant**, **Café** oder **Bar** antippen (Restaurant ist vorgewählt), den **Betrag** eingeben und speichern. Das **Lokal** ist freiwillig; die zuletzt besuchten stehen darunter zum Antippen. Datum, Uhrzeit und die eigene Person sind vorbelegt.
