@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Sattplan",
-  "short_name": "Sattplan",
+  "name": "SattPlan",
+  "short_name": "SattPlan",
   "description": "Gemeinsame Einkaufsliste und Rezepte, auch aus Links und Screenshots.",
   "lang": "de",
   "start_url": "./",

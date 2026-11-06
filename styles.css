@@ -5766,3 +5766,16 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .dining-row .icon.dining-edit { flex:none; width:18px; height:18px; color:var(--muted) }
 .spend-summary .spend-summary-dining { font-weight:600 }
 .spend-budget .spend-budget-dining { display:block; margin-top:6px; font-size:.82rem; color:var(--muted) }
+
+/* Schreibweise SattPlan (2.173): wie auf der Visitenkarte S und P in Orange, der Rest in der Schriftfarbe. */
+.brand-name { white-space:nowrap }
+.brand-initial { color:#c65a1e }
+@media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .brand-initial { color:#f08a4b } }
+:root[data-theme=dark] .brand-initial { color:#f08a4b }
+/* „Ein Produkt von NvF Digital“ (2.173) ganz unten unter Optionen. Das Logo ist dunkelgrün auf durchsichtigem Grund; im dunklen
+   Erscheinungsbild liegt es darum auf einer hellen Fläche. */
+.maker { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 12px; margin:28px 0 8px; padding:16px 0 4px; border-top:1px solid var(--line); color:var(--muted); font-size:.82rem }
+.maker-logo-plate { display:inline-flex; align-items:center; padding:6px 10px; border-radius:12px }
+.maker-logo { display:block; width:130px; height:auto }
+@media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .maker-logo-plate { background:#f4f6f2 } }
+:root[data-theme=dark] .maker-logo-plate { background:#f4f6f2 }

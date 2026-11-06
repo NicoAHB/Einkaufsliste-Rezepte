@@ -1938,7 +1938,7 @@ async function uploadPhotos(manual = false) {
       const blob = await readPhoto(id);
       if (!blob) { photoIssue = { scope: namespace(), id }; later(); continue; }
       if (photoIssue?.id === id && photoIssue.scope === namespace()) photoIssue = null;
-      const body = JSON.stringify({ message: 'Sattplan: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
+      const body = JSON.stringify({ message: 'SattPlan: Rezeptfoto', branch: config.branch, content: toBase64(new Uint8Array(await blob.arrayBuffer())) });
       const response = await timed(photoApi(id), { method: 'PUT', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body });
       if (response.ok) unqueuePhoto(key, id);
       else if (response.status === 422 && /sha/i.test(await response.text())) unqueuePhoto(key, id);
@@ -2960,7 +2960,7 @@ async function sync(manual = false) {
       let written = false;
       if (batch.some(op => !remote.sync.applied.includes(op.id)) || groupOps.length || folds.length || tidy?.changed) {
         try {
-          await api('PUT', { message: 'Sattplan: Änderungen synchronisieren',
+          await api('PUT', { message: 'SattPlan: Änderungen synchronisieren',
             content: encodeFile(merged), sha: file.sha, branch: config.branch });
           written = true;
         } catch (error) { if ([409, 422].includes(error.status) && attempt < 3) continue; throw error; }
@@ -3138,9 +3138,9 @@ async function backupFull() {
       const blob = (await readPhoto(id)) ?? (connected() ? await downloadPhoto(id) : null);
       if (blob) files.push({ name: `fotos/${id}.jpg`, data: new Uint8Array(await blob.arrayBuffer()) }); else missing.push(id);
     }
-    const lines = [`Vollsicherung von Sattplan vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
+    const lines = [`Vollsicherung von SattPlan vom ${stamp}`, '', `daten.json: alle Daten (wie „Alle Daten als JSON sichern“), enthält keinen Token.`, `fotos/: ${files.length - 1} Rezeptfotos (Name = Foto-Kennung im Rezept, Feld photoId).`];
     if (missing.length) lines.push('', `Nicht gesichert (nicht auf diesem Gerät und nicht im Daten-Repository gefunden): ${missing.join(', ')}`);
-    lines.push('', 'Wiederherstellen: In Sattplan unter Optionen → Datensicherung → Datensicherung wiederherstellen diese ZIP-Datei auswählen. Vorschau prüfen und Ersetzen bestätigen. Bitte vertraulich aufbewahren.');
+    lines.push('', 'Wiederherstellen: In SattPlan unter Optionen → Datensicherung → Datensicherung wiederherstellen diese ZIP-Datei auswählen. Vorschau prüfen und Ersetzen bestätigen. Bitte vertraulich aufbewahren.');
     files.push({ name: 'lies-mich.txt', data: encode(lines.join('\n')) });
     const zip = makeZip(files);
     await deliverFile(new File([zip], `sattplan-vollsicherung-${stamp}.zip`, { type: 'application/zip' }));
@@ -4223,7 +4223,7 @@ async function cleanPhotos() {
   let deleted = 0, freed = 0;
   for (const file of doomed) {
     const result = await timed(`${photosApi()}/${encodeURIComponent(file.name)}`, { method: 'DELETE', headers: githubHeaders({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ message: 'Sattplan: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
+      body: JSON.stringify({ message: 'SattPlan: ungenutztes Rezeptfoto entfernt', sha: file.sha, branch: config.branch }) });
     if (!result.ok) { note.textContent = `${deleted} Fotos gelöscht, dann Fehler ${result.status}.`; return; }
     deleted++; freed += file.size || 0;
   }

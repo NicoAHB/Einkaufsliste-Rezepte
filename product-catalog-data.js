@@ -1,4 +1,4 @@
-/* Sattplan: feste Produktkennungen und Bildpositionen. Jede Tafel: 8 Spalten × 4 Zeilen.
+/* SattPlan: feste Produktkennungen und Bildpositionen. Jede Tafel: 8 Spalten × 4 Zeilen.
    Reihenfolge niemals ändern: vorhandene Favoriten und Bildverweise bleiben dadurch gültig.
    Neue Produkte nur mit ihrer eigenen Bildtafel am Ende ergänzen. */
 export const PRODUCT_SHEETS = Object.freeze(["produce", "fresh", "everyday", "household", "produce-more", "pantry-more", "fruit-varieties", "vegetable-varieties", "greens-herbs", "bakery-selection", "cheese-selection", "dairy-selection", "plant-based-selection", "meat-deli-selection", "meat-fish-selection", "frozen-selection", "pasta-grains-selection", "canned-selection", "sauces-selection", "spices-selection", "baking-nuts-selection", "breakfast-selection", "sweets-selection", "savoury-selection", "drinks-selection", "coffee-tea-selection", "cleaning-selection", "laundry-kitchen-selection", "body-care-selection", "hygiene-selection", "baby-pets-selection", "home-garden-selection", "international-selection"]);

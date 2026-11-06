@@ -1,10 +1,10 @@
-# Sattplan als App für iPhone und Android: Fahrplan
+# SattPlan als App für iPhone und Android: Fahrplan
 
 Stand: Version 2.149. Dieses Dokument beschreibt, was für eine Veröffentlichung im **App Store** (Apple) und bei **Google Play** nötig ist, was schon vorbereitet ist und in welcher Reihenfolge es sinnvoll ist.
 
 ## Kurzfassung
 
-- **Technisch gut machbar.** Sattplan besteht aus normalen HTML-, CSS- und JavaScript-Dateien. Mit **Capacitor** lassen sich genau diese Dateien als echte App für iOS und Android verpacken, ohne die App neu zu schreiben.
+- **Technisch gut machbar.** SattPlan besteht aus normalen HTML-, CSS- und JavaScript-Dateien. Mit **Capacitor** lassen sich genau diese Dateien als echte App für iOS und Android verpacken, ohne die App neu zu schreiben.
 - **Die größte Hürde ist die Anmeldung und Datenspeicherung, nicht die Oberfläche.** Heute speichert jede Familie in einem eigenen GitHub-Repository und braucht einen persönlichen Token. Für fremde Nutzerinnen und Nutzer aus dem App Store ist das zu kompliziert und wird bei der Prüfung voraussichtlich abgelehnt. Eine öffentliche App braucht deshalb ein eigenes **Konto-System mit Server** („Backend“).
 - **Rechtliches vor der Einreichung klären**, vor allem die **Händlerlogos**, den Datenschutz und das Löschen von Konten.
 - **Zwischenschritt ohne Backend:** Für euch als Familie lässt sich die App schon vorher als Capacitor-App bauen und über **TestFlight** (iPhone) bzw. einen **internen Test** (Google Play) verteilen, mit der heutigen GitHub-Verbindung.

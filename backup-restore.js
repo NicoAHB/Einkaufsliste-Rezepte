@@ -41,7 +41,7 @@ export function decodeBackup(bytes, fileName = '') {
   if (json.length > 8 * 1024 * 1024) throw new Error('Die Datendatei in der Sicherung ist zu groß.');
   let parsed;
   try { parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json).replace(/^\uFEFF/, '')); }
-  catch { throw new Error('Diese Datei enthält keine lesbare Sattplan-Datensicherung.'); }
+  catch { throw new Error('Diese Datei enthält keine lesbare SattPlan-Datensicherung.'); }
   const data = normaliseBackup(parsed), referenced = new Set(backupPhotoIds(data));
   photos = new Map([...photos].filter(([id]) => referenced.has(id)));
   return { data, photos, fileName };

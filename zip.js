@@ -71,7 +71,7 @@ export function readZip(bytes) {
   for(let i=0;i<count;i++) {
     if(!inside(at,46,end)||view.getUint32(at,true)!==0x02014b50)fail();
     const flags=view.getUint16(at+8,true), method=view.getUint16(at+10,true), crc=view.getUint32(at+16,true), packed=view.getUint32(at+20,true), length=view.getUint32(at+24,true), nameLength=view.getUint16(at+28,true), extra=view.getUint16(at+30,true), comment=view.getUint16(at+32,true), offset=view.getUint32(at+42,true);
-    if(method!==0)throw new Error('Bitte die unveränderte ZIP-Sicherung aus Sattplan wählen. Neu komprimierte ZIP-Dateien werden nicht unterstützt.');
+    if(method!==0)throw new Error('Bitte die unveränderte ZIP-Sicherung aus SattPlan wählen. Neu komprimierte ZIP-Dateien werden nicht unterstützt.');
     if(flags & ~0x0800 || packed!==length || !inside(at,46+nameLength+extra+comment,end) || !inside(offset,30,start) || offset<lastEnd)fail();
     const name=decoder.decode(bytes.subarray(at+46,at+46+nameLength));
     if(!name || name.startsWith('/') || name.includes('\\') || name.includes('\0') || name.split('/').some(part=>part==='..'||part==='.') || seen.has(name))fail();

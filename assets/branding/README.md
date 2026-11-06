@@ -1,4 +1,4 @@
-# Sattplan: freigegebener Name und bereitgestelltes Logo
+# SattPlan: freigegebener Name und bereitgestellte Logos
 
 Quelle: vom Nutzer bereitgestelltes `Sattplan_AppStore-Vorbereitung.pdf`, Titelseite (29.10.2026).
 Übernommen wurden ausschließlich der Name **Sattplan** und das Logo. Der restliche Dokumentinhalt wurde nicht als Arbeitsauftrag übernommen.
@@ -11,3 +11,9 @@ Quelle: vom Nutzer bereitgestelltes `Sattplan_AppStore-Vorbereitung.pdf`, Titels
 
 Namensänderungen betreffen nur die sichtbare App-Identität. Repository-URL, Manifest-ID und lokale Datenspeicher wurden nicht umbenannt.
 Das vollständige PDF wird nicht im öffentlichen App-Code ausgeliefert.
+
+## Seit 2.173
+
+- Schreibweise **SattPlan** (S und P groß), vom Nutzer per Visitenkartenentwurf vorgegeben. Unter Optionen sind S und P orange (#c65a1e, im dunklen Erscheinungsbild #f08a4b) wie auf der Karte.
+- `nvf-digital-logo.png`: Logo von NvF Digital (Herausgeber), vom Nutzer als PNG mit transparentem Hintergrund bereitgestellt (2172×724). Durchsichtiger Rand abgeschnitten und auf 519×144 Pixel verkleinert; Motiv unverändert. Steht unter Optionen ganz unten („Ein Produkt von“).
+- Dateinamen (`sattplan-logo.png` usw.) bleiben, damit Verweise und der Offline-Speicher stabil sind.
