@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.181: Rezepte nach „Meiste Zutaten im Vorrat“ sortieren
+
+**Was kann ich am ehesten kochen?** Die Sortierung der Rezepte hat eine neue Wahl: **Meiste Zutaten im Vorrat**. Ganz oben steht das Rezept, von dem der größte Anteil der Zutaten im Vorrat ist, ganz unten das, bei dem am meisten fehlt. Gezählt wird wie in der Karte „… von … Zutaten da“ (Wasser, Salz und Zutaten nach Bedarf zählen nicht). Bei gleichem Anteil steht das Rezept mit weniger fehlenden Zutaten vorn, danach entscheidet der Name; Rezepte ohne mitgezählte Zutaten stehen ganz unten. Ändert sich der Vorrat (z. B. mit **Hab ich** oder **Aufgebraucht**), ordnet sich die Liste sofort neu. Die Wahl bleibt wie die anderen Sortierungen auf dem Gerät gespeichert. Offline-Paket `einkauf-shell-v193`.
+
 ## Neu in Version 2.180: Kleinerer Beispielbetrag bei Getränken
 
 Im Fenster **Restaurant/Café/Bar** steht bei **Getränke** im Feld „Betrag (€)“ jetzt „z. B. 8,79“ statt „z. B. 34,50“; bei **Restaurant** bleibt „z. B. 34,50“. Offline-Paket `einkauf-shell-v192`.

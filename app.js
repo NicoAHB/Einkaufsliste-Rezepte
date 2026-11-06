@@ -54,7 +54,7 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock, stockCompleteness, byCompleteness } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
@@ -95,7 +95,8 @@ const RECIPE_ORDER = {
   name: byTitle,   // rein alphabetisch (2.165): Ein Stern verschiebt das Rezept nicht mehr; Favoriten zeigt der Filter „★ Favoriten“
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
   cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b),
-  often: (a, b) => byOften(a, b)   // 2.166: am häufigsten gekochte zuerst
+  often: (a, b) => byOften(a, b),   // 2.166: am häufigsten gekochte zuerst
+  stock: byTitle   // 2.181: „Meiste Zutaten im Vorrat“; die eigentliche Reihenfolge braucht den Vorrat und entsteht in renderRecipes
 };
 let recipeSort = (() => { try { const value = localStorage.getItem(RECIPE_SORT_KEY); return Object.hasOwn(RECIPE_ORDER, value) ? value : 'name'; } catch { return 'name'; } })();
 let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
@@ -1507,7 +1508,12 @@ function renderRecipes() {
   for (const tag of tags){const key=recipeTagKey(tag);chips.append(chip(tag, key === tagFilter, () => { tagFilter = tagFilter === key ? '' : key; renderRecipes(); }));}
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
-  const order = RECIPE_ORDER[recipeSort];
+  let order = RECIPE_ORDER[recipeSort];
+  // „Meiste Zutaten im Vorrat“ (2.181): oben das Rezept mit dem größten Anteil vorhandener Zutaten, unten das, bei dem am meisten fehlt
+  if (recipeSort === 'stock') {
+    const index = indexNames(namesFrom({ pantry: state.pantry })), stats = new Map(recipes.map(recipe => [recipe.id, stockCompleteness(ingredientsOf(recipe.id), index)]));
+    order = (a, b) => byCompleteness(stats.get(a.id), stats.get(b.id)) || byTitle(a, b);
+  }
   const shown = recipes.filter(recipe => {
     const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&

@@ -10839,7 +10839,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await label(), 'A–Z'); assert.equal(await page.textContent('#recipe-count'), '3 Rezepte');
     assert.deepEqual(await titles(), ['Apfel-Pfannkuchen', 'Kichererbsen-Curry', 'Tomaten-Pasta']);
     assert.equal(await page.locator('#tag-chips').getByRole('button', { name: 'Lange nicht gekocht' }).count(), 0);
-    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht', 'Häufig gekocht']);
+    assert.deepEqual(await page.locator('#recipe-sort option').allTextContents(), ['A–Z', 'Zuletzt hinzugefügt', 'Lange nicht gekocht', 'Häufig gekocht', 'Meiste Zutaten im Vorrat']);
     assert.equal(await page.getByRole('combobox', { name: 'Rezepte sortieren' }).count(), 1, 'mit zugänglichem Namen');
     // Zuletzt hinzugefügt: strikt nach dem Anlegen, auch vor Favoriten; die Karte sagt, wann
     await page.selectOption('#recipe-sort', 'new');
@@ -12270,6 +12270,37 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await answerAsk(page, true, /Es kommt zu „Rewe“/);
     saved = await storedDemo(page); assert.equal(openRows(saved, 'Zucker').length, 1); assert.equal(openRows(saved, 'Zucker')[0].storeId, 'store-rewe');
     assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
+  test('2.181: Sortierung „Meiste Zutaten im Vorrat“ – oben das vollständigste Rezept, unten das, bei dem am meisten fehlt; folgt dem Vorrat sofort', async () => {
+    const data = bananaData175(data => {
+      const stamp = '2026-10-29T09:00:00.000Z', add = (id, name, list) => { data.recipes.push({ ...demo.recipes[0], id, name, servings: 4, tags: [], favorite: false, photoId: null });
+        data.ingredients.push(...list.map(([n, q, u], i) => ({ ...demo.ingredients[0], id: `${id}-${i}`, recipeId: id, name: n, quantity: q, unit: u, createdAt: stamp, updatedAt: stamp }))); };
+      add('pancake181', 'Pfannkuchen', [['Mehl', 200, 'g'], ['Milch', 300, 'ml'], ['Eier', 2, 'Stück']]);
+      add('curry181', 'Linsencurry', [['Linsen', 200, 'g'], ['Kokosmilch', 400, 'ml'], ['Reis', 200, 'g']]);
+      add('pasta181', 'Butterbrot', [['Butter', 20, 'g'], ['Salz', 1, 'Prise']]);
+      add('water181', 'Salzwasser', [['Wasser', 1, 'l'], ['Salz', 1, 'Prise']]);
+      return data;
+    });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await goTab(page, 'recipes');
+    const titles = () => page.locator('#recipe-list .recipe-card h3').allTextContents();
+    const mine = async () => (await titles()).filter(title => ['Bananenbrot', 'Pfannkuchen', 'Linsencurry', 'Butterbrot', 'Salzwasser'].includes(title));
+    await page.selectOption('#recipe-sort', 'stock');
+    assert.equal(await page.textContent('#recipe-sort-label'), 'Meiste Zutaten im Vorrat');
+    // Butterbrot 1/1 (Salz zählt nicht), Bananenbrot 6/7, Pfannkuchen 2/3, Linsencurry 0/3; ohne mitgezählte Zutaten (nur Wasser, Salz) ganz unten
+    assert.deepEqual(await mine(), ['Butterbrot', 'Bananenbrot', 'Pfannkuchen', 'Linsencurry', 'Salzwasser']);
+    // Folgt dem Vorrat sofort: Butter aufgebraucht
+    const banana = page.locator('#recipe-list [data-recipe-id=banana175]');
+    await banana.locator('.recipe-stock-toggle').click();
+    await banana.getByRole('button', { name: /^Butter: aufgebraucht/ }).click(); await answerAsk(page, true);
+    // Ohne Butter: Bananenbrot 5/7 oben, Pfannkuchen 2/3; Butterbrot 0/1 vor Linsencurry 0/3 (weniger fehlt)
+    assert.deepEqual(await mine(), ['Bananenbrot', 'Pfannkuchen', 'Butterbrot', 'Linsencurry', 'Salzwasser']);
+    // Die Wahl bleibt nach einem Neustart
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await goTab(page, 'recipes');
+    assert.equal(await page.inputValue('#recipe-sort'), 'stock'); assert.deepEqual(await mine(), ['Bananenbrot', 'Pfannkuchen', 'Butterbrot', 'Linsencurry', 'Salzwasser']);
+    assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });
 
