@@ -10,12 +10,15 @@ import { isSeparate } from './shop.js';
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
 export const SOURCES = ['bon', 'hand'];
 /* Restaurant/Café/Bar (2.170): Auswärts essen und trinken. Ein Eintrag ist eine normale Ausgabe (Sammlung `purchases`) mit `dining`
-   (Art des Lokals), optional der Uhrzeit `time` (HH:MM) und dem Namen des Lokals in `storeName` (ohne Geschäftskennung). Ob diese Beträge
-   vom Monatsbudget abgehen, entscheidet die gemeinsame Zeile `dining` der Sammlung `budgets` (`counts`, fehlt sie: ja). */
+   (Art), optional der Uhrzeit `time` (HH:MM) und dem Namen des Lokals in `storeName` (ohne Geschäftskennung). Ob diese Beträge
+   vom Monatsbudget abgehen, entscheidet die gemeinsame Zeile `dining` der Sammlung `budgets` (`counts`, fehlt sie: ja).
+   Seit 2.171 gibt es zwei Arten: Restaurant und Getränke (`drinks`). Einträge aus 2.170 mit `cafe` oder `bar` zählen als Getränke. */
 export const DINING_LABEL = 'Restaurant/Café/Bar';
-export const DINING_KINDS = [{ id: 'restaurant', label: 'Restaurant', emoji: '🍽️' }, { id: 'cafe', label: 'Café', emoji: '☕' }, { id: 'bar', label: 'Bar', emoji: '🍸' }];
-export const isDining = row => DINING_KINDS.some(kind => kind.id === row?.dining);
-export const diningKind = row => DINING_KINDS.find(kind => kind.id === row?.dining) || DINING_KINDS[0];
+export const DINING_KINDS = [{ id: 'restaurant', label: 'Restaurant', emoji: '🍽️', hint: 'Essen gehen' }, { id: 'drinks', label: 'Getränke', emoji: '🥤', hint: 'Café, Bar …' }];
+const LEGACY_KINDS = { cafe: 'drinks', bar: 'drinks' };
+export const DINING_IDS = [...DINING_KINDS.map(kind => kind.id), ...Object.keys(LEGACY_KINDS)];
+export const isDining = row => DINING_IDS.includes(row?.dining);
+export const diningKind = row => DINING_KINDS.find(kind => kind.id === (LEGACY_KINDS[row?.dining] || row?.dining)) || DINING_KINDS[0];
 export const validTime = time => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(time ?? ''));
 // Zählen Restaurant/Café/Bar zum Monatsbudget? `budgets`: die Zeilen der Sammlung. Ohne Einstellung: ja (wie jede andere Ausgabe).
 export const diningCounts = budgets => (budgets || []).find(row => row.id === 'dining' && !row.deletedAt)?.counts !== false;
@@ -92,7 +95,7 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
    der Name des Lokals (leer = ohne, höchstens 80 Zeichen). Ergebnis: die Felder zum Speichern; `storeName` und `time` stehen immer drin, damit
    beim Bearbeiten auch das Leeren eines Felds ankommt. */
 export function diningFields({ amount, date, time = '', kind = 'restaurant', place = '', buyerId, buyerName = '' }, today) {
-  if (!DINING_KINDS.some(entry => entry.id === kind)) throw new Error('Bitte Restaurant, Café oder Bar auswählen.');
+  if (!DINING_KINDS.some(entry => entry.id === kind)) throw new Error('Bitte Restaurant oder Getränke auswählen.');
   const clock = String(time || '').trim();
   if (clock && !validTime(clock)) throw new Error('Bitte eine gültige Uhrzeit angeben, zum Beispiel 19:30.');
   const { storeName = '', ...fields } = purchaseFields({ amount, date, storeName: String(place || ''), note: '', source: 'hand', buyerId, buyerName }, today);
@@ -106,8 +109,8 @@ export function diningPlaces(rows, limit = 6) {
     if (row.deletedAt || !isDining(row)) continue;
     const name = String(row.storeName || '').trim().replace(/\s+/g, ' '), key = name.toLocaleLowerCase('de');
     if (!name) continue;
-    const entry = places.get(key) || { name, kind: row.dining, count: 0, last: '' }, when = `${row.date}|${row.time || ''}|${row.createdAt || ''}`;
-    entry.count++; if (when > entry.last) { entry.last = when; entry.name = name; entry.kind = row.dining; }
+    const entry = places.get(key) || { name, kind: diningKind(row).id, count: 0, last: '' }, when = `${row.date}|${row.time || ''}|${row.createdAt || ''}`;
+    entry.count++; if (when > entry.last) { entry.last = when; entry.name = name; entry.kind = diningKind(row).id; }
     places.set(key, entry);
   }
   return [...places.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, limit).map(({ name, kind }) => ({ name, kind }));
