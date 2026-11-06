@@ -12213,6 +12213,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // Ja: aus dem Vorrat, auf die Liste (Produkt mit üblicher Einkaufsmenge, nicht 200 g; ohne Geschäft = „Überall möglich“), Karte sofort aktuell
     await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
     assert.equal(await page.textContent('#ask-ok'), 'Ja'); assert.equal(await page.textContent('#ask-cancel'), 'Abbrechen');
+    // 2.176: Knöpfe der Rückfrage einheitlich wie bei „Endgültig löschen“: beide umrandet und gleich geformt, „Ja“ zart gefüllt statt kräftig
+    const look = selector => page.locator(selector).evaluate(node => { const s = getComputedStyle(node); return { width: s.borderTopWidth, radius: s.borderTopLeftRadius, border: s.borderTopColor, fill: s.backgroundColor, text: s.color, height: Math.round(node.getBoundingClientRect().height) }; });
+    const yes = await look('#ask-ok'), no = await look('#ask-cancel');
+    assert.deepEqual([yes.width, yes.radius, no.width, no.radius], ['2px', '14px', '2px', '14px']); assert.equal(yes.height, no.height);
+    assert.equal(yes.border, yes.text, 'grüner Rand in der Schriftfarbe'); assert.notEqual(yes.fill, yes.text, 'nicht kräftig gefüllt');
+    assert.notEqual(no.border, 'rgba(0, 0, 0, 0)'); assert.notEqual(no.border, no.fill, '„Abbrechen“ mit sichtbarem Rand');
     await answerAsk(page, true);
     const after = await flour();
     assert.deepEqual(after.pantry, [false], 'im Vorrat aufgebraucht');

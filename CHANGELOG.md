@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.176: Einheitliche Knöpfe in Rückfragen
+
+**Alle Rückfragen sehen gleich aus.** Bisher war die Aktion in Rückfragen wie „Zucker ist aufgebraucht“ kräftig gefüllt („Ja“), in Rückfragen zum Löschen dagegen umrandet und zart gefüllt („Endgültig löschen“); „Abbrechen“ hatte im Glas-Erscheinungsbild kaum einen Rand. Jetzt gilt überall: Die Aktion ist umrandet und zart gefüllt (grün, beim Löschen rot), **Abbrechen** ist weiß mit sichtbarem grünem Rand; Form, Höhe und Schrift sind gleich. Offline-Paket `einkauf-shell-v188`.
+
 ## Neu in Version 2.175: „Aufgebraucht“ in der Rezeptkarte
 
 **Das Gegenstück zu „✓ Hab ich“.** In der Karte **„… von … Zutaten da“** steht unter **Im Vorrat vorhanden** rechts neben jeder Zutat ein kleiner Knopf **Aufgebraucht** mit Einkaufswagen (dezent im Grün der Liste, Tippfläche trotzdem 44 px). Nach der Rückfrage „Mehl ist aufgebraucht – Aus dem Vorrat nehmen und auf die Einkaufsliste setzen?“ und **Ja**:
