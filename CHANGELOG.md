@@ -2,6 +2,20 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.170: Restaurant/Café/Bar unter Ausgaben
+
+**Auswärts essen und trinken mit wenigen Tipps.** Unter **Ausgaben** steht direkt unter „Ausgabe nachträglich eintragen“ der neue Knopf **Restaurant/Café/Bar**. Im Fenster **Restaurant**, **Café** oder **Bar** antippen (Restaurant ist vorgewählt), den **Betrag** eingeben und speichern. Das **Lokal** ist freiwillig; die zuletzt besuchten stehen darunter zum Antippen. Datum, Uhrzeit und die eigene Person sind vorbelegt.
+
+**Zählt zum Budget – oder nicht.** Rechts neben dem Knopf entscheidet der Haken **Zählt zum Budget** für die ganze Familie:
+- Mit Haken (Standard) gehen diese Beträge wie jede andere Ausgabe vom **Monatsbudget** ab.
+- Ohne Haken bleibt das Budget davon unberührt. Die Budgetkarte nennt dann, wie viel herausgerechnet ist. **Familie insgesamt** zählt alles mit und zeigt „davon Restaurant/Café/Bar“.
+
+**Eigene Übersicht.** Die Karte **Restaurant/Café/Bar** zeigt, ob der Haken gesetzt ist oder nicht, Summe, Zahl der Besuche und Durchschnitt, den Anteil an euren Ausgaben im Zeitraum, die Aufteilung nach Restaurant, Café und Bar und jeden Besuch auf einen Blick: **Wann** (Tag und Uhrzeit), **Wo** (Lokal) und **Wie teuer**. Ein Tipp öffnet den Besuch zum Ändern oder Löschen; lange halten und in den Mülleimer ziehen löscht wie bei Einkäufen. Monat, Zeitraum und Personenfilter gelten auch hier. In der Liste der Einkäufe stehen diese Besuche nicht noch einmal; unter **Weitere Auswertungen** erscheinen sie als eigene Zeile, im CSV-Export mit Art und Uhrzeit. „Einkäufe je Geschäft“ zählt sie nicht.
+
+**Bitte alle Geräte aktualisieren.** Sobald der erste Besuch eingetragen ist, lesen ältere App-Versionen die gemeinsame Datei nicht mehr (Datenrevision 19), damit sie diese Beträge nicht falsch ins Budget rechnen. App ganz schließen und neu öffnen, notfalls zweimal.
+
+Außerdem: Nach dem Antippen des Hakens erscheint kein zweiter Rahmen um das Kästchen. Offline-Paket `einkauf-shell-v182`.
+
 ## Neu in Version 2.169: Kein doppelter Rahmen mehr um Knöpfe
 
 **Nach einem Tipp kein zweiter Ring.** Setzte die App den Fokus selbst auf einen Knopf, zeichnete Safari auf dem iPhone um dessen Rahmen einen zweiten, grünen Ring, z. B. um **Abbrechen** in Rückfragen wie „Artikel endgültig löschen?“, um das × in manchen Fenstern (Ausgabe, Familienmitglieder, Vorrat, Packungsgröße) oder um die Auswahlkarten beim Symbol. Jetzt gilt überall:

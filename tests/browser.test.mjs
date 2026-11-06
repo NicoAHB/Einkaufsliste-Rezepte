@@ -12346,4 +12346,91 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+  test('2.170: Restaurant/Café/Bar schnell eintragen; „Zählt zum Budget“ steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
+    const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString(), today = isoDate();
+    const row = extra => ({ createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
+    data.budgets = [row({ id: 'monthly', cents: 10000 })];
+    data.purchases = [row({ id: 'shop-1', date: today, cents: 5000, storeId: data.stores[0].id, buyerName: 'Nico', source: 'hand' })];
+    const { ctx, page, problems } = await context();
+    await ctx.addInitScript(data => { if (!localStorage.getItem('einkauf-demo-v1')) localStorage.setItem('einkauf-demo-v1', JSON.stringify({ base: data, pending: [] })); }, data);
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('einkauf-demo-v1')).base);
+    const dining = async () => (await stored()).purchases.filter(entry => entry.dining && !entry.deletedAt);
+    await open(page); await goTab(page, 'spending');
+    // Direkt unter „Ausgabe nachträglich eintragen“: der Knopf und daneben der Haken (Standard: zählt zum Budget)
+    const head = await page.evaluate(() => ['#add-purchase', '#add-dining', '.dining-budget-toggle'].map(selector => document.querySelector(selector).getBoundingClientRect()).map(box => ({ top: Math.round(box.top), bottom: Math.round(box.bottom), left: Math.round(box.left), right: Math.round(box.right) })));
+    assert.ok(head[1].top >= head[0].bottom && head[1].top - head[0].bottom < 16, 'direkt unter „Ausgabe nachträglich eintragen“');
+    assert.equal(head[2].top, head[1].top, 'der Haken steht neben dem Knopf'); assert.ok(head[2].left > head[1].right);
+    assert.equal(await page.isChecked('#dining-budget'), true);
+    assert.equal(await page.locator('#spending-dining').isHidden(), true);
+    assert.match(await page.textContent('#spending-budget'), /50 % verbraucht/);
+    // 1. Erster Besuch: Restaurant ist vorgewählt, Datum und Uhrzeit vorbelegt, keine Tastatur von selbst
+    await page.tap('#add-dining'); await sheetOpen(page);
+    assert.equal(await page.isChecked('#dining-form input[name=kind][value=restaurant]'), true);
+    assert.equal(await page.inputValue('#dining-form input[name=date]'), today);
+    assert.match(await page.inputValue('#dining-form input[name=time]'), /^\d\d:\d\d$/);
+    assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'amount');
+    assert.equal(await page.locator('#dining-places').isHidden(), true, 'noch keine Lokale zum Antippen');
+    assert.match(await page.textContent('#dining-budget-note'), /^Zählt zum Monatsbudget/);
+    await page.fill('#dining-form input[name=amount]', '46,80'); await page.fill('#dining-form input[name=place]', 'Pizzeria Roma'); await page.fill('#dining-form input[name=time]', '19:30');
+    await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    const [first] = await dining();
+    assert.deepEqual({ dining: first.dining, cents: first.cents, storeName: first.storeName, time: first.time, date: first.date, buyerName: first.buyerName, storeId: first.storeId },
+      { dining: 'restaurant', cents: 4680, storeName: 'Pizzeria Roma', time: '19:30', date: today, buyerName: 'Nico', storeId: undefined });
+    assert.equal((await stored()).sync.minRev, 19, 'ältere Apps rechnen Restaurantbesuche nicht falsch ins Budget');
+    // Übersicht: eigene Karte, nicht noch einmal in der Liste der Einkäufe; mit Haken zählt der Betrag zum Budget
+    assert.equal(await page.locator('#spending-dining').isVisible(), true);
+    assert.match(await page.textContent('#spending-dining-total'), /46,80/);
+    assert.match(await page.textContent('#spending-dining-list'), /Pizzeria Roma.*Heute, 19:30 Uhr.*46,80/);
+    assert.ok(!(await page.textContent('#purchase-list')).includes('Pizzeria Roma'));
+    assert.match(await page.textContent('#purchase-count'), /^1 Eintrag$/);
+    assert.match(await page.textContent('#spending-summary'), /96,80.*1 Einkauf · 1× auswärts.*davon Restaurant\/Café\/Bar: 46,80/);
+    assert.match(await page.textContent('#spending-budget'), /97 % verbraucht/);
+    assert.equal(await page.textContent('#spending-dining-budget'), 'Zählt zum Monatsbudget');
+    // 2. Haken aus: das Budget bleibt unberührt, die Übersicht bleibt; kein zweiter Rahmen um das Kästchen nach dem Tippen
+    await page.tap('#dining-budget');
+    assert.equal(await page.isChecked('#dining-budget'), false);
+    assert.equal((await stored()).budgets.find(entry => entry.id === 'dining').counts, false);
+    assert.equal(await page.locator('#dining-budget').evaluate(node => getComputedStyle(node).boxShadow), 'none');
+    assert.match(await page.textContent('#spending-budget'), /50 % verbraucht.*Ohne Restaurant\/Café\/Bar \(46,80\s€\): zählt nicht zum Budget/);
+    assert.equal(await page.textContent('#spending-dining-budget'), 'Zählt nicht zum Monatsbudget');
+    assert.match(await page.textContent('#spending-summary'), /96,80/, 'Familie insgesamt zählt weiter alles');
+    // 3. Zweiter Besuch: das Lokal steht zum Antippen bereit; Café wählen
+    await page.tap('#add-dining'); await sheetOpen(page);
+    assert.match(await page.textContent('#dining-budget-note'), /^Zählt nicht zum Monatsbudget/);
+    await page.locator('#dining-places .chip', { hasText: 'Pizzeria Roma' }).tap();
+    assert.equal(await page.inputValue('#dining-form input[name=place]'), 'Pizzeria Roma');
+    assert.equal(await page.getAttribute('#dining-places .chip', 'aria-pressed'), 'true');
+    await page.locator('.dining-kind', { hasText: 'Café' }).tap(); await page.fill('#dining-form input[name=place]', 'Café Lotte');
+    await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');
+    await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    assert.match(await page.textContent('#notice'), /8,90\s€ Café · Café Lotte gespeichert · zählt nicht zum Budget/);
+    assert.match(await page.textContent('#spending-dining-meta'), /2 Besuche · Ø 27,85/);
+    assert.deepEqual((await page.locator('#spending-dining-kinds li strong').allTextContents()).map(text => text.replace(/^\S+\s/, '')), ['Restaurant', 'Café']);
+    assert.match(await page.textContent('#spending-budget'), /50 % verbraucht/);
+    // 4. Ändern: ein Tipp auf den Besuch öffnet ihn
+    await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).tap(); await sheetOpen(page);
+    assert.equal(await page.textContent('#dining-title'), 'Restaurant/Café/Bar bearbeiten');
+    assert.equal(await page.inputValue('#dining-form input[name=amount]'), '8,90');
+    assert.equal(await page.isChecked('#dining-form input[name=kind][value=cafe]'), true);
+    assert.equal(await page.inputValue('#dining-form input[name=time]'), '15:10');
+    await page.fill('#dining-form input[name=amount]', '9,90'); await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').cents, 990);
+    // 5. Löschen mit Rückfrage
+    await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).tap(); await sheetOpen(page);
+    await page.tap('#dining-delete'); await answerAsk(page, true, /Café-Besuch löschen\?/);
+    await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    assert.deepEqual((await dining()).map(entry => entry.storeName), ['Pizzeria Roma']);
+    assert.match(await page.textContent('#spending-dining-meta'), /^1 Besuch/);
+    // 6. Haken wieder an: der Besuch zählt wieder zum Budget
+    await page.tap('#dining-budget');
+    assert.equal((await stored()).budgets.find(entry => entry.id === 'dining').counts, true);
+    assert.match(await page.textContent('#spending-budget'), /97 % verbraucht/);
+    // Einkäufe je Geschäft zählen keinen Restaurantbesuch
+    await page.selectOption('#spending-analysis', 'frequency');
+    assert.match(await page.textContent('#spending-frequency-summary'), /^1 Einkauf/); assert.equal(await page.locator('#spending-dining').isHidden(), true);
+    await page.selectOption('#spending-analysis', 'expenses');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

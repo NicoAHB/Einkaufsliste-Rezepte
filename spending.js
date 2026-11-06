@@ -9,6 +9,16 @@ import { isSeparate } from './shop.js';
 
 export const MAX_CENTS = 9999999;            // 99.999,99 € pro Eintrag: größere Zahlen sind fast sicher ein Tippfehler
 export const SOURCES = ['bon', 'hand'];
+/* Restaurant/Café/Bar (2.170): Auswärts essen und trinken. Ein Eintrag ist eine normale Ausgabe (Sammlung `purchases`) mit `dining`
+   (Art des Lokals), optional der Uhrzeit `time` (HH:MM) und dem Namen des Lokals in `storeName` (ohne Geschäftskennung). Ob diese Beträge
+   vom Monatsbudget abgehen, entscheidet die gemeinsame Zeile `dining` der Sammlung `budgets` (`counts`, fehlt sie: ja). */
+export const DINING_LABEL = 'Restaurant/Café/Bar';
+export const DINING_KINDS = [{ id: 'restaurant', label: 'Restaurant', emoji: '🍽️' }, { id: 'cafe', label: 'Café', emoji: '☕' }, { id: 'bar', label: 'Bar', emoji: '🍸' }];
+export const isDining = row => DINING_KINDS.some(kind => kind.id === row?.dining);
+export const diningKind = row => DINING_KINDS.find(kind => kind.id === row?.dining) || DINING_KINDS[0];
+export const validTime = time => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(time ?? ''));
+// Zählen Restaurant/Café/Bar zum Monatsbudget? `budgets`: die Zeilen der Sammlung. Ohne Einstellung: ja (wie jede andere Ausgabe).
+export const diningCounts = budgets => (budgets || []).find(row => row.id === 'dining' && !row.deletedAt)?.counts !== false;
 /* Produkte eines Einkaufs (2.160): Was „Im Laden“ abgehakt und mit „Einkauf beenden“ samt Betrag gespeichert wurde, bleibt als kurze Liste
    (Name und Menge als Text) an der Ausgabe. Höchstens 300 Einträge, damit die gemeinsame Datei klein bleibt. Dazu die Kennung des Produktbilds
    und die Kategorie, wie die Einkaufsliste sie beim Abhaken zeigte: Der Artikel selbst verschwindet danach von der Liste. Nur lokale Kennungen, keine URLs. */
@@ -78,17 +88,44 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
   return fields;
 }
 
+/* Eingaben für Restaurant/Café/Bar prüfen: Betrag und Datum wie bei jeder Ausgabe, dazu die Art des Lokals, die Uhrzeit (leer = ohne) und
+   der Name des Lokals (leer = ohne, höchstens 80 Zeichen). Ergebnis: die Felder zum Speichern; `storeName` und `time` stehen immer drin, damit
+   beim Bearbeiten auch das Leeren eines Felds ankommt. */
+export function diningFields({ amount, date, time = '', kind = 'restaurant', place = '', buyerId, buyerName = '' }, today) {
+  if (!DINING_KINDS.some(entry => entry.id === kind)) throw new Error('Bitte Restaurant, Café oder Bar auswählen.');
+  const clock = String(time || '').trim();
+  if (clock && !validTime(clock)) throw new Error('Bitte eine gültige Uhrzeit angeben, zum Beispiel 19:30.');
+  const { storeName = '', ...fields } = purchaseFields({ amount, date, storeName: String(place || ''), note: '', source: 'hand', buyerId, buyerName }, today);
+  return { ...fields, storeName, dining: kind, time: clock };
+}
+
+// Lokale zum schnellen Antippen: die bisher am häufigsten besuchten (bei Gleichstand das zuletzt besuchte zuerst), höchstens `limit`, ohne doppelte Schreibweisen.
+export function diningPlaces(rows, limit = 6) {
+  const places = new Map();
+  for (const row of rows) {
+    if (row.deletedAt || !isDining(row)) continue;
+    const name = String(row.storeName || '').trim().replace(/\s+/g, ' '), key = name.toLocaleLowerCase('de');
+    if (!name) continue;
+    const entry = places.get(key) || { name, kind: row.dining, count: 0, last: '' }, when = `${row.date}|${row.time || ''}|${row.createdAt || ''}`;
+    entry.count++; if (when > entry.last) { entry.last = when; entry.name = name; entry.kind = row.dining; }
+    places.set(key, entry);
+  }
+  return [...places.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, limit).map(({ name, kind }) => ({ name, kind }));
+}
+
 /* Doppelt erfasst? (Version 2.51) Gleicher Tag, gleiches Geschäft (oder beide ohne Geschäft) und gleicher Betrag sind ein Hinweis, kein Verbot: Zwei gleich teure Einkäufe am selben Tag
    sind möglich. `rows`: die vorhandenen Einträge, `fields`: der neue (date, cents, storeId), `ignoreId`: der Eintrag, der gerade geändert wird. Ergebnis: der erste gleiche Eintrag oder null. */
 export function duplicatePurchase(rows, fields, ignoreId = '') {
   return rows.find(row => row.id !== ignoreId && !row.deletedAt && row.date === fields.date && row.cents === fields.cents && (row.storeId || '') === (fields.storeId || '') &&
-    (row.kind || 'purchase') === (fields.kind || 'purchase')) ?? null;
+    (row.kind || 'purchase') === (fields.kind || 'purchase') && diningKey(row) === diningKey(fields)) ?? null;
 }
+// Restaurant/Café/Bar zählt nur gegen gleiche Besuche im selben Lokal als doppelt, nie gegen einen Einkauf.
+const diningKey = row => isDining(row) ? `dining:${String(row.storeName || '').trim().toLocaleLowerCase('de')}` : '';
 // Alle Einträge, die einen Zwilling haben (für den Hinweis „Doppelt?“ in der Liste).
 export function possibleDuplicates(rows) {
   const seen = new Map(), result = new Set();
   for (const row of rows.filter(entry => !entry.deletedAt)) {
-    const key = `${row.date}|${row.cents}|${row.storeId || ''}|${row.kind || 'purchase'}`;
+    const key = `${row.date}|${row.cents}|${row.storeId || ''}|${row.kind || 'purchase'}|${diningKey(row)}`;
     if (seen.has(key)) { result.add(row.id); result.add(seen.get(key)); } else seen.set(key, row.id);
   }
   return result;
@@ -131,7 +168,7 @@ export function fullMonth(period) {
 export function filterPurchases(rows, period, person = 'all') {
   const { from, to } = periodBounds(period);
   return rows.filter(row => !row.deletedAt && row.date >= from && row.date <= to && (person === 'all' || buyerKey(row) === person))
-    .sort((a, b) => b.date.localeCompare(a.date) || `${b.createdAt || ''}|${b.id}`.localeCompare(`${a.createdAt || ''}|${a.id}`));
+    .sort((a, b) => b.date.localeCompare(a.date) || (isDining(a) && isDining(b) ? (b.time || '').localeCompare(a.time || '') : 0) || `${b.createdAt || ''}|${b.id}`.localeCompare(`${a.createdAt || ''}|${a.id}`));
 }
 export const purchasesOf = (rows, month) => filterPurchases(rows, month);
 
@@ -148,14 +185,21 @@ export function summarizePeriod(rows, period, stores = [], members = [], person 
   const list = filterPurchases(rows, period, person), names = new Map(stores.map(store => [store.id, store.name]));
   const total = list.reduce((sum, row) => sum + purchaseValue(row), 0), groups = new Map(), people = new Map(), notes = new Map();
   let gross = 0, refunds = 0, refundCount = 0;
+  // Restaurant/Café/Bar (2.170): eigene Summe, eigene Liste und je Art; unter „Nach Geschäft“ und „Nach Kategorie“ eine gemeinsame Zeile
+  const dining = { total: 0, count: 0, list: [], kinds: new Map() };
   for (const row of list) {
-    const id = row.storeId && (names.has(row.storeId) || row.storeName) ? row.storeId : '';
-    const name = id ? names.get(id) ?? row.storeName : (row.storeName || 'Ohne Geschäft');
-    const key = id || `name:${name}`, group = groups.get(key) || { id, name, total: 0, count: 0 };
-    const noteName = row.note?.trim() || 'Ohne Notiz', noteKey = noteName.toLocaleLowerCase('de');
-    const note=notes.get(noteKey) || {name:noteName,total:0,count:0}; note.total+=purchaseValue(row); note.count++; notes.set(noteKey,note);
-    const value = purchaseValue(row); group.total += value; group.count += 1; groups.set(key, group);
-    if (row.kind === 'refund') { refunds += row.cents; refundCount++; } else gross += row.cents;
+    const value = purchaseValue(row), out = isDining(row);
+    const id = !out && row.storeId && (names.has(row.storeId) || row.storeName) ? row.storeId : '';
+    const name = out ? DINING_LABEL : id ? names.get(id) ?? row.storeName : (row.storeName || 'Ohne Geschäft');
+    const key = out ? 'dining' : id || `name:${name}`, group = groups.get(key) || { id, name, total: 0, count: 0, ...(out ? { dining: true } : {}) };
+    const noteName = out ? DINING_LABEL : row.note?.trim() || 'Ohne Notiz', noteKey = out ? 'dining' : noteName.toLocaleLowerCase('de');
+    const note=notes.get(noteKey) || {name:noteName,total:0,count:0}; note.total+=value; note.count++; notes.set(noteKey,note);
+    group.total += value; group.count += 1; groups.set(key, group);
+    if (out) {
+      const kind = diningKind(row), entry = dining.kinds.get(kind.id) || { ...kind, total: 0, count: 0 };
+      entry.total += value; entry.count++; dining.kinds.set(kind.id, entry);
+      dining.total += value; dining.count++; dining.list.push(row);
+    } else if (row.kind === 'refund') { refunds += row.cents; refundCount++; } else gross += row.cents;
     const personId = buyerKey(row), individual = people.get(personId) || { id: personId, name: buyerNameOf(row, members), total: 0, count: 0, refundCount: 0 };
     individual.total += value; individual.count++; if (row.kind === 'refund') individual.refundCount++;
     people.set(personId, individual);
@@ -163,9 +207,13 @@ export function summarizePeriod(rows, period, stores = [], members = [], person 
   const byStore = [...groups.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'de')).map(group => ({ ...group, share: total > 0 ? group.total / total : 0 }));
   const byPerson = [...people.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'de'));
   const byNote = [...notes.values()].sort((a,b)=>b.total-a.total || a.name.localeCompare(b.name,'de'));
-  const purchaseCount = list.length - refundCount;
-  return { ...periodBounds(period), total, gross, refunds, refundCount, purchaseCount, count: list.length, average: purchaseCount ? Math.round(gross / purchaseCount) : 0, byStore, byPerson, byNote, list };
+  const purchaseCount = list.length - refundCount - dining.count;
+  const diningSummary = { total: dining.total, count: dining.count, average: dining.count ? Math.round(dining.total / dining.count) : 0, share: total > 0 ? dining.total / total : 0,
+    byKind: DINING_KINDS.map(kind => dining.kinds.get(kind.id)).filter(Boolean), list: dining.list };
+  return { ...periodBounds(period), total, gross, refunds, refundCount, purchaseCount, count: list.length, average: purchaseCount ? Math.round(gross / purchaseCount) : 0, byStore, byPerson, byNote, dining: diningSummary, list };
 }
+// Was vom Monatsbudget abgeht (Cent): alle Ausgaben, ohne Restaurant/Café/Bar, wenn der Haken „Zählt zum Monatsbudget“ aus ist.
+export const budgetSpent = (summary, countsDining = true) => summary.total - (countsDining ? 0 : summary.dining.total);
 
 // Häufigkeit statt Geldbeträgen: jeder Einkauf zählt einmal, Retouren nicht.
 // Vorhandene Geschäfte bleiben auch ohne Einkauf sichtbar. Eigene Listen sind
@@ -176,7 +224,7 @@ export function purchaseFrequency(rows, period, stores = [], person = 'all') {
   const current = stores.filter(store => !store.deletedAt && !isSeparate(store)), groups = new Map();
   for (const store of current) groups.set(`id:${store.id}`, { id: store.id, name: store.name, count: 0 });
   for (const row of filterPurchases(rows, period, person)) {
-    if (row.kind === 'refund') continue;
+    if (row.kind === 'refund' || isDining(row)) continue;   // Restaurant/Café/Bar ist kein Einkauf in einem Geschäft
     const original = known.get(row.storeId);
     if (original && isSeparate(original)) continue;
     const savedName = String(row.storeName || '').trim().replace(/\s+/g, ' ');
@@ -240,8 +288,10 @@ export function budgetStatus(spent, budget) {
 // Benutzereingaben sind Text, auch wenn ein Name mit einem Tabellen-Formelzeichen beginnt.
 export function spendingCsv(rows, stores = [], members = []) {
   const text = value => { let field = String(value ?? ''); if (/^[\s]*[=+\-@\t\r]/.test(field)) field = `'${field}`; return `"${field.replace(/"/g, '""')}"`; };
-  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie'].map(text).join(';');
-  const lines = rows.map(row => [text(row.date), text(row.kind === 'refund' ? 'Rückerstattung' : 'Einkauf'), text(buyerNameOf(row, members)),
-    text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(row.note)].join(';'));
+  // Restaurant/Café/Bar (2.170): Art „Café“ usw., Geschäft = Name des Lokals, Uhrzeit in der letzten Spalte
+  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie', 'Uhrzeit'].map(text).join(';');
+  const art = row => isDining(row) ? `${DINING_LABEL}: ${diningKind(row).label}` : row.kind === 'refund' ? 'Rückerstattung' : 'Einkauf';
+  const lines = rows.map(row => [text(row.date), text(art(row)), text(buyerNameOf(row, members)),
+    text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(isDining(row) ? DINING_LABEL : row.note), text(isDining(row) ? row.time : '')].join(';'));
   return '\ufeff' + [header, ...lines].join('\r\n') + '\r\n';
 }
