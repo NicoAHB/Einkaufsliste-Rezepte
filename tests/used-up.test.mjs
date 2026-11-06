@@ -1,7 +1,7 @@
 // „Aufgebraucht“ (2.175): welche Vorratseinträge eine Zutat zu „da“ machen, und die übliche Einkaufsmenge fürs Nachkaufen.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { availability, coveringStock, indexNames } from '../cookable.js';
+import { availability, byCompleteness, coveringStock, indexNames, stockCompleteness } from '../cookable.js';
 import { standardPurchase } from '../buying.js';
 import { catalogProductFor } from '../product-catalog.js';
 
@@ -26,4 +26,18 @@ test('standardPurchase: übliche Einkaufsmenge wie beim Antippen eines Produkts,
   // Eine zuletzt bewusst gewählte Menge gilt (z. B. 2 kg Mehl ohne Packung)
   const at = '2026-11-01T10:00:00.000Z', history = [{ name: 'Mehl', quantity: 2, unit: 'kg', purchaseUnit: null, purchaseMeasure: 'kg', purchaseAt: at, purchaseAmount: { quantity: 2, unit: 'kg' }, purchaseAmountAt: at, createdAt: at, updatedAt: at }];
   const remembered = standardPurchase({ name: 'Mehl', quantity: 1, unit: 'kg' }, history); assert.deepEqual([remembered.quantity, remembered.unit, remembered.purchaseUnit], [2, 'kg', null]);
+});
+
+test('Sortierung „Meiste Zutaten im Vorrat“ (2.181): größter Anteil zuerst, bei Gleichstand weniger fehlende, ohne mitgezählte Zutaten zuletzt', () => {
+  const index = indexNames({ have: ['Mehl', 'Eier', 'Zucker', 'Butter', 'Bananen', 'Backpulver'] }), row = (name, unit = 'g') => ({ name, quantity: 1, unit });
+  const recipes = {
+    banana: [row('reife Bananen', 'Stück'), row('Mehl'), row('Zucker'), row('Butter'), row('Eier', 'Stück'), row('Backpulver', 'Päckchen'), row('Walnüsse')],
+    bread: [row('Butter'), row('Salz', 'Prise')], pancakes: [row('Mehl'), row('Milch', 'ml'), row('Eier', 'Stück')], curry: [row('Linsen'), row('Reis'), row('Kokosmilch', 'ml')],
+    toast: [row('Toast', 'Scheibe')], water: [row('Wasser', 'l'), row('Salz', 'Prise')]
+  };
+  const stats = Object.fromEntries(Object.entries(recipes).map(([key, list]) => [key, stockCompleteness(list, index)]));
+  assert.deepEqual(stats.banana, { have: 6, total: 7, missing: 1, share: 6 / 7 });
+  assert.deepEqual(stats.bread, { have: 1, total: 1, missing: 0, share: 1 }, 'Salz zählt nicht');
+  assert.equal(stats.water.share, -1);
+  assert.deepEqual(Object.keys(stats).sort((a, b) => byCompleteness(stats[a], stats[b]) || a.localeCompare(b)), ['bread', 'banana', 'pancakes', 'toast', 'curry', 'water']);
 });

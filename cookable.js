@@ -55,6 +55,15 @@ export function coveringStock(entry, names) {
 // Muss die Zutat vorhanden sein? „Nach Bedarf“ (Salz, Pfeffer) und Wasser nicht.
 export const required = row => !isCookingWater(row.name) && row.unit !== NO_AMOUNT && parts(row.name).some(part => !part.every(token => ALWAYS.has(token)));
 
+/* Sortierung „Meiste Zutaten im Vorrat“ (2.181): wie die Karte „… von … Zutaten da“ der Anteil der mitgezählten Zutaten, die im Vorrat sind.
+   `share` ist -1, wenn nichts mitgezählt wird (nur Wasser, Salz, nach Bedarf): solche Rezepte stehen ganz unten. */
+export function stockCompleteness(ingredients, index) {
+  const tracked = ingredients.filter(required), have = tracked.filter(row => availability(row, index) === 'have').length;
+  return { have, total: tracked.length, missing: tracked.length - have, share: tracked.length ? have / tracked.length : -1 };
+}
+// Vollständigste zuerst; bei gleichem Anteil das mit weniger fehlenden Zutaten, dann das mit mehr vorhandenen. Danach entscheidet der Aufrufer (Name).
+export const byCompleteness = (a, b) => b.share - a.share || a.missing - b.missing || b.have - a.have;
+
 // Ohne prüfbare Zutaten gibt es keinen Nachweis, dass ein Rezept kochbar ist.
 export function canCookRecipe(ingredients, index) {
   const rows = ingredients.filter(required);

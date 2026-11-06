@@ -2,6 +2,20 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.182: Einkaufs-Knöpfe im Wochenplan nur, wenn etwas fehlt
+
+**Gericht planen.** Bisher erschien **Speichern & Zutaten hinzufügen** auch dann, wenn für das gewählte Rezept alles im Vorrat war; ein Tipp darauf meldete „Zutaten dem Einkaufszettel hinzugefügt“, obwohl nichts hinzukam. Jetzt gibt es nur **Speichern**, wenn nichts auf den Einkaufszettel käme; darunter steht der Grund („Alle Zutaten sind im Vorrat“ bzw. „Fehlendes steht schon auf dem Einkaufszettel“). Die Meldung „Zutaten dem Einkaufszettel hinzugefügt“ erscheint nur noch, wenn wirklich etwas hinzugefügt wurde.
+
+**Wocheneinkauf.** **Einkauf – Zutaten dieser Woche hinzufügen** ist ausgegraut, solange für alle geplanten, noch nicht gekochten Rezepte ab heute sämtliche Zutaten im Vorrat sind; darunter steht dann **Alle Zutaten sind im Vorrat**. Fehlt etwas im Vorrat, bleibt der Knopf aktiv. Offline-Paket `einkauf-shell-v194`.
+
+## Neu in Version 2.181: Rezepte nach „Meiste Zutaten im Vorrat“ sortieren
+
+**Was kann ich am ehesten kochen?** Die Sortierung der Rezepte hat eine neue Wahl: **Meiste Zutaten im Vorrat**. Ganz oben steht das Rezept, von dem der größte Anteil der Zutaten im Vorrat ist, ganz unten das, bei dem am meisten fehlt. Gezählt wird wie in der Karte „… von … Zutaten da“ (Wasser, Salz und Zutaten nach Bedarf zählen nicht). Bei gleichem Anteil steht das Rezept mit weniger fehlenden Zutaten vorn, danach entscheidet der Name; Rezepte ohne mitgezählte Zutaten stehen ganz unten. Ändert sich der Vorrat (z. B. mit **Hab ich** oder **Aufgebraucht**), ordnet sich die Liste sofort neu. Die Wahl bleibt wie die anderen Sortierungen auf dem Gerät gespeichert. Offline-Paket `einkauf-shell-v193`.
+
+## Neu in Version 2.180: Kleinerer Beispielbetrag bei Getränken
+
+Im Fenster **Restaurant/Café/Bar** steht bei **Getränke** im Feld „Betrag (€)“ jetzt „z. B. 8,79“ statt „z. B. 34,50“; bei **Restaurant** bleibt „z. B. 34,50“. Offline-Paket `einkauf-shell-v192`.
+
 ## Neu in Version 2.179: Passende Beispiele bei Getränken
 
 Im Fenster **Restaurant/Café/Bar** stehen bei **Getränke** jetzt passende Beispiele in den Feldern: beim Lokal „z. B. Café Lotte“, in der Notiz zur Bewertung „z. B. Cappuccino top, gemütliche Sessel“ (bisher auch hier „Pizza top, Bedienung langsam“). Bei **Restaurant** bleibt alles wie bisher. Offline-Paket `einkauf-shell-v191`.

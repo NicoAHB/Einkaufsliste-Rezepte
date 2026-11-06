@@ -54,7 +54,7 @@ import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock } from './cookable.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock, stockCompleteness, byCompleteness } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
@@ -95,7 +95,8 @@ const RECIPE_ORDER = {
   name: byTitle,   // rein alphabetisch (2.165): Ein Stern verschiebt das Rezept nicht mehr; Favoriten zeigt der Filter „★ Favoriten“
   new: (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || byTitle(a, b),
   cooked: (a, b) => (a.lastCookedAt || '').localeCompare(b.lastCookedAt || '') || byTitle(a, b),
-  often: (a, b) => byOften(a, b)   // 2.166: am häufigsten gekochte zuerst
+  often: (a, b) => byOften(a, b),   // 2.166: am häufigsten gekochte zuerst
+  stock: byTitle   // 2.181: „Meiste Zutaten im Vorrat“; die eigentliche Reihenfolge braucht den Vorrat und entsteht in renderRecipes
 };
 let recipeSort = (() => { try { const value = localStorage.getItem(RECIPE_SORT_KEY); return Object.hasOwn(RECIPE_ORDER, value) ? value : 'name'; } catch { return 'name'; } })();
 let pendingPhoto = null, photoRemoved = false, previewUrl = '', photoEditVersion = 0;
@@ -1507,7 +1508,12 @@ function renderRecipes() {
   for (const tag of tags){const key=recipeTagKey(tag);chips.append(chip(tag, key === tagFilter, () => { tagFilter = tagFilter === key ? '' : key; renderRecipes(); }));}
   const grid = $('#recipe-list'); grid.replaceChildren();
   const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
-  const order = RECIPE_ORDER[recipeSort];
+  let order = RECIPE_ORDER[recipeSort];
+  // „Meiste Zutaten im Vorrat“ (2.181): oben das Rezept mit dem größten Anteil vorhandener Zutaten, unten das, bei dem am meisten fehlt
+  if (recipeSort === 'stock') {
+    const index = indexNames(namesFrom({ pantry: state.pantry })), stats = new Map(recipes.map(recipe => [recipe.id, stockCompleteness(ingredientsOf(recipe.id), index)]));
+    order = (a, b) => byCompleteness(stats.get(a.id), stats.get(b.id)) || byTitle(a, b);
+  }
   const shown = recipes.filter(recipe => {
     const names = ingredientsOf(recipe.id).map(row => row.name).join(' ');
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
@@ -2018,7 +2024,20 @@ function renderPlan() {
     for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
     box.append(card);
   }
-  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId));
+  // 2.182: Stehen ab heute nur Rezepte im Plan, deren Zutaten alle im Vorrat sind, bleibt „Einkauf“ ausgegraut; darunter steht der Grund
+  const stocked = weekAllStocked(days);
+  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId)) || stocked;
+  $('#plan-shopping small').textContent = stocked ? 'Alle Zutaten sind im Vorrat' : 'Zutaten dieser Woche hinzufügen';
+}
+/* Fehlt im Vorrat nichts für die Woche? (2.182) Die geplanten, noch nicht gekochten Rezepte ab heute (wie im Fenster „Zutaten dieser Woche“):
+   true, wenn es welche gibt und jede mitgezählte Zutat im Vorrat ist (Wasser, Salz und nach Bedarf zählen nicht). Fehlt etwas im Vorrat,
+   bleibt der Wocheneinkauf aktiv, auch wenn es schon auf dem Einkaufszettel steht (dort lässt sich z. B. erneut prüfen). */
+function weekAllStocked(days) {
+  const recipes = active(state.recipes), known = new Set(recipes.map(recipe => recipe.id));
+  const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.date >= isoDate() && meal.recipeId && known.has(meal.recipeId) && !meal.done);
+  if (!meals.length) return false;
+  const keys = pantryKeys(state.pantry);
+  return aggregateIngredients(meals, recipes, active(state.ingredients)).every(row => !required(row) || inPantry(keys, row));
 }
 function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);
@@ -2193,16 +2212,20 @@ function syncMealForm(changedRecipe) {
   if (changedRecipe && recipe) form.elements.servings.value = plain(recipe.servings);
   $('#meal-save').disabled=!ready || (!recipe && choice!=='__custom');
   $('#meal-save-shopping').disabled = !recipe || !ready || form.elements.date.value < isoDate();
-  const hint=$('#meal-save-shopping small');
+  const hint=$('#meal-save-shopping small'), note=$('#meal-save-note');
   hint.hidden=!recipe;
   $('#meal-portions-down').disabled=parseQuantity(form.elements.servings.value)<=1;
+  let remaining=-1;
   if(recipe){
     const stock=new Set(recipeStockMissing(recipe).map(row=>pantryKey(row.name))).size;
     const servings=parseQuantity(form.elements.servings.value)||recipe.servings;
     const rows=aggregateIngredients([{recipeId:recipe.id,servings}],[recipe],active(state.ingredients)).filter(required);
-    const remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
+    remaining=shoppingDeficits(rows,state.pantry||[],withoutSeparate(state.items,state.stores)).length;
     hint.textContent=`Nur Vorrat: ${stock} ${stock===1?'Produkt fehlt':'Produkte fehlen'} · ${remaining} noch auf den Einkaufszettel`;
-  }else hint.textContent='Auf den Einkaufszettel für die gewählten Portionen';
+    // 2.182: Kommt nichts auf den Einkaufszettel (alles im Vorrat oder schon auf dem Zettel), gibt es nur „Speichern“; der Hinweis darunter sagt, warum
+    note.textContent=remaining?'Nur im Wochenplan':stock?'Fehlendes steht schon auf dem Einkaufszettel':'Alle Zutaten sind im Vorrat';
+  }else{hint.textContent='Auf den Einkaufszettel für die gewählten Portionen';note.textContent='Nur im Wochenplan';}
+  $('#meal-save-shopping').hidden=remaining===0;
 }
 function saveMeal(event) {
   event.preventDefault(); guard(() => {
@@ -2280,7 +2303,9 @@ function withMealShopping(ops,mealId) {
   const weekMeals=active(snapshot.meals).filter(row=>days.has(row.date)&&row.date>=isoDate()&&known.has(row.recipeId)&&(row.id===meal.id||!row.done));
   const takeUse=weekBasket(weekMeals).use;
   const transfer=prepareWeekParts({meals:[meal],coverageMeals:weekMeals,basket,rows,takeUse},selected,currentStore(defaultStore()),false,snapshot);
-  return {ops:[...ops,...transfer],notice:'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt'};
+  // 2.182: Nur melden, was wirklich passiert ist (kein „hinzugefügt“, wenn nichts auf den Einkaufszettel kam)
+  const added=transfer.some(op=>op.collection==='items');
+  return {ops:[...ops,...transfer],notice:added?'Gericht gespeichert · Zutaten dem Einkaufszettel hinzugefügt':'Gericht gespeichert · alle Zutaten sind im Vorrat oder stehen schon auf dem Einkaufszettel'};
 }
 let planAdjustment=null;
 const adjustmentSignature = id => JSON.stringify([state.meals.find(row=>row.id===id),state.items]);
@@ -4067,10 +4092,10 @@ function renderLastRating() {
 }
 // Seit 2.177 gibt es die Bewertung bei Restaurant und Getränken gleich; beim Wechsel der Art bleibt sie stehen.
 // Die Beispiele in den Feldern passen zur Art (2.179): bei Getränken kein „Pizza top“.
-const DINING_EXAMPLES = { restaurant: { place: 'z. B. Pizzeria Roma', ratingNote: 'z. B. Pizza top, Bedienung langsam' }, drinks: { place: 'z. B. Café Lotte', ratingNote: 'z. B. Cappuccino top, gemütliche Sessel' } };
+const DINING_EXAMPLES = { restaurant: { amount: 'z. B. 34,50', place: 'z. B. Pizzeria Roma', ratingNote: 'z. B. Pizza top, Bedienung langsam' }, drinks: { amount: 'z. B. 8,79', place: 'z. B. Café Lotte', ratingNote: 'z. B. Cappuccino top, gemütliche Sessel' } };
 function syncDiningKind() {
   const form = $('#dining-form'), examples = DINING_EXAMPLES[diningKind({ dining: form.elements.kind.value }).id];
-  form.elements.place.placeholder = examples.place; form.elements.ratingNote.placeholder = examples.ratingNote;
+  form.elements.amount.placeholder = examples.amount; form.elements.place.placeholder = examples.place; form.elements.ratingNote.placeholder = examples.ratingNote;
   renderLastRating();
 }
 function openDining(id = '') {
