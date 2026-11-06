@@ -11953,8 +11953,12 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     const choices = () => page.locator('#move-choices button').evaluateAll(nodes => nodes.map(node => node.firstChild.textContent.trim()));
     assert.deepEqual(await choices(), targets);
     await page.click('#move-dialog [data-close]'); await page.waitForSelector('#move-dialog', { state: 'hidden' });
+    // Nach dem langen Halten nimmt die Liste 400 ms lang keinen Tipp an (dragdelete.js: das „click“ nach dem Loslassen soll nichts auslösen).
+    // Ein schneller Rechner tippte sonst innerhalb dieser Zeit auf „Tomaten“, und der Tipp wurde verschluckt (#select-move blieb gesperrt).
+    await page.waitForTimeout(450);
     // Mehrere auswählen → „Geschäft zuordnen“: ebenfalls keine Listen
     await page.click('#select-mode'); await page.locator('#items .item', { hasText: 'Tomaten' }).locator('.item-copy').click();
+    await page.waitForFunction(() => !document.getElementById('select-move').disabled);
     await page.click('#select-move'); await sheetOpen(page);
     assert.deepEqual(await choices(), targets);
     await page.click('#move-dialog [data-close]'); await page.waitForSelector('#move-dialog', { state: 'hidden' }); await page.click('#select-done');
