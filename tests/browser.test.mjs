@@ -12346,7 +12346,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
-  test('2.170–2.172: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke); der aufklappbare Haken in derselben Karte steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
+  test('2.170–2.174: Restaurant/Café/Bar schnell eintragen (Restaurant oder Getränke, Restaurant mit Sternen); der aufklappbare Haken steuert das Monatsbudget, die eigene Übersicht zeigt Wann, Wo und Wie teuer', async () => {
     const data = structuredClone(demo), stamp = new Date(Date.now() - 3600000).toISOString(), today = isoDate();
     const row = extra => ({ createdAt: stamp, updatedAt: stamp, deletedAt: null, _clock: {}, ...extra });
     data.budgets = [row({ id: 'monthly', cents: 10000 })];
@@ -12389,11 +12389,37 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'amount');
     assert.equal(await page.locator('#dining-places').isHidden(), true, 'noch keine Lokale zum Antippen');
     assert.match(await page.textContent('#dining-budget-note'), /^Zählt zum Monatsbudget/);
-    await page.fill('#dining-form input[name=amount]', '46,80'); await page.fill('#dining-form input[name=place]', 'Pizzeria Roma'); await page.fill('#dining-form input[name=time]', '19:30');
+    // 2.174: kein grünes Plus mehr im Betragsfeld (es speicherte nur); das Feld nutzt die volle Breite, Enter speichert nicht
+    assert.equal(await page.locator('#dining-form .add-button').count(), 0);
+    const widths = await page.evaluate(() => ['amount', 'place'].map(name => Math.round(document.querySelector(`#dining-form input[name=${name}]`).getBoundingClientRect().width)));
+    assert.equal(widths[0], widths[1], 'Betrag so breit wie das Lokal');
+    await page.fill('#dining-form input[name=amount]', '46,80'); await page.focus('#dining-form input[name=amount]'); await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#dining-dialog').isVisible(), true, 'Enter schließt nur die Tastatur'); assert.equal((await dining()).length, 0);
+    assert.notEqual(await page.evaluate(() => document.activeElement?.name), 'amount');
+    await page.fill('#dining-form input[name=place]', 'Pizzeria Roma'); await page.fill('#dining-form input[name=time]', '19:30');
+    assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'noch keine frühere Bewertung');
+    // 2.174: Bewertung zugeklappt unter „Bezahlt von“, aufgeklappt fünf Sterne; nochmals auf den gewählten Stern setzt zurück
+    const rating = await page.evaluate(() => { const box = selector => document.querySelector(selector).getBoundingClientRect(); return { buyer: box('#dining-form select[name=buyerId]').bottom, rating: box('#dining-rating-toggle').top, note: box('#dining-budget-note').top }; });
+    assert.ok(rating.rating >= rating.buyer && rating.rating < rating.note, 'zwischen „Bezahlt von“ und dem grauen Hinweis');
+    assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal((await page.textContent('#dining-rating-toggle')).trim(), 'Bewertung (optional)');
+    await page.tap('#dining-rating-toggle');
+    assert.equal(await page.textContent('#dining-rating-question'), 'Nochmal hingehen?');
+    assert.equal(await page.locator('.dining-star').count(), 5);
+    assert.ok((await page.locator('.dining-star').first().boundingBox()).height >= 48, 'große Sterne');
+    assert.match(await page.textContent('.dining-rating-scale'), /1 = nie wieder.*3 = geht so.*5 = unbedingt/);
+    await page.locator('.dining-star[data-value="4"]').tap();
+    assert.equal(await page.locator('.dining-star.on').count(), 4); assert.equal(await page.getAttribute('.dining-star[data-value="4"]', 'aria-pressed'), 'true');
+    await page.locator('.dining-star[data-value="4"]').tap();
+    assert.equal(await page.locator('.dining-star.on').count(), 0, 'zurückgesetzt'); assert.equal(await page.inputValue('#dining-form input[name=rating]'), '');
+    await page.locator('.dining-star[data-value="4"]').tap(); await page.fill('#dining-form input[name=ratingNote]', 'Pizza top, Bedienung langsam');
+    await page.tap('#dining-rating-toggle'); assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal(await page.textContent('#dining-rating-value'), '★★★★☆', 'zugeklappt stehen die Sterne in der Zeile');
     await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     const [first] = await dining();
-    assert.deepEqual({ dining: first.dining, cents: first.cents, storeName: first.storeName, time: first.time, date: first.date, buyerName: first.buyerName, storeId: first.storeId },
-      { dining: 'restaurant', cents: 4680, storeName: 'Pizzeria Roma', time: '19:30', date: today, buyerName: 'Nico', storeId: undefined });
+    assert.deepEqual({ dining: first.dining, cents: first.cents, storeName: first.storeName, time: first.time, date: first.date, buyerName: first.buyerName, storeId: first.storeId, rating: first.rating, ratingNote: first.ratingNote },
+      { dining: 'restaurant', cents: 4680, storeName: 'Pizzeria Roma', time: '19:30', date: today, buyerName: 'Nico', storeId: undefined, rating: 4, ratingNote: 'Pizza top, Bedienung langsam' });
+    assert.equal(await page.textContent('#spending-dining-list .dining-stars-small'), '★★★★☆', 'Sterne klein neben dem Lokalnamen');
     assert.equal((await stored()).sync.minRev, 19, 'ältere Apps rechnen Restaurantbesuche nicht falsch ins Budget');
     // Übersicht: eigene Karte, nicht noch einmal in der Liste der Einkäufe; mit Haken zählt der Betrag zum Budget
     assert.equal(await page.locator('#spending-dining').isVisible(), true);
@@ -12420,18 +12446,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     // 3. Zweiter Besuch: das Lokal steht zum Antippen bereit; Getränke wählen
     await page.tap('#add-dining'); await sheetOpen(page);
     assert.match(await page.textContent('#dining-budget-note'), /^Zählt nicht zum Monatsbudget/);
+    assert.equal(await page.textContent('#dining-rating-value'), '', 'neuer Besuch ohne Bewertung');
     await page.locator('#dining-places .chip', { hasText: 'Pizzeria Roma' }).tap();
     assert.equal(await page.inputValue('#dining-form input[name=place]'), 'Pizzeria Roma');
     assert.equal(await page.getAttribute('#dining-places .chip', 'aria-pressed'), 'true');
-    await page.locator('.dining-kind', { hasText: 'Getränke' }).tap(); await page.fill('#dining-form input[name=place]', 'Café Lotte');
+    assert.equal(await page.textContent('#dining-last-rating'), 'Zuletzt: ★★★★☆ · Pizza top, Bedienung langsam');
+    await page.fill('#dining-form input[name=place]', 'PIZZERIA roma'); assert.equal(await page.locator('#dining-last-rating').isVisible(), true, 'ohne Groß-/Kleinschreibung');
+    // Bewertung nur bei Restaurant: bei Getränken verschwinden Sterne und Hinweis
+    await page.locator('.dining-kind', { hasText: 'Getränke' }).tap();
+    assert.equal(await page.locator('#dining-rating').isHidden(), true); assert.equal(await page.locator('#dining-last-rating').isHidden(), true);
+    await page.fill('#dining-form input[name=place]', 'Café Lotte');
     await page.fill('#dining-form input[name=amount]', '8,90'); await page.fill('#dining-form input[name=time]', '15:10');
     await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     assert.match(await page.textContent('#notice'), /8,90\s€ Getränke · Café Lotte gespeichert · zählt nicht zum Budget/);
     assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').dining, 'drinks');
+    assert.equal((await dining()).find(entry => entry.storeName === 'Café Lotte').rating, undefined, 'Getränke ohne Bewertungsfelder');
     assert.equal((await stored()).sync.minRev, 20, 'Version 2.170 kennt „Getränke“ nicht und verweist aufs Aktualisieren');
     assert.match(await page.textContent('#spending-dining-meta'), /2 Besuche · Ø 27,85/);
     assert.deepEqual((await page.locator('#spending-dining-kinds li strong').allTextContents()).map(text => text.replace(/^\S+\s/, '')), ['Restaurant', 'Getränke']);
     assert.match(await page.textContent('#spending-budget'), /50 % verbraucht/);
+    // Ein bewerteter Besuch öffnet mit zugeklappter Bewertung und den Sternen in der Zeile; Abbrechen ändert nichts
+    await page.locator('#spending-dining-list .dining-row', { hasText: 'Pizzeria Roma' }).tap(); await sheetOpen(page);
+    assert.equal(await page.textContent('#dining-rating-value'), '★★★★☆'); assert.equal(await page.locator('#dining-rating-panel').isHidden(), true);
+    assert.equal(await page.locator('#dining-last-rating').isHidden(), true, 'die eigene Bewertung ist kein „Zuletzt“');
+    await page.tap('#dining-dialog [data-close]'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     // 4. Ändern: ein Tipp auf den Besuch öffnet ihn
     await page.locator('#spending-dining-list .dining-row', { hasText: 'Café Lotte' }).tap(); await sheetOpen(page);
     assert.equal(await page.textContent('#dining-title'), 'Restaurant/Café/Bar bearbeiten');

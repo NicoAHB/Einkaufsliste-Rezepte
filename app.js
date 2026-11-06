@@ -57,7 +57,7 @@ import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.j
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
-import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
@@ -3982,11 +3982,48 @@ function renderDiningPlaces() {
   for (const place of places) {
     const chip = button(place.name, () => {
       form.elements.place.value = place.name; form.elements.kind.value = place.kind;
-      renderDiningPlaces(); refreshDirty(form);
+      renderDiningPlaces(); syncDiningKind(); refreshDirty(form);
     }, 'chip dining-place');
     chip.setAttribute('aria-pressed', String(place.name.toLocaleLowerCase('de') === typed));
     box.append(chip);
   }
+}
+/* Bewertung (2.174): nur bei Restaurant, zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
+   Sterne ohne Tastatur; ein Tipp auf den gewählten Stern nimmt die Bewertung zurück. Dazu eine kurze Notiz. Unter dem Lokal zeigt ein kleiner
+   Hinweis, wie es beim letzten Besuch dort bewertet wurde. Alles ist eine interne Notiz und ändert weder Summen noch Budget. */
+const starsLabel = stars => `${stars} von 5 Sternen (${RATING_MEANING[stars]})`;
+function paintStars(target, stars) {
+  target.replaceChildren(element('span', '★'.repeat(stars), 'stars-on'), element('span', '☆'.repeat(5 - stars), 'stars-off'));
+  target.setAttribute('aria-label', starsLabel(stars)); target.setAttribute('role', 'img');
+}
+function renderDiningRating() {
+  const form = $('#dining-form'), stars = Number(form.elements.rating.value) || 0, value = $('#dining-rating-value');
+  for (const star of $('#dining-rating').querySelectorAll('.dining-star')) {
+    const own = Number(star.dataset.value); star.classList.toggle('on', own <= stars); star.setAttribute('aria-pressed', String(own === stars));
+  }
+  if (stars) paintStars(value, stars); else { value.replaceChildren(); value.removeAttribute('aria-label'); value.removeAttribute('role'); }
+}
+function setDiningRating(stars) {
+  const field = $('#dining-form').elements.rating;
+  field.value = stars ? String(stars) : ''; field.dispatchEvent(new Event('input', { bubbles: true }));
+  renderDiningRating();
+}
+function openDiningRating(open) {
+  $('#dining-rating-panel').hidden = !open; $('#dining-rating-toggle').setAttribute('aria-expanded', String(open));
+}
+function renderLastRating() {
+  const form = $('#dining-form'), hint = $('#dining-last-rating'), restaurant = form.elements.kind.value === 'restaurant';
+  const last = restaurant ? lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value) : null;
+  hint.hidden = !last; hint.replaceChildren();
+  if (!last) return;
+  const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating);
+  hint.append('Zuletzt: ', stars);
+  if (last.ratingNote) hint.append(element('span', ` · ${last.ratingNote}`, 'dining-last-note'));
+}
+// Bewertung nur bei Restaurant: Bei „Getränke“ verschwinden Bewertung und Hinweis (eine eingegebene Bewertung wird dann nicht gespeichert)
+function syncDiningKind() {
+  const restaurant = $('#dining-form').elements.kind.value === 'restaurant';
+  $('#dining-rating').hidden = !restaurant; renderLastRating();
 }
 function openDining(id = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
@@ -4001,13 +4038,15 @@ function openDining(id = '') {
   form.elements.place.value = row?.storeName || '';
   form.elements.date.value = row?.date || isoDate();
   form.elements.time.value = row ? row.time || '' : clockNow();
+  form.elements.rating.value = hasRating(row) && diningKind(row).id === 'restaurant' ? String(row.rating) : '';
+  form.elements.ratingNote.value = row?.ratingNote || '';
   spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : spendingView.defaultBuyer(), row?.buyerName || '');
-  renderDiningPlaces();
+  renderDiningPlaces(); openDiningRating(false); renderDiningRating(); syncDiningKind();
   $('#dining-budget-note').textContent = diningCountsNow() ? 'Zählt zum Monatsbudget.' : 'Zählt nicht zum Monatsbudget (Haken unter „Ausgaben“). In der Übersicht „Restaurant/Café/Bar“ steht der Betrag trotzdem.';
   $('#dining-title').textContent = row ? 'Restaurant/Café/Bar bearbeiten' : DINING_LABEL;
   $('#dining-delete').hidden = !row;
   $('#dining-dialog').showModal();
-  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#dining-save'), $('#dining-plus')] }); else disarmDirty(form);
+  if (row) armDirty(form, { savedAt: row.updatedAt, buttons: [$('#dining-save')] }); else disarmDirty(form);
   // Wie bei „Ausgabe eintragen“: Die Tastatur öffnet sich erst, wenn das Betragsfeld angetippt wird.
   $('#dining-dialog [data-close]').focus({ preventScroll: true });
 }
@@ -4018,10 +4057,12 @@ function saveDining() {
   if (id && !current) throw new Error('Dieser Eintrag wurde inzwischen gelöscht.');
   const buyer = purchaseBuyer(form.elements.buyerId.value, editing);
   const fields = diningFields({ amount: form.elements.amount.value, date: form.elements.date.value, time: form.elements.time.value, kind: form.elements.kind.value,
-    place: form.elements.place.value, buyerId: buyer.id, buyerName: buyer.name }, isoDate());
+    place: form.elements.place.value, buyerId: buyer.id, buyerName: buyer.name, rating: form.elements.rating.value, ratingNote: form.elements.ratingNote.value }, isoDate());
+  // Ohne Bewertung bekommt ein neuer Eintrag keine leeren Felder; beim Ändern löscht null bzw. '' eine frühere Bewertung
+  if (!editing) { if (fields.rating === null) delete fields.rating; if (!fields.ratingNote) delete fields.ratingNote; }
   let patch = fields;
   if (editing) {
-    const prior = { storeName: '', time: '', note: '', source: 'hand', ...editing, buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
+    const prior = { storeName: '', time: '', note: '', source: 'hand', ...editing, rating: hasRating(editing) ? editing.rating : null, ratingNote: editing.ratingNote || '', buyerId: editing.buyerId || null, buyerName: editing.buyerName || '' };
     patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => key !== 'buyerName' && value !== prior[key]));
     if (fields.buyerId !== prior.buyerId) patch.buyerName = fields.buyerName;
     if (!Object.keys(patch).length) { $('#dining-dialog').close(); return; }
@@ -4030,7 +4071,7 @@ function saveDining() {
   duplicateWarning(effective, id, editing ? 'tippe auf „Änderungen speichern“' : 'tippe auf „Speichern“');
   const ops = [...(buyer.change && effective.buyerId === buyer.id ? [nextOp('members', buyer.id, buyer.change.patch)] : []), nextOp('purchases', id || uid(), patch)];
   const where = effective.storeName ? ` · ${effective.storeName}` : '';
-  const notice = `${euros(effective.cents)} ${diningKind(effective).label}${where} gespeichert${diningCountsNow() ? budgetNote(monthTotalWith(monthOf(effective.date), effective.cents, current)) : ' · zählt nicht zum Budget'}`;
+  const notice = `${euros(effective.cents)} ${diningKind(effective).label}${where}${hasRating(effective) ? ` ${ratingStars(effective.rating)}` : ''} gespeichert${diningCountsNow() ? budgetNote(monthTotalWith(monthOf(effective.date), effective.cents, current)) : ' · zählt nicht zum Budget'}`;
   if (effective.buyerId === buyer.id) rememberOwnBuyer(buyer.id);
   commit(ops, notice); spendingView.reveal(effective); renderSpending(); $('#dining-dialog').close();
 }
@@ -5108,14 +5149,19 @@ $('#dining-budget').addEventListener('change', event => {
   const box = event.target;
   try { setDiningBudget(box.checked); } catch (error) { box.checked = diningCountsNow(); message(error.message); }
 });
-let diningPlus = 0;
-$('#dining-plus').addEventListener('pointerdown', () => { diningPlus = Date.now(); });
-$('#dining-form').addEventListener('submit', event => {
-  event.preventDefault();
-  if (Date.now() - diningPlus < 1500) document.activeElement?.blur?.();
-  diningPlus = 0; guard(saveDining);
+$('#dining-form').addEventListener('submit', event => { event.preventDefault(); guard(saveDining); });
+// Gespeichert wird nur mit „Speichern“ (2.174): Enter bzw. „Fertig“ auf der Tastatur schließt in den Feldern nur die Tastatur.
+$('#dining-form').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.isComposing || !(event.target instanceof HTMLInputElement)) return;
+  event.preventDefault(); event.target.blur();
 });
-$('#dining-form').elements.place.addEventListener('input', renderDiningPlaces);
+$('#dining-form').elements.place.addEventListener('input', () => { renderDiningPlaces(); renderLastRating(); });
+for (const radio of $('#dining-form').querySelectorAll('input[name=kind]')) radio.addEventListener('change', syncDiningKind);
+$('#dining-rating-toggle').addEventListener('click', () => openDiningRating($('#dining-rating-panel').hidden));
+for (const star of $('#dining-rating').querySelectorAll('.dining-star')) star.addEventListener('click', () => {
+  const stars = Number(star.dataset.value), current = Number($('#dining-form').elements.rating.value) || 0;
+  setDiningRating(stars === current ? 0 : stars);   // nochmals auf den gewählten Stern: Bewertung zurücksetzen
+});
 $('#dining-delete').addEventListener('click', () => guard(async () => {
   const id = $('#dining-form').elements.rowId.value, row = id ? purchaseRows().find(entry => entry.id === id) : null;
   if (!row) { $('#dining-dialog').close(); return; }

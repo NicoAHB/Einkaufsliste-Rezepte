@@ -3,7 +3,7 @@
 import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './family.js';
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
   periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE,
-  budgetSpent, diningKind, isDining } from './spending.js';
+  budgetSpent, diningKind, hasRating, isDining, RATING_MEANING } from './spending.js';
 import { groupImageFor, imageByKey, imageForProduct, paintProductImage } from './product-images.js';
 import { hasProductPrice, productPriceCents } from './product-prices.js';
 
@@ -263,10 +263,13 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       const li = node('li', undefined, 'dining-item'), row = button(undefined, () => onEdit(entry.id), 'dining-row'), copy = node('span', undefined, 'dining-copy');
       li.dataset.id = entry.id;
       const badge = node('span', kind.emoji, `dining-badge dining-${kind.id}`); badge.setAttribute('aria-hidden', 'true');
-      copy.append(node('strong', place || kind.label), node('small', [when, place ? kind.label : '', buyer, twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
+      // Bewertung (2.174): klein neben dem Lokalnamen
+      const name = node('strong', place || kind.label);
+      if (hasRating(entry)) { const stars = node('span', undefined, 'dining-stars-small'); stars.append(node('span', '★'.repeat(entry.rating), 'stars-on'), node('span', '☆'.repeat(5 - entry.rating), 'stars-off')); stars.setAttribute('aria-hidden', 'true'); name.append(' ', stars); }
+      copy.append(name, node('small', [when, place ? kind.label : '', buyer, twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
       const edit = svgIcon('edit'); edit.classList.add('dining-edit');
       row.append(badge, copy, node('span', euros(entry.cents), 'spend-amount'), edit);
-      row.setAttribute('aria-label', `${when}, ${place || kind.label}${place ? ` (${kind.label})` : ''}, ${buyer}, ${euros(entry.cents)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: bearbeiten`);
+      row.setAttribute('aria-label', `${when}, ${place || kind.label}${place ? ` (${kind.label})` : ''}${hasRating(entry) ? `, ${entry.rating} von 5 Sternen (${RATING_MEANING[entry.rating]})` : ''}, ${buyer}, ${euros(entry.cents)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: bearbeiten`);
       li.append(row); list.append(li);
     }
   }

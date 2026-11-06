@@ -5779,3 +5779,32 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 .maker-logo { display:block; width:130px; height:auto }
 @media (prefers-color-scheme:dark) { :root:not([data-theme=light]) .maker-logo-plate { background:#f4f6f2 } }
 :root[data-theme=dark] .maker-logo-plate { background:#f4f6f2 }
+
+/* Bewertung eines Restaurantbesuchs (2.174): zugeklappt eine Zeile wie „Kategorie“ bei den Ausgaben (abgerundet, Pfeil rechts), mit den
+   Sternen, sobald bewertet. Aufgeklappt fünf große Sterne (48 px Tippfläche) ohne Tastatur, darunter die Bedeutung und eine kurze Notiz. */
+.dining-rating { display:grid; gap:8px }
+.dining-rating[hidden] { display:none }
+:root .dining-rating-trigger { font-weight:400 }
+.dining-rating-trigger .dining-rating-label { flex:1 }
+.dining-rating-value { flex:none; font-size:1.05rem; letter-spacing:.06em; line-height:1 }
+.dining-rating-panel { display:grid; gap:6px; padding:12px 12px 14px; border:1px solid var(--line-strong); border-radius:14px; background:var(--card) }
+.dining-rating-panel[hidden] { display:none }
+.dining-rating-question { margin:0; font-weight:700; text-align:center }
+.dining-stars { display:flex; justify-content:center; gap:4px }
+:root .dining-star,:root[data-glass] .dining-star {
+  display:inline-grid; place-items:center; width:52px; min-width:44px; height:52px; min-height:48px; padding:0; border:0; border-radius:14px;
+  background:transparent; color:var(--line-strong); box-shadow:none; touch-action:manipulation
+}
+:root .dining-star:active:not(:disabled) { background:var(--accent-soft); transform:scale(.94) }
+.dining-star .icon { width:36px; height:36px; stroke-width:1.6; fill:transparent; transition:fill .12s ease,color .12s ease }
+:root .dining-star.on,:root[data-glass] .dining-star.on { color:var(--accent) }
+.dining-star.on .icon { fill:currentColor }
+.dining-rating-scale { display:flex; justify-content:space-between; gap:8px; margin:0 6px; font-size:.76rem; color:var(--muted) }
+.dining-rating-note { margin-top:6px }
+.stars-on { color:var(--accent) }
+.stars-off { color:var(--line-strong) }
+.dining-last-rating { margin:-6px 0 0; font-size:.84rem; color:var(--muted) }
+.dining-last-rating[hidden] { display:none }
+.dining-last-stars { letter-spacing:.05em; font-size:.95rem }
+.dining-stars-small { font-size:.72rem; font-weight:400; letter-spacing:0; white-space:nowrap }
+@media (max-width:340px) { :root .dining-star,:root[data-glass] .dining-star { width:46px } .dining-star .icon { width:32px; height:32px } }

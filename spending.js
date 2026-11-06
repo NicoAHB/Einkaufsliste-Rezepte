@@ -94,12 +94,37 @@ export function purchaseFields({ amount, date, storeId = '', storeName = '', not
 /* Eingaben für Restaurant/Café/Bar prüfen: Betrag und Datum wie bei jeder Ausgabe, dazu die Art des Lokals, die Uhrzeit (leer = ohne) und
    der Name des Lokals (leer = ohne, höchstens 80 Zeichen). Ergebnis: die Felder zum Speichern; `storeName` und `time` stehen immer drin, damit
    beim Bearbeiten auch das Leeren eines Felds ankommt. */
-export function diningFields({ amount, date, time = '', kind = 'restaurant', place = '', buyerId, buyerName = '' }, today) {
+export function diningFields({ amount, date, time = '', kind = 'restaurant', place = '', buyerId, buyerName = '', rating = '', ratingNote = '' }, today) {
   if (!DINING_KINDS.some(entry => entry.id === kind)) throw new Error('Bitte Restaurant oder Getränke auswählen.');
   const clock = String(time || '').trim();
   if (clock && !validTime(clock)) throw new Error('Bitte eine gültige Uhrzeit angeben, zum Beispiel 19:30.');
   const { storeName = '', ...fields } = purchaseFields({ amount, date, storeName: String(place || ''), note: '', source: 'hand', buyerId, buyerName }, today);
-  return { ...fields, storeName, dining: kind, time: clock };
+  // Bewertung (2.174): nur bei Restaurant; bei Getränken wird eine eingegebene Bewertung verworfen
+  const stars = kind === 'restaurant' ? diningRating(rating) : null;
+  const remark = kind === 'restaurant' ? String(ratingNote ?? '').trim().replace(/\s+/g, ' ').slice(0, RATING_NOTE_MAX) : '';
+  return { ...fields, storeName, dining: kind, time: clock, rating: stars, ratingNote: remark };
+}
+
+/* Bewertung eines Restaurantbesuchs (2.174): eine interne Notiz für die Familie, ob man nochmal hingehen will. `rating` 1–5 Sterne
+   (1 = nie wieder, 3 = geht so, 5 = unbedingt), `ratingNote` ein kurzer Satz. Beides ist freiwillig und ändert keine Summe und kein Budget.
+   Fehlen die Felder (ältere Einträge) oder sind sie leer (`null`, ''), gibt es keine Bewertung. */
+export const RATING_NOTE_MAX = 120;
+export function diningRating(value) {
+  if (value === '' || value === null || value === undefined || Number(value) === 0) return null;
+  const stars = Number(value);
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw new Error('Bitte 1 bis 5 Sterne wählen.');
+  return stars;
+}
+export const hasRating = row => Number.isInteger(row?.rating) && row.rating >= 1 && row.rating <= 5;
+export const ratingStars = stars => '★'.repeat(stars) + '☆'.repeat(5 - stars);
+export const RATING_MEANING = { 1: 'nie wieder', 2: 'eher nicht', 3: 'geht so', 4: 'gerne wieder', 5: 'unbedingt' };
+// Letzte Bewertung eines Lokals (Name ohne Groß-/Kleinschreibung und doppelte Leerzeichen): der jüngste Besuch mit Sternen, ohne den Eintrag `ignoreId`.
+export function lastRating(rows, place, ignoreId = '') {
+  const key = String(place || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+  if (!key) return null;
+  const when = row => `${row.date}|${row.time || ''}|${row.createdAt || ''}`;
+  return rows.filter(row => !row.deletedAt && row.id !== ignoreId && isDining(row) && hasRating(row) && String(row.storeName || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de') === key)
+    .sort((a, b) => when(b).localeCompare(when(a)))[0] ?? null;
 }
 
 // Lokale zum schnellen Antippen: die bisher am häufigsten besuchten (bei Gleichstand das zuletzt besuchte zuerst), höchstens `limit`, ohne doppelte Schreibweisen.
@@ -291,10 +316,11 @@ export function budgetStatus(spent, budget) {
 // Benutzereingaben sind Text, auch wenn ein Name mit einem Tabellen-Formelzeichen beginnt.
 export function spendingCsv(rows, stores = [], members = []) {
   const text = value => { let field = String(value ?? ''); if (/^[\s]*[=+\-@\t\r]/.test(field)) field = `'${field}`; return `"${field.replace(/"/g, '""')}"`; };
-  // Restaurant/Café/Bar (2.170): Art „Café“ usw., Geschäft = Name des Lokals, Uhrzeit in der letzten Spalte
-  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie', 'Uhrzeit'].map(text).join(';');
+  // Restaurant/Café/Bar (2.170): Art „Café“ usw., Geschäft = Name des Lokals, dazu Uhrzeit; seit 2.174 Bewertung und Notiz dazu
+  const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie', 'Uhrzeit', 'Bewertung (1–5)', 'Notiz zur Bewertung'].map(text).join(';');
   const art = row => isDining(row) ? `${DINING_LABEL}: ${diningKind(row).label}` : row.kind === 'refund' ? 'Rückerstattung' : 'Einkauf';
   const lines = rows.map(row => [text(row.date), text(art(row)), text(buyerNameOf(row, members)),
-    text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(isDining(row) ? DINING_LABEL : row.note), text(isDining(row) ? row.time : '')].join(';'));
+    text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(isDining(row) ? DINING_LABEL : row.note), text(isDining(row) ? row.time : ''),
+    text(hasRating(row) ? row.rating : ''), text(hasRating(row) ? row.ratingNote : '')].join(';'));
   return '\ufeff' + [header, ...lines].join('\r\n') + '\r\n';
 }
