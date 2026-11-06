@@ -2024,22 +2024,20 @@ function renderPlan() {
     for (const meal of meals.filter(row => row.date === day).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) card.append(mealRow(meal, recipes, past));
     box.append(card);
   }
-  // 2.182: „Einkauf“ ist nur aktiv, wenn für die Woche wirklich etwas auf den Einkaufszettel käme; sonst ausgegraut mit dem Grund darunter
-  const shopping = weekShoppingState(days);
-  $('#plan-shopping').disabled = !ready || shopping !== 'needed';
-  $('#plan-shopping small').textContent = shopping === 'stocked' ? 'Alle Zutaten sind im Vorrat' : shopping === 'listed' ? 'Fehlendes steht schon auf dem Einkaufszettel' : 'Zutaten dieser Woche hinzufügen';
+  // 2.182: Stehen ab heute nur Rezepte im Plan, deren Zutaten alle im Vorrat sind, bleibt „Einkauf“ ausgegraut; darunter steht der Grund
+  const stocked = weekAllStocked(days);
+  $('#plan-shopping').disabled = !ready || !meals.some(meal => recipes.has(meal.recipeId)) || stocked;
+  $('#plan-shopping small').textContent = stocked ? 'Alle Zutaten sind im Vorrat' : 'Zutaten dieser Woche hinzufügen';
 }
-/* Gibt es für die Woche etwas einzukaufen? (2.182) Die geplanten, noch nicht gekochten Rezepte ab heute, wie im Fenster „Zutaten dieser Woche“,
-   aber mit allen Portionen (auch schon übernommene): Was im Vorrat ist oder offen auf dem Einkaufszettel steht, zählt als abgedeckt.
-   'none' = nichts geplant, 'needed' = es fehlt etwas, 'listed' = Fehlendes steht schon auf dem Zettel, 'stocked' = alles im Vorrat. */
-function weekShoppingState(days) {
+/* Fehlt im Vorrat nichts für die Woche? (2.182) Die geplanten, noch nicht gekochten Rezepte ab heute (wie im Fenster „Zutaten dieser Woche“):
+   true, wenn es welche gibt und jede mitgezählte Zutat im Vorrat ist (Wasser, Salz und nach Bedarf zählen nicht). Fehlt etwas im Vorrat,
+   bleibt der Wocheneinkauf aktiv, auch wenn es schon auf dem Einkaufszettel steht (dort lässt sich z. B. erneut prüfen). */
+function weekAllStocked(days) {
   const recipes = active(state.recipes), known = new Set(recipes.map(recipe => recipe.id));
   const meals = active(state.meals).filter(meal => days.includes(meal.date) && meal.date >= isoDate() && meal.recipeId && known.has(meal.recipeId) && !meal.done);
-  if (!meals.length) return 'none';
-  const basket = { ...weekBasket(meals, true), again: true };
-  if (weekShoppingNeeds({ meals, basket }).some(required)) return 'needed';
+  if (!meals.length) return false;
   const keys = pantryKeys(state.pantry);
-  return aggregateIngredients(basket.use, recipes, active(state.ingredients)).some(row => required(row) && !inPantry(keys, row)) ? 'listed' : 'stocked';
+  return aggregateIngredients(meals, recipes, active(state.ingredients)).every(row => !required(row) || inPantry(keys, row));
 }
 function mealRow(meal, recipes, past = false) {
   const recipe = recipes.get(meal.recipeId);

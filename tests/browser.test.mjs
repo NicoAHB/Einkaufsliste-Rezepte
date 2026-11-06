@@ -9168,7 +9168,30 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.match(await page.locator('#recipe-filter option[value=available-pantry]').textContent(),/Sofort kochbar.*1/);assert.match(await page.locator('#recipe-filter option[value=available-shopping]').textContent(),/Nach dem Einkauf.*2/);
     await page.selectOption('#recipe-filter','available-pantry');assert.deepEqual(await page.locator('#recipe-pick .pick-row:not(.custom)').evaluateAll(nodes=>nodes.map(node=>node.dataset.value)),['r280-0']);
     await page.selectOption('#recipe-filter','available-shopping');assert.equal(await page.locator('#recipe-pick .pick-row:not(.custom)').count(),2);await page.locator('#recipe-pick [data-value=r280-1]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 1 Produkt fehlt.*0 noch/);await setMealPortions(page, '4');assert.match(await page.textContent('#meal-save-shopping small'),/1 noch auf den Einkaufszettel/);
-    await page.selectOption('#recipe-filter','');await page.locator('#recipe-pick [data-value=r280-0]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 0 Produkte fehlen.*0 noch/);const before=(await storedDemo(page)).items;await page.click('#meal-save-shopping');assert.deepEqual((await storedDemo(page)).items,before);assert.deepEqual(problems,[]);await ctx.close();
+    await page.selectOption('#recipe-filter','');await page.locator('#recipe-pick [data-value=r280-0]').click();assert.match(await page.textContent('#meal-save-shopping small'),/Nur Vorrat: 0 Produkte fehlen.*0 noch/);
+    // 2.182: Alles im Vorrat – nur „Speichern“, der Hinweis sagt warum; die Meldung behauptet nichts Falsches
+    assert.equal(await page.locator('#meal-save-shopping').isHidden(),true);assert.equal(await page.textContent('#meal-save-note'),'Alle Zutaten sind im Vorrat');assert.equal(await page.locator('#meal-save').isVisible(),true);
+    const before=(await storedDemo(page)).items;await page.click('#meal-save');assert.deepEqual((await storedDemo(page)).items,before);assert.equal(await page.textContent('#notice-text'),'Gericht gespeichert');
+    // Ein anderes Rezept, bei dem etwas fehlt, bringt den zweiten Knopf zurück
+    await page.locator('.day.today .day-head .icon-button').click();await sheetOpen(page);await page.locator('#recipe-pick [data-value=r280-1]').click();await setMealPortions(page, '4');
+    assert.equal(await page.locator('#meal-save-shopping').isVisible(),true);assert.equal(await page.textContent('#meal-save-note'),'Nur im Wochenplan');await page.click('#meal-dialog [data-close]');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
+  test('2.182: „Einkauf – Zutaten dieser Woche“ bleibt ausgegraut, solange alle geplanten Rezepte vollständig im Vorrat sind',async()=>{
+    const data=data280(),stamp='2026-10-30T09:00:00Z',today=isoDay(new Date()),meal=(id,recipeId,date=today,extra={})=>({id,recipeId,date,servings:2,done:false,createdBy:'Nico',createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{},...extra});
+    data.meals=[meal('m182-full','r280-0')];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');
+    // Nur „Vorrat komplett“ (Karotte; Salz, Pfeffer, Wasser zählen nicht) geplant: ausgegraut, darunter der Grund
+    assert.equal(await page.locator('#plan-shopping').isDisabled(),true);assert.equal(await page.textContent('#plan-shopping small'),'Alle Zutaten sind im Vorrat');
+    // Ein Rezept, bei dem im Vorrat etwas fehlt (Milch, auch wenn sie schon auf dem Einkaufszettel steht): wieder aktiv
+    await page.locator('.day.today .day-head .icon-button').click();await sheetOpen(page);await page.locator('#recipe-pick [data-value=r280-1]').click();await page.click('#meal-save');
+    assert.equal(await page.locator('#plan-shopping').isDisabled(),false);assert.equal(await page.textContent('#plan-shopping small'),'Zutaten dieser Woche hinzufügen');
+    // Abgehakt (gekocht) zählt nicht mehr: dann ist wieder alles im Vorrat
+    const saved=(await storedDemo(page)).meals.find(row=>row.recipeId==='r280-1');
+    await page.evaluate(async id=>{const raw=JSON.parse(localStorage.getItem('einkauf-demo-v1'));raw.base.meals.find(row=>row.id===id).done=true;localStorage.setItem('einkauf-demo-v1',JSON.stringify(raw));},saved.id);
+    await page.reload();await page.waitForSelector('#status[data-state]',{state:'attached'});await goTab(page,'plan');
+    assert.equal(await page.locator('#plan-shopping').isDisabled(),true);
+    assert.deepEqual(problems,[]);await ctx.close();
   });
   function data284(){const data=milkRecipes(),stamp='2026-10-30T09:00:00Z',record=(id,fields)=>({id,...fields,createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{}}),today=isoDay(new Date());data.items=[];data.recipes.push({...data.recipes[0],id:'old284',name:'Vergangenes Gericht'});data.ingredients.push({...data.ingredients[0],id:'old-i284',recipeId:'old284',name:'Hummer',quantity:1,unit:'Stück'});data.meals=[record('past284',{date:isoDay(new Date(Date.now()-86400000)),recipeId:'old284',servings:2,done:false})];return {data,record,today};}
   const milkAmount284=data=>data.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Milch').reduce((sum,row)=>sum+row.quantity*(row.unit==='l'?1000:1),0);
