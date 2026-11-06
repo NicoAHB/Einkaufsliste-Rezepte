@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.177: Sterne auch für Getränke
+
+**Bewertung wie beim Restaurant.** Im Fenster **Restaurant/Café/Bar** gibt es **Bewertung (optional)** jetzt auch bei **Getränke**: dieselben fünf Sterne („Nochmal hingehen?“), dieselbe kurze Notiz, derselbe Hinweis „Zuletzt: ★★★★☆“ beim selben Lokal und die kleinen Sterne in der Übersicht. Beim Wechsel zwischen Restaurant und Getränke bleibt eine eingegebene Bewertung stehen. Gespeichert wird wie bei Restaurants (`rating`, `ratingNote`), ohne Einfluss auf Summen und Budget. Offline-Paket `einkauf-shell-v189`.
+
 ## Neu in Version 2.176: Einheitliche Knöpfe in Rückfragen
 
 **Alle Rückfragen sehen gleich aus.** Bisher war die Aktion in Rückfragen wie „Zucker ist aufgebraucht“ kräftig gefüllt („Ja“), in Rückfragen zum Löschen dagegen umrandet und zart gefüllt („Endgültig löschen“); „Abbrechen“ hatte im Glas-Erscheinungsbild kaum einen Rand. Jetzt gilt überall: Die Aktion ist umrandet und zart gefüllt (grün, beim Löschen rot), **Abbrechen** ist weiß mit sichtbarem grünem Rand; Form, Höhe und Schrift sind gleich. Offline-Paket `einkauf-shell-v188`.

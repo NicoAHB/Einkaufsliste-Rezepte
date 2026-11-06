@@ -99,13 +99,13 @@ export function diningFields({ amount, date, time = '', kind = 'restaurant', pla
   const clock = String(time || '').trim();
   if (clock && !validTime(clock)) throw new Error('Bitte eine gültige Uhrzeit angeben, zum Beispiel 19:30.');
   const { storeName = '', ...fields } = purchaseFields({ amount, date, storeName: String(place || ''), note: '', source: 'hand', buyerId, buyerName }, today);
-  // Bewertung (2.174): nur bei Restaurant; bei Getränken wird eine eingegebene Bewertung verworfen
-  const stars = kind === 'restaurant' ? diningRating(rating) : null;
-  const remark = kind === 'restaurant' ? String(ratingNote ?? '').trim().replace(/\s+/g, ' ').slice(0, RATING_NOTE_MAX) : '';
+  // Bewertung (2.174 bei Restaurant, seit 2.177 auch bei Getränken)
+  const stars = diningRating(rating);
+  const remark = String(ratingNote ?? '').trim().replace(/\s+/g, ' ').slice(0, RATING_NOTE_MAX);
   return { ...fields, storeName, dining: kind, time: clock, rating: stars, ratingNote: remark };
 }
 
-/* Bewertung eines Restaurantbesuchs (2.174): eine interne Notiz für die Familie, ob man nochmal hingehen will. `rating` 1–5 Sterne
+/* Bewertung eines Besuchs (2.174 Restaurant, seit 2.177 auch Getränke): eine interne Notiz für die Familie, ob man nochmal hingehen will. `rating` 1–5 Sterne
    (1 = nie wieder, 3 = geht so, 5 = unbedingt), `ratingNote` ein kurzer Satz. Beides ist freiwillig und ändert keine Summe und kein Budget.
    Fehlen die Felder (ältere Einträge) oder sind sie leer (`null`, ''), gibt es keine Bewertung. */
 export const RATING_NOTE_MAX = 120;

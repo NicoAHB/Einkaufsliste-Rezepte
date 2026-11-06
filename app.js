@@ -4031,7 +4031,7 @@ function renderDiningPlaces() {
     box.append(chip);
   }
 }
-/* Bewertung (2.174): nur bei Restaurant, zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
+/* Bewertung (2.174, seit 2.177 bei Restaurant und Getränken): zugeklappt eine Zeile wie die übrigen Felder (mit Sternen, sobald bewertet). Aufgeklappt fünf große
    Sterne ohne Tastatur; ein Tipp auf den gewählten Stern nimmt die Bewertung zurück. Dazu eine kurze Notiz. Unter dem Lokal zeigt ein kleiner
    Hinweis, wie es beim letzten Besuch dort bewertet wurde. Alles ist eine interne Notiz und ändert weder Summen noch Budget. */
 const starsLabel = stars => `${stars} von 5 Sternen (${RATING_MEANING[stars]})`;
@@ -4055,19 +4055,16 @@ function openDiningRating(open) {
   $('#dining-rating-panel').hidden = !open; $('#dining-rating-toggle').setAttribute('aria-expanded', String(open));
 }
 function renderLastRating() {
-  const form = $('#dining-form'), hint = $('#dining-last-rating'), restaurant = form.elements.kind.value === 'restaurant';
-  const last = restaurant ? lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value) : null;
+  const form = $('#dining-form'), hint = $('#dining-last-rating');
+  const last = lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value);
   hint.hidden = !last; hint.replaceChildren();
   if (!last) return;
   const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating);
   hint.append('Zuletzt: ', stars);
   if (last.ratingNote) hint.append(element('span', ` · ${last.ratingNote}`, 'dining-last-note'));
 }
-// Bewertung nur bei Restaurant: Bei „Getränke“ verschwinden Bewertung und Hinweis (eine eingegebene Bewertung wird dann nicht gespeichert)
-function syncDiningKind() {
-  const restaurant = $('#dining-form').elements.kind.value === 'restaurant';
-  $('#dining-rating').hidden = !restaurant; renderLastRating();
-}
+// Seit 2.177 gibt es die Bewertung bei Restaurant und Getränken gleich; beim Wechsel der Art bleibt sie stehen
+function syncDiningKind() { renderLastRating(); }
 function openDining(id = '') {
   if (!ready) throw new Error('Bitte zuerst GitHub verbinden oder den Beispielmodus öffnen.');
   const row = id ? purchaseRows().find(entry => entry.id === id) : null;
@@ -4081,7 +4078,7 @@ function openDining(id = '') {
   form.elements.place.value = row?.storeName || '';
   form.elements.date.value = row?.date || isoDate();
   form.elements.time.value = row ? row.time || '' : clockNow();
-  form.elements.rating.value = hasRating(row) && diningKind(row).id === 'restaurant' ? String(row.rating) : '';
+  form.elements.rating.value = hasRating(row) ? String(row.rating) : '';
   form.elements.ratingNote.value = row?.ratingNote || '';
   spendingView.fillBuyer(form.elements.buyerId, row ? row.buyerId || '' : spendingView.defaultBuyer(), row?.buyerName || '');
   renderDiningPlaces(); openDiningRating(false); renderDiningRating(); syncDiningKind();

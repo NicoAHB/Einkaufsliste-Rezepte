@@ -179,9 +179,9 @@ export function validateRow(key, row) {
   // Seit 2.171 `drinks` (Getränke) statt `cafe`/`bar`; die alten Werte bleiben gültig und zählen als Getränke.
   if (key === 'purchases' && ((row.dining !== undefined && !['restaurant', 'drinks', 'cafe', 'bar'].includes(row.dining)) ||
       (row.time !== undefined && row.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(row.time))))) throw new Error('Ungültige Angabe zu Restaurant/Café/Bar.');
-  // Bewertung eines Restaurantbesuchs (2.174): optional `rating` (1–5, null = keine) und `ratingNote` (kurzer Text). Ältere Apps lassen beides unberührt.
+  // Bewertung eines Besuchs (2.174 Restaurant, seit 2.177 auch Getränke): optional `rating` (1–5, null = keine) und `ratingNote` (kurzer Text). Ältere Apps lassen beides unberührt.
   if (key === 'purchases' && ((row.rating !== undefined && row.rating !== null && (!Number.isInteger(row.rating) || row.rating < 1 || row.rating > 5)) ||
-      (row.ratingNote !== undefined && row.ratingNote !== null && (typeof row.ratingNote !== 'string' || row.ratingNote.length > 200)))) throw new Error('Ungültige Bewertung eines Restaurantbesuchs.');
+      (row.ratingNote !== undefined && row.ratingNote !== null && (typeof row.ratingNote !== 'string' || row.ratingNote.length > 200)))) throw new Error('Ungültige Bewertung eines Besuchs (Restaurant oder Getränke).');
   // Monatsbudget (Version 2.21): eine Zeile `monthly` mit `cents` (0 = kein Budget).
   if (key === 'budgets' && (!Number.isSafeInteger(row.cents) || row.cents < 0 || row.cents > 99999999)) throw new Error('Ungültiges Budget.');
   // Zählt Restaurant/Café/Bar zum Monatsbudget? (2.170) Zeile `dining` mit `counts` (true/false) und `cents: 0`, damit ältere Apps sie lesen.
