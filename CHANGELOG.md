@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.183: Schönere Kästchen überall
+
+**Kein blasser Kreis mehr.** Safari auf dem iPhone zeichnete leere Kästchen als blassen, unvollständigen Kreis, z. B. im Fenster **Einkauf für die Woche**. Jetzt sehen alle Kästchen aus wie der Haken fürs Auswärtsessen: abgerundetes Quadrat mit grünem Rand, angehakt grün gefüllt mit Haken. Das gilt für die Zutatenlisten zum Übernehmen (Wocheneinkauf, „Einkaufen“ am Rezept), für alle Haken in Formularen und unter **Optionen** sowie für den Kochmodus (etwas größer). Die Schalter unter „Geschäfte & Listen“ bleiben Schalter. Offline-Paket `einkauf-shell-v195`.
+
 ## Neu in Version 2.182: Einkaufs-Knöpfe im Wochenplan nur, wenn etwas fehlt
 
 **Gericht planen.** Bisher erschien **Speichern & Zutaten hinzufügen** auch dann, wenn für das gewählte Rezept alles im Vorrat war; ein Tipp darauf meldete „Zutaten dem Einkaufszettel hinzugefügt“, obwohl nichts hinzukam. Jetzt gibt es nur **Speichern**, wenn nichts auf den Einkaufszettel käme; darunter steht der Grund („Alle Zutaten sind im Vorrat“ bzw. „Fehlendes steht schon auf dem Einkaufszettel“). Die Meldung „Zutaten dem Einkaufszettel hinzugefügt“ erscheint nur noch, wenn wirklich etwas hinzugefügt wurde.

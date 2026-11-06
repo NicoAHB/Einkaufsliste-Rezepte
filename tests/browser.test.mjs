@@ -9193,6 +9193,21 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#plan-shopping').isDisabled(),true);
     assert.deepEqual(problems,[]);await ctx.close();
   });
+  test('2.183: Kästchen sind überall selbst gezeichnet (abgerundetes Quadrat), leer mit grünem Rand, angehakt grün gefüllt mit Haken',async()=>{
+    const data=data280(),stamp='2026-10-30T09:00:00Z',today=isoDay(new Date());
+    data.meals=[{id:'m183',recipeId:'r280-2',date:today,servings:2,done:false,createdBy:'Nico',createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{}}];
+    const {ctx,page,problems}=await context();await seedLocal(ctx,data);await open(page);await goTab(page,'plan');await page.click('#plan-shopping');await sheetOpen(page);
+    const look=locator=>locator.evaluate(node=>{const s=getComputedStyle(node);return {appearance:s.appearance,radius:s.borderTopLeftRadius,width:s.width,border:s.borderTopWidth,image:s.backgroundImage.startsWith('url(')?'haken':'leer'};});
+    const rows=page.locator('#week-ingredients .transfer-row input');
+    const checked=await look(page.locator('#week-ingredients .transfer-row input:checked').first()),empty=await look(page.locator('#week-ingredients .transfer-row input:not(:checked)').first());
+    assert.deepEqual(checked,{appearance:'none',radius:'8px',width:'26px',border:'2px',image:'haken'});assert.deepEqual(empty,{appearance:'none',radius:'8px',width:'26px',border:'2px',image:'leer'});
+    assert.ok(await rows.count()>=2);
+    // Auch die Haken im Fenster selbst und unter Optionen
+    assert.deepEqual(await look(page.locator('#week-form input[name=skipListed]')),{appearance:'none',radius:'8px',width:'26px',border:'2px',image:'haken'});
+    await page.click('#week-dialog [data-close]');await openSettings(page);
+    assert.equal((await look(page.locator('#group-items'))).appearance,'none');
+    assert.deepEqual(problems,[]);await ctx.close();
+  });
   function data284(){const data=milkRecipes(),stamp='2026-10-30T09:00:00Z',record=(id,fields)=>({id,...fields,createdAt:stamp,updatedAt:stamp,deletedAt:null,_clock:{}}),today=isoDay(new Date());data.items=[];data.recipes.push({...data.recipes[0],id:'old284',name:'Vergangenes Gericht'});data.ingredients.push({...data.ingredients[0],id:'old-i284',recipeId:'old284',name:'Hummer',quantity:1,unit:'Stück'});data.meals=[record('past284',{date:isoDay(new Date(Date.now()-86400000)),recipeId:'old284',servings:2,done:false})];return {data,record,today};}
   const milkAmount284=data=>data.items.filter(row=>!row.deletedAt&&!row.checked&&row.name==='Milch').reduce((sum,row)=>sum+row.quantity*(row.unit==='l'?1000:1),0);
   test('2.84: Wochen-Einkauf ignoriert vergangene Tage und ergänzt nur die Mengendifferenz zum offenen Einkaufszettel',async()=>{
