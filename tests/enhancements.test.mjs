@@ -40,7 +40,7 @@ test('PDF: lange mehrzeilige Notizen werden vollständig und ohne Überlappung f
   for (const item of noteBody(layout)) {
     assert.ok(item.y < PAGE.height - 62); assert.ok(item.x + textWidth(item.text, item.font, item.size) <= PAGE.width - 42 + 0.01);
   }
-  layout.pages.forEach((page, i) => assert.ok(page.items.some(item => item.text === `Seite ${i + 1} / ${layout.pages.length}`)));
+  layout.pages.forEach((page, i) => assert.ok(page.items.some(item => item.text?.endsWith(` · Seite ${i + 1} / ${layout.pages.length}`))));
 });
 test('PDF: ein sehr langes Wort bleibt vollständig und passt in die Seite', () => {
   const layout = make('x'.repeat(10000)); assert.equal(noteBody(layout).map(item => item.text.replace(/-$/, '')).join('').length, 10000);

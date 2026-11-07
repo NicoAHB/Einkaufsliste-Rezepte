@@ -205,7 +205,7 @@
     <p id="syncline" class="syncline" title="Tippen: abgleichen (ohne Verbindung oder bei ablaufendem Token: Optionen öffnen)"><span id="status" role="status" aria-live="polite" data-state="busy">Wird geladen …</span><span id="identity"></span><small id="sync-detail"></small></p>
     <button id="refresh" class="icon-button round" type="button" aria-label="Jetzt abgleichen" title="Jetzt abgleichen"><svg class="icon"><use href="#i-refresh"/></svg></button>
   </header>
-      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name"><span class="brand-name"><span class="brand-initial">S</span>att<span class="brand-initial">P</span>lan</span> <small class="app-version" data-app-version>Version 2.188</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
+      <div class="section-head settings-head"><div class="app-identity"><img src="assets/branding/sattplan-logo.png" width="48" height="48" alt=""><div><p class="app-name"><span class="brand-name"><span class="brand-initial">S</span>att<span class="brand-initial">P</span>lan</span> <small class="app-version" data-app-version>Version 2.190</small></p><h2 id="settings-title">Optionen</h2></div></div><button id="open-help" class="secondary" type="button"><svg class="icon"><use href="#i-book"/></svg>Anleitung</button></div>
       <div id="quarantine-card" class="card stack quarantine-card" role="region" aria-labelledby="quarantine-title" hidden><h3 id="quarantine-title">Nicht übernommene Änderungen</h3><p id="quarantine-text"></p><div class="quarantine-actions"><button id="quarantine-save" type="button" class="secondary">Als Datei sichern</button><button id="quarantine-discard" type="button" class="secondary">Verwerfen</button></div></div>
 
       <p class="settings-section-title">Aussehen und Bedienung</p><div id="display-card" data-auto-save class="card stack display-card"><details id="display-details" class="fold"><summary><h3>Darstellung</h3></summary><div class="stack">
@@ -239,12 +239,18 @@
       </div><div id="shop-card" data-auto-save class="card stack"><details id="shop-details" class="fold"><summary><h3>Im Laden</h3></summary><div class="stack">
         <label id="shop-autolock-label" class="inline-field"><span>Automatisch sperren</span><select id="shop-autolock"><option value="0">Nie</option><option value="10">10 Sekunden (Standard)</option><option value="20">20 Sekunden</option><option value="30">30 Sekunden</option><option value="60">1 Minute</option><option value="120">2 Minuten</option></select></label>
         <p class="hint">Nach dieser Zeit ohne Berührung sperrt sich die Ansicht „Im Laden“ von selbst, damit in der Hosentasche nichts versehentlich abgehakt wird. Gilt nur auf diesem Gerät. „Bildschirm anlassen“ steht in der Ansicht „Im Laden“ selbst.</p><p class="form-feedback" data-auto-feedback role="status">Änderungen werden sofort auf diesem Gerät gespeichert.</p></div></details>
+      </div><div id="pro-card" data-auto-save class="card stack pro-card" hidden><h3>Werbung &amp; Pro</h3>
+        <button id="pro-remove-ads" type="button" class="secondary pro-row" hidden>Werbung entfernen</button>
+        <p id="pro-ads-off" class="pro-line" hidden>Werbung: aus (Pro)</p>
+        <label id="pro-recommend-label" class="checkbox-label" hidden><input id="pro-recommend" type="checkbox"> SattPlan weiterempfehlen (QR-Hinweis im PDF)</label>
+        <button id="pro-restore" type="button" class="secondary pro-row" hidden>Käufe wiederherstellen</button>
+        <p id="pro-status" class="hint" role="status"></p>
       </div><p class="settings-section-title">Daten sichern</p><div id="trash-card" class="card trash-card"><button id="trash-open" class="trash-card-button" type="button"><span class="trash-card-icon"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></span><span class="trash-card-copy"><strong>Kürzlich gelöscht</strong><small id="trash-summary">Gelöschtes bleibt hier 14 Tage.</small></span><svg class="icon trash-card-chevron" aria-hidden="true"><use href="#i-right"/></svg></button></div><div id="backup-card" class="card stack"><details id="backup-details" class="fold"><summary><h3>Datensicherung</h3></summary><div class="stack"><button id="export" class="secondary" type="button">Datensicherung erstellen (JSON)</button>
         <button id="export-full" class="secondary" type="button">Mit Fotos sichern (ZIP)</button>
         <p class="hint">Das Backup enthält die Daten einschließlich noch nicht gesendeter Änderungen, aber keinen Token. Die Vollsicherung legt zusätzlich alle Rezeptfotos in eine ZIP-Datei. Backups vertraulich aufbewahren.</p>
         <button id="restore-open" class="secondary" type="button">Datensicherung wiederherstellen</button><button id="restore-recovery" class="secondary" type="button" hidden>Vorherigen Stand zurückholen</button>
         <p id="export-note" class="hint" role="status"></p>
-        <p class="hint"><span data-app-version>Version 2.188</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
+        <p class="hint"><span data-app-version>Version 2.190</span> · Anleitung in der App · Abgleich alle 8 Sekunden, solange die App sichtbar ist. iOS pausiert Apps im Hintergrund. Nach dem Öffnen wird erneut abgeglichen.</p><p class="hint">Geheime Listen bleiben ausschließlich auf diesem Gerät und gehören nicht zur gemeinsamen Datensicherung.</p></div></details></div><p class="settings-section-title">Verbindung und weitere Einstellungen</p><form id="settings-form" data-explicit-save class="card">
         <details id="connection-details" class="fold"><summary><h3>Gemeinsame Liste</h3><span id="connection-state" class="hint"></span></summary>
         <div class="stack">
         <label>Dein Name<input name="actor" list="actors" required maxlength="30" autocomplete="off" placeholder="z. B. Nico"></label>
@@ -290,6 +296,7 @@
         <p class="hint">Die App räumt automatisch auf, sobald die Datei 250 KB überschreitet. Entfernt wird nur, was seit mehr als zwei Wochen gelöscht oder seit drei Wochen erledigt ist, sowie überholte Preise und Zeitstempel. Vorschläge und gelernte Kategorien bleiben erhalten. Alte Stände bleiben im Verlauf des privaten Daten-Repositorys auf GitHub.</p></div></details>
 
       </div><footer class="maker" aria-label="Herausgeber"><span class="maker-label">Ein Produkt von</span><span class="maker-logo-plate"><img class="maker-logo" src="assets/branding/nvf-digital-logo.png" width="130" height="36" alt="NvF Digital" decoding="async"></span></footer></section>
+    <aside id="ad-slot" class="ad-slot" aria-label="Anzeige" hidden></aside>
   </main>
 
   <nav class="tabs" aria-label="Hauptbereiche">
@@ -472,6 +479,12 @@
     <div class="daily-actions"><button id="daily-add" type="button"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button><button id="daily-remove" class="danger daily-remove-action" type="button" hidden>Hinzugefügtes Rezept entfernen</button><button id="daily-retry" class="secondary" type="button" hidden>Erneut versuchen</button></div></div></div></dialog>
   <dialog id="daily-remove-dialog" aria-labelledby="daily-remove-title" aria-describedby="daily-remove-text"><div class="stack"><div class="sheet-head"><h2 id="daily-remove-title">Rezept entfernen?</h2><button type="button" data-close="daily-remove-dialog" class="icon-button round" aria-label="Abbrechen"><svg class="icon"><use href="#i-x"/></svg></button></div><p id="daily-remove-text"></p><div class="sheet-actions"><button id="daily-remove-confirm" type="button" class="danger daily-remove-action">Entfernen</button><button type="button" data-close="daily-remove-dialog" class="secondary" autofocus>Abbrechen</button></div></div></dialog>
   <dialog id="order-dialog" aria-labelledby="order-title"><div class="stack"><div class="sheet-head"><h2 id="order-title">Reihenfolge ändern</h2><button type="button" class="icon-button round" data-close="order-dialog" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div><p class="hint">Mit den Pfeilen nach oben oder unten verschieben. Änderungen werden sofort übernommen.</p><ol id="order-list" class="order-list"></ol><p id="order-feedback" class="form-feedback" role="status"></p><p id="order-error" class="dialog-error" role="alert" hidden></p><button type="button" class="secondary" data-close="order-dialog">Fertig</button></div></dialog>
+  <dialog id="pro-dialog" aria-labelledby="pro-title"><div class="stack"><div class="sheet-head"><h2 id="pro-title">SattPlan Pro</h2><button type="button" data-close="pro-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <ul class="pro-benefits"><li>Keine Werbung</li><li>QR-Hinweis im Rezeptblatt nach Wunsch an oder aus</li><li>Alles andere bleibt wie in der Gratis-Version</li></ul>
+    <div class="pro-plans"><button id="pro-monthly" type="button" data-plan="monthly"><span>Monatlich</span><small data-price></small></button><button id="pro-yearly" type="button" data-plan="yearly"><span>Jährlich</span><small data-price></small></button></div>
+    <button id="pro-dialog-restore" type="button" class="secondary">Käufe wiederherstellen</button>
+    <p class="hint">Das Abo verlängert sich automatisch und lässt sich jederzeit in den Abo-Einstellungen deines App Stores kündigen.</p>
+    <p id="pro-dialog-status" class="form-feedback" role="status"></p></div></dialog>
   <dialog id="help-dialog"><div class="stack"><div class="sheet-head"><h2>Anleitung</h2><button type="button" data-close="help-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <div id="help-body" class="help-body"></div>
     <p class="hint"><a href="https://github.com/NicoAHB/Einkaufsliste-Rezepte#readme" target="_blank" rel="noopener noreferrer">Technische Anleitung und Testliste auf GitHub (öffnet im Browser)</a></p>
@@ -520,7 +533,7 @@
     </div>
     <progress id="import-progress" max="100" value="0" hidden></progress>
     <p id="import-status" class="hint" role="status"></p>
-    <button id="import-run" class="hold-button" type="submit">Rezept laden</button><button id="import-cancel" type="button" class="secondary" hidden>Laden abbrechen</button>
+    <button id="import-run" class="hold-button" type="submit">Rezept laden</button>
     <p class="hint">Importierte Rezepte sind Vorschläge: Du prüfst und korrigierst alles, bevor es gespeichert wird.</p>
   </form></dialog>
   <dialog id="dining-dialog"><form id="dining-form" data-explicit-save class="stack" novalidate><div class="sheet-head"><h2 id="dining-title">Restaurant/Café/Bar</h2><button type="button" data-close="dining-dialog" class="icon-button round" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button></div>

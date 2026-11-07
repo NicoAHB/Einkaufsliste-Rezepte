@@ -1,18 +1,25 @@
 /* Das Rezeptblatt (Version 2.54): ein Rezept als lesbare DIN-A4-Seite. Reine Logik ohne DOM.
-   Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und „SATTPLAN“, der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
+   Aufbau (Entwurf „Rezeptblatt“): oben klein „REZEPTSAMMLUNG“ und rechts App-Symbol mit „SattPlan“ (seit 2.189, S und P orange wie in der App), der Titel groß in einer Schrift mit Serifen, darunter die Eckdaten (Portionen, Zutaten,
    Gesamtzeit, Stichworte, Quelle); links ein heller Kasten mit den Zutaten (Kästchen zum Abhaken, Menge hervorgehoben), rechts die Zubereitung in klar getrennten, nummerierten
-   Schritten (erster Satz fett als Überschrift); unten „Meine Notizen“ mit eigenem Platz zum Schreiben. Ein Foto steht klein oben rechts. Ist das Rezept lang, geht es auf einer zweiten
-   (dritten …) Seite weiter; die Notizen stehen auf der letzten. Zubereitungsschritte werden nie gekürzt: ein langer Schritt läuft auf der nächsten Seite weiter („Fortsetzung“).
+   Schritten (erster Satz fett als Überschrift, wenn noch Text folgt); unten „Meine Notizen“ mit eigenem Platz zum Schreiben, in der Fußzeile mittig „Ein Produkt von“ mit dem Logo von NvF Digital. Ein Foto steht klein oben rechts. Ist das Rezept lang, geht es auf einer zweiten
+   (dritten …) Seite weiter; die Notizen stehen auf der letzten. Seit 2.190 steht links in der Fußzeile „Eigenes Rezept · Seite 1 / 1“ und darunter „Ein Produkt von“ mit Logo,
+   rechts auf der letzten Seite auf Wunsch ein hellgrüner Kasten mit QR-Code („In SattPlan öffnen“). Er braucht nie eine eigene Seite: Die Notizen geben ihm Platz. Zubereitungsschritte werden nie gekürzt: ein langer Schritt läuft auf der nächsten Seite weiter („Fortsetzung“).
    `layoutRecipe` liefert nur Zeichenbefehle (siehe pdf.js: Rechteck, Linie, Text, Bild); dieselben Befehle ergeben die PDF-Datei (pdf.js) und die Vorschau (sheet-view.js). */
 import { textWidth } from './pdf.js';
 import { splitSteps } from './cook.js';
+import { qrRuns } from './qr-code.js';
 
 export const PAGE = { width: 595.28, height: 841.89 };
+// Wortmarke und Herausgeber (2.189). Die Bilder (App-Symbol, Logo NvF Digital) übergibt die App als JPEG (`brand`); ohne sie stehen nur die Namen da.
+export const BRAND = { name: 'SattPlan', maker: 'NvF Digital', orange: '#c65a1e' };
 export const COLOR = { ink: '#26352e', body: '#38403b', accent: '#a8502e', soft: '#6f7872', label: '#6f7872', rule: '#d9ddd5', card: '#f0f2ea', cardRule: '#d7dccf', box: '#9aa59b', badge: '#f7e4dc' };
 const MARGIN = 42, LEFT = MARGIN, RIGHT = PAGE.width - MARGIN, WIDTH = RIGHT - LEFT, BOTTOM = PAGE.height - 62;
 const CARD = { width: 226, pad: 15, box: 11, amount: 60 };
 const STEPS = { x: LEFT + CARD.width + 26, number: 18 }; STEPS.width = RIGHT - STEPS.x;
-const NOTES = { height: 150 };
+const NOTES = { height: 150, max: 230, gap: 30, line: 28 };   // Höhe, die das Blatt für die Notizen freihält; mit freiem Platz bis `max` (mehr Linien), 2.190
+// QR-Hinweis (2.190): Kasten unten rechts; der Code selbst ist 58 pt breit (gut 2 cm), auf weißem Feld mit Rand
+const PROMO = { bottom: PAGE.height - 22, height: 80, pad: 7, plate: 66, code: 58, fill: '#e3f1e7', title: 'In SattPlan öffnen', subtitle: 'Gratis · iPhone und Android' };
+PROMO.top = PROMO.bottom - PROMO.height;
 const NO_AMOUNT = 'nach Bedarf';
 
 const number = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 });
@@ -71,21 +78,58 @@ export function stepParts(step) {
     const end = match.index + 1, head = text.slice(0, end);
     if (head.length < 3 || (match[0] === '.' && ABBREVIATION.test(head))) continue;
     if (head.length > 70) break;
-    return { title: head, body: text.slice(end).trim() };
+    const body = text.slice(end).trim();
+    // Ein einzelner Satz ist keine Überschrift (2.189): Sonst stünden kurze Schritte fett und längere normal da, je nach Länge uneinheitlich
+    return body ? { title: head, body } : { title: '', body: text };
   }
-  return text.length <= 60 ? { title: text, body: '' } : { title: '', body: text };
+  return { title: '', body: text };
 }
 
 /* ---------- Bausteine ---------- */
 const capital = text => text.charAt(0).toLocaleUpperCase('de') + text.slice(1);
-function header(items, continued) {
-  items.push({ type: 'text', x: LEFT, y: 50, text: continued ? 'REZEPTSAMMLUNG · FORTSETZUNG' : 'REZEPTSAMMLUNG', font: 'sansBold', size: 7, color: COLOR.accent, charSpace: 1.8 });
-  items.push({ type: 'text', x: RIGHT, y: 50, text: 'SATTPLAN', font: 'sans', size: 7, color: COLOR.soft, charSpace: 0.9, align: 'right' });
+// „SattPlan“ wie in der App: S und P orange, der Rest dunkel. Rechtsbündig an `right`; Ergebnis ist die linke Kante.
+function wordmark(items, right, y, size) {
+  const left = right - textWidth(BRAND.name, 'sansBold', size);
+  let x = left;
+  for (const [text, color] of [['S', BRAND.orange], ['att', COLOR.ink], ['P', BRAND.orange], ['lan', COLOR.ink]]) {
+    items.push({ type: 'text', x, y, text, font: 'sansBold', size, color }); x += textWidth(text, 'sansBold', size);
+  }
+  return left;
 }
-function footer(items, page, pages, source) {
-  const y = PAGE.height - 30;
-  items.push({ type: 'text', x: LEFT, y, text: source ? fitText(`Quelle: ${source}`, 'sans', 7.5, 360, 7.5).text : 'Eigenes Rezept', font: 'sans', size: 7.5, color: COLOR.soft });
-  items.push({ type: 'text', x: RIGHT, y, text: `Seite ${page} / ${pages}`, font: 'sans', size: 7.5, color: COLOR.soft, align: 'right', charSpace: 0.4 });
+function header(items, continued, brand) {
+  items.push({ type: 'text', x: LEFT, y: 50, text: continued ? 'REZEPTSAMMLUNG · FORTSETZUNG' : 'REZEPTSAMMLUNG', font: 'sansBold', size: 7, color: COLOR.accent, charSpace: 1.8 });
+  // Rechts das App-Symbol (klein, mittig zur Schrift) und „SattPlan“ (bis 2.188 nur „SATTPLAN“ in Grau)
+  const left = wordmark(items, RIGHT, 50, 10);
+  if (brand?.icon) items.push({ type: 'image', x: left - 5 - 15, y: 50 - 11.1, w: 15, h: 15, photo: brand.icon, role: 'brand' });
+}
+/* Fußzeile (2.190): links oben „Eigenes Rezept · Seite 1 / 1“ (bzw. die Quelle), darunter „Ein Produkt von“ mit dem Logo von NvF Digital.
+   Rechts auf der letzten Seite der QR-Hinweis (`promo`), sonst bleibt rechts frei. */
+function footer(items, page, pages, source, brand, promo = null) {
+  const size = 7.5, label = 'Ein Produkt von', room = (promo ? promo.x - 16 : RIGHT) - LEFT, pageText = ` · Seite ${page} / ${pages}`;
+  const sourceText = source ? fitText(`Quelle: ${source}`, 'sans', size, room - textWidth(pageText, 'sans', size), size).text : 'Eigenes Rezept';
+  items.push({ type: 'text', x: LEFT, y: PAGE.height - 44, text: `${sourceText}${pageText}`, font: 'sans', size, color: COLOR.soft });
+  const y = PAGE.height - 28;
+  if (brand?.maker) {
+    const h = 12, w = h * brand.maker.width / brand.maker.height, labelWidth = textWidth(label, 'sans', size);
+    items.push({ type: 'text', x: LEFT, y, text: label, font: 'sans', size, color: COLOR.soft });
+    items.push({ type: 'image', x: LEFT + labelWidth + 5, y: y - 8.7, w, h, photo: brand.maker, role: 'brand' });
+  } else items.push({ type: 'text', x: LEFT, y, text: `${label} ${BRAND.maker}`, font: 'sans', size, color: COLOR.soft });
+  if (promo) promoBox(items, promo);
+}
+// Der QR-Hinweis: hellgrüner Kasten mit abgerundeten Ecken, links der QR-Code auf weißem Feld, rechts daneben zwei Zeilen Text
+function promoLayout(link) {
+  const qr = qrRuns(link), textW = Math.max(textWidth(PROMO.title, 'sansBold', 10.5), textWidth(PROMO.subtitle, 'sans', 8));
+  const w = PROMO.pad + PROMO.plate + 12 + textW + 14;
+  return { link, qr, w, x: RIGHT - w };
+}
+function promoBox(items, promo) {
+  const top = PROMO.top, plateX = promo.x + PROMO.pad, plateY = top + PROMO.pad, inset = (PROMO.plate - PROMO.code) / 2;
+  items.push({ type: 'rect', x: promo.x, y: top, w: promo.w, h: PROMO.height, r: 10, fill: PROMO.fill, role: 'promo' });
+  items.push({ type: 'rect', x: plateX, y: plateY, w: PROMO.plate, h: PROMO.plate, r: 4, fill: '#ffffff', role: 'promo' });
+  items.push({ type: 'cells', x: plateX + inset, y: plateY + inset, unit: PROMO.code / promo.qr.size, runs: promo.qr.runs, size: promo.qr.size, color: COLOR.ink, link: promo.link, role: 'promo' });
+  const textX = plateX + PROMO.plate + 12, middle = top + PROMO.height / 2;
+  items.push({ type: 'text', x: textX, y: middle - 2, text: PROMO.title, font: 'sansBold', size: 10.5, color: COLOR.ink });
+  items.push({ type: 'text', x: textX, y: middle + 13, text: PROMO.subtitle, font: 'sans', size: 8, color: COLOR.soft });
 }
 // Zeilen der Zutaten im Kasten: Kästchen, Menge (rechtsbündig, fett), Name
 function ingredientBlocks(ingredients) {
@@ -178,16 +222,23 @@ function stepsColumn(items, top, blocks, continued) {
     y += block.height;
   }
 }
-function notes(items, top, lines = []) {
+// `top`: Linie über den Notizen; `bottom`: bis wohin geschrieben werden darf (über der Fußzeile bzw. dem QR-Hinweis)
+function notes(items, top, bottom, lines = []) {
   items.push({ type: 'line', x1: LEFT, y1: top, x2: RIGHT, y2: top, color: COLOR.rule, width: 0.8 });
   items.push({ type: 'text', x: LEFT, y: top + 26, text: 'Meine Notizen', font: 'serifBold', size: 15, color: COLOR.ink });
   if (lines.length) {
-    const count = Math.max(1, Math.floor((BOTTOM - 8 - (top + 52)) / 15) + 1);
+    const count = Math.max(1, Math.floor((bottom - 8 - (top + 52)) / 15) + 1);
     for (const [index, text] of lines.splice(0, count).entries()) items.push({ type: 'text', x: LEFT, y: top + 52 + index * 15, text, font: 'sans', size: 11, color: COLOR.body });
     return;
   }
   items.push({ type: 'text', x: LEFT, y: top + 41, text: 'Für Ideen, Änderungen und das nächste Mal.', font: 'sans', size: 8, color: COLOR.soft });
-  for (let line = 0; line < 3; line++) items.push({ type: 'line', x1: LEFT, y1: top + 72 + line * 28, x2: RIGHT, y2: top + 72 + line * 28, color: COLOR.rule, width: 0.7 });
+  // Schreiblinien im Abstand von 28 pt bis kurz über `bottom`, mindestens eine
+  const count = Math.max(1, Math.floor((bottom - 8 - (top + 72)) / NOTES.line) + 1);
+  for (let line = 0; line < count; line++) items.push({ type: 'line', x1: LEFT, y1: top + 72 + line * NOTES.line, x2: RIGHT, y2: top + 72 + line * NOTES.line, color: COLOR.rule, width: 0.7, role: 'note-line' });
+}
+// Unterkante des Inhalts einer Seite (Kasten, Schritte), damit die Notizen darüber nicht anstoßen
+function contentBottom(items) {
+  return items.reduce((low, item) => Math.max(low, item.type === 'rect' || item.type === 'image' ? item.y + item.h : item.type === 'line' ? Math.max(item.y1, item.y2) : item.type === 'text' ? item.y + 3 : low), 0);
 }
 
 /* Das ganze Blatt.
@@ -195,15 +246,17 @@ function notes(items, top, lines = []) {
    ingredients: [{ amount, name, soft }] (siehe sheetIngredient)
    instructions: Text der Zubereitung (Zeilen oder Sätze werden zu Schritten)
    photo:       { bytes, width, height, components } oder null
+   brand:       { icon, maker } als JPEG wie `photo` (App-Symbol, Logo NvF Digital) oder null: dann stehen nur die Namen da
+   promo:       Adresse für den QR-Hinweis „In SattPlan öffnen“ (2.190) oder '' (kein Hinweis). Ob er erscheint, entscheidet die App (Gratis/Pro, siehe monetization.js).
    Ergebnis:    { width, height, title, pages: [{ width, height, items }] } */
-export function layoutRecipe({ recipe, ingredients, instructions: rawInstructions, photo = null }) {
+export function layoutRecipe({ recipe, ingredients, instructions: rawInstructions, photo = null, brand = null, promo = '' }) {
   const title = String(recipe.name || 'Rezept').trim() || 'Rezept';
   // Importierte Rezepte beginnen mit „Gesamtzeit: 25 Min.“: Das ist ein Eckdatum, kein Schritt
   const timeLine = /^\s*Gesamtzeit:[^\n]*\n*/i.exec(String(rawInstructions ?? ''));
   const time = timeLine ? timeLine[0].replace(/^\s*Gesamtzeit:\s*/i, '').trim() : '';
   const instructions = timeLine ? String(rawInstructions).slice(timeLine[0].length) : rawInstructions;
   const first = [];
-  header(first, false);
+  header(first, false, brand);
   const photoW = photo ? 150 : 0, titleWidth = WIDTH - (photo ? photoW + 22 : 0);
   // Titel: so groß wie möglich in höchstens zwei Zeilen, sonst kleiner in drei
   let size = 34, lines = wrapText(title, 'serifBold', size, titleWidth);
@@ -248,18 +301,23 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
   for (let index = 0; index < count; index++) {
     const items = index === 0 ? first : [];
     if (index > 0) {
-      header(items, true);
+      header(items, true, brand);
       const small = fitText(title, 'serifBold', 22, WIDTH, 14);
       items.push({ type: 'text', x: LEFT, y: 72, text: small.text, font: 'serifBold', size: small.size, color: COLOR.ink });
     }
     const top = index === 0 ? firstTop : otherTop;
     if (left.pages[index].length) ingredientCard(items, LEFT, top, left.pages[index], servings, index > 0);
     if (right.pages[index].length) stepsColumn(items, top, right.pages[index], index > 0);
-    if (index === count - 1) notes(items, BOTTOM - NOTES.height + 14, noteLines);
+    if (index === count - 1) {
+      // Die Notizen bleiben unten. Ist auf der Seite Platz frei, reichen sie bis zu `NOTES.max` hinauf (mehr Linien); der QR-Hinweis nimmt ihnen unten etwas ab,
+      // nie dem Rezept: Die Seitenaufteilung oben rechnet unverändert mit `NOTES.height`, so braucht der Hinweis nie eine zusätzliche Seite.
+      const bottom = promo ? PROMO.top - 12 : BOTTOM, start = BOTTOM - NOTES.height + 14;
+      notes(items, Math.min(start, Math.max(contentBottom(items) + NOTES.gap, bottom - NOTES.max)), bottom, noteLines);
+    }
     sheets.push({ width: PAGE.width, height: PAGE.height, items });
   }
   while (noteLines.length) {
-    const items = []; header(items, true);
+    const items = []; header(items, true, brand);
     const heading = fitText(title, 'serifBold', 22, WIDTH, 14);
     items.push({ type: 'text', x: LEFT, y: 78, text: heading.text, font: 'serifBold', size: heading.size, color: COLOR.ink });
     items.push({ type: 'text', x: LEFT, y: 112, text: 'Meine Notizen · Fortsetzung', font: 'serifBold', size: 15, color: COLOR.ink });
@@ -267,7 +325,9 @@ export function layoutRecipe({ recipe, ingredients, instructions: rawInstruction
     for (const [index, text] of noteLines.splice(0, capacity).entries()) items.push({ type: 'text', x: LEFT, y: 142 + index * 15, text, font: 'sans', size: 11, color: COLOR.body });
     sheets.push({ width: PAGE.width, height: PAGE.height, items });
   }
-  sheets.forEach((sheet, index) => footer(sheet.items, index + 1, sheets.length, recipe.sourceUrl ? `${recipe.sourceHost || ''}${shortPath(recipe.sourceUrl)}` : ''));
+  // Der QR-Hinweis steht auf der Seite mit den Notizen (der letzten des Rezepts), nicht auf Fortsetzungsseiten nur für lange Notizen
+  const promoPage = count - 1, promoBlock = promo ? promoLayout(promo) : null;
+  sheets.forEach((sheet, index) => footer(sheet.items, index + 1, sheets.length, recipe.sourceUrl ? `${recipe.sourceHost || ''}${shortPath(recipe.sourceUrl)}` : '', brand, index === promoPage ? promoBlock : null));
   return { width: PAGE.width, height: PAGE.height, title, pages: sheets };
 }
 // Der Pfad einer Quelladresse, gekürzt („/rezepte/123/spiegeleierkuchen“)

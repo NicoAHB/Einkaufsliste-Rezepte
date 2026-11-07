@@ -75,6 +75,12 @@ async function context(options = {}) {
   return { ctx, page, problems };
 }
 const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
+// Import abbrechen (seit 2.189 ohne eigenen Knopf): den grauen Ladeknopf etwa eine Sekunde gedrückt halten.
+const holdImportRun = async page => {
+  const button = page.locator('#import-run'); await button.scrollIntoViewIfNeeded(); const box = await button.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+  await page.waitForFunction(() => document.querySelector('#import-run').getAttribute('aria-busy') === 'false', null, { timeout: 5000 }); await page.mouse.up();
+};
 // Rückfrage mit Auswahl (2.188): den Knopf mit genau diesem Text antippen (`null` = Abbrechen) und warten, bis die App die Antwort verarbeitet hat.
 const answerChoice = async (page, label, ...patterns) => {
   await page.locator('#ask-dialog[open]').waitFor();
@@ -3402,14 +3408,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await storedDemo(page)).meals,before.meals);assert.deepEqual((await storedDemo(page)).items,before.items);
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.95: normaler Abschluss-Tipp öffnet nur die Bestätigung; sichtbarer Import-Abbruch verhindert verspätete Entwürfe',async()=>{
+  test('2.95: normaler Abschluss-Tipp öffnet nur die Bestätigung; Import-Abbruch verhindert verspätete Entwürfe',async()=>{
     const {ctx,page,problems}=await context({config:{importProxy:'https://slow295.workers.dev',publicProxy:false,shopLock:0}});await open(page);
     const before=await storedDemo(page);await page.click('#mode-shop');await page.click('#shop-finish');await page.waitForSelector('#finish-dialog[open]');
     assert.deepEqual((await storedDemo(page)).items,before.items);await page.click('#finish-dialog [data-close]');await page.click('#shop-back');
     await ctx.route('https://slow295.workers.dev/**',async route=>{await new Promise(resolve=>setTimeout(resolve,700));try{await route.fulfill({status:200,contentType:'text/html',body:recipeHtml});}catch{}});
     await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
-    await page.waitForSelector('#import-cancel:not([hidden])');await page.click('#import-cancel');await page.waitForTimeout(850);
-    assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.locator('#import-cancel').isHidden(),true);
+    // 2.189: kein eigener Knopf „Laden abbrechen“ mehr; der Ladeknopf sagt, wie man abbricht, langes Halten bricht ab
+    await page.waitForFunction(()=>document.querySelector('#import-run').getAttribute('aria-busy')==='true');assert.equal(await page.locator('#import-cancel').count(),0);
+    // Die Antwort kommt hier nach 0,7 s, Halten dauert 1 s: Mit der Tastatur (wie mit einem Bildschirmleser) bricht ein einzelnes Auslösen sofort ab
+    assert.match(await page.textContent('#import-run'),/Zum Abbrechen gedrückt halten/);await page.focus('#import-run');await page.keyboard.press('Enter');await page.waitForTimeout(850);
+    assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.equal(await page.textContent('#import-status'),'Laden abgebrochen.');
     assert.deepEqual((await storedDemo(page)).recipes,before.recipes);assert.deepEqual(problems.filter(text=>!/Failed to fetch|Failed to load resource/.test(text)),[]);await ctx.close();
   });
   test('2.95: Ausgabe eintragen und Speicherbestätigung erst nach erfolgreichem Schreiben',async()=>{
@@ -7011,7 +7020,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1);
     const text = await sheetText(page);
     for (const part of ['REZEPT', 'Tomaten-Pasta', 'PORTIONEN', 'ZUTATEN', 'Zubereitung', '200 g', 'Nudeln', '400 g', 'Tomaten', 'Nudeln in Salzwasser kochen.', 'Schnell · vegetarisch', 'Meine Notizen', 'Eigenes Rezept']) assert.ok(text.includes(part), `${part} fehlt auf dem Blatt`);
-    assert.equal(await page.locator('#sheet-pages image').count(), 0, 'ohne Foto kein Bild');
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 0, 'ohne Foto kein Foto');
+    // 2.189: oben App-Symbol mit „SattPlan“, unten „Ein Produkt von“ mit Logo NvF Digital
+    assert.equal(await page.locator('#sheet-pages image[data-role=brand]').count(), 2, 'App-Symbol und Logo');
+    assert.ok(text.includes('Ein Produkt von') && /S\s*att\s*P\s*lan/.test(text) && !text.includes('SATTPLAN'));
     // „×“ oben rechts, immer erreichbar
     const viewport = page.viewportSize(), close = await page.locator('#sheet-close').boundingBox();
     assert.ok(close.x + close.width <= viewport.width && close.x + close.width / 2 > viewport.width * 0.8 && close.y < 60 && close.width >= 44, 'das „×“ sitzt oben rechts');
@@ -7033,25 +7045,95 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- 2.190: Gratis und Pro, QR-Hinweis im Rezeptblatt ----
+  test('2.190: Solange Werbung und Abo aus sind: keine Werbung, keine Zeilen unter Optionen, ohne eingetragene Adresse kein QR-Hinweis im PDF', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page); await openSettings(page);
+    assert.equal(await page.locator('#pro-card').isHidden(), true); assert.equal(await page.locator('#ad-slot').isHidden(), true);
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages [data-role=promo]').count(), 0);
+    assert.ok((await sheetText(page)).includes('Eigenes Rezept · Seite 1 / 1'));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('2.190: Mit Werbung und Abo (simulierter Store): Gratis sieht Werbung und „Werbung entfernen“, das PDF hat den QR-Hinweis; nach dem Kauf Pro ohne Werbung, Hinweis nur mit „SattPlan weiterempfehlen“; „Käufe wiederherstellen“', async () => {
+    const link = 'https://sattplan.example/app';
+    const source = (await readFile(path.join(root, 'monetization.js'), 'utf8')).replace("Object.freeze({ ads: false, subscription: false })", "Object.freeze({ ads: true, subscription: true })")
+      .replace("export const APP_LINK = '';", `export const APP_LINK = '${link}';`).replace("Object.freeze({ ios: '', android: '' })", "Object.freeze({ ios: 'appl_test', android: 'goog_test' })");
+    assert.ok(source.includes('ads: true, subscription: true') && source.includes(link), 'Testfassung der Schalter');
+    const { ctx, page, problems } = await sheetContext();
+    await ctx.route('**/monetization.js', route => route.fulfill({ status: 200, contentType: 'text/javascript', body: source }));
+    // Native Hülle mit RevenueCat und Werbenetzwerk, nur simuliert: zuerst kein Abo
+    await ctx.addInitScript(() => {
+      const active = () => JSON.parse(sessionStorage.getItem('test-pro') || 'null');
+      const info = () => ({ customerInfo: { entitlements: { active: active() ? { pro: { isActive: true, expirationDate: null, productIdentifier: active() } } : {} } } });
+      window.__ads = [];
+      window.SattPlanAds = { show: slot => { window.__ads.push('show'); slot.textContent = 'Anzeige (Test)'; }, hide: slot => { window.__ads.push('hide'); slot.textContent = ''; } };
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Purchases: {
+        configure: async () => {}, getCustomerInfo: async () => info(), restorePurchases: async () => info(),
+        getOfferings: async () => ({ current: { availablePackages: [{ identifier: '$rc_monthly', product: { identifier: 'sattplan_pro_monthly', priceString: '2,99 €' } }, { identifier: '$rc_annual', product: { identifier: 'sattplan_pro_yearly', priceString: '24,99 €' } }] } }),
+        purchasePackage: async ({ aPackage }) => { sessionStorage.setItem('test-pro', JSON.stringify(aPackage.product.identifier)); return info(); } } } };
+    });
+    await open(page); await openSettings(page);
+    // Gratis: Werbung sichtbar, kein Schalter dafür; „Werbung entfernen“ und „Käufe wiederherstellen“
+    await page.waitForFunction(() => !document.querySelector('#pro-card').hidden);
+    assert.equal(await page.locator('#ad-slot').isVisible(), true); assert.equal(await page.textContent('#ad-slot'), 'Anzeige (Test)');
+    assert.equal(await page.locator('#pro-remove-ads').isVisible(), true); assert.equal(await page.locator('#pro-ads-off').isHidden(), true);
+    assert.equal(await page.locator('#pro-recommend-label').isHidden(), true, 'Gratis: kein Schalter für den QR-Hinweis');
+    assert.equal(await page.locator('#pro-restore').isVisible(), true);
+    assert.equal(await page.locator('#pro-card input[type=checkbox]:visible').count(), 0, 'kein Schalter zum Ausschalten der Werbung');
+    await page.click('#pro-restore'); await page.waitForFunction(() => document.querySelector('#pro-status').textContent === 'Kein aktives Abo gefunden.');
+    // Gratis: der QR-Hinweis steht im PDF
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages path[data-role=promo]').count(), 1);
+    assert.ok((await sheetText(page)).includes('In SattPlan öffnen') && (await sheetText(page)).includes('Gratis · iPhone und Android'));
+    assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1, 'keine zweite Seite');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    assert.match(checkPdf(await pdfBytesOf(download)), / re\nf\n/, 'QR-Code als Fläche in der Datei');
+    await page.click('#sheet-close');
+    // Pro kaufen: Pro-Seite mit Preisen aus dem Store
+    await openSettings(page); await page.click('#pro-remove-ads'); await page.waitForSelector('#pro-dialog[open]');
+    await page.waitForFunction(() => document.querySelector('#pro-monthly [data-price]').textContent === '2,99 €');
+    assert.equal(await page.textContent('#pro-yearly [data-price]'), '24,99 €');
+    await page.click('#pro-monthly'); await page.waitForSelector('#pro-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice'), /SattPlan Pro ist aktiv/);
+    assert.equal(await page.locator('#ad-slot').isHidden(), true, 'Pro: Werbung automatisch aus');
+    assert.equal(await page.locator('#pro-ads-off').textContent(), 'Werbung: aus (Pro)'); assert.equal(await page.locator('#pro-ads-off').isVisible(), true);
+    assert.equal(await page.locator('#pro-remove-ads').isHidden(), true);
+    assert.equal(await page.locator('#pro-recommend-label').isVisible(), true); assert.equal(await page.isChecked('#pro-recommend'), false, 'Standard aus');
+    // Pro: standardmäßig kein QR-Hinweis; mit „SattPlan weiterempfehlen“ wieder da
+    await openCardSheet(page); assert.equal(await page.locator('#sheet-pages [data-role=promo]').count(), 0); await page.click('#sheet-close');
+    await openSettings(page); await page.check('#pro-recommend');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).pdfRecommend, true);
+    await openCardSheet(page); assert.equal(await page.locator('#sheet-pages path[data-role=promo]').count(), 1); await page.click('#sheet-close');
+    // Der Status kommt vom Store, nicht aus den Einstellungen: Pro steht nirgends in den gespeicherten Einstellungen oder Daten
+    const settings = await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')), stored = await storedDemo(page);
+    assert.ok(!/"(pro|status|entitlement)"\s*:/.test(settings) && !JSON.stringify(stored).includes('sattplan_pro'));
+    // Nach dem Neuladen (Abo im Store weiter aktiv) wieder Pro
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await openSettings(page);
+    await page.waitForFunction(() => !document.querySelector('#pro-ads-off').hidden);
+    assert.equal(await page.locator('#ad-slot').isHidden(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
   test('Rezeptblatt: „PDF speichern“ lädt eine gültige PDF-Datei mit dem Rezeptnamen herunter; mit Foto steckt das JPEG in der Datei und die Vorschau zeigt es', async () => {
     const { ctx, page, problems } = await sheetContext();
     await open(page);
     await storePhotoInPage(page);
     await openCardSheet(page);
-    assert.equal(await page.locator('#sheet-pages image').count(), 1, 'das Foto steht auf dem Blatt');
-    assert.match(await page.locator('#sheet-pages image').getAttribute('href'), /^blob:/);
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 1, 'das Foto steht auf dem Blatt');
+    assert.match(await page.locator('#sheet-pages image:not([data-role=brand])').getAttribute('href'), /^blob:/);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
     assert.equal(download.suggestedFilename(), 'Tomaten-Pasta.pdf');
     const body = checkPdf(await pdfBytesOf(download));
     assert.ok(body.includes('/DCTDecode') && body.includes('/Count 1 ') && body.includes('/BaseFont /Times-Bold'));
+    assert.equal((body.match(/\/Subtype \/Image/g) || []).length, 3, 'Foto, App-Symbol und Logo NvF Digital als JPEG in der Datei');
     assert.match(await page.textContent('#sheet-status'), /„Tomaten-Pasta\.pdf“ wird gespeichert/);
     // ohne Foto kein Bild in der Datei
     await page.click('#sheet-close');
     await page.evaluate(() => caches.delete('einkauf-photos-v1'));
     await openCardSheet(page);
-    assert.equal(await page.locator('#sheet-pages image').count(), 0);
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 0);
     const [again] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
-    assert.ok(!checkPdf(await pdfBytesOf(again)).includes('/DCTDecode'));
+    assert.equal((checkPdf(await pdfBytesOf(again)).match(/\/Subtype \/Image/g) || []).length, 2, 'ohne Foto nur App-Symbol und Logo');
     assert.deepEqual(problems, []);
     await ctx.close();
   });
@@ -7209,7 +7291,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://contrast.rezepte.workers.dev/**',()=>new Promise(()=>{}));await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
     await page.waitForFunction(()=>document.querySelector('#import-run').getAttribute('aria-busy')==='true');const colors=await page.locator('#import-run').evaluate(node=>({bg:getComputedStyle(node).backgroundColor,text:[...node.children].map(child=>getComputedStyle(child).color),opacity:getComputedStyle(node).opacity}));
     const rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number);for(const color of colors.text)assert.ok(contrast(rgb(color),rgb(colors.bg))>=4.5,`${color} auf ${colors.bg}`);assert.equal(colors.opacity,'1');assert.equal(await page.locator('#import-run').isDisabled(),false);assert.ok(await horizontalOverflow(page)<=1);
-    if(theme==='light'&&width===390){await page.locator('#import-run').scrollIntoViewIfNeeded();await saveShot(page,'sattplan-2128-import-kontrast.png');}await page.click('#import-cancel');assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.deepEqual(problems,[]);await ctx.close();
+    if(theme==='light'&&width===390){await page.locator('#import-run').scrollIntoViewIfNeeded();await saveShot(page,'sattplan-2128-import-kontrast.png');}await holdImportRun(page);assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('2.127: Rezeptgruppen öffnen ohne Tastatur, bleiben für Mehrfachauswahl offen und ersetzen widersprüchliche Ernährung',async()=>{

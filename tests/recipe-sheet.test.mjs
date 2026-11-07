@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLOR, PAGE, fitText, formatNumber, layoutRecipe, sheetIngredient, wrapText } from '../recipe-sheet.js';
+import { BRAND, COLOR, PAGE, fitText, formatNumber, layoutRecipe, sheetIngredient, wrapText } from '../recipe-sheet.js';
 import { jpegInfo, makePdf, textWidth } from '../pdf.js';
+import { qrRuns } from '../qr-code.js';
 
 const photo = () => { const bytes = Uint8Array.from(Buffer.from('/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAMABADASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAMF/8QAGRAAAQUAAAAAAAAAAAAAAAAAAAISFFFh/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAP/xAAYEQACAwAAAAAAAAAAAAAAAAAAAQITFP/aAAwDAQACEQMRAD8AnJ0SdM16rD1WMsSl7P/Z', 'base64')); return { bytes, ...jpegInfo(bytes) }; };
 const recipe = (extra = {}) => ({ name: 'Spiegeleierkuchen', servings: 12, tags: ['Backen', 'Kuchen'], sourceHost: '', sourceUrl: '', ...extra });
@@ -11,7 +12,7 @@ const STEPS = 'Den Backofen vorheizen.\nEier und Zucker schaumig rühren.\nAlles
 const texts = page => page.items.filter(item => item.type === 'text');
 const allText = layout => layout.pages.flatMap(texts);
 const content = layout => allText(layout).map(item => item.text).join('\n');
-const make = (options = {}) => layoutRecipe({ recipe: recipe(options.recipe), ingredients: options.ingredients ?? ingredients(), instructions: options.instructions ?? STEPS, photo: options.photo ?? null });
+const make = (options = {}) => layoutRecipe({ recipe: recipe(options.recipe), ingredients: options.ingredients ?? ingredients(), instructions: options.instructions ?? STEPS, photo: options.photo ?? null, promo: options.promo ?? '' });
 
 test('Zutat: Menge und Einheit, Umrechnung auf andere Portionen, „nach Bedarf“ ohne erfundene Zahl, deutsche Zahlenschreibweise', () => {
   assert.deepEqual(sheetIngredient({ name: 'Mehl', quantity: 250, unit: 'g' }), { amount: '250 g', name: 'Mehl', soft: false });
@@ -52,8 +53,8 @@ test('Rezeptblatt (Entwurf Version 2.54): A4, „REZEPTSAMMLUNG“, großer Tite
   assert.equal(layout.pages.length, 1);
   assert.deepEqual([layout.pages[0].width, layout.pages[0].height], [PAGE.width, PAGE.height]);
   const text = content(layout);
-  for (const part of ['REZEPTSAMMLUNG', 'SATTPLAN', 'Spiegeleierkuchen', 'PORTIONEN', 'ZUTATEN', 'STICHWORTE', 'Backen · Kuchen', 'Zutaten', 'Für 12 Portionen', 'Zubereitung', 'Eier', '6 Stück',
-    'Zucker', '200 g', 'Butter, weich', 'nach Bedarf', 'Salz', 'Den Backofen vorheizen.', 'Eier und Zucker schaumig rühren.', 'Meine Notizen', 'Für Ideen, Änderungen und das nächste Mal.', 'Eigenes Rezept', 'Seite 1 / 1']) assert.ok(text.includes(part), `${part} fehlt`);
+  for (const part of ['REZEPTSAMMLUNG', 'Spiegeleierkuchen', 'PORTIONEN', 'ZUTATEN', 'STICHWORTE', 'Backen · Kuchen', 'Zutaten', 'Für 12 Portionen', 'Zubereitung', 'Eier', '6 Stück',
+    'Zucker', '200 g', 'Butter, weich', 'nach Bedarf', 'Salz', 'Den Backofen vorheizen.', 'Eier und Zucker schaumig rühren.', 'Meine Notizen', 'Für Ideen, Änderungen und das nächste Mal.', 'Eigenes Rezept', 'Seite 1 / 1', 'Ein Produkt von NvF Digital']) assert.ok(text.includes(part), `${part} fehlt`);
   const kinds = new Set(layout.pages[0].items.map(item => item.type));
   assert.deepEqual([...kinds].sort(), ['line', 'rect', 'text']);
   assert.equal(layout.pages[0].items.filter(item => item.type === 'rect' && item.w < 12 && item.stroke).length, 4, 'ein Kästchen zum Abhaken je Zutat');
@@ -64,13 +65,17 @@ test('Rezeptblatt (Entwurf Version 2.54): A4, „REZEPTSAMMLUNG“, großer Tite
   assert.ok(!layout.pages[0].items.some(item => item.type === 'image'));
 });
 
-test('Schritte: erster Satz fett als Überschrift, der Rest darunter; ein kurzer Satz allein ist Überschrift, ein langer nur Text', () => {
+test('Schritte: erster Satz fett als Überschrift, wenn noch Text folgt; ein einzelner Satz ist immer normaler Text (2.189), egal wie lang', () => {
   assert.deepEqual(stepParts('Nudeln in Salzwasser kochen. Nudelwasser aufheben.'), { title: 'Nudeln in Salzwasser kochen.', body: 'Nudelwasser aufheben.' });
-  assert.deepEqual(stepParts('Alles vermischen.'), { title: 'Alles vermischen.', body: '' });
+  assert.deepEqual(stepParts('Alles vermischen.'), { title: '', body: 'Alles vermischen.' });
   const long = 'Die Zwiebeln schälen und in sehr feine Würfel schneiden, dann in reichlich Olivenöl langsam goldbraun und weich anbraten';
   assert.deepEqual(stepParts(long), { title: '', body: long });
-  assert.deepEqual(stepParts('Kurz ohne Punkt'), { title: 'Kurz ohne Punkt', body: '' });
-  assert.deepEqual(stepParts('Beeren aufkochen – 5 Min. köcheln lassen.'), { title: 'Beeren aufkochen – 5 Min. köcheln lassen.', body: '' }, '„Min.“ vor Kleinbuchstaben ist kein Satzende');
+  assert.deepEqual(stepParts('Kurz ohne Punkt'), { title: '', body: 'Kurz ohne Punkt' });
+  assert.deepEqual(stepParts('Beeren aufkochen – 5 Min. köcheln lassen. Abkühlen.'), { title: 'Beeren aufkochen – 5 Min. köcheln lassen.', body: 'Abkühlen.' }, '„Min.“ vor Kleinbuchstaben ist kein Satzende');
+  // Der Fall aus dem Apfel-Pfannkuchen: drei kurze und ein etwas längerer Satz stehen alle gleich da (bis 2.188 drei fett, einer normal)
+  const pancake = make({ instructions: 'Mehl, Milch und Eier zu einem Teig verrühren.\nApfel in dünne Scheiben schneiden.\nEtwas Butter in einer Pfanne erhitzen.\nTeig und Apfelscheiben hineingeben, von beiden Seiten goldbraun backen.' });
+  const stepText = by(pancake, item => item.x > 300 && item.y > 200 && item.size === 11);
+  assert.ok(stepText.length >= 4); assert.deepEqual([...new Set(stepText.map(item => item.font))], ['sans'], 'alle Schritte in derselben Schrift');
   assert.deepEqual(stepParts('Kalt servieren (ca. 1½ Std.). Danach essen.'), { title: 'Kalt servieren (ca. 1½ Std.).', body: 'Danach essen.' });
   assert.deepEqual(stepParts('20 Min. backen. Dann abkühlen lassen.'), { title: '20 Min. backen.', body: 'Dann abkühlen lassen.' });
   assert.deepEqual(stepParts('Mit z. B. Zimt würzen. Fertig.'), { title: 'Mit z. B. Zimt würzen.', body: 'Fertig.' });
@@ -128,7 +133,7 @@ test('Lange Rezepte gehen auf weiteren Seiten weiter: nichts geht verloren, die 
   for (let i = 1; i <= 30; i++) assert.ok(names.includes(`Schritt ${i} wird gemacht.`), `Schritt ${i} fehlt`);
   assert.ok(at('Zutat 1') < at('Zutat 45') && at('Schritt 1 wird gemacht.') < at('Schritt 30 wird gemacht.'), 'Reihenfolge');
   layout.pages.forEach((page, index) => {
-    assert.ok(texts(page).some(item => item.text === `Seite ${index + 1} / ${layout.pages.length}`));
+    assert.ok(texts(page).some(item => item.text.endsWith(` · Seite ${index + 1} / ${layout.pages.length}`)));
     assert.equal(texts(page).some(item => item.text === 'Meine Notizen'), index === layout.pages.length - 1);
     assert.equal(texts(page).some(item => item.text === 'REZEPTSAMMLUNG · FORTSETZUNG'), index > 0);
     for (const item of page.items) if (item.type === 'text') assert.ok(item.y < PAGE.height - 25, `${item.text} unterhalb der Seite`);
@@ -193,7 +198,7 @@ test('Der Notizbereich bleibt frei und nichts läuft über den Rand: kein Schrit
         const width = textWidth(item.text, item.font, item.size, item.charSpace || 0), left = item.align === 'right' ? item.x - width : item.align === 'center' ? item.x - width / 2 : item.x;
         assert.ok(left >= 41.5 && left + width <= PAGE.width - 41.5, `${count}: „${item.text}“ ragt über den Rand`);
         if (item.x === STEP_X || item.text === 'Fortsetzung') assert.ok(item.y < top - 8, `${count} Sätze, Seite ${index + 1}: „${item.text}“ (y ${item.y.toFixed(1)}) reicht an die Notizen (${top.toFixed(1)})`);
-        else if (!/^(Seite |Quelle|Eigenes|EINKAUF|REZEPT)/.test(item.text)) assert.ok(item.y < BOTTOM, `${item.text} unterhalb des Randes`);
+        else if (!/^(Seite |Quelle|Eigenes|EINKAUF|REZEPT|Ein Produkt von|In SattPlan öffnen|Gratis · )/.test(item.text)) assert.ok(item.y < BOTTOM, `${item.text} unterhalb des Randes`);
       }
     });
   }
@@ -241,10 +246,12 @@ test('Leere Rezepte: „Keine Zutaten eingetragen.“ und „Keine Zubereitung e
 });
 
 
-test('Fußzeile: ohne Quelle „Eigenes Rezept“, mit Quelle „Quelle: …“; rechts „Seite x / y“', () => {
-  assert.ok(content(make()).includes('Eigenes Rezept') && content(make()).includes('Seite 1 / 1'));
+test('Fußzeile (2.190): links „Eigenes Rezept · Seite x / y“ bzw. „Quelle: … · Seite x / y“, darunter „Ein Produkt von NvF Digital“', () => {
+  const plain = texts(make().pages[0]);
+  const first = plain.find(item => item.text === 'Eigenes Rezept · Seite 1 / 1'), second = plain.find(item => item.text === 'Ein Produkt von NvF Digital');
+  assert.ok(first && second && first.x === 42 && second.x === 42 && second.y > first.y, 'beide links, untereinander');
   const withSource = content(make({ recipe: { sourceHost: 'chefkoch.de', sourceUrl: 'https://www.chefkoch.de/rezepte/123/spiegeleierkuchen' } }));
-  assert.ok(withSource.includes('Quelle: chefkoch.de/rezepte/123/spiegeleierkuchen') && !withSource.includes('Eigenes Rezept'));
+  assert.ok(withSource.includes('Quelle: chefkoch.de/rezepte/123/spiegeleierkuchen · Seite 1 / 1') && !withSource.includes('Eigenes Rezept'));
 });
 
 test('Das Layout ist unveränderlich für gleiche Eingaben und ergibt eine gültige PDF-Datei mit Foto', () => {
@@ -254,4 +261,76 @@ test('Das Layout ist unveränderlich für gleiche Eingaben und ergibt eine gült
   const pdf = makePdf(layout.pages, { title: layout.title });
   const body = Buffer.from(pdf).toString('latin1');
   assert.ok(body.startsWith('%PDF-1.4') && body.includes('/DCTDecode') && body.includes('/Count 1 '));
+});
+
+test('2.189: App-Symbol mit „SattPlan“ oben rechts; seit 2.190 links unten „Ein Produkt von“ mit Logo NvF Digital; ohne Bilder nur die Namen', () => {
+  const plain = make(), page = plain.pages[0], items = texts(page);
+  // Wortmarke wie in der App: S und P orange, rechtsbündig am Rand
+  const mark = items.filter(item => item.y === 50 && item.font === 'sansBold' && item.size === 10);
+  assert.deepEqual(mark.map(item => item.text), ['S', 'att', 'P', 'lan']);
+  assert.deepEqual(mark.map(item => item.color), [BRAND.orange, COLOR.ink, BRAND.orange, COLOR.ink]);
+  const last = mark.at(-1); assert.ok(Math.abs(last.x + textWidth('lan', 'sansBold', 10) - (PAGE.width - 42)) < 0.01, 'bündig mit dem rechten Rand');
+  assert.ok(!items.some(item => item.text === 'SATTPLAN'), 'kein graues „SATTPLAN“ mehr');
+  assert.ok(items.some(item => item.text === 'Ein Produkt von NvF Digital' && item.x === 42));
+  assert.ok(!page.items.some(item => item.type === 'image'), 'ohne Bilder keine Bilder');
+  // Mit Bildern: Symbol links neben der Wortmarke, Logo links unten hinter „Ein Produkt von“, auf jeder Seite; die Datei bettet jedes Bild nur einmal ein
+  const icon = photo(), maker = photo();   // zwei getrennte Bilder (jedes Objekt ist ein eigenes Bild in der Datei)
+  const branded = layoutRecipe({ recipe: recipe(), ingredients: ingredients(), instructions: Array.from({ length: 40 }, (_, i) => `Schritt ${i + 1} ausführen. Danach weiter.`).join('\n'), brand: { icon, maker } });
+  assert.ok(branded.pages.length > 1);
+  for (const sheet of branded.pages) {
+    const images = sheet.items.filter(item => item.type === 'image'), word = texts(sheet).find(item => item.text === 'S' && item.y === 50);
+    const top = images.find(item => item.photo === icon), bottom = images.find(item => item.photo === maker);
+    assert.ok(top && top.x + top.w <= word.x && word.x - (top.x + top.w) < 8, 'Symbol direkt links neben „SattPlan“');
+    assert.equal(top.w, top.h);
+    assert.ok(bottom && Math.abs(bottom.w / bottom.h - maker.width / maker.height) < 0.01, 'Logo unverzerrt');
+    const label = texts(sheet).find(item => item.text === 'Ein Produkt von'), line = texts(sheet).find(item => item.text.startsWith('Eigenes Rezept · Seite'));
+    assert.ok(label && label.x === 42 && label.x + textWidth(label.text, 'sans', 7.5) < bottom.x && bottom.x - (label.x + textWidth(label.text, 'sans', 7.5)) < 8, 'Logo direkt hinter „Ein Produkt von“');
+    assert.ok(line && bottom.y > line.y, 'unter „Eigenes Rezept · Seite …“');
+  }
+  const pdf = new TextDecoder('latin1').decode(makePdf(branded.pages));
+  assert.equal((pdf.match(/\/Subtype \/Image/g) || []).length, 2, 'Symbol und Logo je einmal in der Datei');
+});
+
+test('2.190: QR-Hinweis unten rechts – hellgrüner Kasten mit abgerundeten Ecken, QR-Code mindestens 2 cm, „In SattPlan öffnen“, „Gratis · iPhone und Android“', () => {
+  const link = 'https://sattplan.example/app';
+  const layout = make({ promo: link }), page = layout.pages[0];
+  assert.equal(layout.pages.length, 1, 'eine Seite, keine Werbeseite');
+  const box = page.items.find(item => item.type === 'rect' && item.role === 'promo' && item.fill === '#e3f1e7'), code = page.items.find(item => item.type === 'cells');
+  assert.ok(box && box.r >= 8 && Math.abs(box.x + box.w - (PAGE.width - 42)) < 0.01 && box.y + box.h < PAGE.height - 15, 'Kasten rechts unten, abgerundet, im Blatt');
+  assert.ok(code.unit * code.size >= 2 / 2.54 * 72, `QR-Code ${(code.unit * code.size / 72 * 2.54).toFixed(2)} cm`);
+  assert.equal(code.link, link); assert.deepEqual({ size: code.size, runs: code.runs }, qrRuns(link), 'genau diese eine Adresse');
+  const plate = page.items.find(item => item.type === 'rect' && item.role === 'promo' && item.fill === '#ffffff');
+  assert.ok(plate.x <= code.x - 2 && plate.x + plate.w >= code.x + code.unit * code.size + 2, 'weißer Rand um den Code');
+  const title = texts(page).find(item => item.text === 'In SattPlan öffnen'), subtitle = texts(page).find(item => item.text === 'Gratis · iPhone und Android');
+  assert.ok(title && subtitle && title.x > code.x + code.unit * code.size && subtitle.y > title.y, 'Text daneben, zweizeilig');
+  for (const item of [title, subtitle]) assert.ok(item.x + textWidth(item.text, item.font, item.size) <= box.x + box.w - 4 && item.y < box.y + box.h && item.y > box.y, `${item.text} im Kasten`);
+  // Links unten steht weiter die Fußzeile, ohne den Kasten zu berühren
+  const left = texts(page).filter(item => item.y > box.y && item.x === 42);
+  assert.ok(left.length >= 2 && left.every(item => item.x + textWidth(item.text, item.font, item.size) < box.x - 8));
+  // Ohne Adresse kein Kasten
+  assert.ok(!make().pages[0].items.some(item => item.role === 'promo' || item.type === 'cells'));
+  // Die Datei enthält den Code als Vektorfläche
+  assert.match(new TextDecoder('latin1').decode(makePdf(layout.pages)), / re\n[\s\S]* re\nf\n/);
+});
+
+test('2.190: Der QR-Hinweis macht nie eine Seite mehr; die Notizen bleiben unten und bekommen freien Platz (mehr Linien), auch neben dem Hinweis bleibt mindestens eine', () => {
+  const notesLines = layout => layout.pages.at(-1).items.filter(item => item.role === 'note-line');
+  const heading = layout => texts(layout.pages.at(-1)).find(item => item.text === 'Meine Notizen');
+  // Kurzes Rezept: deutlich mehr als die früheren drei Linien, mit und ohne Hinweis; die Linien enden über dem Kasten
+  for (const promo of ['', 'https://sattplan.example/app']) {
+    const short = make({ promo }), lines = notesLines(short), box = short.pages[0].items.find(item => item.role === 'promo');
+    assert.ok(lines.length >= 5, `${lines.length} Linien`);
+    if (box) assert.ok(lines.every(line => line.y1 < box.y - 4), 'über dem QR-Kasten');
+    else assert.ok(lines.every(line => line.y1 < PAGE.height - 62));
+    assert.ok(heading(short).y > 400, 'die Notizen stehen weiter unten auf der Seite');
+  }
+  // Volle Seiten: mit und ohne Hinweis gleich viele Seiten, kein Rezepttext reicht an die Notizen
+  for (let count = 4; count <= 40; count += 3) {
+    const instructions = Array.from({ length: count }, (_, i) => `Schritt ${i + 1} sorgfältig ausführen. ${'Weiter rühren und abschmecken. '.repeat(i % 3)}`).join('\n');
+    const without = make({ instructions }), withPromo = make({ instructions, promo: 'https://sattplan.example/app' });
+    assert.equal(withPromo.pages.length, without.pages.length, `${count} Schritte: gleiche Seitenzahl`);
+    const top = heading(withPromo).y - 26;
+    assert.ok(texts(withPromo.pages.at(-1)).filter(item => item.x > 290 && item.y < top + 26 && item.y > 120).every(item => item.y < top - 8), `${count}: Abstand zu den Notizen`);
+    assert.ok(notesLines(withPromo).length >= 1);
+  }
 });

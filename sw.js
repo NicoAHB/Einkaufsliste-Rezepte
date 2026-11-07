@@ -1,5 +1,5 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v200';
+const CACHE = 'einkauf-shell-v202';
 // Die Texterkennung ist groß (ca. 5 MB) und ändert sich selten: eigener Speicher, der App-Updates übersteht.
 const VENDOR = 'einkauf-vendor-v1';
 /* Bilder (2.187): Produktfotos, Geschäftslogos und Symbole sind rund 7 MB und ändern sich selten. Bis 2.186 lud jedes Update sie mit dem
@@ -16,7 +16,7 @@ const FILES = ['./', './index.html', './styles.css', './app.js', './ui-controls.
   './daily.js', './recipe-maker.js', './emoji.js', './spending.js', './expense-categories.js', './expense-category-view.js', './recipe-stock-view.js', './family.js',
   './spending-view.js', './cookable.js', './recent-purchases.js', './smart-stock.js', './grocery-names.js', './product-names.js', './buying.js', './quantity-controls.js',
   './pantry.js', './pantry-view.js', './zip.js', './pdf.js', './pdf-fonts.js', './recipe-sheet.js', './sheet-view.js', './recipe-filter.js',
-  './recipe-tags.js', './recipe-tag-picker.js', './theme.js', './manifest.webmanifest', './rezepte-des-tages.json', './beispieldaten.json'];
+  './recipe-tags.js', './recipe-tag-picker.js', './theme.js', './monetization.js', './qr-code.js', './vendor/qrcode/qrcode-generator.js', './manifest.webmanifest', './rezepte-des-tages.json', './beispieldaten.json'];
 const IMAGE_FILES = ['./assets/wishes/books.svg', './assets/wishes/toys.svg', './assets/wishes/jewelry.svg', './assets/wishes/travel.svg', './icon.svg', './assets/branding/sattplan-logo.png',
   './assets/branding/nvf-digital-logo.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './assets/stores/aldi-nord.png',
   './assets/stores/aldi-sued.svg', './assets/stores/alnatura.png', './assets/stores/bio-company.png', './assets/stores/budni.png', './assets/stores/combi.png', './assets/stores/denns.png',
@@ -62,9 +62,10 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   // Niemals GitHub-API-Antworten oder Tokens im Service-Worker-Cache speichern.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith(new URL('vendor/', self.registration.scope).pathname)) { event.respondWith(vendorFile(event.request)); return; }
   const same = file => new URL(file, self.registration.scope).pathname === url.pathname;
   const file = FILES.find(same), image = file ? null : IMAGE_FILES.find(same);
+  // Übrige Dateien unter vendor/ (Texterkennung) kommen aus dem eigenen Speicher; der kleine QR-Erzeuger (2.190) gehört zum App-Paket oben
+  if (!file && url.pathname.startsWith(new URL('vendor/', self.registration.scope).pathname)) { event.respondWith(vendorFile(event.request)); return; }
   if (!file && !image) return;
   // Ein vollständig installiertes Paket zusammen ausliefern. Dadurch bleiben
   // HTML und JavaScript auch bei schlechtem Empfang auf derselben App-Version.

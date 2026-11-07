@@ -4763,6 +4763,15 @@ button.recipe-delete { color:var(--danger) }
 .form-feedback[data-state=saved]::before { content:'✓ '; font-weight:700 }
 .sheet-actions>.form-feedback,.meal-actions>.form-feedback { grid-column:1/-1; text-align:left; font-weight:400 }
 .settings-section-title { margin:16px 0 4px; font-weight:700; color:var(--muted) }
+/* Werbung & Pro (2.190): ausgeblendet, solange Werbung und Abo aus sind (monetization.js) */
+.pro-card[hidden],.ad-slot[hidden] { display:none }
+.pro-card h3 { margin:0 }
+.pro-line { margin:0; font-weight:600 }
+.pro-benefits { margin:0; padding-left:1.2em; line-height:1.6 }
+.pro-plans { display:grid; grid-template-columns:1fr 1fr; gap:10px }
+.pro-plans button { display:grid; gap:2px; min-height:64px }
+.pro-plans small { font-weight:500; opacity:.85 }
+.ad-slot { margin:16px 0 0; min-height:50px }
 :root #settings>:is(#display-card,#shop-card,#backup-card,#settings-form,#import-settings-form,#alias-card,#storage-card) { order:0 }
 .order-list { list-style:none; margin:0; padding:0; display:grid; gap:8px }
 .order-list li { display:grid; grid-template-columns:minmax(0,1fr) 48px 48px; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:14px; background:var(--card) }

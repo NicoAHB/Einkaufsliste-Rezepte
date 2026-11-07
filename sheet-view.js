@@ -30,8 +30,13 @@ export function pageSvg(page, index, count, title, imageUrl) {
       if (!item.charSpace) { element.setAttribute('textLength', round(textWidth(item.text, item.font, item.size))); element.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
       element.textContent = text;
       svg.append(element);
+    } else if (item.type === 'cells') {
+      // QR-Code (2.190): eine Fläche aus den Läufen der dunklen Module, wie im PDF
+      const unit = item.unit, d = item.runs.map(([x, y, length]) => `M${round(item.x + x * unit)} ${round(item.y + y * unit)}h${round(length * unit)}v${round(unit)}h${round(-length * unit)}z`).join('');
+      svg.append(node('path', { d, fill: item.color, 'shape-rendering': 'crispEdges', 'data-role': item.role, ...common }));
     } else if (item.type === 'image') {
-      svg.append(node('image', { x: round(item.x), y: round(item.y), width: round(item.w), height: round(item.h), href: imageUrl(item.photo), preserveAspectRatio: 'xMidYMid slice', ...common }));
+      // `data-role="brand"`: App-Symbol und Logo NvF Digital (2.189), damit man sie vom Rezeptfoto unterscheiden kann
+      svg.append(node('image', { x: round(item.x), y: round(item.y), width: round(item.w), height: round(item.h), href: imageUrl(item.photo), preserveAspectRatio: 'xMidYMid slice', ...(item.role ? { 'data-role': item.role } : {}), ...common }));
     }
   }
   return svg;
