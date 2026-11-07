@@ -2,6 +2,23 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.190: QR-Hinweis im Rezeptblatt; Gratis und Pro vorbereitet
+
+**Fußzeile des Rezeptblatts.** Links steht jetzt „Eigenes Rezept · Seite 1 / 1“ (bzw. „Quelle: … · Seite 1 / 1“) und darunter „Ein Produkt von“ mit dem Logo von NvF Digital. Rechts kann auf der Seite mit den Notizen ein kleiner Kasten mit hellgrünem Hintergrund und abgerundeten Ecken stehen: ein QR-Code (gut 2 cm breit, auf weißem Feld) und daneben **In SattPlan öffnen** und „Gratis · iPhone und Android“. Der Code enthält nur eine Adresse (`APP_LINK` in `monetization.js`); die Seite dahinter soll iPhone oder Android erkennen und in den passenden Store weiterleiten. Solange dort keine Adresse eingetragen ist, erscheint der Kasten nicht.
+
+**QR-Code aus der App, ohne Netz.** Den Code erzeugt die App beim Erstellen des Blatts selbst, mit der mitgelieferten Bibliothek qrcode-generator 2.0.4 (MIT, `vendor/qrcode/`, gehört zum Offline-Paket). Im PDF ist er eine scharfe Vektorfläche; geprüft wurde, dass er sich aus dem fertigen PDF auch bei 72 dpi zuverlässig lesen lässt.
+
+**Immer eine Seite, mehr Notizlinien.** Der Hinweis braucht nie eine zusätzliche Seite und es gibt keine Werbeseite: Die Seitenaufteilung rechnet wie bisher, der Platz kommt aus dem Notizbereich. „Meine Notizen“ bleibt unten; ist auf der Seite Platz frei, bekommt der Bereich mehr Schreiblinien (bei kurzen Rezepten sechs statt drei).
+
+**Gratis und Pro (vorbereitet, noch aus).** Neues Modul `monetization.js` für die spätere App:
+- Zwei Status, **Gratis** und **Pro** (Abo monatlich oder jährlich). Der Status kommt nur aus dem geprüften Kauf über RevenueCat (Apple StoreKit bzw. Google Play Billing), nie aus einer Einstellung und nie aus den Daten in GitHub. Gespeichert wird er nur als Zwischenstand für den Betrieb ohne Netz (höchstens sieben Tage, nur vom selben Anbieter) und beim Start, beim Zurückkehren in die App und alle sechs Stunden neu geprüft.
+- Zwei Funktionsschalter im Code, **Werbung aktiv** und **Abo aktiv**, beide aus. Solange sie aus sind, sieht niemand Werbung, alle sind Gratis und unter **Optionen** erscheint nichts davon.
+- Später unter **Optionen → Werbung & Pro**: Gratis sieht **Werbung entfernen** (führt zur Pro-Seite mit den Preisen aus dem Store), Pro sieht **Werbung: aus (Pro)**; immer da ist **Käufe wiederherstellen**. Einen Schalter zum Ausschalten der Werbung gibt es nicht.
+- QR-Hinweis im PDF: für Gratis immer, für Pro standardmäßig aus; Pro kann ihn mit **SattPlan weiterempfehlen (QR-Hinweis im PDF)** einschalten.
+- Ein leerer, versteckter Werbeplatz wartet auf das Werbenetzwerk. Was zum Start noch fehlt, steht in `docs/APP-STORE.md`.
+
+Offline-Paket `einkauf-shell-v202`.
+
 ## Neu in Version 2.189: Schöneres Rezeptblatt mit Logos; kein extra „Laden abbrechen“
 
 **Rezeptblatt (PDF) mit App-Symbol und Logo.** Oben rechts steht statt des grauen „SATTPLAN“ jetzt das App-Symbol mit **SattPlan** in den App-Farben (S und P orange). In der Fußzeile steht mittig klein **Ein Produkt von** mit dem Logo von **NvF Digital**; links bleibt die Quelle (lange Quellen werden gekürzt), rechts die Seitenzahl. Beides steht auf jeder Seite, in der Vorschau wie im PDF. Das PDF nimmt nur JPEG-Bilder auf: Die App zeichnet die vorhandenen Logos dafür einmal klein auf weißem Grund als JPEG (je wenige KB, jedes nur einmal in der Datei). Fehlen die Bilder, stehen nur die Namen da.

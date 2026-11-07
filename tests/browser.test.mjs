@@ -7045,6 +7045,75 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.close();
   });
 
+  // ---- 2.190: Gratis und Pro, QR-Hinweis im Rezeptblatt ----
+  test('2.190: Solange Werbung und Abo aus sind: keine Werbung, keine Zeilen unter Optionen, ohne eingetragene Adresse kein QR-Hinweis im PDF', async () => {
+    const { ctx, page, problems } = await sheetContext();
+    await open(page); await openSettings(page);
+    assert.equal(await page.locator('#pro-card').isHidden(), true); assert.equal(await page.locator('#ad-slot').isHidden(), true);
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages [data-role=promo]').count(), 0);
+    assert.ok((await sheetText(page)).includes('Eigenes Rezept · Seite 1 / 1'));
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('2.190: Mit Werbung und Abo (simulierter Store): Gratis sieht Werbung und „Werbung entfernen“, das PDF hat den QR-Hinweis; nach dem Kauf Pro ohne Werbung, Hinweis nur mit „SattPlan weiterempfehlen“; „Käufe wiederherstellen“', async () => {
+    const link = 'https://sattplan.example/app';
+    const source = (await readFile(path.join(root, 'monetization.js'), 'utf8')).replace("Object.freeze({ ads: false, subscription: false })", "Object.freeze({ ads: true, subscription: true })")
+      .replace("export const APP_LINK = '';", `export const APP_LINK = '${link}';`).replace("Object.freeze({ ios: '', android: '' })", "Object.freeze({ ios: 'appl_test', android: 'goog_test' })");
+    assert.ok(source.includes('ads: true, subscription: true') && source.includes(link), 'Testfassung der Schalter');
+    const { ctx, page, problems } = await sheetContext();
+    await ctx.route('**/monetization.js', route => route.fulfill({ status: 200, contentType: 'text/javascript', body: source }));
+    // Native Hülle mit RevenueCat und Werbenetzwerk, nur simuliert: zuerst kein Abo
+    await ctx.addInitScript(() => {
+      const active = () => JSON.parse(sessionStorage.getItem('test-pro') || 'null');
+      const info = () => ({ customerInfo: { entitlements: { active: active() ? { pro: { isActive: true, expirationDate: null, productIdentifier: active() } } : {} } } });
+      window.__ads = [];
+      window.SattPlanAds = { show: slot => { window.__ads.push('show'); slot.textContent = 'Anzeige (Test)'; }, hide: slot => { window.__ads.push('hide'); slot.textContent = ''; } };
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: { Purchases: {
+        configure: async () => {}, getCustomerInfo: async () => info(), restorePurchases: async () => info(),
+        getOfferings: async () => ({ current: { availablePackages: [{ identifier: '$rc_monthly', product: { identifier: 'sattplan_pro_monthly', priceString: '2,99 €' } }, { identifier: '$rc_annual', product: { identifier: 'sattplan_pro_yearly', priceString: '24,99 €' } }] } }),
+        purchasePackage: async ({ aPackage }) => { sessionStorage.setItem('test-pro', JSON.stringify(aPackage.product.identifier)); return info(); } } } };
+    });
+    await open(page); await openSettings(page);
+    // Gratis: Werbung sichtbar, kein Schalter dafür; „Werbung entfernen“ und „Käufe wiederherstellen“
+    await page.waitForFunction(() => !document.querySelector('#pro-card').hidden);
+    assert.equal(await page.locator('#ad-slot').isVisible(), true); assert.equal(await page.textContent('#ad-slot'), 'Anzeige (Test)');
+    assert.equal(await page.locator('#pro-remove-ads').isVisible(), true); assert.equal(await page.locator('#pro-ads-off').isHidden(), true);
+    assert.equal(await page.locator('#pro-recommend-label').isHidden(), true, 'Gratis: kein Schalter für den QR-Hinweis');
+    assert.equal(await page.locator('#pro-restore').isVisible(), true);
+    assert.equal(await page.locator('#pro-card input[type=checkbox]:visible').count(), 0, 'kein Schalter zum Ausschalten der Werbung');
+    await page.click('#pro-restore'); await page.waitForFunction(() => document.querySelector('#pro-status').textContent === 'Kein aktives Abo gefunden.');
+    // Gratis: der QR-Hinweis steht im PDF
+    await openCardSheet(page);
+    assert.equal(await page.locator('#sheet-pages path[data-role=promo]').count(), 1);
+    assert.ok((await sheetText(page)).includes('In SattPlan öffnen') && (await sheetText(page)).includes('Gratis · iPhone und Android'));
+    assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1, 'keine zweite Seite');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
+    assert.match(checkPdf(await pdfBytesOf(download)), / re\nf\n/, 'QR-Code als Fläche in der Datei');
+    await page.click('#sheet-close');
+    // Pro kaufen: Pro-Seite mit Preisen aus dem Store
+    await openSettings(page); await page.click('#pro-remove-ads'); await page.waitForSelector('#pro-dialog[open]');
+    await page.waitForFunction(() => document.querySelector('#pro-monthly [data-price]').textContent === '2,99 €');
+    assert.equal(await page.textContent('#pro-yearly [data-price]'), '24,99 €');
+    await page.click('#pro-monthly'); await page.waitForSelector('#pro-dialog', { state: 'hidden' });
+    assert.match(await page.textContent('#notice'), /SattPlan Pro ist aktiv/);
+    assert.equal(await page.locator('#ad-slot').isHidden(), true, 'Pro: Werbung automatisch aus');
+    assert.equal(await page.locator('#pro-ads-off').textContent(), 'Werbung: aus (Pro)'); assert.equal(await page.locator('#pro-ads-off').isVisible(), true);
+    assert.equal(await page.locator('#pro-remove-ads').isHidden(), true);
+    assert.equal(await page.locator('#pro-recommend-label').isVisible(), true); assert.equal(await page.isChecked('#pro-recommend'), false, 'Standard aus');
+    // Pro: standardmäßig kein QR-Hinweis; mit „SattPlan weiterempfehlen“ wieder da
+    await openCardSheet(page); assert.equal(await page.locator('#sheet-pages [data-role=promo]').count(), 0); await page.click('#sheet-close');
+    await openSettings(page); await page.check('#pro-recommend');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('einkauf-settings-v1'))).pdfRecommend, true);
+    await openCardSheet(page); assert.equal(await page.locator('#sheet-pages path[data-role=promo]').count(), 1); await page.click('#sheet-close');
+    // Der Status kommt vom Store, nicht aus den Einstellungen: Pro steht nirgends in den gespeicherten Einstellungen oder Daten
+    const settings = await page.evaluate(() => localStorage.getItem('einkauf-settings-v1')), stored = await storedDemo(page);
+    assert.ok(!/"(pro|status|entitlement)"\s*:/.test(settings) && !JSON.stringify(stored).includes('sattplan_pro'));
+    // Nach dem Neuladen (Abo im Store weiter aktiv) wieder Pro
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await openSettings(page);
+    await page.waitForFunction(() => !document.querySelector('#pro-ads-off').hidden);
+    assert.equal(await page.locator('#ad-slot').isHidden(), true);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
   test('Rezeptblatt: „PDF speichern“ lädt eine gültige PDF-Datei mit dem Rezeptnamen herunter; mit Foto steckt das JPEG in der Datei und die Vorschau zeigt es', async () => {
     const { ctx, page, problems } = await sheetContext();
     await open(page);

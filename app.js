@@ -56,6 +56,7 @@ import { renderSheet } from './sheet-view.js';
 import { LIMIT_BYTES, compact, due, purgeDue, sizeOf } from './compact.js';
 import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, stockCompleteness, byCompleteness } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
+import { FEATURES, PRODUCTS, RECHECK_MS, RESUME_RECHECK_MS, adProvider, adsVisible, createEntitlements, pdfPromo, revenueCatProvider, settingsRows } from './monetization.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
 import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, hasRating, hasRatingNote, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
 
@@ -2513,6 +2514,58 @@ function openWeekShopping() {
   form.elements.rememberPantry.checked = false; form.elements.skipListed.checked = true; $('#week-changes').open = false; renderWeekRows(); $('#week-dialog').showModal();
 }
 
+/* ---------- Gratis und Pro (2.190) ----------
+   Der Status kommt nur vom Kaufanbieter (RevenueCat in der späteren App, siehe monetization.js), nie aus `config` oder den Daten in GitHub.
+   localStorage dient nur als Zwischenspeicher für den Betrieb ohne Netz. Solange FEATURES.ads und FEATURES.subscription aus sind, ist hier alles unsichtbar. */
+const localStore = (() => { try { return globalThis.localStorage; } catch { return null; } })();
+const entitlements = createEntitlements({ provider: FEATURES.subscription ? revenueCatProvider() : null, storage: localStore, onChange: () => renderMonetization() });
+function renderMonetization() {
+  const { status, source } = entitlements.get(), rows = settingsRows(status);
+  $('#pro-card').hidden = !rows.section;
+  $('#pro-remove-ads').hidden = !rows.removeAds; $('#pro-ads-off').hidden = !rows.adsOff;
+  $('#pro-recommend-label').hidden = !rows.recommend; $('#pro-recommend').checked = config.pdfRecommend === true;
+  $('#pro-restore').hidden = !rows.restore;
+  // Der Hinweis „Pro ist aktiv“ folgt dem Status; eine Rückmeldung von „Käufe wiederherstellen“ bleibt stehen
+  const note = $('#pro-status'), active = rows.section && status === 'pro' ? `SattPlan Pro ist aktiv${source === 'cache' ? ' (zuletzt geprüft, gerade ohne Verbindung zum Store)' : ''}.` : '';
+  if (active) { note.textContent = active; note.dataset.auto = '1'; } else if (note.dataset.auto) { note.textContent = ''; delete note.dataset.auto; }
+  // Werbeplatz: nur für Gratis, nur wenn Werbung aktiv ist und ein Werbenetzwerk eingehängt ist
+  const slot = $('#ad-slot'), ads = adProvider(), visible = adsVisible(status) && Boolean(ads);
+  slot.hidden = !visible;
+  try { if (visible) ads.show(slot); else ads?.hide(slot); } catch { slot.hidden = true; }
+}
+// Neu prüfen: beim Start, beim Zurückkehren in die App (wenn länger her) und alle paar Stunden, solange sie offen ist
+function checkEntitlements(gap) { if (gap === undefined || entitlements.due(gap)) void entitlements.refresh().catch(() => {}); }
+const storeMessage = error => error?.userCancelled || error?.code === 'PURCHASE_CANCELLED' || /cancel/i.test(error?.code || '') ? '' : error?.message || 'Der Store hat gerade nicht geantwortet. Bitte später erneut versuchen.';
+async function restorePurchases(statusNode) {
+  statusNode.textContent = 'Käufe werden geprüft …'; delete statusNode.dataset.auto;
+  let text;
+  try { const { status } = await entitlements.restore(); text = status === 'pro' ? 'SattPlan Pro ist wieder aktiv.' : 'Kein aktives Abo gefunden.'; }
+  catch (error) { text = storeMessage(error) || 'Abgebrochen.'; }
+  renderMonetization(); statusNode.textContent = text; delete statusNode.dataset.auto;
+}
+async function openPro() {
+  const dialog = $('#pro-dialog'); $('#pro-dialog-status').textContent = '';
+  if (!dialog.open) dialog.showModal();
+  // Preise aus dem Store (lokalisiert, z. B. „2,99 €“); ohne Antwort bleiben die Knöpfe ohne Preis
+  try {
+    const prices = new Map((await entitlements.products()).map(product => [product.id, product.price]));
+    for (const button of dialog.querySelectorAll('[data-plan]')) button.querySelector('[data-price]').textContent = prices.get(PRODUCTS[button.dataset.plan]) || '';
+  } catch { /* Preise erscheinen beim nächsten Öffnen */ }
+}
+async function buyPro(plan) {
+  const node = $('#pro-dialog-status'); node.textContent = 'Kauf wird im Store bestätigt …';
+  try {
+    const { status } = await entitlements.purchase(plan);
+    if (status === 'pro') { $('#pro-dialog').close(); showNotice('Danke! SattPlan Pro ist aktiv – ohne Werbung.'); } else node.textContent = 'Der Kauf ist noch nicht bestätigt. Bitte „Käufe wiederherstellen“ versuchen.';
+  } catch (error) { node.textContent = storeMessage(error); }
+}
+$('#pro-remove-ads').addEventListener('click', () => guard(openPro));
+$('#pro-restore').addEventListener('click', () => guard(() => restorePurchases($('#pro-status'))));
+$('#pro-dialog-restore').addEventListener('click', () => guard(async () => { await restorePurchases($('#pro-dialog-status')); if (entitlements.get().status === 'pro') $('#pro-dialog').close(); }));
+for (const button of document.querySelectorAll('#pro-dialog [data-plan]')) button.addEventListener('click', () => guard(() => buyPro(button.dataset.plan)));
+// Nur für Pro sichtbar: den QR-Hinweis im Rezeptblatt wieder einschalten (Standard aus). Eine reine Geräteeinstellung, sie schaltet nichts frei.
+$('#pro-recommend').addEventListener('change', event => saveConfig({ ...config, pdfRecommend: event.target.checked }));
+
 /* ---------- Rezept-Import: Link, Screenshot, Text ---------- */
 const IMPORT_LABELS = { link: 'Rezept laden', image: 'Text erkennen', text: 'Text auswerten' };
 let stopImportHold = () => {};
@@ -3722,7 +3775,9 @@ async function recipeLayout(recipeId, servings) {
   const rows = active(state.ingredients).filter(row => row.recipeId === recipeId);
   const [photo, brand] = await Promise.all([recipe.photoId ? photoForPdf(recipe.photoId) : null, brandForPdf()]);
   return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: uniqueRecipeTags(recipe.tags), sourceHost: source ? hostLabel(source) : '', sourceUrl: source, notes: recipe.notes || '' },
-    ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo, brand });
+    ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo, brand,
+    // QR-Hinweis „In SattPlan öffnen“ (2.190): Gratis immer, Pro nur mit „SattPlan weiterempfehlen“; ohne eingetragene Adresse nie
+    promo: pdfPromo({ status: entitlements.get().status, recommend: config.pdfRecommend === true }) });
 }
 let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
 function sheetStatus(text = '', error = false) { const node = $('#sheet-status'); node.textContent = text; node.classList.toggle('error', error); }
@@ -5434,6 +5489,9 @@ async function start() {
       if (adding && ready) guard(() => askAddFromLink(adding));
       if (incoming && ready) { tab('recipes'); guard(() => openImport({ url: incoming })); }
     }
+    renderMonetization(); checkEntitlements();
+    setInterval(() => { if (!document.hidden) checkEntitlements(RECHECK_MS); }, 15 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkEntitlements(RESUME_RECHECK_MS); });
     setInterval(() => { if (!document.hidden) void sync(); }, 8000);
     window.addEventListener('online', () => void sync(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) {refreshTimedStock();void sync();} });

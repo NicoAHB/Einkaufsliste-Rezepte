@@ -71,6 +71,25 @@ Ziel: Anmelden mit E-Mail, Apple oder Google statt GitHub-Token.
 - Browsertests in mehrere Dateien teilen, damit sie parallel laufen (heute rund 30 Minuten).
 - Zusätzlich auf echten Geräten testen: iOS-Simulator (Xcode) und Android-Emulator, mindestens ein kleines und ein großes Telefon.
 
+## Werbung und Abo (vorbereitet seit 2.190)
+
+Alles steht in `monetization.js`; die App ruft nur dessen Funktionen auf. Heute sind beide Funktionsschalter aus, niemand sieht Werbung und unter **Optionen** erscheint nichts davon.
+
+| Schritt | Wo |
+|---|---|
+| Abo-Produkte `sattplan_pro_monthly` und `sattplan_pro_yearly` in App Store Connect und der Google Play Console anlegen, in RevenueCat einer Berechtigung `pro` und einem Angebot („Offering“) zuordnen | Stores, RevenueCat |
+| Capacitor-Plugin `@revenuecat/purchases-capacitor` einbinden; die öffentlichen RevenueCat-Schlüssel für iOS und Android in `REVENUECAT_KEYS` eintragen | Hülle, `monetization.js` |
+| Werbenetzwerk (z. B. Google AdMob über ein Capacitor-Plugin) als `window.SattPlanAds = { show(platz), hide(platz) }` bereitstellen; `platz` ist das Element `#ad-slot` am Ende des Inhalts | Hülle |
+| Adresse für den QR-Hinweis im Rezeptblatt in `APP_LINK` eintragen (eine Seite, die iPhone oder Android erkennt und in den richtigen Store weiterleitet) | `monetization.js` |
+| Schalter `FEATURES.ads` und `FEATURES.subscription` auf `true` | `monetization.js` |
+| Pro-Seite um Links zu Nutzungsbedingungen und Datenschutz ergänzen (Pflicht bei Apple für Abos); Datenschutzerklärung und App-Datenschutzangaben um Werbung und Käufe erweitern; bei personalisierter Werbung die Einwilligung (ATT unter iOS, Einwilligungsdialog in der EU) einholen | Pro-Seite, Stores |
+
+**Woher der Status kommt.** Nur aus dem geprüften Kauf: RevenueCat prüft die Belege von Apple und Google auf seinem Server, die App liest die aktive Berechtigung `pro`. Nicht aus `config`, nicht aus den Daten in GitHub. Das letzte geprüfte Ergebnis liegt nur als Zwischenstand im Gerät (`sattplan-entitlement-v1`), damit die App ohne Netz weiß, ob Werbung erscheint; es gilt nur, wenn der Store gerade nicht erreichbar ist, nur vom selben Anbieter und höchstens sieben Tage. Neu geprüft wird beim Start, beim Zurückkehren in die App (nach 30 Minuten) und alle sechs Stunden. Im Browser gibt es keinen Kaufanbieter: Dort sind alle Gratis.
+
+**Was die Nutzer sehen.** Gratis: Werbung, unter **Optionen → Werbung & Pro** die Zeile **Werbung entfernen** (zur Pro-Seite) und **Käufe wiederherstellen**; kein Schalter zum Ausschalten der Werbung; QR-Hinweis immer im Rezeptblatt. Pro: **Werbung: aus (Pro)**, **Käufe wiederherstellen** und der Schalter **SattPlan weiterempfehlen (QR-Hinweis im PDF)**, standardmäßig aus.
+
+**Tests.** `tests/monetization.test.mjs` prüft die Regeln; ein Browsertest schaltet die Schalter nur in seiner Testfassung ein und spielt Kauf, Wiederherstellen, Werbung und QR-Hinweis mit einem simulierten Store durch.
+
 ## Grobe Einschätzung des Aufwands
 
 | Schritt | Aufwand |

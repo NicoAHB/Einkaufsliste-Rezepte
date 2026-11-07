@@ -1,5 +1,5 @@
 /* Ein kleiner PDF-Schreiber ohne Abhängigkeiten (Version 2.45). Reine Logik ohne DOM.
-   Er schreibt, was recipe-sheet.js beschreibt: Seiten aus Rechtecken (auch abgerundet), Linien, Text und JPEG-Fotos. Gearbeitet wird mit den vier Standardschriften
+   Er schreibt, was recipe-sheet.js beschreibt: Seiten aus Rechtecken (auch abgerundet), Linien, Text, JPEG-Fotos und (seit 2.190) Modulflächen eines QR-Codes (`cells`). Gearbeitet wird mit den vier Standardschriften
    eines PDFs (Helvetica, Helvetica-Bold, Times-Roman, Times-Bold): Sie müssen nicht in die Datei, jeder Betrachter hat sie, und die Datei bleibt klein.
    Text ist echter Text (zum Kopieren und Suchen), Fotos kommen unverändert als JPEG hinein, alles Übrige ist Vektorgrafik und bleibt beim Drucken scharf.
    Koordinaten der Seiten: Punkt (1/72 Zoll), Ursprung oben links, y wächst nach unten; erst beim Schreiben wird in die PDF-Richtung (y nach oben) umgerechnet. */
@@ -115,6 +115,10 @@ function pageContent(page, fonts, images, alphas) {
       const width = textWidth(item.text, item.font, item.size, item.charSpace ?? 0);
       const x = item.align === 'center' ? item.x - width / 2 : item.align === 'right' ? item.x - width : item.x;
       out.push(`q\n${open}${alpha(item.alpha)}BT\n/${fonts.get(item.font)} ${num(item.size)} Tf\n${color(item.color)} rg\n${item.charSpace ? `${num(item.charSpace)} Tc\n` : ''}${num(x)} ${num(flip(item.y))} Td\n<${hex(codes)}> Tj\nET\n${close}Q`);
+    } else if (item.type === 'cells') {
+      // QR-Code (2.190): die dunklen Module als waagerechte Läufe, alle in einer Fläche; minimal überlappend, damit beim Drucken keine Haarlinien entstehen
+      const unit = item.unit, rects = item.runs.map(([x, y, length]) => `${num(item.x + x * unit)} ${num(flip(item.y + (y + 1) * unit) - 0.02)} ${num(length * unit)} ${num(unit + 0.04)} re`);
+      if (rects.length) out.push(`q\n${open}${color(item.color)} rg\n${rects.join('\n')}\nf\n${close}Q`);
     } else if (item.type === 'image') {
       const photo = item.photo, name = images.get(photo), scale = Math.max(item.w / photo.width, item.h / photo.height), drawW = photo.width * scale, drawH = photo.height * scale;
       const left = item.x - (drawW - item.w) / 2, bottom = flip(item.y + item.h) - (drawH - item.h) / 2;
