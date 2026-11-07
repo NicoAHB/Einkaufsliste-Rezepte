@@ -1,5 +1,5 @@
 // Bei Änderungen an App-Dateien die Cache-Version erhöhen.
-const CACHE = 'einkauf-shell-v203';
+const CACHE = 'einkauf-shell-v204';
 // Die Texterkennung ist groß (ca. 5 MB) und ändert sich selten: eigener Speicher, der App-Updates übersteht.
 const VENDOR = 'einkauf-vendor-v1';
 /* Bilder (2.187): Produktfotos, Geschäftslogos und Symbole sind rund 7 MB und ändern sich selten. Bis 2.186 lud jedes Update sie mit dem

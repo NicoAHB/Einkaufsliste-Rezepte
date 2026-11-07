@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.192: „Bearbeiten“ nicht mehr grün gefüllt
+
+In **Geschäfte & Listen** ist der Knopf **Bearbeiten** (aufgeklappt **Zuklappen**) jetzt weiß mit grünem Rand, genau wie **Ausblenden** daneben, statt hellgrün gefüllt. Der Stift vor „Bearbeiten“ unterscheidet die beiden; beim Antippen wird er kurz hellgrün. Offline-Paket `einkauf-shell-v204`.
+
 ## Neu in Version 2.191: Knopf „Verwalten“; Geschäfte sichtbar nachträglich bearbeiten
 
 **„Verwalten“ statt eines kleinen Symbols.** Neben **Planen | Im Laden** stand bisher nur ein rundes Geschäft-Symbol, dem man nicht ansah, wofür es ist. Jetzt ist es ein Knopf so hoch wie der Umschalter, mit grünem Rand: oben ein Geschäft- und ein Listen-Symbol, darunter **Verwalten**, oben rechts ein kleines grünes **+**. Er öffnet wie bisher **Geschäfte & Listen**, wo ganz oben **Hinzufügen** steht. Auch bei 280 px Breite bleibt „Im Laden“ einzeilig.
