@@ -12999,13 +12999,14 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
       const summary = row.querySelector(':scope>summary'), name = summary.querySelector('.store-name'), cue = summary.querySelector('.store-edit-cue'), toggle = summary.querySelector('.store-visibility');
       const rect = node => node.getBoundingClientRect(), a = rect(cue), b = rect(toggle), s = rect(summary), n = rect(name);
       return { id: row.dataset.id || row.dataset.privateListId, open: row.open, label: summary.getAttribute('aria-label'), cue: cue.innerText.trim(), hidden: cue.getAttribute('aria-hidden'),
+        fill: getComputedStyle(cue).backgroundColor === getComputedStyle(toggle).backgroundColor && getComputedStyle(cue).borderTopColor === getComputedStyle(toggle).borderTopColor,
         arrow: getComputedStyle(summary, '::after').display, overlap: !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top),
         inside: a.left >= s.left && a.right <= s.right + 0.5 && b.right <= s.right + 0.5, height: Math.min(a.height, b.height), below: a.top >= n.bottom - 1, sameRow: Math.abs(a.top - b.top) < 2, fits: row.scrollWidth <= row.clientWidth };
     }));
     const rows = await layout();
     assert.deepEqual(rows.map(row => row.id), ['store-edeka', 'store-lidl', 'store-rewe', 'store-wishes', 'trip-2117', 'private-a', 'private-b']);
     for (const row of rows) {
-      assert.equal(row.cue, 'Bearbeiten', row.id); assert.equal(row.hidden, 'true', `${row.id}: Beschriftung, das Etikett bleibt der Name`);
+      assert.equal(row.cue, 'Bearbeiten', row.id); assert.equal(row.fill, true, `${row.id}: Bearbeiten nicht grün gefüllt, sondern wie Ausblenden (2.192)`); assert.equal(row.hidden, 'true', `${row.id}: Beschriftung, das Etikett bleibt der Name`);
       assert.equal(row.arrow, 'none', `${row.id}: kein zusätzlicher Pfeil`); assert.equal(row.overlap, false, row.id); assert.equal(row.inside, true, row.id);
       assert.ok(row.height >= 44, `${row.id}: Bearbeiten und Ausblenden gut zu treffen`); assert.equal(row.sameRow, true, `${row.id}: Bearbeiten und Ausblenden in einer Reihe`); assert.equal(row.fits, true, row.id);
       assert.equal(row.below, true, `${row.id}: auf Handybreite steht Bearbeiten unter dem vollen Namen`);
