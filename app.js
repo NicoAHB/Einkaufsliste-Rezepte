@@ -2520,9 +2520,9 @@ function setImportBusy(busy) {
   const form=$('#import-form'),run=$('#import-run');
   stopImportHold();
   for(const field of form.querySelectorAll('input,textarea,[data-source]')) field.disabled=busy;
-  // Der Knopf bleibt beim Laden bedienbar; langes Halten bricht den Import ab.
+  // Der Knopf bleibt beim Laden bedienbar; langes Halten bricht den Import ab (mit Tastatur oder Bildschirmleser: einmal auslösen).
+  // Seit 2.189 ohne zusätzlichen Knopf „Laden abbrechen“: Der Ladeknopf sagt selbst, wie man abbricht, und Schließen (×) bricht ebenfalls ab.
   run.disabled=false;run.type=busy?'button':'submit';
-  $('#import-cancel').hidden = !busy;
   run.classList.toggle('is-loading',busy);run.setAttribute('aria-busy',String(busy));
   run.replaceChildren();
   if(busy) run.append(element('span',importSource==='image'?'Text wird erkannt …':'Rezept wird geladen …'),element('small','Zum Abbrechen gedrückt halten'));
@@ -4900,7 +4900,6 @@ $('#recipe-dialog').addEventListener('close', () => {
 document.querySelectorAll('#import-form [data-source]').forEach(node => node.addEventListener('click', () => setImportSource(node.dataset.source)));
 $('#import-form').elements.publicProxy.addEventListener('change', () => guard(saveImportPermission));
 stopImportHold=holdToConfirm($('#import-run'),1000,()=>cancelImport(),'',()=>Boolean(importAbort));
-$('#import-cancel').addEventListener('click', () => cancelImport());
 $('#import-form').elements.images.addEventListener('change', event => showPreviews([...event.target.files]));
 $('#import-form').addEventListener('submit', event => { event.preventDefault(); guard(runImport); });
 $('#import-dialog').addEventListener('close', () => { cancelImport(true); releasePreviews(); importStatus(''); });

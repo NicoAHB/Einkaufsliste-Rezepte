@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.189: Kein extra „Laden abbrechen“ beim Import
+
+Während ein Rezept geladen oder ein Text erkannt wird, stand unter dem grauen Knopf **Rezept wird geladen … · Zum Abbrechen gedrückt halten** zusätzlich ein Knopf **Laden abbrechen**. Er sagte dasselbe noch einmal und ist entfallen. Abbrechen geht weiter mit etwa einer Sekunde Halten auf dem grauen Knopf oder mit Schließen (×); mit Tastatur oder Bildschirmleser bricht ein einzelnes Auslösen des grauen Knopfs ab. Offline-Paket `einkauf-shell-v201`.
+
 ## Neu in Version 2.188: „Aufgebraucht“ fragt, welche Sorte auf die Liste soll
 
 **Öl oder Olivenöl – oder beides?** Machen mehrere Vorratseinträge eine Zutat zu „da“ (z. B. **Öl** und **Olivenöl** für „80 ml Öl“), fragt **Aufgebraucht** jetzt: „„Öl“ und „Olivenöl“ aus dem Vorrat nehmen und „Öl“ oder „Olivenöl“ auf die Einkaufsliste setzen?“ Statt „Ja“ stehen untereinander je Sorte ein Knopf und **Beides** (bei drei und mehr Sorten **Alle**), darunter **Abbrechen**. Aus dem Vorrat kommen immer alle genannten Einträge, sonst bliebe die Zutat „da“; auf die Einkaufsliste kommt genau, was man gewählt hat, jedes in das Geschäft, in dem es zuletzt gekauft wurde (die Rückfrage nennt es). Bis 2.187 kam ohne Wahl das allgemeine Produkt („Öl“) auf die Liste.

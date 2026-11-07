@@ -75,6 +75,12 @@ async function context(options = {}) {
   return { ctx, page, problems };
 }
 const open = async (page, query = '') => { await page.goto(`${base}/index.html${query}`); await page.waitForSelector('#status[data-state]', { state: 'attached' }); await page.waitForFunction(() => document.querySelector('#items')); };
+// Import abbrechen (seit 2.189 ohne eigenen Knopf): den grauen Ladeknopf etwa eine Sekunde gedrückt halten.
+const holdImportRun = async page => {
+  const button = page.locator('#import-run'); await button.scrollIntoViewIfNeeded(); const box = await button.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+  await page.waitForFunction(() => document.querySelector('#import-run').getAttribute('aria-busy') === 'false', null, { timeout: 5000 }); await page.mouse.up();
+};
 // Rückfrage mit Auswahl (2.188): den Knopf mit genau diesem Text antippen (`null` = Abbrechen) und warten, bis die App die Antwort verarbeitet hat.
 const answerChoice = async (page, label, ...patterns) => {
   await page.locator('#ask-dialog[open]').waitFor();
@@ -3402,14 +3408,17 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual((await storedDemo(page)).meals,before.meals);assert.deepEqual((await storedDemo(page)).items,before.items);
     assert.deepEqual(problems,[]);await ctx.close();
   });
-  test('2.95: normaler Abschluss-Tipp öffnet nur die Bestätigung; sichtbarer Import-Abbruch verhindert verspätete Entwürfe',async()=>{
+  test('2.95: normaler Abschluss-Tipp öffnet nur die Bestätigung; Import-Abbruch verhindert verspätete Entwürfe',async()=>{
     const {ctx,page,problems}=await context({config:{importProxy:'https://slow295.workers.dev',publicProxy:false,shopLock:0}});await open(page);
     const before=await storedDemo(page);await page.click('#mode-shop');await page.click('#shop-finish');await page.waitForSelector('#finish-dialog[open]');
     assert.deepEqual((await storedDemo(page)).items,before.items);await page.click('#finish-dialog [data-close]');await page.click('#shop-back');
     await ctx.route('https://slow295.workers.dev/**',async route=>{await new Promise(resolve=>setTimeout(resolve,700));try{await route.fulfill({status:200,contentType:'text/html',body:recipeHtml});}catch{}});
     await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
-    await page.waitForSelector('#import-cancel:not([hidden])');await page.click('#import-cancel');await page.waitForTimeout(850);
-    assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.locator('#import-cancel').isHidden(),true);
+    // 2.189: kein eigener Knopf „Laden abbrechen“ mehr; der Ladeknopf sagt, wie man abbricht, langes Halten bricht ab
+    await page.waitForFunction(()=>document.querySelector('#import-run').getAttribute('aria-busy')==='true');assert.equal(await page.locator('#import-cancel').count(),0);
+    // Die Antwort kommt hier nach 0,7 s, Halten dauert 1 s: Mit der Tastatur (wie mit einem Bildschirmleser) bricht ein einzelnes Auslösen sofort ab
+    assert.match(await page.textContent('#import-run'),/Zum Abbrechen gedrückt halten/);await page.focus('#import-run');await page.keyboard.press('Enter');await page.waitForTimeout(850);
+    assert.equal(await page.locator('#recipe-dialog[open]').count(),0);assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.equal(await page.textContent('#import-status'),'Laden abgebrochen.');
     assert.deepEqual((await storedDemo(page)).recipes,before.recipes);assert.deepEqual(problems.filter(text=>!/Failed to fetch|Failed to load resource/.test(text)),[]);await ctx.close();
   });
   test('2.95: Ausgabe eintragen und Speicherbestätigung erst nach erfolgreichem Schreiben',async()=>{
@@ -7209,7 +7218,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await ctx.route('https://contrast.rezepte.workers.dev/**',()=>new Promise(()=>{}));await open(page);await goTab(page,'recipes');await page.click('#import-recipe');await sheetOpen(page);await page.fill('#import-form [name=url]','https://example.com/rezept');await page.click('#import-run');
     await page.waitForFunction(()=>document.querySelector('#import-run').getAttribute('aria-busy')==='true');const colors=await page.locator('#import-run').evaluate(node=>({bg:getComputedStyle(node).backgroundColor,text:[...node.children].map(child=>getComputedStyle(child).color),opacity:getComputedStyle(node).opacity}));
     const rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number);for(const color of colors.text)assert.ok(contrast(rgb(color),rgb(colors.bg))>=4.5,`${color} auf ${colors.bg}`);assert.equal(colors.opacity,'1');assert.equal(await page.locator('#import-run').isDisabled(),false);assert.ok(await horizontalOverflow(page)<=1);
-    if(theme==='light'&&width===390){await page.locator('#import-run').scrollIntoViewIfNeeded();await saveShot(page,'sattplan-2128-import-kontrast.png');}await page.click('#import-cancel');assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.deepEqual(problems,[]);await ctx.close();
+    if(theme==='light'&&width===390){await page.locator('#import-run').scrollIntoViewIfNeeded();await saveShot(page,'sattplan-2128-import-kontrast.png');}await holdImportRun(page);assert.equal(await page.getAttribute('#import-run','aria-busy'),'false');assert.deepEqual(problems,[]);await ctx.close();
   });
 
   test('2.127: Rezeptgruppen öffnen ohne Tastatur, bleiben für Mehrfachauswahl offen und ersetzen widersprüchliche Ernährung',async()=>{
