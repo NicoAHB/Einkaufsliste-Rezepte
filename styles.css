@@ -5835,6 +5835,11 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
 :root #ask-ok:not(.danger),:root[data-glass] #ask-ok:not(.danger) { border-color:var(--accent); background:var(--accent-soft); color:var(--accent) }
 :root #ask-cancel,:root[data-glass] #ask-cancel { border-color:color-mix(in srgb, var(--accent) 45%, var(--line-strong)); background:var(--card); color:var(--accent); -webkit-backdrop-filter:none; backdrop-filter:none }
 :root #ask-ok:not(.danger):active:not(:disabled) { background:color-mix(in srgb, var(--accent) 16%, var(--accent-soft)) }
+/* 2.188: Rückfrage mit Auswahl (z. B. „Öl“, „Olivenöl“, „Beides“): jede Wahl sieht aus wie „Ja“, alle untereinander, „Abbrechen“ zuletzt */
+:root .ask-actions .ask-choice,:root[data-glass] .ask-actions .ask-choice { border-color:var(--accent); background:var(--accent-soft); color:var(--accent) }
+:root .ask-actions .ask-choice:active:not(:disabled) { background:color-mix(in srgb, var(--accent) 16%, var(--accent-soft)) }
+#ask-dialog[data-choices] .ask-actions { grid-template-columns:1fr }
+#ask-dialog[data-choices] #ask-cancel { order:1 }
 :root #ask-cancel:active:not(:disabled) { background:var(--accent-soft) }
 
 /* Kästchen einheitlich (2.183): Safari auf dem iPhone zeichnet ein leeres Kästchen als blassen, unvollständigen Kreis. Wie beim Haken fürs
