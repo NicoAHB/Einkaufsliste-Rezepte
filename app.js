@@ -1601,7 +1601,8 @@ async function usedUpIngredient(row) {
     const already = listedNames.length ? ` ${quoted(listedNames)} ${listedNames.length > 1 ? 'stehen' : 'steht'} schon auf deiner Einkaufsliste und ${listedNames.length > 1 ? 'werden' : 'wird'} nicht doppelt angelegt.` : '';
     const where = !places.length ? '' : places.length > 1 && oneStore ? ` Was du wählst, kommt ${placeOf(places[0][1])}.` : ` ${places.map(([name, storeId]) => `„${name}“ kommt ${placeOf(storeId)}`).join(', ')}.`;
     wanted = await ask({ title: `${plan.generic.name} ist aufgebraucht`, message: `${quoted(names)} aus dem Vorrat nehmen und ${quoted(names, 'oder')} auf die Einkaufsliste setzen?${already}${where}`,
-      choices: [...plan.choices.map(choice => ({ value: [choice], label: choice.name })), { value: plan.choices, label: names.length === 2 ? 'Beides' : 'Alle' }], cancelLabel: 'Abbrechen' });
+      // „Nichts auf die Liste“: nur aus dem Vorrat nehmen, z. B. wenn man es gerade nicht nachkaufen will
+      choices: [...plan.choices.map(choice => ({ value: [choice], label: choice.name })), { value: plan.choices, label: names.length === 2 ? 'Beides' : 'Alle' }, { value: [], label: 'Nichts auf die Liste' }], cancelLabel: 'Abbrechen' });
     if (!wanted) return;
   } else {
     const product = plan.rebuy, storeId = lastStoreFor(product.name), already = listedAs(product.name).length > 0;
@@ -1624,7 +1625,7 @@ async function usedUpIngredient(row) {
     if (ops.length) { itemOps.push(...ops); addedNames.push(product.name); }
   }
   const verb = (names, one, many) => names.length > 1 ? many : one;
-  if (!pantryOps.length && !itemOps.length) { showNotice(`${joinNames(alreadyNames)} ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel`); return; }
+  if (!pantryOps.length && !itemOps.length) { showNotice(alreadyNames.length ? `${joinNames(alreadyNames)} ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel` : `${plan.generic.name} ist schon nicht mehr im Vorrat`); return; }
   commit([...pantryOps, ...itemOps]);
   const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
   // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), die neu angelegten Artikel verschwinden wieder von der Liste
@@ -1639,7 +1640,7 @@ async function usedUpIngredient(row) {
   const stillListed = alreadyNames.length ? `${L} ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel` : '';
   const text = removed.length && addedNames.length && !alreadyNames.length && same(addedNames) ? `${R} aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt`
     : removed.length && !addedNames.length && same(alreadyNames) ? `${R} aus dem Vorrat entfernt – ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel`
-    : [[removed.length && `${R} aus dem Vorrat entfernt`, addedNames.length && `${A} auf den Einkaufszettel gesetzt`].filter(Boolean).join(', '), stillListed].filter(Boolean).join(' – ');
+    : [[removed.length && `${R} aus dem Vorrat entfernt`, addedNames.length && `${A} auf den Einkaufszettel gesetzt`].filter(Boolean).join(', '), stillListed, !wanted.length && 'nichts auf den Einkaufszettel gesetzt'].filter(Boolean).join(' – ');
   showNotice(text, () => guard(() => {
     if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
     commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
