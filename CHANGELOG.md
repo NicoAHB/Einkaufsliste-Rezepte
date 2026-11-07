@@ -4,14 +4,13 @@ Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md
 
 ## Neu in Version 2.188: „Aufgebraucht“ fragt, welche Sorte auf die Liste soll
 
-**Öl oder Olivenöl – oder beides?** Machen mehrere Vorratseinträge eine Zutat zu „da“ (z. B. **Öl** und **Olivenöl** für „80 ml Öl“), fragt **Aufgebraucht** jetzt: „„Öl“ und „Olivenöl“ aus dem Vorrat nehmen und „Öl“ oder „Olivenöl“ auf die Einkaufsliste setzen?“ Statt „Ja“ stehen untereinander je Sorte ein Knopf, **Beides** (bei drei und mehr Sorten **Alle**) und **Nichts auf die Liste** (nur aus dem Vorrat nehmen, z. B. wenn man es gerade nicht nachkaufen will), darunter **Abbrechen**. Aus dem Vorrat kommen immer alle genannten Einträge, sonst bliebe die Zutat „da“; auf die Einkaufsliste kommt genau, was man gewählt hat, jedes in das Geschäft, in dem es zuletzt gekauft wurde (die Rückfrage nennt es). Bis 2.187 kam ohne Wahl das allgemeine Produkt („Öl“) auf die Liste.
+**Öl oder Olivenöl – oder beides?** Machen mehrere Vorratseinträge eine Zutat zu „da“ (z. B. **Öl** und **Olivenöl** für „80 ml Öl“), fragt **Aufgebraucht** jetzt: „„Öl“ und „Olivenöl“ aus dem Vorrat nehmen und „Öl“ oder „Olivenöl“ auf die Einkaufsliste setzen?“ Statt „Ja“ stehen untereinander je Sorte ein Knopf und **Beides** (bei drei und mehr Sorten **Alle**), darunter **Abbrechen**. Aus dem Vorrat kommen immer alle genannten Einträge, sonst bliebe die Zutat „da“; auf die Einkaufsliste kommt genau, was man gewählt hat, jedes in das Geschäft, in dem es zuletzt gekauft wurde (die Rückfrage nennt es). Bis 2.187 kam ohne Wahl das allgemeine Produkt („Öl“) auf die Liste.
 
 **Die Meldung sagt genau, was passiert ist**, z. B.:
 - „Öl und Olivenöl aus dem Vorrat entfernt, Olivenöl auf den Einkaufszettel gesetzt“
 - „Öl und Olivenöl aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt“ (Beides)
 - „Öl und Olivenöl aus dem Vorrat entfernt, Olivenöl auf den Einkaufszettel gesetzt – Öl steht schon auf deinem Einkaufszettel“
 - „Öl und Olivenöl aus dem Vorrat entfernt – Öl steht schon auf deinem Einkaufszettel“ (nichts kam dazu)
-- „Öl und Olivenöl aus dem Vorrat entfernt – nichts auf den Einkaufszettel gesetzt“ (Nichts auf die Liste)
 
 Bei einer Auswahl zählt nur genau derselbe Name als „steht schon darauf“: Steht Öl auf der Liste, kommt gewähltes Olivenöl trotzdem dazu. **Rückgängig** nimmt genau das zurück, was hinzugekommen ist, und meldet es ebenso („Öl und Olivenöl sind wieder im Vorrat, Olivenöl ist nicht mehr auf der Einkaufsliste“). Mit nur einer Sorte im Vorrat bleibt die Rückfrage bei **Ja**/**Abbrechen**.
 

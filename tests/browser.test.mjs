@@ -12441,7 +12441,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
   });
   const oilState188 = async page => { const data = await storedDemo(page), live = name => data.pantry.find(row => !row.deletedAt && row.name === name).available;
     return { stock: [live('Öl'), live('Olivenöl')], list: ['Öl', 'Olivenöl'].map(name => data.items.filter(row => !row.deletedAt && !row.checked && row.name === name).length) }; };
-  test('2.188: Öl und Olivenöl im Vorrat – „Aufgebraucht“ bei Öl: wählen, ob Öl, Olivenöl, beides oder nichts auf die Einkaufsliste kommt; die Meldung sagt genau, was passiert ist', async () => {
+  test('2.188: Öl und Olivenöl im Vorrat – „Aufgebraucht“ bei Öl: wählen, ob Öl, Olivenöl oder beides auf die Einkaufsliste kommt; die Meldung sagt genau, was passiert ist', async () => {
     const { ctx, page, problems } = await context();
     await seedLocal(ctx, oilData188()); await open(page); await goTab(page, 'recipes');
     const card = page.locator('#recipe-list [data-recipe-id=cake188]'), toggle = card.locator('.recipe-stock-toggle'), usedUp = () => card.getByRole('button', { name: /^Öl: aufgebraucht/ }).click();
@@ -12450,7 +12450,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await usedUp(); await page.locator('#ask-dialog[open]').waitFor();
     assert.equal(await page.textContent('#ask-title'), 'Öl ist aufgebraucht');
     assert.equal(await page.textContent('#ask-message'), '„Öl“ und „Olivenöl“ aus dem Vorrat nehmen und „Öl“ oder „Olivenöl“ auf die Einkaufsliste setzen? Was du wählst, kommt unter „Überall möglich“ (ohne Geschäft).');
-    assert.deepEqual(await page.locator('#ask-dialog .ask-choice').allTextContents(), ['Öl', 'Olivenöl', 'Beides', 'Nichts auf die Liste']);
+    assert.deepEqual(await page.locator('#ask-dialog .ask-choice').allTextContents(), ['Öl', 'Olivenöl', 'Beides']);
     assert.equal(await page.locator('#ask-ok').isHidden(), true);
     const boxes = await page.evaluate(() => [...document.querySelectorAll('#ask-dialog .ask-choice'), document.querySelector('#ask-cancel')].map(node => { const box = node.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.top), Math.round(box.width)]; }));
     assert.ok(boxes.every(([left, , width]) => left === boxes[0][0] && width === boxes[0][2]), 'gleich breit untereinander');
@@ -12480,14 +12480,6 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.click('#notice-undo');
     assert.deepEqual(await oilState188(page), { stock: [true, true], list: [0, 0] });
     assert.equal(await page.textContent('#notice-text'), 'Öl und Olivenöl sind wieder im Vorrat und nicht mehr auf der Einkaufsliste');
-    // Nichts auf die Liste: nur aus dem Vorrat nehmen
-    await usedUp(); await answerChoice(page, 'Nichts auf die Liste');
-    assert.deepEqual(await oilState188(page), { stock: [false, false], list: [0, 0] });
-    assert.equal(await page.textContent('#notice-text'), 'Öl und Olivenöl aus dem Vorrat entfernt – nichts auf den Einkaufszettel gesetzt');
-    assert.match(await toggle.textContent(), /1 von 3 Zutaten da · 2 fehlen/);
-    await page.click('#notice-undo');
-    assert.deepEqual(await oilState188(page), { stock: [true, true], list: [0, 0] });
-    assert.equal(await page.textContent('#notice-text'), 'Öl und Olivenöl sind wieder im Vorrat');
     // Danach ist eine gewöhnliche Rückfrage wieder „Ja“/„Abbrechen“ ohne Auswahlknöpfe
     await card.getByRole('button', { name: /^Mehl: aufgebraucht/ }).click(); await page.locator('#ask-dialog[open]').waitFor();
     assert.equal(await page.locator('#ask-dialog .ask-choice').count(), 0); assert.equal(await page.locator('#ask-ok').isVisible(), true);
