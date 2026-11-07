@@ -5901,3 +5901,44 @@ body[data-sync=error] .tabs [data-tab=settings] .tab-icon::after {
   box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; font-weight:700
 }
 :root #spending-export:active:not(:disabled) { background:var(--accent-soft) }
+/* 2.191: „Verwalten“ neben Planen | Im Laden – Geschäft- und Listen-Symbol, darunter die Beschriftung, oben rechts ein Plus für
+   „Hinzufügen“. So hoch wie der Umschalter, mit grünem Rand wie die gewählte Ansicht, damit der Knopf als eigene Aufgabe erkennbar ist. */
+:root #manage-stores,:root[data-glass] #manage-stores {
+  position:relative; flex:none; align-self:stretch; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-width:78px; min-height:50px; margin:0; padding:5px 10px 4px; border:2px solid var(--accent); border-radius:14px;
+  background:var(--card); color:var(--accent); box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; font-weight:700; line-height:1.1
+}
+:root #manage-stores:active:not(:disabled) { background:var(--accent-soft) }
+#manage-stores:focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+#manage-stores:disabled { opacity:.45 }
+.manage-stores-icons { display:flex; align-items:center; gap:7px }
+.manage-stores-icons .icon { width:19px; height:19px }
+.manage-stores-label { font-size:.74rem; letter-spacing:.01em; white-space:nowrap }
+.manage-stores-plus {
+  position:absolute; top:-8px; right:-8px; display:grid; place-items:center; width:22px; height:22px; border-radius:50%;
+  background:var(--accent); color:var(--on-accent); box-shadow:0 0 0 2px var(--bg); pointer-events:none
+}
+.manage-stores-plus .icon { width:14px; height:14px; stroke-width:3 }
+@media (max-width:300px) { :root #manage-stores { min-width:68px; padding:5px 6px 4px } .manage-stores-icons { gap:4px } .manage-stores-icons .icon { width:17px; height:17px } .manage-stores-label { font-size:.68rem } }
+
+/* 2.191: Geschäfte & Listen – jede bearbeitbare Karte sagt „Bearbeiten“ (aufgeklappt „Zuklappen“), gefüllt neben dem umrandeten „Ausblenden“.
+   Der Pfeil am Rand entfällt dort; die ganze Zeile bleibt antippbar und lässt sich weiter lange halten und ziehen. */
+.store-row>summary.store-editable::after { display:none }
+#stores-dialog .store-edit-cue {
+  flex:none; display:inline-flex; align-items:center; min-height:44px; padding:8px 10px; border:1px solid var(--accent); border-radius:12px;
+  background:var(--accent-soft); color:var(--accent); font-size:.75rem; font-weight:700; line-height:1.3; white-space:nowrap
+}
+.store-edit-cue>span { display:inline-flex; align-items:center; gap:6px }
+.store-edit-cue .icon { flex:none; width:16px; height:16px }
+.store-edit-opened .icon { transform:rotate(180deg) }
+.store-row[open]>summary .store-edit-closed,.store-row:not([open])>summary .store-edit-opened { display:none }
+.store-row>summary.store-editable:active .store-edit-cue { filter:brightness(.93) }
+/* Auf Handybreite zwei Reihen: oben der volle Name (mit Symbol und Plakette), darunter links „Bearbeiten“, rechts „Ausblenden“.
+   Einreihig bliebe neben zwei Knöpfen zu wenig Platz, und Namen wie „Wünsche“ brächen mitten im Wort um. */
+@media (max-width:520px) {
+  .store-row>summary.store-editable { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px 14px }
+  .store-row>summary.store-editable>.store-heading { display:grid; grid-column:1/-1; grid-row:1 }
+  .store-row>summary.store-editable>.store-heading>.store-name { padding-right:0 }
+  .store-row>summary.store-editable>.store-edit-cue { grid-column:1; grid-row:2; justify-self:start }
+  #stores-dialog .store-row>summary.store-editable>.store-visibility { grid-column:2; grid-row:2; justify-self:end }
+}

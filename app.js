@@ -1081,7 +1081,7 @@ function undoDelete(ids, scope, collection = 'items') {
   const first = state.items.find(row => row.id === changes[0].id);
   showNotice(changes.length === 1 ? `„${first?.name || 'Artikel'}“ ist wieder da` : `${changes.length} Artikel sind wieder da`);
 }
-// Geschäfte-Dialog: Jedes vorhandene Geschäft ist eine zugeklappte Karte (Pfeil rechts); welche aufgeklappt sind, merkt sich nur das geöffnete Fenster.
+// Geschäfte-Dialog: Jedes vorhandene Geschäft ist eine zugeklappte Karte („Bearbeiten“, seit 2.191 statt Pfeil); welche aufgeklappt sind, merkt sich nur das geöffnete Fenster.
 // Das Anlegen öffnet ausschließlich das Plus nach dem letzten Eintrag.
 const storesOpen = new Set();
 let storeFresh = '';
@@ -1240,9 +1240,17 @@ function replaceStoreEditorRow(old,replacement) {
   const scroll=$('#stores-dialog').scrollTop;replacement.open=old.open;old.replaceWith(replacement);$('#stores-dialog').scrollTop=scroll;
 }
 function openListView(id) { $('#stores-dialog').close(); tab('shopping'); showView(id); }
+// 2.191: Jede bearbeitbare Karte zeigt sichtbar „Bearbeiten“ (aufgeklappt „Zuklappen“) neben „Ausblenden“, damit klar ist,
+// dass sich ein angelegtes Geschäft oder eine Liste nachträglich ändern lässt. Die ganze Zeile bleibt die Schaltfläche (summary);
+// der Hinweis selbst ist nur Beschriftung, deshalb aria-hidden, und der Name bleibt das zugängliche Etikett.
+function storeEditCue(summary) {
+  const cue = element('span', undefined, 'store-edit-cue'), closed = element('span', undefined, 'store-edit-closed'), opened = element('span', undefined, 'store-edit-opened');
+  cue.setAttribute('aria-hidden', 'true'); closed.append(icon('edit'), element('span', 'Bearbeiten')); opened.append(icon('chevron'), element('span', 'Zuklappen'));
+  cue.append(closed, opened); summary.classList.add('store-editable'); return cue;
+}
 function privateStoreEditorRow(list) {
   const row=element('details',undefined,'store-row private-store-row'),summary=element('summary'),title=element('span',undefined,'store-name'),body=element('div',undefined,'store-body'),form=element('form');
-  const heading=element('span',undefined,'store-heading');row.dataset.privateListId=list.id;title.append(symbolNode('secret',list.name),element('span',list.name));heading.append(title,element('span',list.enabled?'Geheim':'Geheim · ausgeblendet','store-pill'));summary.setAttribute('aria-label',list.name);summary.append(heading,listVisibilityButton(list.name,list.enabled,()=>{
+  const heading=element('span',undefined,'store-heading');row.dataset.privateListId=list.id;title.append(symbolNode('secret',list.name),element('span',list.name));heading.append(title,element('span',list.enabled?'Geheim':'Geheim · ausgeblendet','store-pill'));summary.setAttribute('aria-label',list.name);summary.append(heading,storeEditCue(summary),listVisibilityButton(list.name,list.enabled,()=>{
     const latest=privateList.lists.find(row=>row.id===list.id);if(!latest)throw new Error('Diese geheime Liste wurde inzwischen entfernt.');
     if(privateList.setEnabled(list.id,!latest.enabled)){message();showNotice(`${latest.name} ${latest.enabled?'ausgeblendet · alle Einträge bleiben erhalten':'eingeblendet'}`);}
   }));row.append(summary,body);
@@ -1279,7 +1287,7 @@ function storeEditorRow(store) {
     // In der Verwaltung steht zur Orientierung immer der vollständige Name, bei eigenen Listen mit ihrem Symbol – unabhängig von der Anzeige im Reiter.
     const title = element('span', undefined, 'store-name'), shown = listSymbolOf(store);
     if (shown) title.append(symbolNode(shownSymbol(shown), store.name), element('span', store.name)); else title.append(storeLabel(store));
-    const heading=element('span',undefined,'store-heading'),badge=element('span',storePill(store),'store-pill');badge.hidden=visibleStore(store)&&!isSeparate(store);heading.append(title,badge);summary.append(heading,listVisibilityButton(store.name,visibleStore(store),()=>setStoreVisibility(store.id)));
+    const heading=element('span',undefined,'store-heading'),badge=element('span',storePill(store),'store-pill');badge.hidden=visibleStore(store)&&!isSeparate(store);heading.append(title,badge);summary.append(heading,storeEditCue(summary),listVisibilityButton(store.name,visibleStore(store),()=>setStoreVisibility(store.id)));
     const form = element('form'), input = element('input');
     input.value = store.name; input.required = true; input.maxLength = 80; input.setAttribute('aria-label', 'Geschäftsname');
     input.name = 'name';
