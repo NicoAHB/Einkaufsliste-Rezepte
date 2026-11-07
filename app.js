@@ -1654,7 +1654,7 @@ function recipeCard(recipe, ingredients, options = {}) {
       if(showStock||shopping.length) {
         const have=!required(row)||availability(row,stockIndex)==='have',need=missing.get(row.id),listed=!have&&!need;
         const partial=need&&shopping.some(item=>sameIngredient(item.name,row.name));
-        const text=have?'Vorhanden':listed?'Auf Einkaufszettel':partial?`Noch ${format(need.quantity)} ${need.unit} fehlen`:'Fehlt';
+        const text=have?'Da':listed?'Auf Einkaufszettel':partial?`Noch ${format(need.quantity)} ${need.unit} fehlen`:'Fehlt';
         const status=element('span',text,`ingredient-stock ${have?'have':listed?'soon':'missing'}`);status.prepend(icon(have?'check':listed?'cart':'minus'));li.append(status);
       }
       return li;

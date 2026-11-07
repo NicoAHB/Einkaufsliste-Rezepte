@@ -7357,7 +7357,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
 
   test('2.125: Packung im Vorrat wird als vorhanden angezeigt; eigene Listen decken keine Rezeptzutaten ab',async()=>{
     const {data,record}=tomatoData2125();data.items=[];data.pantry.push(record('tomato-stock2125',{name:'Tomaten',available:true}));
-    const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator('[data-recipe-id=ratatouille2125]');await card.locator('.recipe-details summary').click();assert.equal(await card.locator('.ingredient-stock').textContent(),'Vorhanden');await ctx.close();
+    const {ctx,page,problems}=await filterContext(data);await open(page);await goTab(page,'recipes');const card=page.locator('[data-recipe-id=ratatouille2125]');await card.locator('.recipe-details summary').click();assert.equal(await card.locator('.ingredient-stock').textContent(),'Da');await ctx.close();
     const own=tomatoData2125();own.data.stores.push(own.record('wishes2125',{name:'Wünsche',separate:true}));own.data.items[0].storeId='wishes2125';
     const other=await filterContext(own.data);await open(other.page);await goTab(other.page,'recipes');await other.page.locator('[data-recipe-id=ratatouille2125]').getByRole('button',{name:'Einkaufen',exact:true}).click();await sheetOpen(other.page);
     assert.equal(await other.page.locator('#transfer-ingredients input:checked').count(),1);await other.page.click('#transfer-form button[type=submit]');await other.page.waitForSelector('#transfer-dialog',{state:'hidden'});
@@ -9253,7 +9253,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(buttons[0].w,buttons[1].w);assert.equal(buttons[0].h,buttons[1].h);assert.equal(buttons[0].y,buttons[1].y);assert.ok(buttons.every(b=>b.overflow<=1&&b.icon));
     await goTab(page,'recipes');const card=page.locator('[data-recipe-id=r286]');
     assert.match(await card.locator('.recipe-stock').textContent(),/1 von 3 Zutaten da · 2 fehlen/);
-    await card.locator('summary').first().click();assert.deepEqual(await card.locator('.ingredient-stock').allTextContents(),['Vorhanden','Fehlt','Fehlt']);
+    await card.locator('summary').first().click();assert.deepEqual(await card.locator('.ingredient-stock').allTextContents(),['Da','Fehlt','Fehlt']);
     assert.deepEqual(await card.locator('.recipe-actions button span').allTextContents(),['Einkaufen','Kochen','Einplanen','Rezeptblatt']);
     assert.ok((await card.locator('.recipe-actions button').evaluateAll(nodes=>nodes.map(n=>n.scrollWidth-n.clientWidth))).every(n=>n<=1));
     await card.scrollIntoViewIfNeeded();await saveShot(page,'Sattplan-2.86-Rezepte.png');
@@ -10422,7 +10422,7 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page); await goTab(page, 'recipes');
     const card = page.locator('.recipe-card', { hasText: 'Tomatensauce 2138' });
     await card.locator('summary').click();
-    assert.match(await card.locator('li', { hasText: 'Knoblauch, gepresst' }).last().textContent(), /Vorhanden/);
+    assert.equal(await card.locator('li', { hasText: 'Knoblauch, gepresst' }).last().locator('.ingredient-stock').textContent(), 'Da');
     await card.getByRole('button', { name: 'Einkaufen', exact: true }).click(); await sheetOpen(page);
     const checked = await page.locator('#transfer-ingredients label').evaluateAll(nodes => nodes.filter(node => node.querySelector('input').checked).map(node => node.textContent));
     assert.equal(checked.length, 1, `nur die Dose ist vorausgewählt: ${checked.join(' | ')}`); assert.match(checked[0], /Tomaten/);

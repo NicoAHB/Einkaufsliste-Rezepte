@@ -2,6 +2,10 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.186: „Da“ statt „Vorhanden“
+
+In der Zutatenliste eines Rezepts (**Zutaten & Zubereitung**) steht bei Zutaten aus dem Vorrat jetzt kurz **✓ Da** statt „✓ Vorhanden“, passend zu „… von … Zutaten da“ und zu „Fehlt“. So passt die Angabe fast immer in dieselbe Zeile wie die Zutat. „Auf Einkaufszettel“ und „Noch … fehlen“ bleiben. Offline-Paket `einkauf-shell-v198`.
+
 ## Neu in Version 2.185: Kürzere Sortier-Beschriftung
 
 Die Sortierung der Rezepte nach Vorrat heißt jetzt **Meiste Zutaten vorhanden**; auf der Pille über der Liste steht kurz **Zutaten vorhanden**. So passen die Anzahl der Rezepte und die Sortierung wieder in eine Zeile (bisher rutschte „Meiste Zutaten im Vorrat“ in eine eigene Zeile). Offline-Paket `einkauf-shell-v197`.
