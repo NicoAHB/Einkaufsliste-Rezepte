@@ -12972,4 +12972,63 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.deepEqual(problems, []); await ctx.close();
   });
 
+
+  // 2.191: Neben „Planen | Im Laden“ ein beschrifteter Knopf „Verwalten“ (Geschäft- und Listen-Symbol, Plus oben rechts);
+  // in „Geschäfte & Listen“ zeigt jede bearbeitbare Karte sichtbar „Bearbeiten“ (aufgeklappt „Zuklappen“) neben „Ausblenden“.
+  for (const [width, theme] of [[280, 'light'], [320, 'dark'], [390, 'light']]) test(`2.191: Knopf „Verwalten“ und sichtbares „Bearbeiten“ bei Geschäften und Listen (${width}px ${theme})`, async () => {
+    const data = visibilityData2117(); data.stores[0].name = 'Supermarkt mit besonders langem Namen';
+    const { ctx, page, problems } = await context({ config: { theme }, context: { viewport: { width, height: 844 }, colorScheme: theme } });
+    await seedPrivate2117(ctx); await seedLocal(ctx, data); await open(page);
+    const manage = page.locator('#manage-stores');
+    assert.equal(await manage.getAttribute('aria-label'), 'Geschäfte & Listen verwalten');
+    assert.equal(await manage.locator('.manage-stores-label').textContent(), 'Verwalten');
+    assert.deepEqual(await manage.locator('.manage-stores-icons use').evaluateAll(nodes => nodes.map(node => node.getAttribute('href'))), ['#i-store', '#i-list']);
+    assert.equal(await page.locator('symbol#i-list').count(), 1, 'Listen-Symbol im Symbolsatz');
+    const button = await manage.boundingBox(), modes = await page.locator('#mode-switch').boundingBox(), plus = await manage.locator('.manage-stores-plus').boundingBox();
+    assert.ok(button.width >= 64 && button.height >= 44, `gut zu treffen (${button.width}×${button.height})`);
+    assert.ok(Math.abs(button.height - modes.height) <= 2, 'so hoch wie der Umschalter');
+    assert.ok(modes.x + modes.width <= button.x + 1, 'rechts neben Planen | Im Laden');
+    assert.ok(plus.x + plus.width > button.x + button.width - 4 && plus.y < button.y + 4 && plus.x + plus.width <= width && plus.y >= 0, 'Plus oben rechts am Knopf, ganz sichtbar');
+    assert.ok(await page.locator('#mode-shop').evaluate(node => node.getBoundingClientRect().height <= 44), '„Im Laden“ bricht nicht um');
+    assert.equal(await horizontalOverflow(page), 0);
+    await saveShot(page, `2191-verwalten-${width}-${theme}.png`);
+    await manage.click(); await sheetOpen(page);
+    assert.match(await page.textContent('.stores-hint'), /^Angelegte Geschäfte und Listen kannst du jederzeit ändern: auf den Eintrag oder Bearbeiten tippen\./);
+    // Jede bearbeitbare Karte: „Bearbeiten“ statt des Pfeils, neben „Ausblenden“, nichts überlappt oder ragt hinaus
+    const layout = () => page.locator('#store-editor .store-row').evaluateAll(rows => rows.map(row => {
+      const summary = row.querySelector(':scope>summary'), name = summary.querySelector('.store-name'), cue = summary.querySelector('.store-edit-cue'), toggle = summary.querySelector('.store-visibility');
+      const rect = node => node.getBoundingClientRect(), a = rect(cue), b = rect(toggle), s = rect(summary), n = rect(name);
+      return { id: row.dataset.id || row.dataset.privateListId, open: row.open, label: summary.getAttribute('aria-label'), cue: cue.innerText.trim(), hidden: cue.getAttribute('aria-hidden'),
+        arrow: getComputedStyle(summary, '::after').display, overlap: !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top),
+        inside: a.left >= s.left && a.right <= s.right + 0.5 && b.right <= s.right + 0.5, height: Math.min(a.height, b.height), below: a.top >= n.bottom - 1, sameRow: Math.abs(a.top - b.top) < 2, fits: row.scrollWidth <= row.clientWidth };
+    }));
+    const rows = await layout();
+    assert.deepEqual(rows.map(row => row.id), ['store-edeka', 'store-lidl', 'store-rewe', 'store-wishes', 'trip-2117', 'private-a', 'private-b']);
+    for (const row of rows) {
+      assert.equal(row.cue, 'Bearbeiten', row.id); assert.equal(row.hidden, 'true', `${row.id}: Beschriftung, das Etikett bleibt der Name`);
+      assert.equal(row.arrow, 'none', `${row.id}: kein zusätzlicher Pfeil`); assert.equal(row.overlap, false, row.id); assert.equal(row.inside, true, row.id);
+      assert.ok(row.height >= 44, `${row.id}: Bearbeiten und Ausblenden gut zu treffen`); assert.equal(row.sameRow, true, `${row.id}: Bearbeiten und Ausblenden in einer Reihe`); assert.equal(row.fits, true, row.id);
+      assert.equal(row.below, true, `${row.id}: auf Handybreite steht Bearbeiten unter dem vollen Namen`);
+    }
+    assert.equal(rows[0].label, 'Supermarkt mit besonders langem Namen');
+    assert.equal(await page.locator('#store-editor .store-row .store-name').evaluateAll(names => names.every(name => [...name.querySelectorAll('span')].every(part => !/\S\n\S/.test(part.innerText)) && name.getBoundingClientRect().width > 150)), true, 'Namen haben die ganze Breite');
+    await saveShot(page, `2191-bearbeiten-${width}-${theme}.png`);
+    // Tipp auf „Bearbeiten“ klappt auf („Zuklappen“), ein zweiter Tipp wieder zu; der Name öffnet weiterhin ebenso
+    const edeka = page.locator('#store-editor .store-row[data-id="store-edeka"]'), cue = edeka.locator('> summary .store-edit-cue');
+    await cue.click(); assert.equal(await edeka.evaluate(row => row.open), true);
+    assert.equal((await cue.innerText()).trim(), 'Zuklappen'); assert.equal(await edeka.locator('input[name=name]').inputValue(), 'Supermarkt mit besonders langem Namen');
+    assert.equal(await cue.locator('.store-edit-opened .icon').evaluate(node => getComputedStyle(node).transform !== 'none'), true, 'Pfeil nach oben');
+    await cue.click(); assert.equal(await edeka.evaluate(row => row.open), false); assert.equal((await cue.innerText()).trim(), 'Bearbeiten');
+    const trip = page.locator('#store-editor .store-row[data-id="trip-2117"]');
+    await trip.locator('> summary .store-name').click(); assert.equal(await trip.evaluate(row => row.open), true); assert.equal((await trip.locator('> summary .store-edit-cue').innerText()).trim(), 'Zuklappen');
+    const secret = page.locator('#store-editor .private-store-row[data-private-list-id="private-a"]');
+    await secret.locator('> summary .store-edit-cue').click(); assert.equal(await secret.evaluate(row => row.open), true); assert.equal(await secret.locator('input[name=name]').inputValue(), 'Reise privat');
+    // „Ausblenden“ schaltet weiter nur die Sichtbarkeit und öffnet die Karte nicht
+    const lidl = page.locator('#store-editor .store-row[data-id="store-lidl"]');
+    await lidl.locator('.store-visibility').click(); await lidl.locator('.store-visibility', { hasText: /^Einblenden$/ }).waitFor();
+    assert.equal(await lidl.evaluate(row => row.open), false); assert.equal((await lidl.locator('> summary .store-edit-cue').innerText()).trim(), 'Bearbeiten');
+    assert.equal(await horizontalOverflow(page), 0);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+
 });

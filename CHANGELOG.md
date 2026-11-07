@@ -2,6 +2,14 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.191: Knopf „Verwalten“; Geschäfte sichtbar nachträglich bearbeiten
+
+**„Verwalten“ statt eines kleinen Symbols.** Neben **Planen | Im Laden** stand bisher nur ein rundes Geschäft-Symbol, dem man nicht ansah, wofür es ist. Jetzt ist es ein Knopf so hoch wie der Umschalter, mit grünem Rand: oben ein Geschäft- und ein Listen-Symbol, darunter **Verwalten**, oben rechts ein kleines grünes **+**. Er öffnet wie bisher **Geschäfte & Listen**, wo ganz oben **Hinzufügen** steht. Auch bei 280 px Breite bleibt „Im Laden“ einzeilig.
+
+**Angelegte Geschäfte sichtbar bearbeiten.** In **Geschäfte & Listen** zeigte jede Karte nur den Namen, einen kleinen Pfeil und **Ausblenden**; dass ein Tipp auf das Geschäft es zum Ändern öffnet, war kaum zu erkennen. Jetzt steht in jeder bearbeitbaren Karte neben **Ausblenden** ein grün gefüllter Knopf **✎ Bearbeiten**; aufgeklappt heißt er **Zuklappen**. Das gilt für Geschäfte, eigene Listen, Notizlisten und geheime Listen. Die ganze Zeile bleibt antippbar und lässt sich weiter lange halten und ziehen. Auf dem Handy (bis 520 px Breite) steht der Name mit Symbol über die ganze Breite oben, darunter links **Bearbeiten** und rechts **Ausblenden**; so bricht auch neben zwei Knöpfen kein Name mitten im Wort um. Auf breiten Bildschirmen steht alles in einer Reihe. Der Hinweis über der Liste sagt dazu: „Angelegte Geschäfte und Listen kannst du jederzeit ändern: auf den Eintrag oder **Bearbeiten** tippen.“ Für Bildschirmleser bleibt der Name der Karte ihr Etikett.
+
+Offline-Paket `einkauf-shell-v203`.
+
 ## Neu in Version 2.190: QR-Hinweis im Rezeptblatt; Gratis und Pro vorbereitet
 
 **Fußzeile des Rezeptblatts.** Links steht jetzt „Eigenes Rezept · Seite 1 / 1“ (bzw. „Quelle: … · Seite 1 / 1“) und darunter „Ein Produkt von“ mit dem Logo von NvF Digital. Rechts kann auf der Seite mit den Notizen ein kleiner Kasten mit hellgrünem Hintergrund und abgerundeten Ecken stehen: ein QR-Code (gut 2 cm breit, auf weißem Feld) und daneben **In SattPlan öffnen** und „Gratis · iPhone und Android“. Der Code enthält nur eine Adresse (`APP_LINK` in `monetization.js`); die Seite dahinter soll iPhone oder Android erkennen und in den passenden Store weiterleiten. Solange dort keine Adresse eingetragen ist, erscheint der Kasten nicht.
