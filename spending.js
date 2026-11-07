@@ -116,14 +116,17 @@ export function diningRating(value) {
   return stars;
 }
 export const hasRating = row => Number.isInteger(row?.rating) && row.rating >= 1 && row.rating <= 5;
+// Eine Notiz zählt auch ohne Sterne (2.187): Wer nur „Pizza top“ schreibt, sieht sie unter „Zuletzt“, in der Übersicht und im Export.
+export const hasRatingNote = row => typeof row?.ratingNote === 'string' && row.ratingNote.trim() !== '';
+export const hasReview = row => hasRating(row) || hasRatingNote(row);
 export const ratingStars = stars => '★'.repeat(stars) + '☆'.repeat(5 - stars);
 export const RATING_MEANING = { 1: 'nie wieder', 2: 'eher nicht', 3: 'geht so', 4: 'gerne wieder', 5: 'unbedingt' };
-// Letzte Bewertung eines Lokals (Name ohne Groß-/Kleinschreibung und doppelte Leerzeichen): der jüngste Besuch mit Sternen, ohne den Eintrag `ignoreId`.
+// Letzte Bewertung eines Lokals (Name ohne Groß-/Kleinschreibung und doppelte Leerzeichen): der jüngste Besuch mit Sternen oder Notiz, ohne den Eintrag `ignoreId`.
 export function lastRating(rows, place, ignoreId = '') {
   const key = String(place || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
   if (!key) return null;
   const when = row => `${row.date}|${row.time || ''}|${row.createdAt || ''}`;
-  return rows.filter(row => !row.deletedAt && row.id !== ignoreId && isDining(row) && hasRating(row) && String(row.storeName || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de') === key)
+  return rows.filter(row => !row.deletedAt && row.id !== ignoreId && isDining(row) && hasReview(row) && String(row.storeName || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de') === key)
     .sort((a, b) => when(b).localeCompare(when(a)))[0] ?? null;
 }
 
@@ -181,7 +184,7 @@ export function lastDay(month) { const [year, number] = month.split('-').map(Num
 const monthShort = month => new Intl.DateTimeFormat('de-DE', { month: 'short' }).format(new Date(`${month}-15T12:00:00`)).replace('.', '');
 
 /* ---------- Auswertung ---------- */
-// Einträge eines Monats, die neuesten Tage zuerst (am selben Tag: der zuletzt erfasste zuerst).
+// Einträge eines Monats, die neuesten Tage zuerst (am selben Tag: der späteste zuerst, siehe purchaseClock).
 export const purchaseValue = row => row.kind === 'refund' ? -row.cents : row.cents;
 export function periodBounds(period) {
   if (typeof period === 'string' && validMonth(period)) return { from: `${period}-01`, to: lastDay(period) };
@@ -193,10 +196,24 @@ export function fullMonth(period) {
   const bounds = periodBounds(period), month = monthOf(bounds.from);
   return bounds.from === `${month}-01` && bounds.to === lastDay(month) ? month : null;
 }
+/* Uhrzeit eines Eintrags innerhalb seines Tags (2.187), für die Reihenfolge am selben Tag: bei Restaurant/Café/Bar die eingetragene Uhrzeit,
+   sonst die Uhrzeit des Erfassens (Ortszeit), wenn am selben Tag erfasst. Später nachgetragen: Ende des Tags ('24:00'); ohne bekannten Zeitpunkt
+   oder vorab erfasst: Anfang (''). Ein einziger Schlüssel je Eintrag, damit die Reihenfolge nicht von der Reihenfolge in der Datei abhängt
+   (bis 2.186 verglich die Sortierung Restaurantbesuche nach Uhrzeit, alles andere nach dem Erfassen; je nach Ausgangslage sprang die Liste). */
+const pad2 = number => String(number).padStart(2, '0');
+export function purchaseClock(row) {
+  if (isDining(row) && validTime(row.time)) return row.time;
+  const created = new Date(row.createdAt || NaN);
+  if (!Number.isFinite(created.getTime())) return '';
+  const day = `${created.getFullYear()}-${pad2(created.getMonth() + 1)}-${pad2(created.getDate())}`;
+  return day === row.date ? `${pad2(created.getHours())}:${pad2(created.getMinutes())}` : day > row.date ? '24:00' : '';
+}
 export function filterPurchases(rows, period, person = 'all') {
   const { from, to } = periodBounds(period);
+  const clocks = new Map();
+  const clock = row => { if (!clocks.has(row)) clocks.set(row, purchaseClock(row)); return clocks.get(row); };
   return rows.filter(row => !row.deletedAt && row.date >= from && row.date <= to && (person === 'all' || buyerKey(row) === person))
-    .sort((a, b) => b.date.localeCompare(a.date) || (isDining(a) && isDining(b) ? (b.time || '').localeCompare(a.time || '') : 0) || `${b.createdAt || ''}|${b.id}`.localeCompare(`${a.createdAt || ''}|${a.id}`));
+    .sort((a, b) => b.date.localeCompare(a.date) || clock(b).localeCompare(clock(a)) || `${b.createdAt || ''}|${b.id}`.localeCompare(`${a.createdAt || ''}|${a.id}`));
 }
 export const purchasesOf = (rows, month) => filterPurchases(rows, month);
 
@@ -316,11 +333,11 @@ export function budgetStatus(spent, budget) {
 // Benutzereingaben sind Text, auch wenn ein Name mit einem Tabellen-Formelzeichen beginnt.
 export function spendingCsv(rows, stores = [], members = []) {
   const text = value => { let field = String(value ?? ''); if (/^[\s]*[=+\-@\t\r]/.test(field)) field = `'${field}`; return `"${field.replace(/"/g, '""')}"`; };
-  // Restaurant/Café/Bar (2.170): Art „Café“ usw., Geschäft = Name des Lokals, dazu Uhrzeit; seit 2.174 Bewertung und Notiz dazu
+  // Restaurant/Café/Bar (2.170): Art „Café“ usw., Geschäft = Name des Lokals, dazu Uhrzeit; seit 2.174 Bewertung und Notiz dazu (seit 2.187 die Notiz auch ohne Sterne)
   const header = ['Datum', 'Art', 'Person', 'Geschäft', 'Betrag (EUR)', 'Kategorie', 'Uhrzeit', 'Bewertung (1–5)', 'Notiz zur Bewertung'].map(text).join(';');
   const art = row => isDining(row) ? `${DINING_LABEL}: ${diningKind(row).label}` : row.kind === 'refund' ? 'Rückerstattung' : 'Einkauf';
   const lines = rows.map(row => [text(row.date), text(art(row)), text(buyerNameOf(row, members)),
     text(storeNameOf(row, stores)), `"${formatAmount(purchaseValue(row))}"`, text(isDining(row) ? DINING_LABEL : row.note), text(isDining(row) ? row.time : ''),
-    text(hasRating(row) ? row.rating : ''), text(hasRating(row) ? row.ratingNote : '')].join(';'));
+    text(hasRating(row) ? row.rating : ''), text(hasRatingNote(row) ? row.ratingNote.trim() : '')].join(';'));
   return '\ufeff' + [header, ...lines].join('\r\n') + '\r\n';
 }

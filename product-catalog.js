@@ -4,7 +4,7 @@
 import { CATEGORIES, isCategory, suggestCategory } from './categories.js';
 import { matchProductName } from './product-names.js';
 import { productKey } from './prices.js';
-import { pantryKey, pantryRows, stockKey } from './data.js';
+import { pantryRows, stockKey } from './data.js';
 import { amountChoice } from './buying.js';
 
 import { canonicalProductName, productGroup, productGroupById } from './product-groups.js';

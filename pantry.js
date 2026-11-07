@@ -6,6 +6,7 @@ import { stockKey, pantryRows } from './data.js';
 import { isCategory, suggestCategory } from './categories.js';
 import { catalogProductFor, pantryProductAllowed } from './product-catalog.js';
 import { ingredientMatchName, varietyName } from './product-groups.js';
+import { coveringStock } from './cookable.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
@@ -42,6 +43,19 @@ export function ingredientPantryProduct(row) {
   const name = String(varietyName(ingredientMatchName(row)) || row?.name || '').trim().replace(/\s+/g, ' '), known = catalogProductFor(name);
   return known ? { name: known.name, category: known.category } : { name };
 }
+/* „Aufgebraucht“ an einer Rezeptzutat (2.175, seit 2.187 als reine Logik): Welche Vorratseinträge machen die Zutat gerade zu „da“
+   (`stocked`, z. B. „Basmati-Reis“ für „Reis“ oder „Olivenöl“ und „Rapsöl“ für „Öl“), und was kommt auf die Einkaufsliste (`rebuy`)?
+   Ist es genau ein Eintrag, wird genau diese Sorte nachgekauft (Basmati-Reis statt „Reis“, Spaghetti statt „Nudeln“); sonst das allgemeine
+   Produkt der Zutat (`generic`, wie bei „✓ Hab ich“). `rows`: alle Vorratszeilen. */
+export function usedUpPlan(row, rows = [], now = Date.now()) {
+  const generic = ingredientPantryProduct(row);
+  const stocked = pantryRows(rows, now).filter(entry => entry.available !== false && coveringStock(row, [ingredientMatchName(entry)]).length);
+  if (stocked.length !== 1) return { generic, stocked, rebuy: generic };
+  const [entry] = stocked, known = catalogProductFor(entry.name), category = known?.category || (isCategory(entry.category) ? entry.category : '');
+  return { generic, stocked, rebuy: { name: entry.name, ...(category ? { category } : {}) } };
+}
+// Namen für Rückfragen und Meldungen: „Olivenöl“, „Olivenöl und Rapsöl“, „A, B und C“
+export const joinNames = names => names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} und ${names.at(-1)}`;
 // Bildauswahl: nur ausdrückliche Zu-/Abwahlen übernehmen. Bestehende IDs,
 // Namen, Kategorien, Bilder und unbekannte Erweiterungen bleiben erhalten.
 export function pantrySelectionChanges(products,rows=[]) {

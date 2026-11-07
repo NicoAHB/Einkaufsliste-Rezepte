@@ -25,10 +25,11 @@ const SHOTS = process.env.SATTPLAN_SHOTS || '';
 const saveShot = (target, name) => SHOTS ? target.screenshot({ path: path.join(SHOTS, name) }) : Promise.resolve();
 
 let server, base, browser, swOverride = null;   // swOverride: Ersatzinhalt für sw.js (Prüfung der Update-Anzeige)
+const served = [];   // abgerufene Pfade (2.187: lädt ein Update die Bilder erneut?)
 before(async () => {
   if (!playwright) return;
   server = http.createServer(async (request, response) => {
-    const url = new URL(request.url, 'http://localhost');
+    const url = new URL(request.url, 'http://localhost'); served.push(url.pathname);
     let file = path.join(root, decodeURIComponent(url.pathname));
     if (url.pathname.endsWith('/')) file += 'index.html';
     if (!file.startsWith(root)) { response.writeHead(403).end(); return; }
@@ -10399,6 +10400,50 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     } finally { swOverride = null; }
     await ctx.close();
   });
+  // ---- 2.187: Bilder im eigenen Speicher – ein App-Update lädt sie nicht erneut ----
+  test('2.187: Bilder liegen in einem eigenen Offline-Speicher; ein Update holt nur die App-Dateien, keine Bilder', async () => {
+    const { ctx, page, problems } = await context({ context: { serviceWorkers: 'allow' } });
+    await open(page);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload(); await page.waitForSelector('#status[data-state]', { state: 'attached' });
+    const original = await readFile(path.join(root, 'sw.js'), 'utf8'), imageCache = original.match(/const IMAGES = '([^']+)'/)[1];
+    const imageCount = [...original.match(/const IMAGE_FILES = \[([^\]]*)\]/s)[1].matchAll(/'([^']+)'/g)].length;
+    const stored = () => page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).filter(key => key.startsWith('einkauf-')).map(async key => [key, (await (await caches.open(key)).keys()).map(request => new URL(request.url).pathname)]))));
+    let caches = await stored();
+    assert.equal(caches[imageCache]?.length, imageCount, 'alle Bilder im Bilderspeicher');
+    const shell = Object.keys(caches).find(key => key.startsWith('einkauf-shell-'));
+    assert.deepEqual(caches[shell].filter(file => /\.(png|webp|svg)$/.test(file)), [], 'keine Bilder mehr im App-Paket');
+    // Offline kommen die Bilder aus dem Bilderspeicher
+    await ctx.setOffline(true);
+    assert.equal(await page.evaluate(async () => (await fetch('./assets/products/fresh.webp')).status), 200);
+    assert.equal(await page.evaluate(async () => (await fetch('./assets/stores/rewe.png')).status), 200);
+    await ctx.setOffline(false);
+    // Neues App-Paket: nur Code und Daten werden geholt, kein einziges Bild; der Bilderspeicher bleibt nach dem Wechsel
+    swOverride = original.replace(/einkauf-shell-v\d+/, 'einkauf-shell-test-images');
+    try {
+      served.length = 0;
+      await page.evaluate(() => navigator.serviceWorker.getRegistration().then(registration => registration.update()));
+      await page.waitForSelector('#update-banner:not([hidden])', { timeout: 60000 });
+      const fetched = [...served];
+      assert.ok(fetched.some(file => file.endsWith('/app.js')), 'das neue Paket holt die App-Dateien');
+      assert.deepEqual(fetched.filter(file => /\.(png|webp|svg)$/.test(file)), [], 'keine Bilder erneut geladen');
+      await Promise.all([page.waitForEvent('load'), page.click('#reload')]);
+      await page.waitForFunction(async () => (await caches.keys()).includes('einkauf-shell-test-images') && !(await navigator.serviceWorker.getRegistration()).waiting);
+      caches = await stored();
+      assert.equal(caches[imageCache]?.length, imageCount, 'Bilderspeicher übersteht das Update');
+      assert.deepEqual(Object.keys(caches).filter(key => key.startsWith('einkauf-shell-')), ['einkauf-shell-test-images'], 'altes App-Paket gelöscht');
+      // Ein geändertes Bild ergibt einen neuen Bilderspeicher; der alte wird beim Wechsel gelöscht
+      swOverride = original.replace(/einkauf-shell-v\d+/, 'einkauf-shell-test-images-2').replace(imageCache, 'einkauf-images-test');
+      await page.evaluate(() => navigator.serviceWorker.getRegistration().then(registration => registration.update()));
+      await page.waitForSelector('#update-banner:not([hidden])', { timeout: 60000 });
+      await Promise.all([page.waitForEvent('load'), page.click('#reload')]);
+      await page.waitForFunction(async () => (await caches.keys()).includes('einkauf-images-test') && !(await navigator.serviceWorker.getRegistration()).waiting);
+      caches = await stored();
+      assert.equal(caches['einkauf-images-test']?.length, imageCount); assert.equal(caches[imageCache], undefined, 'alter Bilderspeicher gelöscht');
+      assert.deepEqual(problems.filter(text => !/Failed to load resource/.test(text)), []);
+    } finally { swOverride = null; }
+    await ctx.close();
+  });
   test('2.137: Rezeptformular zeigt beim Tippen den Entwurfshinweis; versteckte Kennungsfelder überdecken keine Formular-ID', async () => {
     const { ctx, page, problems } = await context();
     await open(page); await goTab(page, 'recipes'); await page.click('#add-recipe'); await sheetOpen(page);
@@ -12278,7 +12323,8 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await card.getByRole('button', { name: 'Mehl: aufgebraucht, aus dem Vorrat nehmen und auf die Einkaufsliste setzen', exact: true }).click();
     assert.equal(await page.textContent('#ask-ok'), 'Ja'); assert.equal(await page.textContent('#ask-cancel'), 'Abbrechen');
     // 2.176: Knöpfe der Rückfrage einheitlich wie bei „Endgültig löschen“: beide umrandet und gleich geformt, „Ja“ zart gefüllt statt kräftig
-    const look = selector => page.locator(selector).evaluate(node => { const s = getComputedStyle(node); return { width: s.borderTopWidth, radius: s.borderTopLeftRadius, border: s.borderTopColor, fill: s.backgroundColor, text: s.color, height: Math.round(node.getBoundingClientRect().height) }; });
+    // offsetHeight statt getBoundingClientRect: Die Rückfrage zoomt beim Öffnen kurz herein (scale .96 → 1); gemessen wird die Höhe ohne Animation
+    const look = selector => page.locator(selector).evaluate(node => { const s = getComputedStyle(node); return { width: s.borderTopWidth, radius: s.borderTopLeftRadius, border: s.borderTopColor, fill: s.backgroundColor, text: s.color, height: node.offsetHeight }; });
     const yes = await look('#ask-ok'), no = await look('#ask-cancel');
     assert.deepEqual([yes.width, yes.radius, no.width, no.radius], ['2px', '14px', '2px', '14px']); assert.equal(yes.height, no.height);
     assert.equal(yes.border, yes.text, 'grüner Rand in der Schriftfarbe'); assert.notEqual(yes.fill, yes.text, 'nicht kräftig gefüllt');
@@ -12331,6 +12377,46 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await answerAsk(page, true, /Es kommt zu „Rewe“/);
     saved = await storedDemo(page); assert.equal(openRows(saved, 'Zucker').length, 1); assert.equal(openRows(saved, 'Zucker')[0].storeId, 'store-rewe');
     assert.match(await toggle.textContent(), /5 von 7 Zutaten da · 2 fehlen/);
+    assert.deepEqual(problems, []); await ctx.close();
+  });
+  test('2.187: „Aufgebraucht“ kauft die vorhandene Sorte nach (Basmati-Reis statt Reis) und nennt alle Einträge, die herausgenommen werden (Olivenöl und Rapsöl)', async () => {
+    const data = bananaData175(data => {
+      const stamp = '2026-10-29T09:00:00.000Z';
+      // Sorten wie seit 2.145 gespeichert (productGroupVersion 1); ohne die Marke würde die App sie beim Laden in die alte Gruppe umbenennen
+      data.pantry = pantryData278(['Basmati-Reis', 'Olivenöl', 'Rapsöl', 'Linsen'].map(name => ({ name, available: true, productGroupVersion: 1 }))).pantry;
+      data.recipes = [{ ...data.recipes[0], id: 'curry187', name: 'Linsencurry' }];
+      data.ingredients = [['Reis', 200, 'g'], ['Öl', 2, 'EL'], ['Linsen', 250, 'g'], ['Kokosmilch', 400, 'ml']]
+        .map(([name, quantity, unit], index) => ({ ...data.ingredients[0], id: `curry187-${index}`, recipeId: 'curry187', name, quantity, unit, createdAt: stamp, updatedAt: stamp }));
+      return data;
+    });
+    const { ctx, page, problems } = await context();
+    await seedLocal(ctx, data); await open(page); await goTab(page, 'recipes');
+    const card = page.locator('#recipe-list [data-recipe-id=curry187]'), toggle = card.locator('.recipe-stock-toggle');
+    const openRows = (data, name) => data.items.filter(row => !row.deletedAt && !row.checked && row.name === name);
+    const available = (data, name) => data.pantry.find(row => !row.deletedAt && row.name === name).available;
+    // 2.187: Die Listen des Vorratsabgleichs entstehen erst beim Aufklappen (schnellere Rezeptliste)
+    assert.equal(await page.locator('#recipe-list .recipe-stock-group').count(), 0, 'zugeklappt noch keine Listen');
+    await toggle.click(); assert.match(await toggle.textContent(), /3 von 4 Zutaten da · 1 fehlen/);
+    assert.deepEqual(await card.locator('.recipe-stock-group h4').allTextContents(), ['Fehlt im Vorrat', 'Im Vorrat vorhanden']);
+    assert.deepEqual(await card.locator('.recipe-stock-group.have .recipe-stock-label').allTextContents(), ['200 g Reis', '2 EL Öl', '250 g Linsen']);
+    // Eine Sorte: die Rückfrage nennt sie, auf die Liste kommt genau sie
+    await card.getByRole('button', { name: /^Reis: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Reis ist aufgebraucht/, /„Basmati-Reis“ aus dem Vorrat nehmen und auf die Einkaufsliste setzen\?/);
+    let saved = await storedDemo(page);
+    assert.equal(available(saved, 'Basmati-Reis'), false); assert.equal(openRows(saved, 'Basmati-Reis').length, 1); assert.equal(openRows(saved, 'Reis').length, 0);
+    assert.equal(await page.textContent('#notice-text'), 'Basmati-Reis aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt');
+    assert.match(await toggle.textContent(), /2 von 4 Zutaten da · 2 fehlen/);
+    // Mehrere Einträge: beide werden genannt und herausgenommen, nachgekauft wird „Öl“
+    await card.getByRole('button', { name: /^Öl: aufgebraucht/ }).click();
+    await answerAsk(page, true, /Öl ist aufgebraucht/, /„Olivenöl“ und „Rapsöl“ aus dem Vorrat nehmen und „Öl“ auf die Einkaufsliste setzen\?/);
+    saved = await storedDemo(page);
+    assert.deepEqual([available(saved, 'Olivenöl'), available(saved, 'Rapsöl')], [false, false]); assert.equal(openRows(saved, 'Öl').length, 1);
+    assert.equal(await page.textContent('#notice-text'), 'Olivenöl und Rapsöl aus dem Vorrat entfernt, Öl auf den Einkaufszettel gesetzt');
+    assert.match(await toggle.textContent(), /1 von 4 Zutaten da · 3 fehlen/);
+    // Rückgängig: beide wieder im Vorrat, „Öl“ wieder von der Liste
+    await page.click('#notice-undo'); saved = await storedDemo(page);
+    assert.deepEqual([available(saved, 'Olivenöl'), available(saved, 'Rapsöl')], [true, true]); assert.equal(openRows(saved, 'Öl').length, 0);
+    assert.equal(await page.textContent('#notice-text'), 'Olivenöl und Rapsöl sind wieder im Vorrat und nicht mehr auf der Einkaufsliste');
     assert.deepEqual(problems, []); await ctx.close();
   });
 
@@ -12690,6 +12776,23 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await page.selectOption('#spending-analysis', 'frequency');
     assert.match(await page.textContent('#spending-frequency-summary'), /^1 Einkauf/); assert.equal(await page.locator('#spending-dining').isHidden(), true);
     await page.selectOption('#spending-analysis', 'expenses');
+    // 2.187: Die Notiz zur Bewertung steht in der Übersicht als eigene Zeile; eine Notiz ohne Sterne geht nicht verloren
+    assert.equal(await page.locator('#spending-dining-list .dining-row', { hasText: 'Pizzeria Roma' }).locator('.dining-note').textContent(), '„Pizza top, Bedienung langsam“');
+    await page.tap('#add-dining'); await sheetOpen(page);
+    await page.fill('#dining-form input[name=amount]', '31,00'); await page.fill('#dining-form input[name=place]', 'Sushi Bar');
+    await page.tap('#dining-rating-toggle'); await page.fill('#dining-form input[name=ratingNote]', 'Frisch, aber teuer');
+    await page.tap('#dining-rating-toggle');
+    assert.equal(await page.textContent('#dining-rating-value'), 'Notiz', 'zugeklappt: Hinweis auf die Notiz, solange kein Stern gewählt ist');
+    await page.tap('#dining-save'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
+    const sushi = (await dining()).find(entry => entry.storeName === 'Sushi Bar');
+    assert.deepEqual([sushi.rating, sushi.ratingNote], [undefined, 'Frisch, aber teuer']);
+    const sushiRow = page.locator('#spending-dining-list .dining-row', { hasText: 'Sushi Bar' });
+    assert.equal(await sushiRow.locator('.dining-note').textContent(), '„Frisch, aber teuer“'); assert.equal(await sushiRow.locator('.dining-stars-small').count(), 0);
+    assert.match(await sushiRow.getAttribute('aria-label'), /Notiz: Frisch, aber teuer/);
+    await page.tap('#add-dining'); await sheetOpen(page);
+    await page.fill('#dining-form input[name=place]', 'sushi bar');
+    assert.equal(await page.textContent('#dining-last-rating'), 'Zuletzt: Frisch, aber teuer', 'auch ohne Sterne unter „Zuletzt“');
+    await page.tap('#dining-dialog [data-close]'); await page.locator('#dining-dialog').waitFor({ state: 'hidden' });
     assert.equal(await horizontalOverflow(page), 0);
     assert.deepEqual(problems, []); await ctx.close();
   });

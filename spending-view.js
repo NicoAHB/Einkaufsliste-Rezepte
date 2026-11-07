@@ -3,7 +3,7 @@
 import { UNASSIGNED, buyerKey, buyerNameOf, liveMembers, memberName } from './family.js';
 import { compareTotals, dayLabel, filterPurchases, firstMonth, fullMonth, latestMonth, monthLabel, monthName, monthOf,
   periodBounds, possibleDuplicates, purchaseFrequency, purchaseValue, recentMonths, shiftMonth, spendingCsv, storeNameOf, summarizePeriod, validMonth, DEFAULT_NOTE,
-  budgetSpent, diningKind, hasRating, isDining, RATING_MEANING } from './spending.js';
+  budgetSpent, diningKind, hasRating, hasRatingNote, isDining, RATING_MEANING } from './spending.js';
 import { groupImageFor, imageByKey, imageForProduct, paintProductImage } from './product-images.js';
 import { hasProductPrice, productPriceCents } from './product-prices.js';
 
@@ -267,9 +267,12 @@ export function mountSpending({ getData, getScope, getMonth, setMonth, today, ge
       const name = node('strong', place || kind.label);
       if (hasRating(entry)) { const stars = node('span', undefined, 'dining-stars-small'); stars.append(node('span', '★'.repeat(entry.rating), 'stars-on'), node('span', '☆'.repeat(5 - entry.rating), 'stars-off')); stars.setAttribute('aria-hidden', 'true'); name.append(' ', stars); }
       copy.append(name, node('small', [when, place ? kind.label : '', buyer, twins.has(entry.id) ? 'Doppelt?' : ''].filter(Boolean).join(' · ')));
+      // Notiz zur Bewertung (2.187): als eigene kleine Zeile, auch ohne Sterne
+      const remark = hasRatingNote(entry) ? entry.ratingNote.trim() : '';
+      if (remark) copy.append(node('small', `„${remark}“`, 'dining-note'));
       const edit = svgIcon('edit'); edit.classList.add('dining-edit');
       row.append(badge, copy, node('span', euros(entry.cents), 'spend-amount'), edit);
-      row.setAttribute('aria-label', `${when}, ${place || kind.label}${place ? ` (${kind.label})` : ''}${hasRating(entry) ? `, ${entry.rating} von 5 Sternen (${RATING_MEANING[entry.rating]})` : ''}, ${buyer}, ${euros(entry.cents)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: bearbeiten`);
+      row.setAttribute('aria-label', `${when}, ${place || kind.label}${place ? ` (${kind.label})` : ''}${hasRating(entry) ? `, ${entry.rating} von 5 Sternen (${RATING_MEANING[entry.rating]})` : ''}${remark ? `, Notiz: ${remark}` : ''}, ${buyer}, ${euros(entry.cents)}${twins.has(entry.id) ? ', möglicherweise doppelt erfasst' : ''}: bearbeiten`);
       li.append(row); list.append(li);
     }
   }

@@ -11,7 +11,7 @@ const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!=
 // `onHave(row)` (2.164): „✓ Hab ich“ an einer fehlenden Zutat übernimmt sie in den Vorrat (die App zeichnet danach neu; die Ansicht bleibt offen).
 // `onUsedUp(row)` (2.175): „Aufgebraucht“ an einer vorhandenen Zutat, das Gegenstück: aus dem Vorrat nehmen und auf die Einkaufsliste setzen.
 export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredientLabel,onHave=null,onUsedUp=null}) {
-  const tracked=ingredients.filter(required),have=tracked.filter(row=>availability(row,index)==='have'),missing=tracked.filter(row=>availability(row,index)!=='have');
+  const tracked=ingredients.filter(required),state=new Map(tracked.map(row=>[row,availability(row,index)])),have=tracked.filter(row=>state.get(row)==='have'),missing=tracked.filter(row=>state.get(row)!=='have');
   const badge=node('div',undefined,`recipe-stock ${missing.length===0?'complete':have.length?'partial':'empty'}`);
   const trigger=node('button',undefined,'recipe-stock-toggle');trigger.type='button';
   const heading=node('span',undefined,'recipe-stock-heading');heading.append(node('span',`${have.length} von ${tracked.length} Zutaten da · ${missing.length} fehlen`),makeIcon('info'));
@@ -20,7 +20,11 @@ export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredien
   trigger.append(heading,progress);trigger.setAttribute('aria-label',`${recipe.name}: ${have.length} von ${tracked.length} Zutaten im Vorrat, ${missing.length} fehlen. Zutatendetails`);
   const expansion=node('div',undefined,'recipe-stock-expansion'),content=node('div',undefined,'recipe-stock-content'),inner=node('div',undefined,'recipe-stock-inner');
   expansion.id=`recipe-stock-${crypto.randomUUID()}`;trigger.setAttribute('aria-controls',expansion.id);
-  const labels=[];
+  // 2.187: Die Listen mit den Knöpfen entstehen erst beim ersten Aufklappen. Bisher baute jede Karte sie versteckt vorab, was die
+  // Rezeptliste bei vielen Rezepten spürbar verlangsamte; zu sehen ist davon nur, was gerade aufgeklappt ist.
+  const labels=[];let built=false,factor=1;
+  const buildGroups=()=>{
+  if(built)return;built=true;const groups=[];
   for(const [rows,title,kind] of [[missing,'Fehlt im Vorrat','missing'],[have,'Im Vorrat vorhanden','have']]) {
     if(kind==='missing'&&!rows.length)continue;   // 2.164: Fehlt nichts mehr, entfällt der Abschnitt „Fehlt im Vorrat“
     const group=node('div',undefined,`recipe-stock-group ${kind}`);group.append(node('h4',title));
@@ -47,18 +51,21 @@ export function recipeStockView({key,recipe,ingredients,index,makeIcon,ingredien
       group.append(list);
     }
     else group.append(node('p','Noch keine der mitgezählten Zutaten vorhanden.','hint'));
-    inner.append(group);
+    groups.push(group);
   }
+  inner.prepend(...groups);
+  for(const [label,row] of labels)label.textContent=ingredientLabel(row,factor);
+  };
   const hint=node('p','Abgleich mit dem Vorrat; Mengen werden nicht geprüft.','hint');
   if(tracked.length<ingredients.length)hint.append(' Wasser, Salz, Pfeffer und Zutaten nach Bedarf zählen nicht mit.');
   const collapse=node('button','Einklappen','recipe-stock-collapse');collapse.type='button';collapse.append(makeIcon('chevron'));
-  const apply=open=>{badge.classList.toggle('expanded',open);trigger.setAttribute('aria-expanded',String(open));expansion.setAttribute('aria-hidden',String(!open));expansion.inert=!open;};
+  const apply=open=>{if(open)buildGroups();badge.classList.toggle('expanded',open);trigger.setAttribute('aria-expanded',String(open));expansion.setAttribute('aria-hidden',String(!open));expansion.inert=!open;};
   const show=()=>{closeRecipeStock();openKey=key;opened={element:badge,close:()=>apply(false)};apply(true);};
   trigger.addEventListener('click',()=>{if(trigger.getAttribute('aria-expanded')==='true')closeRecipeStock();else show();});
   collapse.addEventListener('click',()=>{closeRecipeStock();trigger.focus({preventScroll:true});});
   inner.append(hint,collapse);content.append(inner);expansion.append(content);badge.append(trigger,expansion);
   apply(openKey===key);if(openKey===key)opened={element:badge,close:()=>apply(false)};
-  return {element:badge,updateAmounts:count=>{for(const [label,row]of labels)label.textContent=ingredientLabel(row,count/recipe.servings);}};
+  return {element:badge,updateAmounts:count=>{factor=count/recipe.servings;for(const [label,row]of labels)label.textContent=ingredientLabel(row,factor);}};
 }
 
 document.addEventListener('click',event=>{
