@@ -7,7 +7,7 @@ import { mountExpenseCategoryPicker } from './expense-category-view.js';
 import {automaticStockChanges,consumeStockChanges,isOptionalBasic,nextStockBoundary,optionalRestockOperations,saveSmartStockChange,stockTransferNotice,undoAutomaticStockChanges} from './smart-stock.js';
 import { closeRecipeStock, recipeStockView, refreshRecipeStock } from './recipe-stock-view.js';
 import { backupPhotoIds, makeRestoreOperation, mountBackupRestore, recoveryStorageKey } from './backup-restore.js';
-import { active, addToList, pantryRows, sameIngredient, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
+import { active, addToList, sameIngredient, sameProduct, aliasApplies, clone, duplicateFolds, emptyData, foldIntoList, frequentItems, inPantry, isCookingWater, listRow, merge, operation, pantryAdditions, pantryKeys, pantryKey, positive, spellingVariants, suggestItemNames, uid, validDay, validate } from './data.js';
 import { mountStoreOrder, orderedStores, reorderedStoreIds, isStoreVisible as visibleStore } from './store-order.js';
 import { defaultOfferUrl, localDay, offerUrl, productKey, storeOfferUrl, unitSpec } from './prices.js';
 import { hasProductPrice, priceOverview, productPriceIndex, withProductPrice } from './product-prices.js';
@@ -18,13 +18,13 @@ import { REGULAR_SYMBOLS, NOTES_SYMBOL, DISPLAY_MODES, DISPLAY_LABELS, displayMo
 import { privateView, privateViewId } from './private-list.js';
 import { mountPrivateList } from './private-list-view.js';
 import { catalogByKey, searchCatalog } from './store-catalog.js';
-import { ingredientMatchName, productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
+import { productGroup, productGroupMigration, reuseProductNames } from './product-groups.js';
 import { GROCERY_PRODUCTS, catalogProductFor, favoriteId, ownProductRemoval } from './product-catalog.js';
 import { mountProductPicker } from './product-picker.js';
 import { mountPantryBuy } from './pantry-view.js';
 import { mountSpending } from './spending-view.js';
 import { buyerNameOf, liveMembers, memberKey, ownMember, prepareMember, renameMember } from './family.js';
-import { ingredientPantryProduct, pantryChanges, pantrySelectionChanges } from './pantry.js';
+import { ingredientPantryProduct, joinNames, pantryChanges, pantrySelectionChanges, usedUpPlan } from './pantry.js';
 import { BUILTIN_PER_DAY, BUILTIN_SOURCE, DAILY_MAX, dailyRecord, dailyHistory, dailySnapshot, builtinKey, draftFromBuiltin, extractRecipeLinks, planBuiltin, planDay, recipeKey, validBuiltin } from './daily.js';
 import { dragDelete } from './dragdelete.js';
 import { wishGroup, wishImage } from './wish-images.js';
@@ -36,7 +36,7 @@ import { PUBLIC_PROXIES, fetchRecipePage, publicProxyEnabled, workerAddress, wor
 import { CATEGORIES, categoryLabel, groupByCategory, isCategory, itemCategory, learnCategories, orderCategories, suggestCategory } from './categories.js';
 import { groupImageFor, imageForProduct, paintProductImage } from './product-images.js';
 import { makeNameMatcher } from './product-names.js';
-import { shoppingAmount, purchaseView, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice, standardPurchase } from './buying.js';
+import { shoppingAmount, rememberedAmount, validPurchaseAmount, unitChoice, newerUnitChoice, amountChoice, newerAmountChoice, standardPurchase } from './buying.js';
 import { planReduction, planRemovalCounts, planRemovalDetails, planExistingDetails } from './plan-list.js';
 import { mountQuantityControls } from './quantity-controls.js';
 import { GROCERY_NAMES } from './grocery-names.js';
@@ -53,11 +53,11 @@ import { SINGLE_DELETE, TRASH_DAYS, TRASH_KINDS, purgeChanges, restoreChanges, t
 import { layoutRecipe, sheetIngredient } from './recipe-sheet.js';
 import { jpegInfo, makePdf } from './pdf.js';
 import { renderSheet } from './sheet-view.js';
-import { LIMIT_BYTES, POLICY, compact, due, purgeDue, sizeOf } from './compact.js';
-import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, coveringStock, stockCompleteness, byCompleteness } from './cookable.js';
+import { LIMIT_BYTES, compact, due, purgeDue, sizeOf } from './compact.js';
+import { namesFrom, rankRecipes, indexNames, availability, required, canCookRecipe, stockCompleteness, byCompleteness } from './cookable.js';
 import { ask, mountAsk } from './ask.js';
 import { canShareFiles, downloadFile, externalLink, isStandaloneApp, mountExternalLinks, saveFile, shareFile, usesServiceWorker, vibrate } from './platform.js';
-import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, diningRating, hasRating, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseAmount, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
+import { budgetStatus, dayLabel as spendDay, diningCounts, diningFields, diningKind, diningPlaces, hasRating, hasRatingNote, lastRating, ratingStars, RATING_MEANING, duplicatePurchase, formatAmount, isDining, monthOf, parseBudgetAmount, purchaseFields, purchaseItems, purchaseValue, receiptAmount, storeNameOf, DINING_LABEL } from './spending.js';
 
 const $ = selector => document.querySelector(selector);
 const recipeTagPicker=mountRecipeTagPicker({input:$('#recipe-form').elements.tags,trigger:$('#recipe-groups-toggle'),selection:$('#recipe-groups-selection'),menu:$('#recipe-groups-menu'),options:$('#recipe-groups-options'),feedback:$('#recipe-groups-feedback'),warning:$('#recipe-groups-warning'),custom:$('#recipe-group-custom'),add:$('#recipe-group-add'),done:$('#recipe-groups-done'),dialog:$('#recipe-dialog'),knownTags:()=>active(state.recipes).flatMap(recipe=>recipe.tags||[]),recipe:()=>({name:$('#recipe-form').elements.name.value,ingredients:[...document.querySelectorAll('#ingredient-editor [data-field=name]')].map(node=>node.value)})});
@@ -197,10 +197,16 @@ function element(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
+// Symbole werden je Name einmal gebaut und danach nur noch kopiert (2.187): Bei vielen Rezeptkarten deutlich schneller.
+const iconTemplates = new Map();
 function icon(name) {
-  const svg = document.createElementNS(SVG_NS, 'svg'), use = document.createElementNS(SVG_NS, 'use');
-  svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use);
-  return svg;
+  let template = iconTemplates.get(name);
+  if (!template) {
+    const svg = document.createElementNS(SVG_NS, 'svg'), use = document.createElementNS(SVG_NS, 'use');
+    svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', `#i-${name}`); svg.append(use);
+    iconTemplates.set(name, template = svg);
+  }
+  return template.cloneNode(true);
 }
 function button(text, action, className = 'secondary') {
   const node = element('button', text, className);
@@ -567,7 +573,6 @@ function renderStorePick() {
   $('#open-pantry').hidden = $('#open-products').hidden;
 }
 function storeChanged() {
-  const form = $('#item-form');
   refreshCategoryHint(); renderItemSuggestions();
 }
 // Listenansichten werden aus dem zusammengeführten lokalen Stand aufgebaut.
@@ -1507,11 +1512,14 @@ function renderRecipes() {
   chips.append(chip('★ Favoriten', favoritesOnly, () => { favoritesOnly = !favoritesOnly; renderRecipes(); }));
   for (const tag of tags){const key=recipeTagKey(tag);chips.append(chip(tag, key === tagFilter, () => { tagFilter = tagFilter === key ? '' : key; renderRecipes(); }));}
   const grid = $('#recipe-list'); grid.replaceChildren();
-  const ingredientsOf = id => active(state.ingredients).filter(row => row.recipeId === id);
+  // 2.187: Zutaten einmal nach Rezept ordnen und Vorrat/Einkaufsliste einmal auswerten, statt für jede Karte erneut (bei vielen Rezepten spürbar schneller)
+  const byRecipe = new Map();
+  for (const row of active(state.ingredients)) { if (!byRecipe.has(row.recipeId)) byRecipe.set(row.recipeId, []); byRecipe.get(row.recipeId).push(row); }
+  const ingredientsOf = id => byRecipe.get(id) || [], context = recipeCardContext();
   let order = RECIPE_ORDER[recipeSort];
   // „Meiste Zutaten vorhanden“ (2.181): oben das Rezept mit dem größten Anteil vorhandener Zutaten, unten das, bei dem am meisten fehlt
   if (recipeSort === 'stock') {
-    const index = indexNames(namesFrom({ pantry: state.pantry })), stats = new Map(recipes.map(recipe => [recipe.id, stockCompleteness(ingredientsOf(recipe.id), index)]));
+    const stats = new Map(recipes.map(recipe => [recipe.id, stockCompleteness(ingredientsOf(recipe.id), context.stockIndex)]));
     order = (a, b) => byCompleteness(stats.get(a.id), stats.get(b.id)) || byTitle(a, b);
   }
   const shown = recipes.filter(recipe => {
@@ -1519,7 +1527,7 @@ function renderRecipes() {
     return `${recipe.name} ${names} ${recipe.tags.join(' ')}`.toLocaleLowerCase('de').includes(search) &&
       (!tagFilter || recipe.tags.some(tag=>recipeTagKey(tag)===tagFilter)) && (!favoritesOnly || recipe.favorite);
   }).sort(order);
-  for (const recipe of shown) grid.append(recipeCard(recipe, ingredientsOf(recipe.id), { sort: recipeSort }));
+  for (const recipe of shown) grid.append(recipeCard(recipe, ingredientsOf(recipe.id), { sort: recipeSort, context }));
   // Anzahl und Sortierung über der Liste; die Anzahl sagt bei Suche oder Filter, wie viele von allen zu sehen sind.
   $('#recipe-toolbar').hidden = !recipes.length; $('#recipe-sort').value = recipeSort;
   // Auf der Pille steht bei langen Namen eine Kurzform (2.185: „Zutaten vorhanden“), damit Anzahl und Sortierung in eine Zeile passen
@@ -1579,39 +1587,73 @@ function lastStoreFor(name) {
 }
 async function usedUpIngredient(row) {
   if (!ready) throw new Error('Bitte zuerst die Liste öffnen oder GitHub verbinden.');
-  const product = ingredientPantryProduct(row), scope = namespace();
-  const listed = () => active(withoutSeparate(state.items, state.stores)).filter(item => !item.checked && sameIngredient(item.name, product.name));
-  const storeId = lastStoreFor(product.name), already = listed().length > 0;
-  const where = already ? 'Es steht schon auf deiner Einkaufsliste und wird nicht doppelt angelegt.' : storeId ? `Es kommt zu „${storeName(storeId)}“.` : 'Es kommt unter „Überall möglich“ (ohne Geschäft).';
-  if (!await ask({ title: `${product.name} ist aufgebraucht`, message: `Aus dem Vorrat nehmen und auf die Einkaufsliste setzen? ${where}`, confirmLabel: 'Ja', cancelLabel: 'Abbrechen' })) return;
+  /* 2.187: Genau eine vorhandene Sorte wird genau so nachgekauft (Basmati-Reis statt „Reis“).
+     2.188: Machen mehrere Einträge die Zutat zu „da“ (z. B. Öl und Olivenöl), fragt die App, was auf die Einkaufsliste soll: eines davon oder alle.
+     Bei einer Auswahl zählt nur genau derselbe Name als „steht schon darauf“ (Olivenöl ist nicht Öl); sonst wie bisher dieselbe Zutat. */
+  const scope = namespace(), plan = usedUpPlan(row, state.pantry || []), several = plan.choices.length > 1;
+  const listedAs = name => active(withoutSeparate(state.items, state.stores)).filter(item => !item.checked && (several ? sameProduct(item.name, name) : sameIngredient(item.name, name)));
+  const quoted = (names, word) => joinNames(names.map(name => `„${name}“`), word), stockNames = plan.stocked.map(entry => entry.name);
+  const placeOf = storeId => storeId ? `zu „${storeName(storeId)}“` : 'unter „Überall möglich“ (ohne Geschäft)';
+  let wanted;
+  if (several) {
+    const names = plan.choices.map(choice => choice.name), listedNames = names.filter(name => listedAs(name).length), open = names.filter(name => !listedNames.includes(name));
+    const places = open.map(name => [name, lastStoreFor(name)]), oneStore = places.every(([, storeId]) => storeId === places[0]?.[1]);
+    const already = listedNames.length ? ` ${quoted(listedNames)} ${listedNames.length > 1 ? 'stehen' : 'steht'} schon auf deiner Einkaufsliste und ${listedNames.length > 1 ? 'werden' : 'wird'} nicht doppelt angelegt.` : '';
+    const where = !places.length ? '' : places.length > 1 && oneStore ? ` Was du wählst, kommt ${placeOf(places[0][1])}.` : ` ${places.map(([name, storeId]) => `„${name}“ kommt ${placeOf(storeId)}`).join(', ')}.`;
+    wanted = await ask({ title: `${plan.generic.name} ist aufgebraucht`, message: `${quoted(names)} aus dem Vorrat nehmen und ${quoted(names, 'oder')} auf die Einkaufsliste setzen?${already}${where}`,
+      choices: [...plan.choices.map(choice => ({ value: [choice], label: choice.name })), { value: plan.choices, label: names.length === 2 ? 'Beides' : 'Alle' }], cancelLabel: 'Abbrechen' });
+    if (!wanted) return;
+  } else {
+    const product = plan.rebuy, storeId = lastStoreFor(product.name), already = listedAs(product.name).length > 0;
+    const where = already ? 'Es steht schon auf deiner Einkaufsliste und wird nicht doppelt angelegt.' : `Es kommt ${placeOf(storeId)}.`;
+    const question = stockNames.length === 1 && stockNames[0] !== plan.generic.name ? `${quoted(stockNames)} aus dem Vorrat nehmen und auf die Einkaufsliste setzen?` : 'Aus dem Vorrat nehmen und auf die Einkaufsliste setzen?';
+    if (!await ask({ title: `${plan.generic.name} ist aufgebraucht`, message: `${question} ${where}`, confirmLabel: 'Ja', cancelLabel: 'Abbrechen' })) return;
+    wanted = [product];
+  }
   if (scope !== namespace()) return;
-  const before = clone(state.pantry || []);
-  const stocked = pantryRows(before).filter(entry => entry.available !== false && coveringStock(row, [ingredientMatchName(entry)]).length);
+  const before = clone(state.pantry || []), stocked = usedUpPlan(row, before).stocked;   // neu ermittelt: Der Vorrat kann sich während der Rückfrage geändert haben
   const pantryOps = pantrySelectionChanges(stocked.map(entry => ({ name: entry.name, pantryAvailable: false })), before).map(({ id, patch }) => nextOp('pantry', id, patch));
-  let itemOps = [];
-  if (!listed().length) {
-    const known = catalogProductFor(product.name), target = storeId && active(state.stores).some(store => store.id === storeId) ? storeId : '';
+  // Jedes gewählte Produkt kommt in das Geschäft, in dem es zuletzt gekauft wurde; was schon offen auf der Liste steht, wird nicht doppelt angelegt
+  const itemOps = [], addedNames = [], alreadyNames = [];
+  for (const product of wanted) {
+    if (listedAs(product.name).length) { alreadyNames.push(product.name); continue; }
+    const known = catalogProductFor(product.name), storeId = lastStoreFor(product.name), target = storeId && active(state.stores).some(store => store.id === storeId) ? storeId : '';
     const item = standardPurchase({ name: product.name, ...(product.category ? { category: product.category } : {}), ...(known ? { quantity: known.quantity, unit: known.unit } : {}) }, itemHistory());
     lastTime = Math.max(Date.now(), lastTime + 1, Date.parse(state.updatedAt) + 1);
-    itemOps = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
+    const ops = addToList([item], target, config.actor || 'Unbekannt', new Date(lastTime).toISOString(), listItems(), itemHistory()).ops;
+    if (ops.length) { itemOps.push(...ops); addedNames.push(product.name); }
   }
-  if (!pantryOps.length && !itemOps.length) { showNotice(`${product.name} steht schon auf deinem Einkaufszettel`); return; }
+  const verb = (names, one, many) => names.length > 1 ? many : one;
+  if (!pantryOps.length && !itemOps.length) { showNotice(`${joinNames(alreadyNames)} ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel`); return; }
   commit([...pantryOps, ...itemOps]);
   const added = itemOps.filter(op => op.collection === 'items' && typeof op.patch.name === 'string').map(op => op.entityId);
-  // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), der neu angelegte Artikel verschwindet wieder von der Liste
+  // Zurücknehmen: Vorrat wieder wie vorher (vorhanden, automatisch …), die neu angelegten Artikel verschwinden wieder von der Liste
   const undoPantry = pantryOps.map(({ entityId: id, patch }) => {
     const old = before.find(entry => entry.id === id);
     return { id, patch: Object.fromEntries(Object.keys(patch).filter(key => key !== 'productGroupVersion').map(key => [key, old?.[key] === undefined ? (key === 'available' ? true : null) : clone(old[key])])) };
   });
-  // Die Meldung nennt beides, was passiert ist (2.177): aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt (bzw. stand schon darauf)
-  const fromStock = pantryOps.length ? ' aus dem Vorrat entfernt und' : '';
-  showNotice(added.length ? `${product.name}${fromStock} auf den Einkaufszettel gesetzt` : `${product.name}${fromStock ? ' aus dem Vorrat entfernt –' : ''} steht schon auf deinem Einkaufszettel`, () => guard(() => {
+  /* Die Meldung sagt genau, was passiert ist (2.177, seit 2.188 auch bei einer Auswahl): was aus dem Vorrat entfernt wurde, was auf den
+     Einkaufszettel kam und was dort schon stand, z. B. „Öl und Olivenöl aus dem Vorrat entfernt, Olivenöl auf den Einkaufszettel gesetzt“. */
+  const removed = pantryOps.length ? [...new Set(stocked.map(entry => entry.name))] : [], R = joinNames(removed), A = joinNames(addedNames), L = joinNames(alreadyNames);
+  const same = names => names.length === removed.length && names.every(name => removed.includes(name));
+  const stillListed = alreadyNames.length ? `${L} ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel` : '';
+  const text = removed.length && addedNames.length && !alreadyNames.length && same(addedNames) ? `${R} aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt`
+    : removed.length && !addedNames.length && same(alreadyNames) ? `${R} aus dem Vorrat entfernt – ${verb(alreadyNames, 'steht', 'stehen')} schon auf deinem Einkaufszettel`
+    : [[removed.length && `${R} aus dem Vorrat entfernt`, addedNames.length && `${A} auf den Einkaufszettel gesetzt`].filter(Boolean).join(', '), stillListed].filter(Boolean).join(' – ');
+  showNotice(text, () => guard(() => {
     if (scope !== namespace()) throw new Error('Die Datenverbindung hat sich geändert. Bitte Vorrat und Einkaufsliste prüfen.');
     commit([...undoPantry.map(({ id, patch }) => nextOp('pantry', id, patch)), ...deleteOps('items', added)]);
-    showNotice(`${product.name} ist wieder im Vorrat${added.length ? ' und nicht mehr auf der Einkaufsliste' : ''}`);
+    const back = removed.length ? `${R} ${verb(removed, 'ist', 'sind')} wieder im Vorrat` : '';
+    showNotice(back && addedNames.length && same(addedNames) ? `${back} und nicht mehr auf der Einkaufsliste`
+      : [back, addedNames.length && `${A} ${verb(addedNames, 'ist', 'sind')} nicht mehr auf der Einkaufsliste`].filter(Boolean).join(', '));
   }));
 }
 function addedLabel(at) { const day = relativeDay(at); return `hinzugefügt ${day === 'geplant' ? 'heute' : day}`; }
+// Was jede Rezeptkarte über Vorrat und Einkaufsliste wissen muss; renderRecipes ermittelt es einmal für alle Karten (2.187)
+function recipeCardContext() {
+  const stock = namesFrom({ pantry: state.pantry });
+  return { stock, stockIndex: indexNames(stock), stockKeys: pantryKeys(state.pantry), shopping: active(withoutSeparate(state.items, state.stores)).filter(row => !row.checked) };
+}
 function recipeCard(recipe, ingredients, options = {}) {
   const card = element('article', undefined, 'card recipe-card'); card.dataset.recipeId = recipe.id;
   if (recipe.photoId) {
@@ -1632,7 +1674,7 @@ function recipeCard(recipe, ingredients, options = {}) {
     const tags = element('div', undefined, 'tags');
     uniqueRecipeTags(recipe.tags).forEach(tag => tags.append(element('span', tag, 'tag'))); card.append(tags);
   }
-  const stock=namesFrom({pantry:state.pantry}), stockIndex=indexNames(stock), tracked=ingredients.filter(required),shopping=active(withoutSeparate(state.items,state.stores)).filter(row=>!row.checked);
+  const {stock,stockIndex,stockKeys,shopping}=options.context||recipeCardContext(), tracked=ingredients.filter(required);
   const showStock=stock.have.length>0;
   let stockView=null;
   if(showStock && tracked.length) {
@@ -1648,7 +1690,7 @@ function recipeCard(recipe, ingredients, options = {}) {
   const updateAmounts = () => {
     const count = positive(servingInput.value); if (!options.isolated) portions.set(recipe.id, count);
     stockView?.updateAmounts(count);
-    const missing=new Map(recipeNeeds(ingredients,count/recipe.servings).map(row=>[row.id,row]));
+    const missing=new Map(recipeNeeds(ingredients,count/recipe.servings,stockKeys).map(row=>[row.id,row]));
     list.replaceChildren(...ingredients.map(row => {
       const li=element('li'), label=element('span',ingredientLabel(row,count/recipe.servings)); li.append(label);
       if(showStock||shopping.length) {
@@ -1891,8 +1933,9 @@ function saveRecipe(event) {
   });
 }
 // `only`: Kennungen der Zutaten, die vorausgewählt sein sollen (z. B. nur das, was zum Kochen noch fehlt); sonst alles außer Vorrat und „nach Bedarf“.
-function recipeNeeds(ingredients,factor=1) {
-  return shoppingDeficits(ingredients.map(row=>({...row,...listRow(row,factor)})),state.pantry||[],withoutSeparate(state.items,state.stores));
+// `stock`: der Vorrat oder (2.187, Rezeptliste) die schon ermittelten Vorratsschlüssel, damit nicht jede Karte den ganzen Vorrat erneut auswertet
+function recipeNeeds(ingredients,factor=1,stock=state.pantry||[]) {
+  return shoppingDeficits(ingredients.map(row=>({...row,...listRow(row,factor)})),stock,withoutSeparate(state.items,state.stores));
 }
 function openTransfer(id, servings, only = null, mealId = null) {
   transferRecipe = clone(state.recipes.find(recipe => recipe.id === id && !recipe.deletedAt));
@@ -4073,7 +4116,9 @@ function renderDiningRating() {
   for (const star of $('#dining-rating').querySelectorAll('.dining-star')) {
     const own = Number(star.dataset.value); star.classList.toggle('on', own <= stars); star.setAttribute('aria-pressed', String(own === stars));
   }
-  if (stars) paintStars(value, stars); else { value.replaceChildren(); value.removeAttribute('aria-label'); value.removeAttribute('role'); }
+  // Nur eine Notiz ohne Sterne (2.187): zugeklappt steht „Notiz“, damit sie nicht übersehen wird
+  if (stars) paintStars(value, stars);
+  else { value.replaceChildren(...(form.elements.ratingNote.value.trim() ? [element('span', 'Notiz', 'dining-rating-only-note')] : [])); value.removeAttribute('aria-label'); value.removeAttribute('role'); }
 }
 function setDiningRating(stars) {
   const field = $('#dining-form').elements.rating;
@@ -4088,9 +4133,10 @@ function renderLastRating() {
   const last = lastRating(purchaseRows(), form.elements.place.value, form.elements.rowId.value);
   hint.hidden = !last; hint.replaceChildren();
   if (!last) return;
-  const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating);
-  hint.append('Zuletzt: ', stars);
-  if (last.ratingNote) hint.append(element('span', ` · ${last.ratingNote}`, 'dining-last-note'));
+  hint.append('Zuletzt: ');
+  // Seit 2.187 auch ein Besuch mit Notiz ohne Sterne
+  if (hasRating(last)) { const stars = element('span', undefined, 'dining-last-stars'); paintStars(stars, last.rating); hint.append(stars); }
+  if (hasRatingNote(last)) hint.append(element('span', `${hasRating(last) ? ' · ' : ''}${last.ratingNote.trim()}`, 'dining-last-note'));
 }
 // Seit 2.177 gibt es die Bewertung bei Restaurant und Getränken gleich; beim Wechsel der Art bleibt sie stehen.
 // Die Beispiele in den Feldern passen zur Art (2.179): bei Getränken kein „Pizza top“.
@@ -5231,6 +5277,7 @@ $('#dining-form').addEventListener('keydown', event => {
   event.preventDefault(); event.target.blur();
 });
 $('#dining-form').elements.place.addEventListener('input', () => { renderDiningPlaces(); renderLastRating(); });
+$('#dining-form').elements.ratingNote.addEventListener('input', renderDiningRating);   // 2.187: „Notiz“ in der zugeklappten Zeile, solange kein Stern gewählt ist
 for (const radio of $('#dining-form').querySelectorAll('input[name=kind]')) radio.addEventListener('change', syncDiningKind);
 $('#dining-rating-toggle').addEventListener('click', () => openDiningRating($('#dining-rating-panel').hidden));
 for (const star of $('#dining-rating').querySelectorAll('.dining-star')) star.addEventListener('click', () => {

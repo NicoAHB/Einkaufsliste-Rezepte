@@ -2,6 +2,34 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
+## Neu in Version 2.188: „Aufgebraucht“ fragt, welche Sorte auf die Liste soll
+
+**Öl oder Olivenöl – oder beides?** Machen mehrere Vorratseinträge eine Zutat zu „da“ (z. B. **Öl** und **Olivenöl** für „80 ml Öl“), fragt **Aufgebraucht** jetzt: „„Öl“ und „Olivenöl“ aus dem Vorrat nehmen und „Öl“ oder „Olivenöl“ auf die Einkaufsliste setzen?“ Statt „Ja“ stehen untereinander je Sorte ein Knopf und **Beides** (bei drei und mehr Sorten **Alle**), darunter **Abbrechen**. Aus dem Vorrat kommen immer alle genannten Einträge, sonst bliebe die Zutat „da“; auf die Einkaufsliste kommt genau, was man gewählt hat, jedes in das Geschäft, in dem es zuletzt gekauft wurde (die Rückfrage nennt es). Bis 2.187 kam ohne Wahl das allgemeine Produkt („Öl“) auf die Liste.
+
+**Die Meldung sagt genau, was passiert ist**, z. B.:
+- „Öl und Olivenöl aus dem Vorrat entfernt, Olivenöl auf den Einkaufszettel gesetzt“
+- „Öl und Olivenöl aus dem Vorrat entfernt und auf den Einkaufszettel gesetzt“ (Beides)
+- „Öl und Olivenöl aus dem Vorrat entfernt, Olivenöl auf den Einkaufszettel gesetzt – Öl steht schon auf deinem Einkaufszettel“
+- „Öl und Olivenöl aus dem Vorrat entfernt – Öl steht schon auf deinem Einkaufszettel“ (nichts kam dazu)
+
+Bei einer Auswahl zählt nur genau derselbe Name als „steht schon darauf“: Steht Öl auf der Liste, kommt gewähltes Olivenöl trotzdem dazu. **Rückgängig** nimmt genau das zurück, was hinzugekommen ist, und meldet es ebenso („Öl und Olivenöl sind wieder im Vorrat, Olivenöl ist nicht mehr auf der Einkaufsliste“). Mit nur einer Sorte im Vorrat bleibt die Rückfrage bei **Ja**/**Abbrechen**.
+
+Technisch: Die Rückfrage (`ask.js`) kann jetzt eine Auswahl anbieten (`choices`); die Knöpfe sehen aus wie „Ja“. Offline-Paket `einkauf-shell-v200`.
+
+## Neu in Version 2.187: Kleinere Updates, schnellere Rezepte, genaueres „Aufgebraucht“
+
+**Updates laden keine Bilder mehr neu.** Bisher holte jedes Update das ganze Offline-Paket von rund 9 MB, davon gut 7 MB Produktfotos, Geschäftslogos und Symbole, die sich fast nie ändern. Die Bilder liegen jetzt in einem eigenen Offline-Speicher, der Updates übersteht; ein Update holt nur noch die App-Dateien (rund 1,7 MB). Das erste Update auf 2.187 legt den Bilderspeicher einmal an; hat der Browser die Bilder noch, fragt er nur nach, ob sie aktuell sind. Der Name des Speichers endet auf eine Prüfsumme über alle Bilder (`IMAGES` in `sw.js`); ändert sich ein Bild, entsteht automatisch ein neuer Speicher, und `tests/shell.test.mjs` nennt den neuen Namen.
+
+**Rezeptliste etwa doppelt so schnell.** Vorrat und Einkaufsliste werden beim Zeichnen einmal ausgewertet statt für jede Karte erneut, die Zutaten einmal nach Rezept geordnet, und die Listen im Vorratsabgleich („… von … Zutaten da“) entstehen erst beim Aufklappen. Mit 150 Rezepten und 150 Vorratsartikeln dauert das Neuzeichnen auf einem gedrosselten Testgerät rund 490 statt 1020 ms. Sichtbar ändert sich nichts.
+
+**„Aufgebraucht“ trifft die richtige Sorte.** War genau eine Sorte im Vorrat, kommt genau sie auf die Einkaufsliste: **Basmati-Reis** statt „Reis“, **Spaghetti** statt „Nudeln“. Machen mehrere Einträge die Zutat zu „da“, nennt die Rückfrage alle („„Olivenöl“ und „Rapsöl“ aus dem Vorrat nehmen und „Öl“ auf die Einkaufsliste setzen?“), ebenso die Meldung danach; **Rückgängig** stellt beide wieder her. Bisher verschwanden beide still aus dem Vorrat.
+
+**Notiz zur Bewertung auch ohne Sterne.** Wer bei Restaurant oder Getränke nur eine Notiz schreibt („Frisch, aber teuer“) und keinen Stern wählt, sieht sie jetzt unter **Zuletzt:** beim nächsten Besuch, in der Übersicht (als eigene Zeile unter jedem Besuch, auch mit Sternen) und im CSV-Export. Zugeklappt zeigt die Zeile „Bewertung (optional)“ dann **Notiz**. Bisher wurde die Notiz gespeichert, war aber nirgends zu sehen.
+
+**Ausgaben desselben Tags in fester Reihenfolge.** Restaurantbesuche wurden untereinander nach Uhrzeit sortiert, alles andere nach dem Zeitpunkt des Erfassens; je nach Reihenfolge in der Datei sprang die Liste (z. B. Mittagessen über dem Abendessen). Jetzt hat jeder Eintrag eine Uhrzeit innerhalb seines Tags – die eingetragene Uhrzeit, sonst die Uhrzeit des Erfassens –, und der späteste steht oben. Später nachgetragene Einkäufe ohne Uhrzeit stehen oben, ganz ohne Zeitpunkt unten.
+
+**Aufgeräumt.** Ungenutzte Importe entfernt; ein Browsertest misst die Knöpfe der Rückfrage jetzt unabhängig von deren kurzer Einblend-Animation. Offline-Paket `einkauf-shell-v199`, Bilderspeicher `einkauf-images-669d5753fa`.
+
 ## Neu in Version 2.186: „Da“ statt „Vorhanden“
 
 In der Zutatenliste eines Rezepts (**Zutaten & Zubereitung**) steht bei Zutaten aus dem Vorrat jetzt kurz **✓ Da** statt „✓ Vorhanden“, passend zu „… von … Zutaten da“ und zu „Fehlt“. So passt die Angabe fast immer in dieselbe Zeile wie die Zutat. „Auf Einkaufszettel“ und „Noch … fehlen“ bleiben. Offline-Paket `einkauf-shell-v198`.

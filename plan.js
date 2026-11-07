@@ -135,13 +135,14 @@ export function aggregateIngredients(meals, recipes, ingredients) {
 
 // Offene Mengen werden nur einmal verrechnet. Bereits für andere Gerichte
 // eingeplante Mengen stehen zusätzlichen Gerichten nicht nochmals zur Verfügung.
+// `pantry`: die Vorratszeilen oder (2.187) schon ermittelte Schlüssel aus pantryKeys, z. B. einmal für alle Karten der Rezeptliste
 export function shoppingDeficits(rows, pantry = [], items = [], reserved = []) {
   // Abgleich mit Einheit: Eine Dose Tomaten wird nur durch Tomaten-Konserven gedeckt, nicht durch frische Tomaten.
   const sameGroup=(a,b)=>sameIngredient(ingredientMatchName(a),ingredientMatchName(b));
   const history=new Map();
   for(const item of items){const key=pantryKey(item.name);if(!history.has(key))history.set(key,[]);history.get(key).push(item);}
   const measure=row=>['weight','volume','count'].includes(unitSpec(row.unit).group)?row:withKnownPack(row,(history.get(pantryKey(row.name))||[]).map(item=>({...item,name:row.name})));
-  const stock=pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&row.quantity>0).map(source=>{
+  const stock=pantry instanceof Set?pantry:pantryKeys(pantry),pool=items.filter(row=>!row.deletedAt&&!row.checked&&!row._planEmpty&&row.quantity>0).map(source=>{
     const row=measure(source);return {...row,left:row.quantity*unitSpec(row.unit).factor};
   });
   const consume=(row,amount)=>{for(const item of pool){if(!sameGroup(item,row)||unitSpec(item.unit).group!==unitSpec(row.unit).group)continue;const used=Math.min(amount,item.left);amount-=used;item.left-=used;if(amount<=1e-8)break;}return amount;};

@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import { emptyData, merge, operation, SCHEMA_REV, validate } from '../data.js';
 import { compact } from '../compact.js';
 import { trashEntries } from '../trash.js';
-import { budgetSpent, budgetStatus, diningCounts, diningFields, diningPlaces, diningRating, duplicatePurchase, filterPurchases, hasRating, lastRating, possibleDuplicates, purchaseFrequency,
+import { budgetSpent, budgetStatus, diningCounts, diningFields, diningPlaces, diningRating, duplicatePurchase, filterPurchases, hasRating, hasRatingNote, hasReview, lastRating, possibleDuplicates, purchaseClock, purchaseFrequency,
   ratingStars, spendingCsv, summarizePeriod, DINING_LABEL } from '../spending.js';
 
 const at = '2026-11-01T12:00:00.000Z';
@@ -67,6 +67,18 @@ describe('Auswertung und Monatsbudget', () => {
     assert.deepEqual(diningPlaces(old).map(place => place.kind), ['drinks', 'drinks']);
     assert.match(spendingCsv(old), /"Restaurant\/Café\/Bar: Getränke";"Nicht zugeordnet";"Zur Linde"/);
   });
+  test('2.187: Reihenfolge am selben Tag ist eindeutig – Restaurant nach Uhrzeit, Einkäufe nach dem Erfassen, unabhängig von der Reihenfolge in der Datei', () => {
+    const local = (day, hour, minute = 0) => new Date(2026, 10, day, hour, minute).toISOString();   // Ortszeit, damit der Test in jeder Zeitzone gilt
+    // Abendessen 19:00 (morgens vorab erfasst), Einkauf um 15:00 erfasst, Mittagessen 12:00 (abends nachgetragen), Einkauf am nächsten Tag nachgetragen, Eintrag ohne Zeitpunkt
+    const day = [dine('dinner', '2026-11-06', 5000, 'restaurant', { time: '19:00', createdAt: local(6, 10) }), shop('shop', '2026-11-06', 3000, { createdAt: local(6, 15) }),
+      dine('lunch', '2026-11-06', 1200, 'drinks', { time: '12:00', createdAt: local(6, 20) }), shop('later', '2026-11-06', 800, { createdAt: local(7, 9) }),
+      shop('old', '2026-11-06', 100, { createdAt: undefined }), dine('notime', '2026-11-06', 900, 'restaurant', { time: '', createdAt: local(6, 13, 30) })];
+    const expected = ['later', 'dinner', 'shop', 'notime', 'lunch', 'old'];
+    const permutations = list => list.length <= 1 ? [list] : list.flatMap((row, index) => permutations([...list.slice(0, index), ...list.slice(index + 1)]).map(rest => [row, ...rest]));
+    for (const order of permutations(day)) assert.deepEqual(filterPurchases(order, '2026-11').map(row => row.id), expected);
+    assert.equal(purchaseClock(day[0]), '19:00'); assert.equal(purchaseClock(day[1]), '15:00'); assert.equal(purchaseClock(day[3]), '24:00'); assert.equal(purchaseClock(day[4]), '');
+    assert.equal(purchaseClock(shop('ahead', '2026-11-08', 100, { createdAt: local(6, 9) })), '', 'vorab erfasst: Anfang des Tags');
+  });
   test('Personenfilter gilt auch für Restaurant/Café/Bar', () => {
     const own = rows.map(row => row.id === 'd2' ? { ...row, buyerId: 'member-anna', buyerName: 'Anna' } : row);
     assert.equal(summarizePeriod(own, '2026-11', [], [], 'member-anna').dining.total, 890);
@@ -120,6 +132,16 @@ describe('Bewertung eines Restaurantbesuchs (2.174)', () => {
     assert.equal(lastRating(rows, 'Pizzeria Roma', 'r2').id, 'r1');
     assert.equal(lastRating(rows, 'Unbekannt'), null); assert.equal(lastRating(rows, ''), null);
     assert.equal(lastRating(rows, 'café lotte').ratingNote, 'Kuchen top', 'auch für Getränke');
+  });
+  test('2.187: Eine Notiz ohne Sterne geht nicht verloren – „Zuletzt“ und Export zeigen sie', () => {
+    const fields = diningFields({ amount: '20', date: '2026-11-06', kind: 'restaurant', place: 'Roma', rating: '', ratingNote: '  Pizza   top ' }, '2026-11-07');
+    assert.equal(fields.rating, null); assert.equal(fields.ratingNote, 'Pizza top');
+    const rows = [dine('r1', '2026-11-01', 3000, 'restaurant', { storeName: 'Roma', rating: 4 }), dine('r2', '2026-11-06', 2000, 'restaurant', { ...fields, rating: undefined }),
+      dine('r3', '2026-11-07', 2000, 'restaurant', { storeName: 'Roma', ratingNote: '   ' })];
+    assert.equal(lastRating(rows, 'roma').id, 'r2', 'der jüngste Besuch mit Notiz, auch ohne Sterne; nur Leerzeichen zählen nicht');
+    assert.equal(lastRating(rows, 'roma', 'r2').id, 'r1');
+    assert.ok(hasRatingNote(rows[1]) && !hasRating(rows[1]) && hasReview(rows[1]) && !hasReview(rows[2]));
+    assert.ok(spendingCsv([rows[1]]).includes('"Roma";"20,00";"Restaurant/Café/Bar";"";"";"Pizza top"'));
   });
   test('Export enthält Sterne und Notiz; alte Einträge ohne Bewertung bleiben leer', () => {
     const csv = spendingCsv([dine('r', '2026-11-04', 4680, 'restaurant', { storeName: 'Roma', rating: 4, ratingNote: 'Pizza top', time: '19:30' }), dine('o', '2026-11-03', 500, 'restaurant')]);

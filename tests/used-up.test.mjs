@@ -41,3 +41,29 @@ test('Sortierung „Meiste Zutaten im Vorrat“ (2.181): größter Anteil zuerst
   assert.equal(stats.water.share, -1);
   assert.deepEqual(Object.keys(stats).sort((a, b) => byCompleteness(stats[a], stats[b]) || a.localeCompare(b)), ['bread', 'banana', 'pancakes', 'toast', 'curry', 'water']);
 });
+
+test('2.187/2.188: usedUpPlan – genau eine Sorte wird genau so nachgekauft; bei mehreren Einträgen steht jeder zur Wahl', async () => {
+  const { usedUpPlan, joinNames } = await import('../pantry.js');
+  const at = '2026-11-01T10:00:00.000Z';
+  const stock = names => names.map((name, index) => ({ id: `p${index}`, name, category: 'vorrat', available: true, createdAt: at, updatedAt: at, deletedAt: null }));
+  const line = (name, quantity, unit) => ({ name, quantity, unit });
+  // Eine Sorte: Basmati-Reis statt „Reis“, Spaghetti statt „Nudeln“, Rote Zwiebeln statt „Zwiebeln“ (mit Gang aus dem Katalog)
+  for (const [ingredient, pantry, rebuy] of [[line('Reis', 200, 'g'), 'Basmati-Reis', 'Basmati-Reis'], [line('Nudeln', 300, 'g'), 'Spaghetti', 'Spaghetti'],
+    [line('Zwiebel', 1, 'Stück'), 'Rote Zwiebeln', 'Rote Zwiebeln'], [line('Mehl', 200, 'g'), 'Mehl', 'Mehl']]) {
+    const plan = usedUpPlan(ingredient, stock([pantry, 'Zucker']));
+    assert.deepEqual(plan.stocked.map(entry => entry.name), [pantry]); assert.equal(plan.rebuy.name, rebuy);
+    assert.equal(plan.rebuy.category, catalogProductFor(rebuy).category);
+  }
+  // Mehrere Einträge (2.188): beide werden aufgebraucht; zur Wahl steht je Eintrag ein Produkt (mit Gang), die Person wählt eines oder beide
+  const oil = usedUpPlan(line('Öl', 80, 'ml'), stock(['Öl', 'Olivenöl', 'Zucker']));
+  assert.deepEqual(oil.stocked.map(entry => entry.name), ['Öl', 'Olivenöl']); assert.equal(oil.generic.name, 'Öl');
+  assert.deepEqual(oil.choices.map(choice => choice.name), ['Öl', 'Olivenöl']); assert.equal(oil.choices[1].category, catalogProductFor('Olivenöl').category);
+  assert.deepEqual(usedUpPlan(line('Öl', 2, 'EL'), stock(['Olivenöl', 'Rapsöl'])).choices.map(choice => choice.name), ['Olivenöl', 'Rapsöl']);
+  assert.deepEqual(usedUpPlan(line('Reis', 200, 'g'), stock(['Basmati-Reis'])).choices, [], 'eine Sorte: keine Auswahl');
+  // Schon aufgebrauchte Einträge zählen nicht; nichts im Vorrat: das allgemeine Produkt
+  const gone = stock(['Olivenöl', 'Rapsöl']); gone[1].available = false;
+  assert.equal(usedUpPlan(line('Öl', 2, 'EL'), gone).rebuy.name, 'Olivenöl');
+  assert.deepEqual(usedUpPlan(line('Butter', 100, 'g'), stock(['Zucker'])), { generic: { name: 'Butter', category: catalogProductFor('Butter').category }, stocked: [], rebuy: { name: 'Butter', category: catalogProductFor('Butter').category }, choices: [] });
+  assert.deepEqual(['', 'A', 'A und B', 'A, B und C'], [[], ['A'], ['A', 'B'], ['A', 'B', 'C']].map(names => joinNames(names)));
+  assert.equal(joinNames(['Öl', 'Olivenöl'], 'oder'), 'Öl oder Olivenöl');
+});

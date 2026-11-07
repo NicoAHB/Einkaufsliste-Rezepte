@@ -1,19 +1,32 @@
 /* Prüft das Offline-Paket und die Seite statisch: Fehlt eine Datei im Paket, startet die App offline nicht; fehlt ein Element, bricht sie beim Laden ab. */
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { test } from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = file => readFile(path.join(root, file), 'utf8');
 const [sw, html, readme, manifest] = await Promise.all([read('sw.js'), read('index.html'), read('README.md'), read('manifest.webmanifest')]);
-const files = [...sw.match(/const FILES = \[([^\]]*)\]/s)[1].matchAll(/'([^']+)'/g)].map(match => match[1]).filter(file => file !== './').map(file => file.replace(/^\.\//, ''));
+const list = name => [...sw.match(new RegExp(`const ${name} = \\[([^\\]]*)\\]`, 's'))[1].matchAll(/'([^']+)'/g)].map(match => match[1]).filter(file => file !== './').map(file => file.replace(/^\.\//, ''));
+// Seit 2.187 liegen die Bilder in einem eigenen Speicher (IMAGE_FILES); zum Offline-Paket gehören beide Listen
+const code = list('FILES'), images = list('IMAGE_FILES'), files = [...code, ...images];
 const scripts = (await readdir(root)).filter(name => name.endsWith('.js') && name !== 'sw.js');
 
 test('jede Datei im Offline-Paket gibt es, und jede Skriptdatei der App steckt im Paket', async () => {
   for (const file of files) await assert.doesNotReject(read(file), `${file} fehlt, steht aber im Offline-Paket`);
   for (const file of scripts) assert.ok(files.includes(file), `${file} fehlt im Offline-Paket (sw.js, FILES)`);
   for (const file of ['index.html', 'styles.css', 'app.js', 'manifest.webmanifest']) assert.ok(files.includes(file), file);
+});
+
+test('2.187: Bilder liegen im eigenen Speicher, dessen Name zur Prüfsumme über Liste und Inhalt passt', async () => {
+  assert.deepEqual(code.filter(file => /\.(png|webp|svg|jpe?g|gif)$/i.test(file)), [], 'Bilder gehören in IMAGE_FILES, nicht in FILES');
+  assert.deepEqual(images.filter(file => !/\.(png|webp|svg)$/i.test(file)), [], 'in IMAGE_FILES stehen nur Bilder');
+  assert.equal(new Set(files).size, files.length, 'keine Datei doppelt');
+  const hash = createHash('sha256');
+  for (const file of images) { hash.update(`./${file}\n`); hash.update(await readFile(path.join(root, file))); }
+  const expected = `einkauf-images-${hash.digest('hex').slice(0, 10)}`;
+  assert.equal(sw.match(/const IMAGES = '([^']+)'/)?.[1], expected, `Ein Bild hat sich geändert (oder die Liste): in sw.js IMAGES = '${expected}' setzen, damit Geräte die neuen Bilder laden`);
 });
 
 test('jede importierte Datei und jede in der Seite eingebundene Datei steckt im Offline-Paket', async () => {

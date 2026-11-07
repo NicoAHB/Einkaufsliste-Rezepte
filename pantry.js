@@ -6,6 +6,7 @@ import { stockKey, pantryRows } from './data.js';
 import { isCategory, suggestCategory } from './categories.js';
 import { catalogProductFor, pantryProductAllowed } from './product-catalog.js';
 import { ingredientMatchName, varietyName } from './product-groups.js';
+import { coveringStock } from './cookable.js';
 
 // Gleiche erstmalige Anlage auf zwei Geräten ergibt dieselbe ID. Bestehende/alte IDs bleiben erhalten.
 // Umbenannte Datensätze dürfen die Kennung für den alten Namen nicht versehentlich belegen.
@@ -42,6 +43,23 @@ export function ingredientPantryProduct(row) {
   const name = String(varietyName(ingredientMatchName(row)) || row?.name || '').trim().replace(/\s+/g, ' '), known = catalogProductFor(name);
   return known ? { name: known.name, category: known.category } : { name };
 }
+/* „Aufgebraucht“ an einer Rezeptzutat (2.175, seit 2.187 als reine Logik): Welche Vorratseinträge machen die Zutat gerade zu „da“
+   (`stocked`, z. B. „Basmati-Reis“ für „Reis“ oder „Öl“ und „Olivenöl“ für „Öl“), und was kann auf die Einkaufsliste?
+   - Genau ein Eintrag: genau diese Sorte (`rebuy`, Basmati-Reis statt „Reis“, Spaghetti statt „Nudeln“).
+   - Mehrere Einträge (2.188): `choices`, je Eintrag ein Produkt; die Person wählt eines, mehrere oder alle.
+   - Keiner: das allgemeine Produkt der Zutat (`generic`, wie bei „✓ Hab ich“).
+   `rows`: alle Vorratszeilen. Der Gang kommt aus dem Katalog, sonst vom Vorratseintrag. */
+const rebuyOf = entry => {
+  const known = catalogProductFor(entry.name), category = known?.category || (isCategory(entry.category) ? entry.category : '');
+  return { name: entry.name, ...(category ? { category } : {}) };
+};
+export function usedUpPlan(row, rows = [], now = Date.now()) {
+  const generic = ingredientPantryProduct(row);
+  const stocked = pantryRows(rows, now).filter(entry => entry.available !== false && coveringStock(row, [ingredientMatchName(entry)]).length);
+  return { generic, stocked, rebuy: stocked.length === 1 ? rebuyOf(stocked[0]) : generic, choices: stocked.length > 1 ? stocked.map(rebuyOf) : [] };
+}
+// Namen für Rückfragen und Meldungen: „Olivenöl“, „Öl und Olivenöl“, „A, B und C“ (bzw. „A oder B“)
+export const joinNames = (names, word = 'und') => names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} ${word} ${names.at(-1)}`;
 // Bildauswahl: nur ausdrückliche Zu-/Abwahlen übernehmen. Bestehende IDs,
 // Namen, Kategorien, Bilder und unbekannte Erweiterungen bleiben erhalten.
 export function pantrySelectionChanges(products,rows=[]) {
