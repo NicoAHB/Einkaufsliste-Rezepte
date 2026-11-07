@@ -7020,7 +7020,10 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     assert.equal(await page.locator('#sheet-pages .sheet-page').count(), 1);
     const text = await sheetText(page);
     for (const part of ['REZEPT', 'Tomaten-Pasta', 'PORTIONEN', 'ZUTATEN', 'Zubereitung', '200 g', 'Nudeln', '400 g', 'Tomaten', 'Nudeln in Salzwasser kochen.', 'Schnell · vegetarisch', 'Meine Notizen', 'Eigenes Rezept']) assert.ok(text.includes(part), `${part} fehlt auf dem Blatt`);
-    assert.equal(await page.locator('#sheet-pages image').count(), 0, 'ohne Foto kein Bild');
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 0, 'ohne Foto kein Foto');
+    // 2.189: oben App-Symbol mit „SattPlan“, unten „Ein Produkt von“ mit Logo NvF Digital
+    assert.equal(await page.locator('#sheet-pages image[data-role=brand]').count(), 2, 'App-Symbol und Logo');
+    assert.ok(text.includes('Ein Produkt von') && /S\s*att\s*P\s*lan/.test(text) && !text.includes('SATTPLAN'));
     // „×“ oben rechts, immer erreichbar
     const viewport = page.viewportSize(), close = await page.locator('#sheet-close').boundingBox();
     assert.ok(close.x + close.width <= viewport.width && close.x + close.width / 2 > viewport.width * 0.8 && close.y < 60 && close.width >= 44, 'das „×“ sitzt oben rechts');
@@ -7047,20 +7050,21 @@ describe('Browser', { skip: !playwright && 'Playwright ist nicht installiert' },
     await open(page);
     await storePhotoInPage(page);
     await openCardSheet(page);
-    assert.equal(await page.locator('#sheet-pages image').count(), 1, 'das Foto steht auf dem Blatt');
-    assert.match(await page.locator('#sheet-pages image').getAttribute('href'), /^blob:/);
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 1, 'das Foto steht auf dem Blatt');
+    assert.match(await page.locator('#sheet-pages image:not([data-role=brand])').getAttribute('href'), /^blob:/);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
     assert.equal(download.suggestedFilename(), 'Tomaten-Pasta.pdf');
     const body = checkPdf(await pdfBytesOf(download));
     assert.ok(body.includes('/DCTDecode') && body.includes('/Count 1 ') && body.includes('/BaseFont /Times-Bold'));
+    assert.equal((body.match(/\/Subtype \/Image/g) || []).length, 3, 'Foto, App-Symbol und Logo NvF Digital als JPEG in der Datei');
     assert.match(await page.textContent('#sheet-status'), /„Tomaten-Pasta\.pdf“ wird gespeichert/);
     // ohne Foto kein Bild in der Datei
     await page.click('#sheet-close');
     await page.evaluate(() => caches.delete('einkauf-photos-v1'));
     await openCardSheet(page);
-    assert.equal(await page.locator('#sheet-pages image').count(), 0);
+    assert.equal(await page.locator('#sheet-pages image:not([data-role=brand])').count(), 0);
     const [again] = await Promise.all([page.waitForEvent('download'), page.click('#sheet-save')]);
-    assert.ok(!checkPdf(await pdfBytesOf(again)).includes('/DCTDecode'));
+    assert.equal((checkPdf(await pdfBytesOf(again)).match(/\/Subtype \/Image/g) || []).length, 2, 'ohne Foto nur App-Symbol und Logo');
     assert.deepEqual(problems, []);
     await ctx.close();
   });

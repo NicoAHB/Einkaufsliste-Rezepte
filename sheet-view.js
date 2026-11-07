@@ -31,7 +31,8 @@ export function pageSvg(page, index, count, title, imageUrl) {
       element.textContent = text;
       svg.append(element);
     } else if (item.type === 'image') {
-      svg.append(node('image', { x: round(item.x), y: round(item.y), width: round(item.w), height: round(item.h), href: imageUrl(item.photo), preserveAspectRatio: 'xMidYMid slice', ...common }));
+      // `data-role="brand"`: App-Symbol und Logo NvF Digital (2.189), damit man sie vom Rezeptfoto unterscheiden kann
+      svg.append(node('image', { x: round(item.x), y: round(item.y), width: round(item.w), height: round(item.h), href: imageUrl(item.photo), preserveAspectRatio: 'xMidYMid slice', ...(item.role ? { 'data-role': item.role } : {}), ...common }));
     }
   }
   return svg;

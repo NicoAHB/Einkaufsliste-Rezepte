@@ -2,9 +2,13 @@
 
 Neueste Version oben. Einrichtung und Bedienung stehen in der [README](README.md).
 
-## Neu in Version 2.189: Kein extra „Laden abbrechen“ beim Import
+## Neu in Version 2.189: Schöneres Rezeptblatt mit Logos; kein extra „Laden abbrechen“
 
-Während ein Rezept geladen oder ein Text erkannt wird, stand unter dem grauen Knopf **Rezept wird geladen … · Zum Abbrechen gedrückt halten** zusätzlich ein Knopf **Laden abbrechen**. Er sagte dasselbe noch einmal und ist entfallen. Abbrechen geht weiter mit etwa einer Sekunde Halten auf dem grauen Knopf oder mit Schließen (×); mit Tastatur oder Bildschirmleser bricht ein einzelnes Auslösen des grauen Knopfs ab. Offline-Paket `einkauf-shell-v201`.
+**Rezeptblatt (PDF) mit App-Symbol und Logo.** Oben rechts steht statt des grauen „SATTPLAN“ jetzt das App-Symbol mit **SattPlan** in den App-Farben (S und P orange). In der Fußzeile steht mittig klein **Ein Produkt von** mit dem Logo von **NvF Digital**; links bleibt die Quelle (lange Quellen werden gekürzt), rechts die Seitenzahl. Beides steht auf jeder Seite, in der Vorschau wie im PDF. Das PDF nimmt nur JPEG-Bilder auf: Die App zeichnet die vorhandenen Logos dafür einmal klein auf weißem Grund als JPEG (je wenige KB, jedes nur einmal in der Datei). Fehlen die Bilder, stehen nur die Namen da.
+
+**Einheitliche Schritte.** Bisher wurde ein Schritt aus nur einem Satz ganz fett gesetzt, wenn er höchstens 70 Zeichen hatte, sonst normal; beim Apfel-Pfannkuchen standen so drei Schritte fett und der vierte normal. Jetzt steht ein einzelner Satz immer normal da; fett ist nur der erste Satz eines Schritts, dem noch Text folgt (wie eine Überschrift). „Meine Notizen“ bleibt unten auf der Seite.
+
+**Kein extra „Laden abbrechen“ beim Import.** Während ein Rezept geladen oder ein Text erkannt wird, stand unter dem grauen Knopf **Rezept wird geladen … · Zum Abbrechen gedrückt halten** zusätzlich ein Knopf **Laden abbrechen**. Er sagte dasselbe noch einmal und ist entfallen. Abbrechen geht weiter mit etwa einer Sekunde Halten auf dem grauen Knopf oder mit Schließen (×); mit Tastatur oder Bildschirmleser bricht ein einzelnes Auslösen des grauen Knopfs ab. Offline-Paket `einkauf-shell-v201`.
 
 ## Neu in Version 2.188: „Aufgebraucht“ fragt, welche Sorte auf die Liste soll
 

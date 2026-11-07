@@ -3697,14 +3697,32 @@ async function photoForPdf(id) {
   const bytes = new Uint8Array(await blob.arrayBuffer()), info = jpegInfo(bytes);
   return info ? { bytes, ...info } : null;
 }
+/* App-Symbol und Logo von NvF Digital fürs Rezeptblatt (2.189). Das PDF nimmt nur JPEG auf: Die vorhandenen PNG-Bilder (im Offline-Speicher) werden
+   einmal auf weißem Grund in passender Größe als JPEG gezeichnet und gemerkt. Klappt das nicht (z. B. Bild nicht geladen), stehen im Blatt nur die Namen. */
+async function brandJpeg(src, width, height) {
+  const image = new Image(); image.src = src; await image.decode();
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const context = canvas.getContext('2d'); context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height); context.drawImage(image, 0, 0, width, height);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+  const bytes = blob ? new Uint8Array(await blob.arrayBuffer()) : null, info = bytes && jpegInfo(bytes);
+  return info ? { bytes, ...info } : null;
+}
+let pdfBrand = null;
+async function brandForPdf() {
+  if (pdfBrand) return pdfBrand;
+  const [icon, maker] = await Promise.all([brandJpeg('assets/branding/sattplan-logo.png', 128, 128), brandJpeg('assets/branding/nvf-digital-logo.png', 346, 96)].map(job => job.catch(() => null)));
+  const brand = { icon, maker };
+  if (icon && maker) pdfBrand = brand;   // nur Vollständiges merken; sonst beim nächsten Blatt erneut versuchen
+  return brand;
+}
 async function recipeLayout(recipeId, servings) {
   const recipe = active(state.recipes).find(row => row.id === recipeId);
   if (!recipe) throw new Error('Dieses Rezept wurde inzwischen gelöscht.');
   const count = servings > 0 ? servings : recipe.servings, source = webUrl(recipe.sourceUrl);
   const rows = active(state.ingredients).filter(row => row.recipeId === recipeId);
-  const photo = recipe.photoId ? await photoForPdf(recipe.photoId) : null;
+  const [photo, brand] = await Promise.all([recipe.photoId ? photoForPdf(recipe.photoId) : null, brandForPdf()]);
   return layoutRecipe({ recipe: { name: recipe.name, servings: count, tags: uniqueRecipeTags(recipe.tags), sourceHost: source ? hostLabel(source) : '', sourceUrl: source, notes: recipe.notes || '' },
-    ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo });
+    ingredients: rows.map(row => sheetIngredient(row, count / recipe.servings)), instructions: recipe.instructions, photo, brand });
 }
 let sheet = null;   // das gerade gezeigte Blatt: { layout, release }
 function sheetStatus(text = '', error = false) { const node = $('#sheet-status'); node.textContent = text; node.classList.toggle('error', error); }
